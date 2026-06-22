@@ -88,10 +88,12 @@ object UrlBuilder {
         port: String,
         videoId: Int,
         sessionId: String,
-        quality: String = "1080p-60fps"
+        quality: String = "1080p-60fps",
+        isRecording: Boolean = false
     ): String {
         val baseUrl = formatBaseUrl(ip, port, "https")
-        return "$baseUrl/api/streams/video/$videoId/$quality/playlist?session_id=$sessionId"
+        val recordingQuery = if (isRecording) "&recording=1" else ""
+        return "$baseUrl/api/streams/video/$videoId/$quality/playlist?session_id=$sessionId$recordingQuery"
     }
 
     /**

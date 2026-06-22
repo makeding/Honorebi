@@ -318,11 +318,12 @@ class KonomiRepository @Inject constructor(
         videoId: Int,
         quality: String,
         sessionId: String,
-        offsetSec: Double
+        offsetSeconds: Double,
+        isRecording: Boolean
     ): String {
         val ip = settingsRepository.konomiIp.first()
         val port = settingsRepository.konomiPort.first()
-        return UrlBuilder.getVideoPlaylistUrl(ip, port, videoId, sessionId, quality)
+        return UrlBuilder.getVideoPlaylistUrl(ip, port, videoId, sessionId, quality, isRecording)
     }
 
     // ==========================================

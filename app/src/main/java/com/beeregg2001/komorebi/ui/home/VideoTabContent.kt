@@ -296,9 +296,7 @@ fun VideoTabContent(
                                         ticketManager = ticketManager,
                                         onReturnFocusConsumed = onReturnFocusConsumed,
                                         onClick = {
-                                            if (!isCurrentlyRecording) onProgramClick(
-                                                program
-                                            )
+                                            onProgramClick(program)
                                         },
                                         onFocus = {
                                             focusedProgramId = program.id

@@ -98,6 +98,21 @@ fun VideoPlayerScreen(
         }
     }
 
+    val isRecordingChasePlayback =
+        currentProgram.isRecording || currentProgram.recordedVideo.status == "Recording"
+    val effectiveInitialPositionMs = remember(
+        currentProgram.id,
+        currentProgram.recordingStartMargin,
+        isRecordingChasePlayback,
+        initialPositionMs
+    ) {
+        if (isRecordingChasePlayback && initialPositionMs <= 0L) {
+            ((currentProgram.recordingStartMargin + 2.0).coerceAtLeast(0.0) * 1000.0).toLong()
+        } else {
+            initialPositionMs
+        }
+    }
+
     val vs = rememberVideoPlayerState()
 
     val autoCmSkipStr by settingsViewModel.autoCmSkip.collectAsState()
@@ -240,7 +255,8 @@ fun VideoPlayerScreen(
                     currentProgram.id,
                     vs.currentQuality.value,
                     currentSessionId,
-                    newOffsetSec
+                    newOffsetSec,
+                    isRecordingChasePlayback
                 )
                 if (newUrl.isNotEmpty()) {
                     val mediaItemBuilder = MediaItem.Builder().setUri(newUrl)
@@ -311,14 +327,21 @@ fun VideoPlayerScreen(
 
     var isFirstLoad by remember { mutableStateOf(true) }
 
-    LaunchedEffect(currentProgram.id, smbItem, vs.currentQuality, availableQualities) {
+    LaunchedEffect(
+        currentProgram.id,
+        currentProgram.recordedVideo.status,
+        currentProgram.recordingStartMargin,
+        smbItem,
+        vs.currentQuality,
+        availableQualities
+    ) {
         if (smbItem != null) {
             isBuffering = true
             vs.playbackOffsetMs = 0L
             val mediaItem = MediaItem.fromUri(smbItem.path)
             exoPlayer.setMediaItem(mediaItem)
-            if (isFirstLoad && initialPositionMs > 0) {
-                exoPlayer.seekTo(initialPositionMs)
+            if (isFirstLoad && effectiveInitialPositionMs > 0) {
+                exoPlayer.seekTo(effectiveInitialPositionMs)
             }
             isFirstLoad = false
             exoPlayer.prepare()
@@ -330,8 +353,8 @@ fun VideoPlayerScreen(
         if (availableQualities.isNotEmpty() && availableQualities.none { it.value == vs.currentQuality.value }) return@LaunchedEffect
 
         isBuffering = true
-        val offsetSec = if (isFirstLoad && initialPositionMs > 0) {
-            vs.playbackOffsetMs = initialPositionMs; initialPositionMs / 1000.0
+        val offsetSec = if (isFirstLoad && effectiveInitialPositionMs > 0) {
+            vs.playbackOffsetMs = effectiveInitialPositionMs; effectiveInitialPositionMs / 1000.0
         } else {
             val currentPos = getCurrentPositionMs()
             vs.playbackOffsetMs = currentPos; currentPos / 1000.0
@@ -341,7 +364,8 @@ fun VideoPlayerScreen(
             currentProgram.id,
             vs.currentQuality.value,
             currentSessionId,
-            offsetSec
+            offsetSec,
+            isRecordingChasePlayback
         )
 
         if (url.isNotEmpty()) {
@@ -354,8 +378,8 @@ fun VideoPlayerScreen(
             }
             val mediaItem = mediaItemBuilder.build()
             exoPlayer.setMediaItem(mediaItem)
-            if (isFirstLoad && initialPositionMs > 0 && !isLiveStream) {
-                exoPlayer.seekTo(initialPositionMs)
+            if (isFirstLoad && effectiveInitialPositionMs > 0 && !isLiveStream) {
+                exoPlayer.seekTo(effectiveInitialPositionMs)
             }
             isFirstLoad = false
             exoPlayer.prepare()
@@ -674,14 +698,15 @@ fun VideoPlayerScreen(
                                         program.id,
                                         it.value,
                                         currentSessionId,
-                                        0.0
+                                        0.0,
+                                        isRecordingChasePlayback
                                     ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
                             } else {
                                 vs.playbackOffsetMs =
-                                    currentPos - (initialPositionMs * 1000).toLong()
+                                    currentPos - effectiveInitialPositionMs
                                 scope.launch {
                                     isBuffering = true;
                                     val offsetSec = currentPos / 1000.0;
@@ -689,7 +714,8 @@ fun VideoPlayerScreen(
                                         program.id,
                                         it.value,
                                         currentSessionId,
-                                        offsetSec
+                                        offsetSec,
+                                        isRecordingChasePlayback
                                     ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.play()
                                 }
                             }
@@ -771,14 +797,15 @@ fun VideoPlayerScreen(
                                         program.id,
                                         it.value,
                                         currentSessionId,
-                                        0.0
+                                        0.0,
+                                        isRecordingChasePlayback
                                     ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
                             } else {
                                 vs.playbackOffsetMs =
-                                    currentPos - (initialPositionMs * 1000).toLong()
+                                    currentPos - effectiveInitialPositionMs
                                 scope.launch {
                                     isBuffering = true;
                                     val offsetSec = currentPos / 1000.0;
@@ -786,7 +813,8 @@ fun VideoPlayerScreen(
                                         program.id,
                                         it.value,
                                         currentSessionId,
-                                        offsetSec
+                                        offsetSec,
+                                        isRecordingChasePlayback
                                     ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.play()
                                 }
                             }

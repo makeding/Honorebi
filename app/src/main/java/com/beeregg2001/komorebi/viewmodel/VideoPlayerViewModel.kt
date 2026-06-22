@@ -170,12 +170,19 @@ class VideoPlayerViewModel @Inject constructor(
         videoId: Int,
         quality: String,
         sessionId: String,
-        offsetSeconds: Double = 0.0
+        offsetSeconds: Double = 0.0,
+        isRecording: Boolean = false
     ): String {
         return try {
             withContext(Dispatchers.IO) {
                 val url =
-                    recordProvider.getRecordStreamUrl(videoId, quality, sessionId, offsetSeconds)
+                    recordProvider.getRecordStreamUrl(
+                        videoId,
+                        quality,
+                        sessionId,
+                        offsetSeconds,
+                        isRecording
+                    )
                 _isLiveStream.value = url.contains("/api/xcode") && quality != "10"
                 url
             }

@@ -289,7 +289,7 @@ class EdcbRecordRepository @Inject constructor(
         }
 
     override suspend fun getRecordStreamUrl(
-        videoId: Int, quality: String, sessionId: String, offsetSeconds: Double
+        videoId: Int, quality: String, sessionId: String, offsetSeconds: Double, isRecording: Boolean
     ): String {
         val baseUrl = getHttpBaseUrl()
         val playMethod = settingsRepository.edcbRecordPlayMethod.first()
@@ -503,44 +503,46 @@ class EdcbRecordRepository @Inject constructor(
         val dummyGenre = EdcbDataMapper.mapEdcbGenre(contentList)
 
         return@withContext RecordedProgram(
-            info.id,
-            info.title,
-            null,
-            false,
-            cleanDescription,
-            detailMap,
-            isoStart,
-            isoEnd,
-            info.durationSec.toDouble(),
-            info.drops > 0,
-            RecordedChannel(
-                channelId,
-                info.onid,
-                info.sid,
-                channelId,
-                cacheManager.getChannelType(info.onid),
-                info.serviceName,
-                String.format("%03d", info.sid % 1000)
+            id = info.id,
+            title = info.title,
+            seriesName = null,
+            isEpisodic = false,
+            description = cleanDescription,
+            detail = detailMap,
+            startTime = isoStart,
+            endTime = isoEnd,
+            duration = info.durationSec.toDouble(),
+            recordingStartMargin = 0.0,
+            recordingEndMargin = 0.0,
+            isPartiallyRecorded = info.drops > 0,
+            channel = RecordedChannel(
+                id = channelId,
+                networkId = info.onid,
+                serviceId = info.sid,
+                displayChannelId = channelId,
+                type = cacheManager.getChannelType(info.onid),
+                name = info.serviceName,
+                channelNumber = String.format("%03d", info.sid % 1000)
             ),
-            RecordedVideo(
-                info.id,
-                if (isRecording) "Recording" else "Recorded",
-                "$baseUrl/legacy/view.lua?id=${info.id}",
-                isoStart,
-                isoEnd,
-                info.durationSec.toDouble(),
-                "mpegts",
-                "mpeg2",
-                "aac",
-                true,
-                thumbnailInfo,
-                cmSections
+            recordedVideo = RecordedVideo(
+                id = info.id,
+                status = if (isRecording) "Recording" else "Recorded",
+                filePath = "$baseUrl/legacy/view.lua?id=${info.id}",
+                recordingStartTime = isoStart,
+                recordingEndTime = isoEnd,
+                duration = info.durationSec.toDouble(),
+                containerFormat = "mpegts",
+                videoCodec = "mpeg2",
+                audioCodec = "aac",
+                hasKeyFrames = true,
+                thumbnailInfo = thumbnailInfo,
+                cmSections = cmSections
             ),
-            dummyGenre,
-            isRecording,
-            0.0,
-            primaryUrl,
-            fallbackUrl
+            genres = dummyGenre,
+            isRecording = isRecording,
+            playbackPosition = 0.0,
+            directThumbnailUrl = primaryUrl,
+            apiThumbnailUrl = fallbackUrl
         )
     }
 

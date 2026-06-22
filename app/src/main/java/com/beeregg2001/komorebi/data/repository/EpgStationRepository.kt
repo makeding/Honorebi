@@ -28,7 +28,8 @@ class EpgStationRepository @Inject constructor(
         videoId: Int,
         quality: String,
         sessionId: String,
-        offsetSec: Double
+        offsetSeconds: Double,
+        isRecording: Boolean
     ): String = ""
 
     override suspend fun getArchivedJikkyo(videoId: Int): Result<List<ArchivedComment>> =

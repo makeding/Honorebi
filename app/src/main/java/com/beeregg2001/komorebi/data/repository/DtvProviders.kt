@@ -26,7 +26,8 @@ interface RecordProvider {
         videoId: Int,
         quality: String,
         sessionId: String,
-        offsetSeconds: Double = 0.0
+        offsetSeconds: Double = 0.0,
+        isRecording: Boolean = false
     ): String
 
     suspend fun getArchivedJikkyo(videoId: Int): Result<List<ArchivedComment>>

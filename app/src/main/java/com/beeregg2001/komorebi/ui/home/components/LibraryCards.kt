@@ -102,7 +102,7 @@ fun VideoRecentRecordCard(
 
     Surface(
         onClick = onClick,
-        enabled = !isCurrentlyRecording,
+        enabled = true,
         modifier = modifier
             .width(280.dp)
             .height(160.dp)

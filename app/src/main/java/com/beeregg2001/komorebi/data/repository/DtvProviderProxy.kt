@@ -118,9 +118,10 @@ class DtvProviderProxy @Inject constructor(
         videoId: Int,
         quality: String,
         sessionId: String,
-        offsetSeconds: Double
+        offsetSeconds: Double,
+        isRecording: Boolean
     ) =
-        getRecordProvider().getRecordStreamUrl(videoId, quality, sessionId, offsetSeconds)
+        getRecordProvider().getRecordStreamUrl(videoId, quality, sessionId, offsetSeconds, isRecording)
 
     override suspend fun getArchivedJikkyo(videoId: Int) =
         getRecordProvider().getArchivedJikkyo(videoId)

@@ -374,29 +374,6 @@ fun LivePlayerScreen(
 
     LaunchedEffect(isSubtitleEnabled) {
         livePlayerViewModel.setSubtitlesEnabled(isSubtitleEnabled)
-        while (true) {
-            if (isSubtitleEnabled) {
-                mainPlayer?.takeIf { it.isPlaying }?.let { player ->
-                    webViewRef.value?.post {
-                        webViewRef.value?.evaluateJavascript(
-                            "if(window.syncClock){ window.syncClock(${player.currentPosition}); }",
-                            null
-                        )
-                    }
-                }
-                if (ps.isDualDisplayMode) {
-                    dualPlayer?.takeIf { it.isPlaying }?.let { player ->
-                        dualWebViewRef.value?.post {
-                            dualWebViewRef.value?.evaluateJavascript(
-                                "if(window.syncClock){ window.syncClock(${player.currentPosition}); }",
-                                null
-                            )
-                        }
-                    }
-                }
-            }
-            delay(100)
-        }
     }
 
     LaunchedEffect(Unit) {
