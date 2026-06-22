@@ -228,7 +228,7 @@ class SettingsViewModel @Inject constructor(
     val playerUiMode: StateFlow<String> = settingsRepository.playerUiMode.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        "MODERN"
+        "CLASSIC"
     )
     val autoCmSkip: StateFlow<String> = settingsRepository.autoCmSkip.stateIn(
         viewModelScope,

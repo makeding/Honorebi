@@ -641,6 +641,18 @@ fun VideoPlayerScreen(
             }
 
             AnimatedVisibility(
+                isSceneSearchOpen,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut()) {
+                SceneSearchOverlay(
+                    program = currentProgram,
+                    tiledThumbnailUrl = tiledThumbnailUrl,
+                    currentPositionMs = getEffectivePositionMs(),
+                    onSeekRequested = { performSeek(it); onSceneSearchToggle(false) },
+                    onClose = { onSceneSearchToggle(false) })
+            }
+
+            AnimatedVisibility(
                 isChapterListOpen,
                 enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut()) {
