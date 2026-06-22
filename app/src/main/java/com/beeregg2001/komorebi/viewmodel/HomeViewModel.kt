@@ -132,6 +132,9 @@ class HomeViewModel @Inject constructor(
     val baseballDateOffset: StateFlow<Int> = _baseballDateOffset.asStateFlow()
 
     private var cachedBaseballPrograms: List<Pair<EpgProgram, EpgChannel>> = emptyList()
+    @Volatile
+    private var isRefreshingHomeData = false
+    private var lastBackendHealthCheckMillis = 0L
 
     fun getHotChannels(liveRows: List<LiveRowState>): List<UiChannelState> {
         return liveRows.flatMap { it.channels }
@@ -319,6 +322,9 @@ class HomeViewModel @Inject constructor(
         val currentBackend = settingsRepository.backendType.first()
 
         if (currentBackend == "KONOMITV") return
+        val now = System.currentTimeMillis()
+        if (now - lastBackendHealthCheckMillis < 60_000L) return
+        lastBackendHealthCheckMillis = now
 
         try {
             liveProvider.getChannels()
@@ -375,6 +381,8 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshHomeData() {
+        if (isRefreshingHomeData) return
+        isRefreshingHomeData = true
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -420,6 +428,7 @@ class HomeViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "Error refreshing home data", e)
             } finally {
+                isRefreshingHomeData = false
                 _isLoading.value = false
             }
         }

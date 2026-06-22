@@ -15,7 +15,12 @@ class EpgStationRepository @Inject constructor(
     override suspend fun getLiveStreamUrl(channelId: String, quality: String, streamNumber: Int): String = ""
     override suspend fun getChannelLogoUrl(channelId: String): String = ""
 
-    override suspend fun getRecordedPrograms(page: Int, order: String): RecordedApiResponse =
+    override suspend fun getRecordedPrograms(
+        page: Int,
+        order: String,
+        channelId: String?,
+        genre: String?
+    ): RecordedApiResponse =
         TODO("EPGStation: Not implemented yet")
 
     override suspend fun getRecordedProgram(videoId: Int): Result<RecordedProgram> =

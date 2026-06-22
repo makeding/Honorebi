@@ -128,6 +128,8 @@ class ChannelViewModel @Inject constructor(
     private var progressUpdateJob: Job? = null
     private var fetchJob: Job? = null
     private var lastFetchedTimeMillis = 0L
+    @Volatile
+    private var isFetchingChannels = false
 
     private var isPollingPaused = false
 
@@ -135,7 +137,6 @@ class ChannelViewModel @Inject constructor(
 
     init {
         startPolling()
-        startProgressUpdater()
     }
 
     fun setPollingPaused(paused: Boolean) {
@@ -193,6 +194,8 @@ class ChannelViewModel @Inject constructor(
 
     @RequiresApi(Build.VERSION_CODES.O)
     private suspend fun fetchChannelsInternal() {
+        if (isFetchingChannels) return
+        isFetchingChannels = true
         try {
             _connectionError.value = false
             val response = liveProvider.getChannels()
@@ -257,6 +260,7 @@ class ChannelViewModel @Inject constructor(
             Log.e("ChannelViewModel", "Error fetching channels", e)
             _connectionError.value = true
         } finally {
+            isFetchingChannels = false
             _isLoading.value = false
         }
     }
@@ -280,6 +284,7 @@ class ChannelViewModel @Inject constructor(
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun fetchChannels() {
+        if (isFetchingChannels || fetchJob?.isActive == true) return
         _isLoading.value = true
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
@@ -303,6 +308,10 @@ class ChannelViewModel @Inject constructor(
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun startPolling() {
+        if (progressUpdateJob?.isActive != true) {
+            startProgressUpdater()
+        }
+        if (pollingJob?.isActive == true) return
         pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
             if (System.currentTimeMillis() - lastFetchedTimeMillis > 60_000L && !isPollingPaused) {

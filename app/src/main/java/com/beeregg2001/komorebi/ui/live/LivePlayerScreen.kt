@@ -54,6 +54,9 @@ import master.flame.danmaku.controller.IDanmakuView
 import master.flame.danmaku.danmaku.model.BaseDanmaku
 
 private const val TAG = "LivePlayerScreen"
+private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
+private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 36
+private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 12
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -383,18 +386,38 @@ fun LivePlayerScreen(
     }
 
     LaunchedEffect(Unit) {
+        var rateWindowStartMs = System.currentTimeMillis()
+        var scrollDanmakuCount = 0
+        var fixedDanmakuCount = 0
+        val colorCache = HashMap<String, Int>()
+
         livePlayerViewModel.liveComments.collect { comment ->
             if (!isCommentEnabled || !isHeavyUiReady || ps.isDualDisplayMode) return@collect
+
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - rateWindowStartMs >= LIVE_DANMAKU_WINDOW_MS) {
+                rateWindowStartMs = nowMs
+                scrollDanmakuCount = 0
+                fixedDanmakuCount = 0
+            }
+
+            val danmakuType = when (comment.position) {
+                "top" -> BaseDanmaku.TYPE_FIX_TOP
+                "bottom" -> BaseDanmaku.TYPE_FIX_BOTTOM
+                else -> BaseDanmaku.TYPE_SCROLL_RL
+            }
+            if (danmakuType == BaseDanmaku.TYPE_SCROLL_RL) {
+                if (scrollDanmakuCount >= LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW) return@collect
+                scrollDanmakuCount++
+            } else {
+                if (fixedDanmakuCount >= LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW) return@collect
+                fixedDanmakuCount++
+            }
 
             danmakuViewRef.value?.let { view ->
                 (view as? android.view.View)?.post {
                     if (!view.isPrepared) return@post
 
-                    val danmakuType = when (comment.position) {
-                        "top" -> BaseDanmaku.TYPE_FIX_TOP
-                        "bottom" -> BaseDanmaku.TYPE_FIX_BOTTOM
-                        else -> BaseDanmaku.TYPE_SCROLL_RL
-                    }
                     val danmaku =
                         view.config.mDanmakuFactory.createDanmaku(danmakuType) ?: return@post
                     danmaku.text = comment.text
@@ -408,10 +431,9 @@ fun LivePlayerScreen(
                     danmaku.textSize =
                         (32f * commentFontSizeScale * sizeFactor) * view.context.resources.displayMetrics.density
 
-                    try {
-                        danmaku.textColor = AndroidColor.parseColor(comment.color)
-                    } catch (e: Exception) {
-                        danmaku.textColor = AndroidColor.WHITE
+                    danmaku.textColor = colorCache.getOrPut(comment.color) {
+                        runCatching { AndroidColor.parseColor(comment.color) }
+                            .getOrDefault(AndroidColor.WHITE)
                     }
                     danmaku.textShadowColor = AndroidColor.BLACK
                     danmaku.setTime(view.currentTime + 10)

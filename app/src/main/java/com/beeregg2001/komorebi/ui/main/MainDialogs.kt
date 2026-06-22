@@ -137,7 +137,11 @@ fun InitialSetupDialog(onConfirm: () -> Unit) {
 }
 
 @Composable
-fun ConnectionErrorDialog(onGoToSettings: () -> Unit, onExit: () -> Unit) {
+fun ConnectionErrorDialog(
+    onRetry: () -> Unit,
+    onGoToSettings: () -> Unit,
+    onExit: () -> Unit
+) {
     val colors = KomorebiTheme.colors
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(300); focusRequester.safeRequestFocus("ConnectionError") }
@@ -150,7 +154,7 @@ fun ConnectionErrorDialog(onGoToSettings: () -> Unit, onExit: () -> Unit) {
         Surface(
             shape = RoundedCornerShape(16.dp),
             colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(420.dp)
+            modifier = Modifier.width(460.dp)
         ) {
             Column(
                 modifier = Modifier.padding(32.dp),
@@ -169,18 +173,10 @@ fun ConnectionErrorDialog(onGoToSettings: () -> Unit, onExit: () -> Unit) {
                     color = colors.textSecondary
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(
-                        onClick = onExit,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
-                        modifier = Modifier.weight(1f)
-                    ) { Text(AppStrings.EXIT_APP) }
                     Button(
                         onClick = onGoToSettings,
                         colors = ButtonDefaults.colors(
@@ -188,9 +184,25 @@ fun ConnectionErrorDialog(onGoToSettings: () -> Unit, onExit: () -> Unit) {
                             contentColor = if (colors.isDark) Color.Black else Color.White
                         ),
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .focusRequester(focusRequester)
-                    ) { Text(AppStrings.GO_TO_SETTINGS_SHORT) }
+                    ) { Text("接続設定を開く") }
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.colors(
+                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
+                            contentColor = colors.textPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(AppStrings.BUTTON_RETRY) }
+                    Button(
+                        onClick = onExit,
+                        colors = ButtonDefaults.colors(
+                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
+                            contentColor = colors.textPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(AppStrings.EXIT_APP) }
                 }
             }
         }

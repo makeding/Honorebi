@@ -36,6 +36,7 @@ fun ArchivedCommentOverlay(
     // UIスレッドでしか取得できない画面密度(density)を事前に計算しておく
     val context = LocalContext.current
     val density = remember(context) { context.resources.displayMetrics.density }
+    val colorCache = remember { HashMap<String, Int>() }
 
     LaunchedEffect(isPlaying, isCommentEnabled) {
         danmakuViewRef.value?.let { view ->
@@ -68,9 +69,7 @@ fun ArchivedCommentOverlay(
                     // シーク検知: 現在位置と最後に処理した時間が1.5秒以上乖離している場合
                     if (abs(currentSec - lastPlayerSec) > 1.5) {
                         danmakuViewRef.value?.removeAllDanmakus(true)
-                        // バイナリサーチ的に次のインデックスを取得
-                        currentIndex = comments.indexOfFirst { it.time >= currentSec }
-                            .let { if (it == -1) comments.size else it }
+                        currentIndex = comments.findFirstIndexAtOrAfter(currentSec)
                     }
 
                     danmakuViewRef.value?.let { view ->
@@ -85,7 +84,13 @@ fun ArchivedCommentOverlay(
                                 // シーク直後の過去すぎるコメントを捨てる
                                 if (comment.time >= currentSec - 0.5) {
                                     val d =
-                                        createDanmaku(view, comment, commentFontSizeScale, density)
+                                        createDanmaku(
+                                            view,
+                                            comment,
+                                            commentFontSizeScale,
+                                            density,
+                                            colorCache
+                                        )
                                     if (d != null) {
                                         // 現在時刻との差分を計算し、DanmakuViewの内部時計で正確な表示時刻を予約
                                         val futureMs = ((comment.time - currentSec) * 1000).toLong()
@@ -128,7 +133,8 @@ private fun createDanmaku(
     view: IDanmakuView,
     comment: ArchivedComment,
     fontSizeScale: Float,
-    density: Float
+    density: Float,
+    colorCache: MutableMap<String, Int>
 ): BaseDanmaku? {
     val danmaku =
         view.config.mDanmakuFactory.createDanmaku(BaseDanmaku.TYPE_SCROLL_RL) ?: return null
@@ -138,12 +144,25 @@ private fun createDanmaku(
     // 引数で受け取った density を使って計算する
     danmaku.textSize = (32f * fontSizeScale) * density
 
-    try {
-        danmaku.textColor = AndroidColor.parseColor(comment.color)
-    } catch (e: Exception) {
-        danmaku.textColor = AndroidColor.WHITE
+    danmaku.textColor = colorCache.getOrPut(comment.color) {
+        runCatching { AndroidColor.parseColor(comment.color) }
+            .getOrDefault(AndroidColor.WHITE)
     }
 
     danmaku.textShadowColor = AndroidColor.BLACK
     return danmaku
+}
+
+private fun List<ArchivedComment>.findFirstIndexAtOrAfter(timeSec: Double): Int {
+    var low = 0
+    var high = size
+    while (low < high) {
+        val mid = (low + high) ushr 1
+        if (this[mid].time < timeSec) {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
 }

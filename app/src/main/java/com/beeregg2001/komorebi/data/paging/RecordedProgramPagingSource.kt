@@ -8,7 +8,10 @@ import com.beeregg2001.komorebi.data.repository.RecordProvider
 class RecordedProgramPagingSource(
     private val recordProvider: RecordProvider,
     private val query: String,
-    private val order: String
+    private val order: String,
+    private val channelId: String? = null,
+    private val genre: String? = null,
+    private val seriesId: Int? = null
 ) : PagingSource<Int, RecordedProgram>() {
 
     private companion object {
@@ -24,10 +27,25 @@ class RecordedProgramPagingSource(
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, RecordedProgram> {
         val page = params.key ?: 1
         return try {
-            val response = if (query.isBlank()) {
-                recordProvider.getRecordedPrograms(page = page, order = order)
-            } else {
-                recordProvider.searchRecordedPrograms(keyword = query, page = page, order = order)
+            val response = when {
+                seriesId != null -> recordProvider.getRecordedProgramsBySeries(
+                    seriesId = seriesId,
+                    page = page,
+                    order = order
+                )
+
+                query.isNotBlank() -> recordProvider.searchRecordedPrograms(
+                    keyword = query,
+                    page = page,
+                    order = order
+                )
+
+                else -> recordProvider.getRecordedPrograms(
+                    page = page,
+                    order = order,
+                    channelId = channelId,
+                    genre = genre
+                )
             }
             val programs = response.recordedPrograms
             val total = response.total

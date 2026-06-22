@@ -221,7 +221,12 @@ class EdcbRecordRepository @Inject constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    override suspend fun getRecordedPrograms(page: Int, order: String): RecordedApiResponse =
+    override suspend fun getRecordedPrograms(
+        page: Int,
+        order: String,
+        channelId: String?,
+        genre: String?
+    ): RecordedApiResponse =
         withContext(Dispatchers.IO) {
             recordMutex.withLock {
                 try {

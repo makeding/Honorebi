@@ -56,9 +56,19 @@ class KonomiRepository @Inject constructor(
         }
     }
 
-    override suspend fun getRecordedPrograms(page: Int, order: String): RecordedApiResponse {
+    override suspend fun getRecordedPrograms(
+        page: Int,
+        order: String,
+        channelId: String?,
+        genre: String?
+    ): RecordedApiResponse {
         return try {
-            val response = apiService.getRecordedPrograms(page = page, order = order)
+            val response = apiService.getRecordedPrograms(
+                page = page,
+                order = order,
+                channelId = channelId,
+                genre = genre
+            )
 
             val ip = settingsRepository.konomiIp.first()
             val port = settingsRepository.konomiPort.first()
@@ -104,6 +114,18 @@ class KonomiRepository @Inject constructor(
             // ★ 修正: 例外をスロー
             throw Exception("録画番組の検索に失敗しました。\n[詳細]: ${e.message}")
         }
+    }
+
+    override suspend fun getRecordedProgramsBySeries(
+        seriesId: Int,
+        page: Int,
+        order: String
+    ): RecordedApiResponse {
+        return apiService.getRecordedProgramsBySeries(seriesId = seriesId, page = page, order = order)
+    }
+
+    override suspend fun getSeriesList(page: Int, order: String): SeriesApiResponse {
+        return apiService.getSeriesList(page = page, order = order)
     }
 
     @OptIn(UnstableApi::class)

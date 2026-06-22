@@ -7,6 +7,24 @@ data class RecordedApiResponse(
     @SerializedName("recorded_programs") val recordedPrograms: List<RecordedProgram>
 )
 
+data class SeriesApiResponse(
+    val total: Int,
+    @SerializedName("series_list") val seriesList: List<SeriesProgram>
+)
+
+data class SeriesProgram(
+    val id: Int,
+    val title: String,
+    val description: String = "",
+    val genres: List<EpgGenre>? = null,
+    @SerializedName("broadcast_periods") val broadcastPeriods: List<SeriesBroadcastPeriod> = emptyList()
+)
+
+data class SeriesBroadcastPeriod(
+    val channel: RecordedChannel? = null,
+    @SerializedName("recorded_programs") val recordedPrograms: List<RecordedProgram> = emptyList()
+)
+
 data class RecordedProgram(
     val id: Int,
     val title: String,

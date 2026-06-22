@@ -59,6 +59,7 @@ private data class FilterState(
 )
 
 data class SeriesInfo(
+    val seriesId: Int? = null,
     val displayTitle: String,
     val searchKeyword: String,
     val programCount: Int,
@@ -182,19 +183,7 @@ class RecordViewModel @Inject constructor(
 
     init {
         loadSearchHistory()
-
-        viewModelScope.launch(Dispatchers.IO) {
-            syncEngine.syncProgress.map { it.isSyncing }.distinctUntilChanged()
-                .collect { isSyncing ->
-                    if (!isSyncing) {
-                        val seriesList = programDao.getGroupedSeries()
-                        val channelsList = programDao.getDistinctChannels()
-                        if (seriesList.isNotEmpty() || channelsList.isNotEmpty()) {
-                            buildSeriesAndChannelMaps(seriesList, channelsList)
-                        }
-                    }
-                }
-        }
+        loadOnlineFilterIndexes()
     }
 
     fun handleBackNavigation(onExit: () -> Unit) {
@@ -238,12 +227,29 @@ class RecordViewModel @Inject constructor(
                 enablePlaceholders = true
             )
 
-            val pagerFlow = if (state.category == RecordCategory.ALL || state.query.isNotBlank()) {
+            val selectedSeriesId = state.query.takeIf { it.startsWith("series:") }
+                ?.removePrefix("series:")
+                ?.toIntOrNull()
+            val onlineQuery = if (selectedSeriesId == null) state.query else ""
+            val onlineChannelId =
+                state.channelId.takeIf { state.category == RecordCategory.CHANNEL && !it.isNullOrBlank() }
+            val onlineGenre =
+                state.genre.takeIf { state.category == RecordCategory.GENRE && !it.isNullOrBlank() }
+            val useOnlinePaging = state.category == RecordCategory.ALL ||
+                    selectedSeriesId != null ||
+                    onlineQuery.isNotBlank() ||
+                    onlineChannelId != null ||
+                    onlineGenre != null
+
+            val pagerFlow = if (useOnlinePaging) {
                 Pager(config = pagingConfig) {
                     RecordedProgramPagingSource(
                         recordProvider = recordProvider,
-                        query = state.query,
-                        order = order
+                        query = onlineQuery,
+                        order = order,
+                        channelId = onlineChannelId,
+                        genre = onlineGenre,
+                        seriesId = selectedSeriesId
                     )
                 }.flow
             } else {
@@ -312,7 +318,7 @@ class RecordViewModel @Inject constructor(
         _selectedGenre.value = null
         _selectedChannelId.value = null
         _selectedDay.value = null
-        if (category == RecordCategory.SERIES) buildSeriesIndex()
+        if (category == RecordCategory.SERIES && _groupedSeries.value.isEmpty()) loadOnlineFilterIndexes()
     }
 
     fun updateGenre(genre: String?) {
@@ -338,9 +344,9 @@ class RecordViewModel @Inject constructor(
             _categoryBeforeSearch.value = _selectedCategory.value
         }
         _activeSearchQuery.value = query
-        _searchQuery.value = query
+        _searchQuery.value = if (query.startsWith("series:")) "" else query
         currentSearchQuery = query
-        if (query.isNotBlank()) addSearchHistory(query)
+        if (query.isNotBlank() && !query.startsWith("series:")) addSearchHistory(query)
         _selectedCategory.value = RecordCategory.ALL
         _selectedGenre.value = null
         _selectedChannelId.value = null
@@ -463,6 +469,72 @@ class RecordViewModel @Inject constructor(
     }
 
     fun buildSeriesIndex() {}
+
+    private fun loadOnlineFilterIndexes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSeriesLoading.value = true
+            try {
+                val channelsResponse = runCatching { liveProvider.getChannels() }.getOrNull()
+                channelsResponse?.let { buildOnlineChannelMap(it) }
+
+                val genresSet = mutableSetOf<String>()
+                val grouped = mutableMapOf<String, MutableList<SeriesInfo>>()
+                var page = 1
+                var loaded = 0
+                do {
+                    val response = recordProvider.getSeriesList(page = page, order = "desc")
+                    val seriesList = response.seriesList
+                    seriesList.forEach { series ->
+                        val programs = series.broadcastPeriods.flatMap { it.recordedPrograms }
+                        val representative = programs.firstOrNull()
+                        val majorGenre = series.genres?.firstOrNull()?.major
+                            ?: representative?.genres?.firstOrNull()?.major
+                            ?: "その他"
+                        genresSet.add(majorGenre)
+                        grouped.getOrPut(majorGenre) { mutableListOf() }.add(
+                            SeriesInfo(
+                                seriesId = series.id,
+                                displayTitle = series.title,
+                                searchKeyword = "series:${series.id}",
+                                programCount = programs.size.coerceAtLeast(1),
+                                representativeVideoId = representative?.id ?: series.id,
+                                isEpisodic = true,
+                                directThumbnailUrl = representative?.directThumbnailUrl,
+                                apiThumbnailUrl = representative?.apiThumbnailUrl
+                            )
+                        )
+                    }
+                    loaded += seriesList.size
+                    page += 1
+                } while (seriesList.isNotEmpty() && loaded < response.total)
+
+                _availableGenres.value = genresSet.sorted()
+                _groupedSeries.value = grouped.mapValues { (_, list) ->
+                    list.distinctBy { it.seriesId ?: it.displayTitle }.sortedBy { it.displayTitle }
+                }.filterValues { it.isNotEmpty() }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load online filter indexes", e)
+            } finally {
+                _isSeriesLoading.value = false
+            }
+        }
+    }
+
+    private fun buildOnlineChannelMap(response: com.beeregg2001.komorebi.data.model.ChannelApiResponse) {
+        val grouped = linkedMapOf(
+            "地デジ" to response.terrestrial.orEmpty(),
+            "BS" to response.bs.orEmpty(),
+            "BS4K" to response.bs4k.orEmpty(),
+            "CS" to response.cs.orEmpty(),
+            "SKY" to response.sky.orEmpty()
+        )
+        _groupedChannels.value = grouped
+            .filterValues { it.isNotEmpty() }
+            .mapValues { (_, channels) ->
+                channels.sortedWith(compareBy({ it.channelNumber }, { it.displayChannelId }))
+                    .map { it.name to it.id }
+            }
+    }
 
     private suspend fun buildSeriesAndChannelMaps(
         seriesList: List<SeriesProjection>,

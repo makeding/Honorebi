@@ -18,7 +18,9 @@ interface KonomiApi {
     @GET("api/videos")
     suspend fun getRecordedPrograms(
         @Query("page") page: Int = 1,
-        @Query("order") order: String = "desc"
+        @Query("order") order: String = "desc",
+        @Query("channel_id") channelId: String? = null,
+        @Query("genre") genre: String? = null
     ): RecordedApiResponse
 
     @GET("api/videos/search")
@@ -27,6 +29,19 @@ interface KonomiApi {
         @Query("page") page: Int = 1,
         @Query("order") order: String = "desc"
     ): RecordedApiResponse
+
+    @GET("api/videos/series/{series_id}")
+    suspend fun getRecordedProgramsBySeries(
+        @Path("series_id") seriesId: Int,
+        @Query("page") page: Int = 1,
+        @Query("order") order: String = "desc"
+    ): RecordedApiResponse
+
+    @GET("api/series")
+    suspend fun getSeriesList(
+        @Query("page") page: Int = 1,
+        @Query("order") order: String = "desc"
+    ): SeriesApiResponse
 
     // ★追加: 個別の録画番組詳細を取得 (詳細情報を含む完全なデータ)
     @GET("api/videos/{video_id}")
