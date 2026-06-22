@@ -22,7 +22,10 @@ data class RecordedProgram(
     @SerializedName("recorded_video") val recordedVideo: RecordedVideo,
     val genres: List<EpgGenre>? = null,
     val isRecording: Boolean = false,
-    val playbackPosition: Double = 0.0
+    val playbackPosition: Double = 0.0,
+    // ★ ここから下の2行を追加するだけです ★
+    val directThumbnailUrl: String? = null,
+    val apiThumbnailUrl: String? = null
 )
 
 // CM区間（チャプター）のデータモデル
@@ -34,6 +37,7 @@ data class CmSection(
 data class RecordedChannel(
     val id: String,
     @SerializedName("network_id") val networkId: Int? = null,
+    @SerializedName("service_id") val serviceId: Int? = null,
     @SerializedName("display_channel_id") val displayChannelId: String,
     val type: String,
     val name: String,
@@ -50,7 +54,7 @@ data class RecordedVideo(
     @SerializedName("container_format") val containerFormat: String,
     @SerializedName("video_codec") val videoCodec: String,
     @SerializedName("audio_codec") val audioCodec: String,
-    @SerializedName("has_key_frames") val hasKeyFrames: Boolean = true,
+    @SerializedName("has_key_frames") val hasKeyFrames: Boolean? = true,
     @SerializedName("thumbnail_info") val thumbnailInfo: ThumbnailInfo? = null,
     @SerializedName("cm_sections") val cmSections: List<CmSection>? = null
 )

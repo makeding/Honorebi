@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -107,6 +106,7 @@ fun HomeLauncherScreen(
     onShowAllRecordings: () -> Unit = {},
     onCloseRecordList: () -> Unit = {},
     onShowSeriesList: () -> Unit = {},
+    onShowSmbLibrary: () -> Unit = {},
     isReturningFromPlayer: Boolean = false,
     onReturnFocusConsumed: () -> Unit = {},
     timeFormat: String = "24H",
@@ -132,20 +132,31 @@ fun HomeLauncherScreen(
     val favoriteBaseballGames by homeViewModel.favoriteBaseballGames.collectAsState()
     val baseballDateOffset by homeViewModel.baseballDateOffset.collectAsState()
 
-    val baseTabs = listOf("ホーム", "ライブ", "ビデオ", "番組表", "録画予約")
-    val tabs = remember(favoriteBaseballTeams) {
-        if (favoriteBaseballTeams.isNotEmpty()) baseTabs + "プロ野球" else baseTabs
+    val backendType by homeViewModel.backendType.collectAsState()
+    val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
+
+    val tabs = remember(favoriteBaseballTeams, backendType) {
+        val base = listOf("ホーム", "ライブ", "ビデオ", "番組表", "録画予約")
+        if (favoriteBaseballTeams.isNotEmpty()) base + "プロ野球" else base
     }
 
     val safeTabIndex = ui.selectedTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
 
-    // PiP（ミニプレイヤー）モード中は「フルスクリーンではない」と判定させ、トップナビを確実に描画する
     val isFullScreenMode = ui.isFullScreen(
         selectedChannel, selectedProgram, epgSelectedProgram,
         isSettingsOpen, isRecordListOpen, isReserveOverlayOpen
     ) && !hasActivePlayer
 
     val returnPlayerFocusRequester = remember { FocusRequester() }
+    val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
+
+    val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
+        ui.lastChannels.map { savedChannel ->
+            displayFlatChannels.find {
+                it.networkId == savedChannel.networkId && it.serviceId == savedChannel.serviceId
+            } ?: savedChannel
+        }
+    }
 
     LaunchedEffect(tabs.size) {
         if (ui.selectedTabIndex >= tabs.size) {
@@ -160,24 +171,46 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(ui.selectedTabIndex) {
-        if (ui.selectedTabIndex == 0) {
+    // =====================================================================================
+    // ★ 究極の軽量化ロジック: デバウンス・レンダリング（Debounce Rendering）
+    // 連打中は画面を構築せず、指が止まってから60ms後に初めてコンテンツを描画する。
+    // 裏側のタブは完全に破棄するため、フォーカスの迷子や競合は物理的に発生しません。
+    // =====================================================================================
+    var activeRenderIndex by remember { mutableIntStateOf(safeTabIndex) }
+
+    LaunchedEffect(safeTabIndex) {
+        if (activeRenderIndex != safeTabIndex) {
+            delay(60) // 連打中はキャンセルされ続け、指が止まった時だけここを通過する
+            activeRenderIndex = safeTabIndex
+        }
+    }
+
+    var lastHomeRefreshTime by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(activeRenderIndex) {
+        val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
+        ui.isCurrentTabContentReady = false
+
+        if (currentLabel == "ホーム") {
             channelViewModel.startPolling()
-            homeViewModel.refreshHomeData()
-        } else if (ui.selectedTabIndex == 1) {
+            val now = System.currentTimeMillis()
+            if (now - lastHomeRefreshTime > 300_000L) {
+                homeViewModel.refreshHomeData()
+                lastHomeRefreshTime = now
+            }
+        } else if (currentLabel == "ライブ") {
             channelViewModel.startPolling()
         } else {
             channelViewModel.stopPolling()
         }
     }
 
-    // AIコンシェルジュ復帰シグナルの交通整理
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {
             delay(150)
-            when (safeTabIndex) {
-                0 -> {
-                    // ホームタブ
+            val currentTabName = tabs.getOrNull(safeTabIndex)
+            when (currentTabName) {
+                "ホーム" -> {
                     val section = homeViewModel.lastClickedSection
                     val itemId = homeViewModel.lastClickedItemId
                     if (section != null && itemId != null) {
@@ -185,30 +218,18 @@ fun HomeLauncherScreen(
                     } else {
                         ticketManager.issue(HomeFocusTicket.CONTENT_TOP)
                     }
-                    // ★ HomeContents側でシグナルを消費しない設計にしたため、ここで消費する
                     onAiReturnConsumed()
                 }
 
-                1 -> {
-                    // ライブタブ: LiveContent 内部のロジックにシグナルを委譲するため、ここでは消費しない
-                }
-
-                2 -> {
-                    // ビデオタブ: VideoTabContent 内部のロジックにシグナルを委譲するため、ここでは消費しない
-                }
-
-                4 -> {
-                    // 録画予約タブ: ReserveListScreen 内部のロジックにシグナルを委譲するため、ここでは消費しない
-                }
-
-                5 -> {
-                    // プロ野球タブ:
-                    ui.contentFirstItemRequesters[5].safeRequestFocusWithRetry("BaseballAiReturn")
+                "プロ野球" -> {
+                    ui.contentFirstItemRequesters.getOrNull(safeTabIndex)
+                        ?.safeRequestFocusWithRetry("BaseballAiReturn")
                     onAiReturnConsumed()
                 }
 
                 else -> {
-                    ui.tabFocusRequesters[safeTabIndex].safeRequestFocusWithRetry("FallbackAiReturn")
+                    ui.tabFocusRequesters.getOrNull(safeTabIndex)
+                        ?.safeRequestFocusWithRetry("FallbackAiReturn")
                     onAiReturnConsumed()
                 }
             }
@@ -216,21 +237,18 @@ fun HomeLauncherScreen(
     }
 
     LaunchedEffect(isReturningFromPlayer) {
-        Log.i(
-            "KomorebiFocus",
-            "[HomeLauncher] isReturningFromPlayer changed: $isReturningFromPlayer, isFullScreenMode: $isFullScreenMode"
-        )
         if (isReturningFromPlayer && !isFullScreenMode) {
             ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
             delay(150)
 
-            if (safeTabIndex != 1 && safeTabIndex != 2) {
+            val currentTabName = tabs.getOrNull(safeTabIndex)
+            if (currentTabName != "ライブ" && currentTabName != "ビデオ") {
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
-                if (safeTabIndex == 0 && section != null && itemId != null) {
+                if (currentTabName == "ホーム" && section != null && itemId != null) {
                     ticketManager.issueForHomeRestore(section, itemId)
-                } else if (safeTabIndex == 3 || safeTabIndex == 4) {
-                    if (safeTabIndex == 3) {
+                } else if (currentTabName == "番組表" || currentTabName == "録画予約") {
+                    if (currentTabName == "番組表") {
                         onReturnFocusConsumed()
                     }
                 } else {
@@ -254,9 +272,9 @@ fun HomeLauncherScreen(
     LaunchedEffect(isFullScreenMode) {
         if (!isFullScreenMode && !isReturningFromPlayer) {
             delay(300)
-            if (safeTabIndex == 4) {
-                // 録画予約からの復帰はReserveListScreen内部のチケットに任せる
-            } else if (safeTabIndex == 0) {
+            val currentTabName = tabs.getOrNull(safeTabIndex)
+            if (currentTabName == "録画予約") {
+            } else if (currentTabName == "ホーム") {
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
                 if (section != null && itemId != null) {
@@ -264,7 +282,7 @@ fun HomeLauncherScreen(
                 } else {
                     ticketManager.issue(HomeFocusTicket.TAB_BAR)
                 }
-            } else if (safeTabIndex != 3) {
+            } else if (currentTabName != "番組表") {
                 ticketManager.issue(HomeFocusTicket.TAB_BAR)
             }
         }
@@ -272,10 +290,6 @@ fun HomeLauncherScreen(
 
     LaunchedEffect(triggerBack) {
         if (triggerBack) {
-            Log.i(
-                "KomorebiFocus",
-                "[HomeLauncher] triggerBack受信。topNavHasFocus: ${ui.topNavHasFocus}"
-            )
             ui.handleBackNavigation(
                 onTabChange = onTabChange,
                 onFinalBack = onFinalBack,
@@ -299,7 +313,9 @@ fun HomeLauncherScreen(
                 ui.tabFocusRequesters.getOrNull(safeTabIndex)
                     ?.safeRequestFocusWithRetry("HomeTicket_TAB_BAR")
                 ticketManager.consume(HomeFocusTicket.TAB_BAR)
-                if (isReturningFromPlayer && safeTabIndex != 1 && safeTabIndex != 2) {
+
+                val currentTabName = tabs.getOrNull(safeTabIndex)
+                if (isReturningFromPlayer && currentTabName != "ライブ" && currentTabName != "ビデオ") {
                     onReturnFocusConsumed()
                 }
             }
@@ -340,10 +356,6 @@ fun HomeLauncherScreen(
                         .onFocusChanged { ui.topNavHasFocus = it.hasFocus }
                         .onPreviewKeyEvent { event ->
                             if (event.type == KeyEventType.KeyDown && (event.key == Key.Back || event.key == Key.Escape)) {
-                                Log.i(
-                                    "KomorebiFocus",
-                                    "[HomeLauncher] タブバーで直接戻るキーをキャッチ！自前で処理します"
-                                )
                                 ui.handleBackNavigation(
                                     onTabChange = onTabChange,
                                     onFinalBack = onFinalBack,
@@ -389,6 +401,7 @@ fun HomeLauncherScreen(
                                         ui.selectedTabIndex = index
                                         ui.onTabSelected(
                                             index,
+                                            tabs,
                                             onTabChange,
                                             homeViewModel,
                                             channelViewModel,
@@ -399,11 +412,18 @@ fun HomeLauncherScreen(
                                     ui.topNavHasFocus = true
                                 },
                                 modifier = Modifier
-                                    .focusRequester(ui.tabFocusRequesters[index])
+                                    .focusRequester(
+                                        ui.tabFocusRequesters.getOrNull(index)
+                                            ?: FocusRequester.Default
+                                    )
                                     .focusProperties {
                                         down =
-                                            if (safeTabIndex == index && ui.isCurrentTabContentReady) ui.contentFirstItemRequesters[index] else FocusRequester.Default
-                                        canFocus = !(safeTabIndex == 3 && ui.isEpgJumping)
+                                            if (safeTabIndex == index && ui.isCurrentTabContentReady)
+                                                ui.contentFirstItemRequesters.getOrNull(index)
+                                                    ?: FocusRequester.Default
+                                            else FocusRequester.Default
+
+                                        canFocus = !(title == "番組表" && ui.isEpgJumping)
 
                                         up = FocusRequester.Cancel
                                         if (index == 0) {
@@ -424,14 +444,17 @@ fun HomeLauncherScreen(
                     }
 
                     if (hasActivePlayer) {
+                        val isEpgJumping =
+                            tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
                         Button(
                             onClick = onReturnToPlayerClick,
                             modifier = Modifier
                                 .focusRequester(returnPlayerFocusRequester)
                                 .focusProperties {
-                                    left = ui.tabFocusRequesters[tabs.lastIndex]
+                                    left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
+                                        ?: FocusRequester.Default
                                     right = ui.settingsFocusRequester
-                                    canFocus = !(safeTabIndex == 3 && ui.isEpgJumping)
+                                    canFocus = !isEpgJumping
                                     up = FocusRequester.Cancel
                                 },
                             colors = ButtonDefaults.colors(
@@ -463,10 +486,13 @@ fun HomeLauncherScreen(
                         modifier = Modifier
                             .focusRequester(ui.settingsFocusRequester)
                             .focusProperties {
+                                val isEpgJumping =
+                                    tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
                                 left =
-                                    if (hasActivePlayer) returnPlayerFocusRequester else ui.tabFocusRequesters[tabs.lastIndex]
-                                canFocus = !(safeTabIndex == 3 && ui.isEpgJumping)
-
+                                    if (hasActivePlayer) returnPlayerFocusRequester else (ui.tabFocusRequesters.getOrNull(
+                                        tabs.lastIndex
+                                    ) ?: FocusRequester.Default)
+                                canFocus = !isEpgJumping
                                 up = FocusRequester.Cancel
                                 right = FocusRequester.Cancel
                             },
@@ -482,14 +508,17 @@ fun HomeLauncherScreen(
             }
 
             Box(modifier = Modifier.weight(1f)) {
-                val currentTabLabel = tabs.getOrNull(safeTabIndex) ?: "ホーム"
-
-                key(currentTabLabel) {
-                    ui.isCurrentTabContentReady = false
+                // ★ 完全に物理的に1つのタブのみを描画する（他はツリーから完全に消去され、フォーカス迷子が100%防がれる）
+                if (activeRenderIndex == safeTabIndex) {
+                    val currentTabLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
+                    val handleUiReady = {
+                        onUiReady()
+                        ui.isCurrentTabContentReady = true
+                    }
 
                     when (currentTabLabel) {
                         "ホーム" -> HomeContents(
-                            lastWatchedChannels = ui.lastChannels,
+                            lastWatchedChannels = translatedLastChannels,
                             watchHistory = ui.watchHistory,
                             hotChannels = ui.hotChannels,
                             upcomingReserves = ui.upcomingReserves,
@@ -497,6 +526,8 @@ fun HomeLauncherScreen(
                             pickupGenreName = ui.pickupGenreLabel,
                             pickupTimeSlot = ui.genrePickupTimeSlot,
                             groupedChannels = groupedChannels,
+                            getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
+                            shouldCropLogo = shouldCropLogo,
                             onChannelClick = {
                                 if (it != null) onChannelClick(it, false)
                             },
@@ -510,10 +541,11 @@ fun HomeLauncherScreen(
                             },
                             onReserveClick = onReserveSelected,
                             onProgramClick = { onEpgProgramSelected(it) },
-                            onNavigateToTab = { index ->
-                                ui.tabFocusRequesters.getOrNull(index)
+                            onNavigateToTab = { targetIndex ->
+                                ui.tabFocusRequesters.getOrNull(targetIndex)
                                     ?.safeRequestFocus(TAG); ui.onTabSelected(
-                                index,
+                                targetIndex,
+                                tabs,
                                 onTabChange,
                                 homeViewModel,
                                 channelViewModel,
@@ -525,13 +557,13 @@ fun HomeLauncherScreen(
                             konomiPort = konomiPort,
                             mirakurunIp = mirakurunIp,
                             mirakurunPort = mirakurunPort,
-                            tabFocusRequester = ui.tabFocusRequesters[0],
-                            externalFocusRequester = ui.contentFirstItemRequesters[0],
+                            tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
+                            externalFocusRequester = ui.contentFirstItemRequesters[activeRenderIndex],
                             lastFocusedChannelId = ui.internalLastPlayerChannelId
                                 ?: lastPlayerChannelId,
                             lastFocusedProgramId = lastPlayerProgramId,
                             isTopNavFocused = ui.topNavHasFocus,
-                            onUiReady = { onUiReady(); ui.isCurrentTabContentReady = true },
+                            onUiReady = handleUiReady,
                             ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
                             timeFormat = timeFormat
@@ -549,23 +581,20 @@ fun HomeLauncherScreen(
                                 mirakurunPort = mirakurunPort,
                                 konomiIp = konomiIp,
                                 konomiPort = konomiPort,
-                                topNavFocusRequester = ui.tabFocusRequesters[1],
-                                contentFirstItemRequester = ui.contentFirstItemRequesters[1],
+                                topNavFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
+                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
                                 onPlayerStateChanged = { },
                                 lastFocusedChannelId = ui.internalLastPlayerChannelId
                                     ?: lastPlayerChannelId,
-                                isReturningFromPlayer = isReturningFromPlayer && safeTabIndex == 1,
+                                isReturningFromPlayer = isReturningFromPlayer && currentTabLabel == "ライブ",
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 reserveViewModel = reserveViewModel,
                                 timeFormat = timeFormat,
                                 isPiPMode = hasActivePlayer,
-                                // ★ シグナルを委譲
-                                aiFocusReturnTick = if (safeTabIndex == 1) aiFocusReturnTick else 0,
+                                aiFocusReturnTick = if (currentTabLabel == "ライブ") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
-                            LaunchedEffect(Unit) {
-                                delay(500); onUiReady(); ui.isCurrentTabContentReady = true
-                            }
+                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
 
                         "ビデオ" -> {
@@ -574,33 +603,31 @@ fun HomeLauncherScreen(
                                 onProgramClick = { onProgramSelected(it) },
                                 onShowAllRecordings = onShowAllRecordings,
                                 onShowSeriesList = onShowSeriesList,
+                                onShowSmbLibrary = onShowSmbLibrary,
                                 openedSeriesTitle = ui.openedSeriesTitle,
                                 onOpenedSeriesTitleChange = { ui.openedSeriesTitle = it },
-                                tabFocusRequester = ui.tabFocusRequesters[2],
-                                contentFirstItemRequester = ui.contentFirstItemRequesters[2],
+                                tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
+                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
                                 isTopNavFocused = ui.topNavHasFocus,
-                                isReturningFromPlayer = isReturningFromPlayer && safeTabIndex == 2,
+                                isReturningFromPlayer = isReturningFromPlayer && currentTabLabel == "ビデオ",
                                 lastPlayedProgramId = lastPlayerProgramId,
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 konomiIp = konomiIp,
                                 konomiPort = konomiPort,
                                 timeFormat = timeFormat,
                                 watchHistory = ui.watchHistory,
-                                // ★ シグナルを委譲
-                                aiFocusReturnTick = if (safeTabIndex == 2) aiFocusReturnTick else 0,
+                                aiFocusReturnTick = if (currentTabLabel == "ビデオ") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
-                            LaunchedEffect(Unit) {
-                                delay(500); onUiReady(); ui.isCurrentTabContentReady = true
-                            }
+                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
 
                         "番組表" -> {
                             EpgNavigationContainer(
                                 uiState = ui.epgUiState,
                                 logoUrls = ui.logoUrls,
-                                mainTabFocusRequester = ui.tabFocusRequesters[3],
-                                contentRequester = ui.contentFirstItemRequesters[3],
+                                mainTabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
+                                contentRequester = ui.contentFirstItemRequesters[activeRenderIndex],
                                 selectedProgram = epgSelectedProgram,
                                 onProgramSelected = onEpgProgramSelected,
                                 isJumpMenuOpen = isEpgJumpMenuOpen,
@@ -608,7 +635,7 @@ fun HomeLauncherScreen(
                                 onNavigateToPlayer = onNavigateToPlayer,
                                 currentType = epgViewModel.selectedBroadcastingType.collectAsState().value,
                                 onTypeChanged = { epgViewModel.updateBroadcastingType(it) },
-                                restoreChannelId = if (isReturningFromPlayer && safeTabIndex == 3) lastPlayerChannelId else null,
+                                restoreChannelId = if (isReturningFromPlayer && currentTabLabel == "番組表") lastPlayerChannelId else null,
                                 availableTypes = groupedChannels.keys.toList(),
                                 onJumpStateChanged = { ui.isEpgJumping = it },
                                 reserves = ui.reserves,
@@ -623,31 +650,31 @@ fun HomeLauncherScreen(
                                 onClearSearch = { epgViewModel.clearSearch() },
                                 timeFormat = timeFormat
                             )
-                            LaunchedEffect(Unit) {
-                                delay(800); onUiReady(); ui.isCurrentTabContentReady = true
-                            }
+                            LaunchedEffect(Unit) { delay(800); handleUiReady() }
                         }
 
                         "録画予約" -> {
                             ReserveListScreen(
-                                onBack = { ui.tabFocusRequesters[4].safeRequestFocus(TAG) },
+                                onBack = {
+                                    ui.tabFocusRequesters[activeRenderIndex].safeRequestFocus(
+                                        TAG
+                                    )
+                                },
                                 onProgramClick = onReserveSelected,
                                 onConditionClick = onConditionClick,
                                 konomiIp = konomiIp,
                                 konomiPort = konomiPort,
-                                contentFirstItemRequester = ui.contentFirstItemRequesters[4],
-                                topNavFocusRequester = ui.tabFocusRequesters[4],
+                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
+                                topNavFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 groupedChannels = groupedChannels,
                                 isReserveOverlayOpen = isReserveOverlayOpen,
-                                isReturningFromPlayer = isReturningFromPlayer && safeTabIndex == 4,
+                                isReturningFromPlayer = isReturningFromPlayer && currentTabLabel == "録画予約",
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 timeFormat = timeFormat,
-                                aiFocusReturnTick = if (safeTabIndex == 4) aiFocusReturnTick else 0,
+                                aiFocusReturnTick = if (currentTabLabel == "録画予約") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
-                            LaunchedEffect(Unit) {
-                                delay(500); onUiReady(); ui.isCurrentTabContentReady = true
-                            }
+                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
 
                         "プロ野球" -> {
@@ -657,16 +684,15 @@ fun HomeLauncherScreen(
                                 dateOffset = baseballDateOffset,
                                 onDateOffsetChange = { homeViewModel.updateBaseballDateOffset(it) },
                                 onChannelClick = { channel ->
-                                    val matchedChannel = groupedChannels.values.flatten()
-                                        .find { it.id == channel.id }
-                                    if (matchedChannel != null) onChannelClick(matchedChannel, true)
+                                    val matchedChannel = displayFlatChannels.find {
+                                        it.networkId == channel.networkId && it.serviceId == channel.serviceId
+                                    } ?: channel
+                                    onChannelClick(matchedChannel, true)
                                 },
                                 onProgramClick = { onEpgProgramSelected(it) },
-                                topNavFocusRequester = ui.tabFocusRequesters[5],
-                                contentFirstItemRequester = ui.contentFirstItemRequesters[5],
-                                onUiReady = {
-                                    delay(500); onUiReady(); ui.isCurrentTabContentReady = true
-                                },
+                                topNavFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
+                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
+                                onUiReady = { delay(500); handleUiReady() },
                                 timeFormat = timeFormat
                             )
                         }
