@@ -787,6 +787,8 @@ fun LivePlayerScreen(
                 isRecording = isRecording,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
                 isDualDisplayMode = ps.isDualDisplayMode,
+                groupedChannels = displayGroupedChannels,
+                currentChannelId = currentChannelItem.id,
                 onDualDisplayToggle = {
                     ps.isDualDisplayMode = !ps.isDualDisplayMode
                     if (ps.isDualDisplayMode) {
@@ -819,6 +821,13 @@ fun LivePlayerScreen(
                         ps.dualRightChannel = temp
                     }
                 },
+                onChannelSelect = { selectedChannel ->
+                    if (!ps.isDualDisplayMode || ps.activeDualPlayerIndex == 0) {
+                        onChannelSelect(selectedChannel)
+                    } else {
+                        ps.dualRightChannel = selectedChannel
+                    }
+                },
                 onRecordToggle = {
                     if (isRecording) {
                         if (activeReserve != null) {
@@ -839,6 +848,8 @@ fun LivePlayerScreen(
                 },
                 availableQualities = availableQualities,
                 focusRequester = subMenuFocusRequester,
+                getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
+                shouldCropLogo = shouldCropLogo,
                 onSourceSelect = { source, isDirect ->
                     ps.currentStreamSource = source
                     ps.isEdcbDirect = isDirect

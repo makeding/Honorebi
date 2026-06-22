@@ -81,8 +81,7 @@ fun VideoPlayerScreen(
     val isQualitiesLoaded by videoPlayerViewModel.isQualitiesLoaded.collectAsState()
     val currentVideoQualityStr by settingsViewModel.videoQuality.collectAsState()
 
-    val playerUiMode by settingsViewModel.playerUiMode.collectAsState()
-    val isModern = playerUiMode == "MODERN"
+    val isModern = false
     var isBuffering by remember { mutableStateOf(true) }
 
     LaunchedEffect(program.id) {

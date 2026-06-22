@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -29,13 +31,14 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.Channel
 import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 enum class LiveSubMenuCategory {
-    AUDIO, QUALITY, SOURCE
+    QUICK_CHANNELS, AUDIO, QUALITY, SOURCE
 }
 
 @Composable
@@ -52,11 +55,16 @@ fun LiveTopSubMenuUI(
     isRecording: Boolean,
     isSignalInfoVisible: Boolean,
     isDualDisplayMode: Boolean,
+    groupedChannels: Map<String, List<Channel>>,
+    currentChannelId: String,
     onDualDisplayToggle: () -> Unit,
     onSwapScreens: () -> Unit,
+    onChannelSelect: (Channel) -> Unit,
     onRecordToggle: () -> Unit,
     onSignalInfoToggle: () -> Unit,
     focusRequester: FocusRequester,
+    getLogoUrl: suspend (String) -> String,
+    shouldCropLogo: Boolean,
     onSourceSelect: (StreamSource, Boolean) -> Unit,
     onAudioToggle: () -> Unit,
     onSubtitleToggle: () -> Unit,
@@ -69,6 +77,7 @@ fun LiveTopSubMenuUI(
     val colors = KomorebiTheme.colors
     var selectedCategory by remember { mutableStateOf<LiveSubMenuCategory?>(null) }
     val listFocusRequester = remember { FocusRequester() }
+    val quickChannelButtonRequester = remember { FocusRequester() }
     val mainQualityButtonRequester = remember { FocusRequester() }
     val mainSourceButtonRequester = remember { FocusRequester() }
 
@@ -98,8 +107,12 @@ fun LiveTopSubMenuUI(
     LaunchedEffect(Unit) {
         delay(50)
         try {
-            focusRequester.requestFocus()
+            quickChannelButtonRequester.requestFocus()
         } catch (e: Exception) {
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+            }
         }
     }
 
@@ -130,6 +143,7 @@ fun LiveTopSubMenuUI(
                 ) {
                     if (selectedCategory != null) {
                         val targetRequester = when (selectedCategory) {
+                            LiveSubMenuCategory.QUICK_CHANNELS -> quickChannelButtonRequester
                             LiveSubMenuCategory.QUALITY -> mainQualityButtonRequester
                             LiveSubMenuCategory.SOURCE -> mainSourceButtonRequester
                             else -> focusRequester
@@ -166,6 +180,23 @@ fun LiveTopSubMenuUI(
                 else -> "KonomiTV"
             }
 
+            val grQuickChannels = remember(groupedChannels) {
+                groupedChannels["GR"].orEmpty()
+                    .filter { it.isDisplay && it.isWatchable && !it.is_subchannel }
+                    .sortedWith(compareBy<Channel> { it.remocon_Id.takeIf { id -> id > 0 } ?: Int.MAX_VALUE }
+                        .thenBy { it.channelNumber })
+                    .take(10)
+            }
+            val animeChannels = remember(groupedChannels) {
+                groupedChannels.values.flatten()
+                    .filter { it.isDisplay && it.isWatchable && !it.is_subchannel && it.isAnimeNow() }
+                    .distinctBy { it.id }
+                    .sortedWith(compareBy<Channel> { if (it.type == "GR") 0 else 1 }
+                        .thenBy { it.remocon_Id.takeIf { id -> id > 0 } ?: Int.MAX_VALUE }
+                        .thenBy { it.channelNumber })
+                    .take(12)
+            }
+
             // --- メインタイルメニュー行 ---
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
@@ -173,14 +204,28 @@ fun LiveTopSubMenuUI(
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 32.dp, vertical = 8.dp)
             ) {
+                LiveMenuTileItem(
+                    title = "クイック選局", icon = Icons.Default.Tv,
+                    subtitle = "常用 / アニメ",
+                    onClick = {
+                        selectedCategory =
+                            if (selectedCategory == LiveSubMenuCategory.QUICK_CHANNELS) null else LiveSubMenuCategory.QUICK_CHANNELS
+                    },
+                    modifier = Modifier
+                        .focusRequester(quickChannelButtonRequester)
+                        .focusProperties {
+                            if (selectedCategory != LiveSubMenuCategory.QUICK_CHANNELS) down =
+                                FocusRequester.Cancel
+                        },
+                    contentColor = colors.textPrimary
+                )
+
                 if (isDualDisplayMode) {
                     LiveMenuTileItem(
                         title = "二画面", icon = Icons.Default.PictureInPicture,
                         subtitle = "終了",
                         onClick = { onDualDisplayToggle(); onCloseMenu() },
-                        modifier = Modifier
-                            .focusRequester(focusRequester)
-                            .focusProperties { down = FocusRequester.Cancel },
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                         contentColor = colors.textPrimary
                     )
 
@@ -221,9 +266,7 @@ fun LiveTopSubMenuUI(
                         icon = if (isRecording) Icons.Default.StopCircle else Icons.Default.RadioButtonChecked,
                         subtitle = if (isRecording) "録画中" else "番組を録画",
                         onClick = onRecordToggle,
-                        modifier = Modifier
-                            .focusRequester(focusRequester)
-                            .focusProperties { down = FocusRequester.Cancel },
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                         contentColor = if (isRecording) Color(0xFFFF5252) else colors.textPrimary
                     )
 
@@ -307,6 +350,28 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
                 }
+            }
+
+            // --- 展開メニュー: クイック選局 ---
+            AnimatedVisibility(
+                visible = selectedCategory == LiveSubMenuCategory.QUICK_CHANNELS,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                QuickChannelPanel(
+                    grChannels = grQuickChannels,
+                    animeChannels = animeChannels,
+                    currentChannelId = currentChannelId,
+                    onChannelSelect = {
+                        onChannelSelect(it)
+                        selectedCategory = null
+                        onCloseMenu()
+                    },
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
+                    focusRequester = listFocusRequester,
+                    upRequester = quickChannelButtonRequester
+                )
             }
 
             // --- 展開メニュー: 画質 ---
@@ -494,4 +559,155 @@ fun LiveMenuTileItem(
             }
         }
     }
+}
+
+@Composable
+private fun QuickChannelPanel(
+    grChannels: List<Channel>,
+    animeChannels: List<Channel>,
+    currentChannelId: String,
+    onChannelSelect: (Channel) -> Unit,
+    getLogoUrl: suspend (String) -> String,
+    shouldCropLogo: Boolean,
+    focusRequester: FocusRequester,
+    upRequester: FocusRequester
+) {
+    val colors = KomorebiTheme.colors
+    val animeFocusRequester = remember { FocusRequester() }
+    val animeInitialFocusRequester = if (grChannels.isEmpty()) focusRequester else animeFocusRequester
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(16.dp))
+        Box(
+            modifier = Modifier
+                .width(480.dp)
+                .height(2.dp)
+                .background(colors.textPrimary.copy(alpha = 0.2f))
+        )
+        Spacer(Modifier.height(16.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            QuickChannelSection(
+                title = "GR",
+                channels = grChannels,
+                currentChannelId = currentChannelId,
+                onChannelSelect = onChannelSelect,
+                getLogoUrl = getLogoUrl,
+                shouldCropLogo = shouldCropLogo,
+                focusRequester = focusRequester,
+                upRequester = upRequester,
+                downRequester = if (animeChannels.isNotEmpty()) animeInitialFocusRequester else null,
+                modifier = Modifier.fillMaxWidth()
+            )
+            QuickChannelSection(
+                title = "放送中のアニメ",
+                channels = animeChannels,
+                currentChannelId = currentChannelId,
+                onChannelSelect = onChannelSelect,
+                getLogoUrl = getLogoUrl,
+                shouldCropLogo = shouldCropLogo,
+                focusRequester = animeInitialFocusRequester,
+                upRequester = if (grChannels.isNotEmpty()) focusRequester else upRequester,
+                downRequester = null,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickChannelSection(
+    title: String,
+    channels: List<Channel>,
+    currentChannelId: String,
+    onChannelSelect: (Channel) -> Unit,
+    getLogoUrl: suspend (String) -> String,
+    shouldCropLogo: Boolean,
+    focusRequester: FocusRequester?,
+    upRequester: FocusRequester,
+    downRequester: FocusRequester?,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
+
+        if (channels.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(90.dp)
+                    .background(
+                        colors.textPrimary.copy(alpha = 0.08f),
+                        RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "該当チャンネルなし",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary
+                )
+            }
+        } else {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(channels, key = { it.id }) { channel ->
+                    val isSelected = channel.id == currentChannelId
+                    val requesterModifier =
+                        if ((isSelected || channel == channels.first()) && focusRequester != null) {
+                            Modifier.focusRequester(focusRequester)
+                        } else {
+                            Modifier
+                        }
+
+                    ChannelCardItem(
+                        channel = channel,
+                        isSelected = isSelected,
+                        getLogoUrl = getLogoUrl,
+                        shouldCropLogo = shouldCropLogo,
+                        onClick = { onChannelSelect(channel) },
+                        modifier = requesterModifier.focusProperties {
+                            up = upRequester
+                            down = downRequester ?: FocusRequester.Cancel
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Channel.isAnimeNow(): Boolean {
+    val program = programPresent ?: return false
+    val genreHit = program.genres?.any {
+        it.major.contains("アニメ") || it.middle.contains("アニメ")
+    } == true
+    if (genreHit) return true
+
+    val text = buildString {
+        append(program.title)
+        append(' ')
+        append(program.description)
+        program.detail?.values?.forEach {
+            append(' ')
+            append(it)
+        }
+    }
+    return text.contains("アニメ") || text.contains("anime", ignoreCase = true)
 }
