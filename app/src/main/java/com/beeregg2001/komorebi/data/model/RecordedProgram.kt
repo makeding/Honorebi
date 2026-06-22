@@ -10,6 +10,7 @@ data class RecordedApiResponse(
 data class RecordedProgram(
     val id: Int,
     val title: String,
+    @SerializedName(value = "series_name", alternate = ["seriesName", "series_title"])
     val seriesName: String? = null,
     val isEpisodic: Boolean? = false,
     val description: String,

@@ -3,7 +3,6 @@ package com.beeregg2001.komorebi.di
 import android.content.Context
 import androidx.room.Room
 import com.beeregg2001.komorebi.data.local.AppDatabase
-import com.beeregg2001.komorebi.data.local.dao.AiSeriesDictionaryDao
 import com.beeregg2001.komorebi.data.local.dao.LastChannelDao
 import com.beeregg2001.komorebi.data.local.dao.WatchHistoryDao
 import com.beeregg2001.komorebi.data.local.dao.EpgCacheDao // ★復元
@@ -57,9 +56,4 @@ object DatabaseModule {
         return database.syncMetaDao()
     }
 
-    // AI辞書用のDaoのProvide
-    @Provides
-    fun provideAiSeriesDictionaryDao(database: AppDatabase): AiSeriesDictionaryDao {
-        return database.aiSeriesDictionaryDao()
-    }
 }

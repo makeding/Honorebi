@@ -7,13 +7,9 @@ import androidx.room.withTransaction
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.local.AppDatabase
-import com.beeregg2001.komorebi.data.local.dao.AiSeriesDictionaryDao
-import com.beeregg2001.komorebi.data.local.entity.AiSeriesDictionaryEntity
 import com.beeregg2001.komorebi.data.local.entity.RecordedProgramEntity
 import com.beeregg2001.komorebi.data.local.entity.SyncMetaEntity
 import com.beeregg2001.komorebi.data.mapper.RecordDataMapper
-import com.beeregg2001.komorebi.util.TitleNormalizer
-import com.beeregg2001.komorebi.util.WikipediaNormalizer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -59,7 +55,6 @@ class RecordSyncEngine @Inject constructor(
     private val recordProvider: RecordProvider,
     private val db: AppDatabase,
     private val settingsRepository: SettingsRepository,
-    private val aiSeriesDictionaryDao: AiSeriesDictionaryDao,
     @ApplicationContext private val context: Context
 ) {
     private val _syncProgress = MutableStateFlow(SyncProgress())
@@ -69,7 +64,6 @@ class RecordSyncEngine @Inject constructor(
 
     private val syncMutex = Mutex()
     private val jobMutex = Mutex()
-    private val dictionaryMutex = Mutex()
     private val smartSyncMutex = Mutex()
     private var activeSyncJob: Job? = null
 
@@ -95,20 +89,13 @@ class RecordSyncEngine @Inject constructor(
     }
 
     fun launchSyncAllRecords(forceFullSync: Boolean = false) {
-        if (!forceFullSync && syncMutex.isLocked) {
-            Log.i(TAG, "launchSyncAllRecords: sync already running. Skipping.")
-            return
-        }
-        Log.i(TAG, "launchSyncAllRecords: launching. forceFullSync=$forceFullSync")
-        engineScope.launch {
-            syncAllRecords(forceFullSync)
-        }
+        Log.i(TAG, "Recorded-program database build is disabled; online paging is used.")
+        _syncProgress.value = SyncProgress(isSyncing = false)
     }
 
     fun launchSmartSync() {
-        engineScope.launch {
-            smartSync()
-        }
+        Log.i(TAG, "Recorded-program smart sync is disabled; online paging is used.")
+        _syncProgress.value = SyncProgress(isSyncing = false)
     }
 
     suspend fun syncAllRecords(forceFullSync: Boolean = false) {
@@ -145,7 +132,6 @@ class RecordSyncEngine @Inject constructor(
 
                     if (forceFullSync) {
                         programDao.clearAll()
-                        aiSeriesDictionaryDao.clearAll()
                         currentMeta =
                             currentMeta.copy(lastSyncedPage = 0, isInitialBuildCompleted = false)
                     }
@@ -175,14 +161,6 @@ class RecordSyncEngine @Inject constructor(
 
                     val needsOrphanDeletion = !isResumed && (isInitial || forceFullSync)
                     val allFetchedIds = if (needsOrphanDeletion) mutableSetOf<Int>() else null
-
-                    val dictionary: Map<String, String> = if (isLowRamDevice && isInitial) {
-                        Log.i(TAG, "Low RAM device: skipping dictionary preload to save memory.")
-                        emptyMap()
-                    } else {
-                        aiSeriesDictionaryDao.getAllDictionary()
-                            .associate { it.originalTitle to it.normalizedSeriesName }
-                    }
 
                     val entityBuffer = mutableListOf<RecordedProgramEntity>()
                     var knownUnchangedStreak = 0
@@ -239,13 +217,7 @@ class RecordSyncEngine @Inject constructor(
                                 }
                             }
 
-                            val enrichedEntities = entities.map { entity ->
-                                val baseTitle = TitleNormalizer.extractDisplayTitle(entity.title)
-                                val finalSeriesName = dictionary[entity.title] ?: baseTitle
-                                entity.copy(seriesName = finalSeriesName)
-                            }
-
-                            entityBuffer.addAll(enrichedEntities)
+                            entityBuffer.addAll(entities)
                         }
 
                         val processedThisTime = programs.size
@@ -325,11 +297,6 @@ class RecordSyncEngine @Inject constructor(
                         )
                     }
 
-                    _syncProgress.value = _syncProgress.value.copy(
-                        message = "シリーズ辞書を準備中...",
-                        current = 0,
-                        total = 0
-                    )
                     isSyncSuccessful = true
 
                 } catch (e: CancellationException) {
@@ -355,9 +322,7 @@ class RecordSyncEngine @Inject constructor(
         }
 
         if (isSyncSuccessful) {
-            engineScope.launch {
-                startDictionaryResolutionLoop()
-            }
+            _syncProgress.value = SyncProgress(isSyncing = false)
         }
     }
 
@@ -365,7 +330,6 @@ class RecordSyncEngine @Inject constructor(
         syncMutex.withLock {
             withContext(Dispatchers.IO) {
                 db.recordedProgramDao().clearAll()
-                aiSeriesDictionaryDao.clearAll()
                 db.syncMetaDao().upsert(
                     SyncMetaEntity(
                         id = 1,
@@ -379,6 +343,10 @@ class RecordSyncEngine @Inject constructor(
     }
 
     suspend fun smartSync() {
+        Log.i(TAG, "Recorded-program smart sync is disabled; online paging is used.")
+        _syncProgress.value = SyncProgress(isSyncing = false)
+        return
+
         if (!smartSyncMutex.tryLock()) {
             Log.i(TAG, "smartSync: already running. Skipping.")
             return
@@ -425,16 +393,7 @@ class RecordSyncEngine @Inject constructor(
                         val hasLocalRecording = localEntitiesMap.values.any { it.isRecording }
 
                         if (!allPageItemsMatch || hasLocalRecording) {
-                            val dictionary = aiSeriesDictionaryDao.getAllDictionary()
-                                .associate { it.originalTitle to it.normalizedSeriesName }
-
-                            val enrichedEntities = entities.map { entity ->
-                                val baseTitle = TitleNormalizer.extractDisplayTitle(entity.title)
-                                val finalSeriesName = dictionary[entity.title] ?: baseTitle
-                                entity.copy(seriesName = finalSeriesName)
-                            }
-
-                            db.withTransaction { programDao.upsertAll(enrichedEntities) }
+                            db.withTransaction { programDao.upsertAll(entities) }
                             Log.i(
                                 TAG,
                                 "smartSync: Detected changes or stuck recordings. Updated DB."
@@ -458,130 +417,8 @@ class RecordSyncEngine @Inject constructor(
                 }
             }
 
-            if (isSyncSuccessful) {
-                if (!dictionaryMutex.isLocked) {
-                    engineScope.launch { startDictionaryResolutionLoop() }
-                } else {
-                    Log.i(TAG, "smartSync: dictionary already running, skipping launch.")
-                }
-            }
-
         } finally {
             smartSyncMutex.unlock()
-        }
-    }
-
-    private suspend fun startDictionaryResolutionLoop() {
-        if (!dictionaryMutex.tryLock()) {
-            Log.i(TAG, "Dictionary resolution is already running. Skipping.")
-            return
-        }
-
-        Log.i(TAG, "startDictionaryResolutionLoop: started (Serial + Compliant Mode)")
-
-        try {
-            withContext(Dispatchers.IO) {
-                val programDao = db.recordedProgramDao()
-
-                val totalUnknown = programDao.getUnknownTitlesCount()
-                Log.i(TAG, "startDictionaryResolutionLoop: totalUnknown=$totalUnknown")
-
-                if (totalUnknown == 0) {
-                    Log.i(TAG, "No unknown titles found. Dictionary is up to date.")
-                    _syncProgress.value = SyncProgress(
-                        isSyncing = false,
-                        isInitialBuild = false,
-                        isInitialSyncPhase = false
-                    )
-                    return@withContext
-                }
-
-                _syncProgress.value = SyncProgress(
-                    isSyncing = true,
-                    isInitialBuild = false,
-                    isInitialSyncPhase = false,
-                    message = "シリーズ辞書を自動生成中...",
-                    current = 0,
-                    total = totalUnknown
-                )
-
-                var processedCount = 0
-                val CHUNK_SIZE = 100
-
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val unknownTitles = programDao.getUnknownTitles(limit = CHUNK_SIZE)
-                    if (unknownTitles.isEmpty()) break
-
-                    val newDictEntries = mutableListOf<AiSeriesDictionaryEntity>()
-
-                    // ★ 規約遵守の工夫1: ベースタイトルで重複排除し、APIコール回数を極限まで減らす
-                    val baseTitleMap =
-                        unknownTitles.groupBy { TitleNormalizer.extractDisplayTitle(it) }
-                    val resolvedBaseTitles = HashMap<String, String>()
-
-                    // ★ 規約遵守の工夫2: 並列処理(async)をやめ、直列(for)で丁寧にAPIを叩く
-                    for (baseTitle in baseTitleMap.keys) {
-                        currentCoroutineContext().ensureActive()
-                        try {
-                            val canonicalTitle = WikipediaNormalizer.getCanonicalTitle(baseTitle)
-                            resolvedBaseTitles[baseTitle] = canonicalTitle ?: baseTitle
-                        } catch (e: Exception) {
-                            if (e !is CancellationException) {
-                                Log.w(TAG, "Wikipedia lookup failed for '$baseTitle': ${e.message}")
-                            }
-                            resolvedBaseTitles[baseTitle] = baseTitle
-                        }
-                        // ★ 規約遵守の工夫3: APIコールの間に1000ms(1秒)のポライトディレイを挿入
-                        delay(300)
-                    }
-
-                    for (title in unknownTitles) {
-                        val baseTitle = TitleNormalizer.extractDisplayTitle(title)
-                        val finalSeriesName = resolvedBaseTitles[baseTitle] ?: baseTitle
-
-                        processedCount++
-                        _syncProgress.value = _syncProgress.value.copy(current = processedCount)
-
-                        newDictEntries.add(
-                            AiSeriesDictionaryEntity(
-                                originalTitle = title,
-                                normalizedSeriesName = finalSeriesName,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
-                    }
-
-                    // DB更新は一括（トランザクション）で行い、端末の処理速度を稼ぐ
-                    if (newDictEntries.isNotEmpty()) {
-                        db.withTransaction {
-                            aiSeriesDictionaryDao.insertAll(newDictEntries)
-                            newDictEntries.forEach { dict ->
-                                programDao.updateSeriesNameByOriginalTitle(
-                                    originalTitle = dict.originalTitle,
-                                    newSeriesName = dict.normalizedSeriesName
-                                )
-                            }
-                        }
-                    }
-
-                    val hasMore = programDao.getUnknownTitlesCount() > 0
-                    if (hasMore) delay(500)
-                }
-
-                Log.i(TAG, "Dictionary resolution loop completed successfully.")
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Background dictionary generation failed", e)
-        } finally {
-            _syncProgress.value = SyncProgress(
-                isSyncing = false,
-                isInitialBuild = false,
-                isInitialSyncPhase = false
-            )
-            dictionaryMutex.unlock()
         }
     }
 

@@ -17,10 +17,7 @@ interface KonomiApi {
     // --- 録画番組 ---
     @GET("api/videos")
     suspend fun getRecordedPrograms(
-        @Query("limit") limit: Int = 24,
-        @Query("offset") offset: Int = 0,
         @Query("page") page: Int = 1,
-        @Query("sort") sort: String = "recorded_start_at",
         @Query("order") order: String = "desc"
     ): RecordedApiResponse
 

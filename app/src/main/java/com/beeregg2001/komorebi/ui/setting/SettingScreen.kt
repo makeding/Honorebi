@@ -344,8 +344,8 @@ fun SettingsScreen(
                             itemFocusRequesters[0][0],
                             {
                                 uiState.activeDialog = SettingDialogState.ConfirmClear(
-                                    "データベースの再構築",
-                                    "すべての録画データをサーバーから再取得します。よろしいですか？"
+                                    "ローカル録画キャッシュの削除",
+                                    "端末内に残っている録画リストのキャッシュを削除します。録画リストはサーバーから必要なページだけ取得されます。"
                                 ) { viewModel.triggerFullSync() }
                             },
                             {

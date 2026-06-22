@@ -56,9 +56,9 @@ class KonomiRepository @Inject constructor(
         }
     }
 
-    override suspend fun getRecordedPrograms(page: Int): RecordedApiResponse {
+    override suspend fun getRecordedPrograms(page: Int, order: String): RecordedApiResponse {
         return try {
-            val response = apiService.getRecordedPrograms(page = page, order = "desc")
+            val response = apiService.getRecordedPrograms(page = page, order = order)
 
             val ip = settingsRepository.konomiIp.first()
             val port = settingsRepository.konomiPort.first()
@@ -93,11 +93,12 @@ class KonomiRepository @Inject constructor(
 
     override suspend fun searchRecordedPrograms(
         keyword: String,
-        page: Int
+        page: Int,
+        order: String
     ): RecordedApiResponse {
         return try {
             Log.d(TAG, "Calling API searchVideos. Keyword: $keyword, Page: $page")
-            apiService.searchVideos(keyword = keyword, page = page)
+            apiService.searchVideos(keyword = keyword, page = page, order = order)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to search recorded programs", e)
             // ★ 修正: 例外をスロー

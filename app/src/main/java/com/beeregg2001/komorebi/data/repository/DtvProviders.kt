@@ -18,9 +18,9 @@ interface LiveProvider {
  * 2. 録画番組関連の機能を提供するインターフェース
  */
 interface RecordProvider {
-    suspend fun getRecordedPrograms(page: Int = 1): RecordedApiResponse
+    suspend fun getRecordedPrograms(page: Int = 1, order: String = "desc"): RecordedApiResponse
     suspend fun getRecordedProgram(videoId: Int): Result<RecordedProgram>
-    suspend fun searchRecordedPrograms(keyword: String, page: Int = 1): RecordedApiResponse
+    suspend fun searchRecordedPrograms(keyword: String, page: Int = 1, order: String = "desc"): RecordedApiResponse
 
     suspend fun getRecordStreamUrl(
         videoId: Int,

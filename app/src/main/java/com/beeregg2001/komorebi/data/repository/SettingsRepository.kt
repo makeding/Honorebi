@@ -131,7 +131,7 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[SUBTITLE_COMMENT_LAYER] ?: "CommentOnTop" }
     val audioOutputMode: Flow<String> =
         context.dataStore.data.map { it[AUDIO_OUTPUT_MODE] ?: "DOWNMIX" }
-    val playerUiMode: Flow<String> = context.dataStore.data.map { it[PLAYER_UI_MODE] ?: "MODERN" }
+    val playerUiMode: Flow<String> = context.dataStore.data.map { it[PLAYER_UI_MODE] ?: "CLASSIC" }
     val autoCmSkip: Flow<String> = context.dataStore.data.map { it[AUTO_CM_SKIP] ?: "OFF" }
     val labAnnictIntegration: Flow<String> =
         context.dataStore.data.map { it[LAB_ANNICT_INTEGRATION] ?: "OFF" }

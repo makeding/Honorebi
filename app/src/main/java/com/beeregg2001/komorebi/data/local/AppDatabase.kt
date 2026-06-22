@@ -14,11 +14,10 @@ import com.beeregg2001.komorebi.data.local.entity.*
         EpgCacheEntity::class, // ★復元: これがないとEpgRepositoryが壊れます
         RecordedProgramEntity::class,
         SyncMetaEntity::class,
-        AiSeriesDictionaryEntity::class,
         EpgChannelEntity::class,
         EpgProgramEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,7 +31,4 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncMetaDao(): SyncMetaDao
 
     abstract fun epgDao(): EpgDao
-
-    // AI辞書用のDao
-    abstract fun aiSeriesDictionaryDao(): AiSeriesDictionaryDao
 }

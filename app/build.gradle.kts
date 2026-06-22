@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.beeregg2001.Komorebi"
+        applicationId = "com.beeregg2001.Honorebi"
         minSdk = 24
         targetSdk = 34
         versionCode = 16 // 数値を1つ上げる
@@ -196,8 +196,6 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Gemini
-    implementation("com.google.ai.client.generativeai:generativeai:0.7.0")
-
     // --- Ktor Local Server & QR Code ---
     // BOMを使って、Geminiが裏で使うKtorクライアントとローカルサーバーのバージョンを強制統一
     implementation(platform("io.ktor:ktor-bom:2.3.12"))

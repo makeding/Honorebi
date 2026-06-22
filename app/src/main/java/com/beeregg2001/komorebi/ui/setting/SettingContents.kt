@@ -111,7 +111,7 @@ fun GeneralSettingsContent(
                 onClick = { onClick(dbInfoR) }
             )
             SettingItem(
-                title = "手動でフル同期を実行",
+                title = "ローカル録画キャッシュを削除",
                 value = "最終同期: $lastSyncStr",
                 icon = Icons.Default.CloudSync,
                 modifier = Modifier
@@ -1142,26 +1142,9 @@ fun LabSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = dualR
-                        down = apiKeyR
-                    },
-                onClick = { onClick(baseballR); onBaseball() }
-            )
-        }
-
-        SettingsSection("AIコンシェルジュ (Gemini)") {
-            val isKeySet = apiKey.isNotBlank() && apiKey.startsWith("AIza")
-            SettingItem(
-                title = "APIキー連携 (スマホで簡単設定)",
-                value = if (isKeySet) "設定済み" else "未設定",
-                icon = Icons.Default.AutoAwesome,
-                modifier = Modifier
-                    .focusRequester(apiKeyR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = baseballR
                         down = FocusRequester.Cancel
                     },
-                onClick = { onClick(apiKeyR); onEditApiKey() }
+                onClick = { onClick(baseballR); onBaseball() }
             )
         }
     }
@@ -1180,7 +1163,7 @@ fun AppInfoContent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "Komorebi",
+            "Honorebi",
             style = MaterialTheme.typography.displayMedium,
             color = KomorebiTheme.colors.textPrimary,
             fontWeight = FontWeight.Bold

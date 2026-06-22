@@ -441,7 +441,6 @@ class SettingsViewModel @Inject constructor(
             context.imageLoader.diskCache?.clear()
         } catch (e: Exception) {
         }
-        syncEngine.launchSyncAllRecords(forceFullSync = true)
         forceSyncStreamQualities()
     }
 
@@ -481,7 +480,7 @@ class SettingsViewModel @Inject constructor(
             val oldIp = settingsRepository.konomiIp.first()
             settingsRepository.saveString(SettingsRepository.KONOMI_IP, ip)
             if (oldIp != ip && (oldIp != "" && oldIp != "https://192-168-xxx-xxx.local.konomi.tv")) {
-                syncEngine.launchSyncAllRecords(forceFullSync = true)
+                syncEngine.clearDatabase()
             }
         }
     }
@@ -491,13 +490,13 @@ class SettingsViewModel @Inject constructor(
             val oldPort = settingsRepository.konomiPort.first()
             settingsRepository.saveString(SettingsRepository.KONOMI_PORT, port)
             if (oldPort != port && (oldPort != "" && oldPort != "7000")) {
-                syncEngine.launchSyncAllRecords(forceFullSync = true)
+                syncEngine.clearDatabase()
             }
         }
     }
 
     fun triggerFullSync() {
-        viewModelScope.launch { syncEngine.launchSyncAllRecords(forceFullSync = true) }
+        viewModelScope.launch { syncEngine.clearDatabase() }
     }
 
     fun addPostRecordingBatch(name: String, path: String) {

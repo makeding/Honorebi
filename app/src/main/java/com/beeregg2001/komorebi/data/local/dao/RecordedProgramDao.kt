@@ -132,16 +132,6 @@ interface RecordedProgramDao {
     @Query("SELECT id, title, series_name FROM recorded_programs")
     suspend fun getAllTitlesAndSeries(): List<ProgramTitleProjection>
 
-    // ★修正 PERF-05: 辞書に未登録のタイトルだけをDB側で高速に抽出する（OOM回避）
-    @Query(
-        """
-        SELECT p.id, p.title, p.series_name FROM recorded_programs p
-        LEFT JOIN ai_series_dictionary d ON p.title = d.originalTitle
-        WHERE d.originalTitle IS NULL
-    """
-    )
-    suspend fun getTitlesNotInDictionary(): List<ProgramTitleProjection>
-
     @Query("UPDATE recorded_programs SET series_name = :newSeriesName WHERE id = :id")
     suspend fun updateSeriesName(id: Int, newSeriesName: String)
 
@@ -151,25 +141,6 @@ interface RecordedProgramDao {
     @Query("DELETE FROM recorded_programs")
     suspend fun clearAll()
 
-    // ★修正: 抽出漏れを防ぐため、NOT IN 構文を使った確実なクエリに変更
-    @Query(
-        """
-        SELECT title FROM recorded_programs 
-        WHERE title NOT IN (SELECT originalTitle FROM ai_series_dictionary)
-        GROUP BY title
-        LIMIT :limit
-        """
-    )
-    suspend fun getUnknownTitles(limit: Int = 50): List<String>
-
-    // ★修正: NOT IN 構文を使った確実なカウントクエリ
-    @Query(
-        """
-        SELECT COUNT(DISTINCT title) FROM recorded_programs 
-        WHERE title NOT IN (SELECT originalTitle FROM ai_series_dictionary)
-        """
-    )
-    suspend fun getUnknownTitlesCount(): Int
 }
 
 @Dao

@@ -17,6 +17,7 @@ import com.beeregg2001.komorebi.data.local.dao.SeriesProjection
 import com.beeregg2001.komorebi.data.mapper.RecordDataMapper
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.paging.RecordedProgramPagingSource
 import com.beeregg2001.komorebi.data.repository.LiveProvider
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.ReserveProvider
@@ -194,11 +195,6 @@ class RecordViewModel @Inject constructor(
                     }
                 }
         }
-
-        viewModelScope.launch {
-            delay(2000)
-            syncEngine.launchSyncAllRecords()
-        }
     }
 
     fun handleBackNavigation(onExit: () -> Unit) {
@@ -210,7 +206,7 @@ class RecordViewModel @Inject constructor(
     }
 
     fun triggerSmartSync() {
-        syncEngine.launchSmartSync()
+        Log.i(TAG, "Local recorded-program sync is disabled; online paging is used instead.")
     }
 
     // ★ 修正: ソート状態も Pager のトリガーとして Combine に含める
@@ -233,58 +229,62 @@ class RecordViewModel @Inject constructor(
             emit(PagingData.empty())
             delay(50)
 
-            val pager = Pager(
-                config = PagingConfig(
-                    pageSize = 30,
-                    prefetchDistance = 10,
-                    initialLoadSize = 20,
-                    enablePlaceholders = true
-                )
-            ) {
-                val isDesc = state.sortOrder == RecordSortOrder.DESC
+            val isDesc = state.sortOrder == RecordSortOrder.DESC
+            val order = if (isDesc) "desc" else "asc"
+            val pagingConfig = PagingConfig(
+                pageSize = 30,
+                prefetchDistance = 10,
+                initialLoadSize = 20,
+                enablePlaceholders = true
+            )
 
-                when {
-                    // 検索やカテゴリ指定時はソートボタンを非表示にするため、デフォルトの降順クエリを使う
-                    state.query.isNotBlank() -> programDao.searchPagingSource(state.query)
-                    state.category == RecordCategory.CHANNEL && !state.channelId.isNullOrEmpty() -> programDao.getPagingSourceByChannel(
-                        state.channelId
+            val pagerFlow = if (state.category == RecordCategory.ALL || state.query.isNotBlank()) {
+                Pager(config = pagingConfig) {
+                    RecordedProgramPagingSource(
+                        recordProvider = recordProvider,
+                        query = state.query,
+                        order = order
                     )
+                }.flow
+            } else {
+                Pager(config = pagingConfig) {
+                    when {
+                        state.category == RecordCategory.CHANNEL && !state.channelId.isNullOrEmpty() -> programDao.getPagingSourceByChannel(
+                            state.channelId
+                        )
 
-                    state.category == RecordCategory.GENRE && !state.genre.isNullOrEmpty() -> programDao.getPagingSourceByGenre(
-                        state.genre
-                    )
+                        state.category == RecordCategory.GENRE && !state.genre.isNullOrEmpty() -> programDao.getPagingSourceByGenre(
+                            state.genre
+                        )
 
-                    state.category == RecordCategory.TIME && !state.day.isNullOrEmpty() -> {
+                        state.category == RecordCategory.TIME && !state.day.isNullOrEmpty() -> {
                         val dayOfWeekStr = when (state.day.replace("曜日", "")) {
                             "日" -> "0"; "月" -> "1"; "火" -> "2"; "水" -> "3"
                             "木" -> "4"; "金" -> "5"; "土" -> "6"; else -> "0"
                         }
                         programDao.getPagingSourceByDayOfWeek(dayOfWeekStr)
-                    }
+                        }
 
-                    // ★「未視聴」の場合、選択されたソート条件に応じてDaoを切り替える
-                    state.category == RecordCategory.UNWATCHED -> {
-                        when (state.sortType) {
-                            RecordSortType.DATE -> if (isDesc) programDao.getUnwatched_DateDesc() else programDao.getUnwatched_DateAsc()
-                            RecordSortType.TITLE -> if (isDesc) programDao.getUnwatched_TitleDesc() else programDao.getUnwatched_TitleAsc()
-                            RecordSortType.DURATION -> if (isDesc) programDao.getUnwatched_DurationDesc() else programDao.getUnwatched_DurationAsc()
+                        state.category == RecordCategory.UNWATCHED -> {
+                            when (state.sortType) {
+                                RecordSortType.DATE -> if (isDesc) programDao.getUnwatched_DateDesc() else programDao.getUnwatched_DateAsc()
+                                RecordSortType.TITLE -> if (isDesc) programDao.getUnwatched_TitleDesc() else programDao.getUnwatched_TitleAsc()
+                                RecordSortType.DURATION -> if (isDesc) programDao.getUnwatched_DurationDesc() else programDao.getUnwatched_DurationAsc()
+                            }
+                        }
+
+                        else -> {
+                            when (state.sortType) {
+                                RecordSortType.DATE -> if (isDesc) programDao.getAll_DateDesc() else programDao.getAll_DateAsc()
+                                RecordSortType.TITLE -> if (isDesc) programDao.getAll_TitleDesc() else programDao.getAll_TitleAsc()
+                                RecordSortType.DURATION -> if (isDesc) programDao.getAll_DurationDesc() else programDao.getAll_DurationAsc()
+                            }
                         }
                     }
-
-                    // ★「全ての録画」の場合、選択されたソート条件に応じてDaoを切り替える
-                    else -> {
-                        when (state.sortType) {
-                            RecordSortType.DATE -> if (isDesc) programDao.getAll_DateDesc() else programDao.getAll_DateAsc()
-                            RecordSortType.TITLE -> if (isDesc) programDao.getAll_TitleDesc() else programDao.getAll_TitleAsc()
-                            RecordSortType.DURATION -> if (isDesc) programDao.getAll_DurationDesc() else programDao.getAll_DurationAsc()
-                        }
-                    }
-                }
+                }.flow.map { pagingData -> pagingData.map { entity -> RecordDataMapper.toDomainModel(entity) } }
             }
 
-            emitAll(pager.flow.map { pagingData ->
-                pagingData.map { entity -> RecordDataMapper.toDomainModel(entity) }
-            })
+            emitAll(pagerFlow)
         }
     }.cachedIn(viewModelScope)
 
@@ -358,7 +358,7 @@ class RecordViewModel @Inject constructor(
     }
 
     fun fetchRecentRecordings(forceRefresh: Boolean = false) {
-        syncEngine.launchSyncAllRecords(forceFullSync = forceRefresh)
+        Log.i(TAG, "Local recorded-program sync is disabled; refresh the online paging list instead.")
     }
 
     fun loadNextPage() {}

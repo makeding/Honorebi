@@ -39,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
 
 private const val TAG = "MainRootScreen"
+private const val AI_FEATURES_ENABLED = false
 
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
@@ -133,9 +134,10 @@ fun MainRootScreen(
         if (state.currentTabIndex >= tabs.size) state.currentTabIndex = 0
     }
 
-    LaunchedEffect(Unit) {
-        aiConciergeViewModel.pendingAction.collect { action ->
-            when (action) {
+    if (AI_FEATURES_ENABLED) {
+        LaunchedEffect(Unit) {
+            aiConciergeViewModel.pendingAction.collect { action ->
+                when (action) {
                 is AiConciergeAction.PlayLive -> {
                     closeAiConcierge(false)
                     val target = channelViewModel.groupedChannels.value.values.flatten()
@@ -282,6 +284,7 @@ fun MainRootScreen(
                             state.toastMessage = "「${action.keyword}」の自動録画条件を登録しました"
                         }
                     )
+                }
                 }
             }
         }
@@ -519,17 +522,19 @@ fun MainRootScreen(
                         return@onPreviewKeyEvent false // 横取りせず、子要素へスルーさせる
                     }
 
-                    // --- 以下、通常のグローバルAIコンシェルジュ起動処理 ---
-                    if (isCenterKey && event.type == KeyEventType.KeyUp) {
-                        if (isLongPressHandled) {
-                            isLongPressHandled = false; return@onPreviewKeyEvent true
-                        }
+                    if (!AI_FEATURES_ENABLED) return@onPreviewKeyEvent false
+
+                    if (isCenterKey && event.type == KeyEventType.KeyUp && isLongPressHandled) {
+                        isLongPressHandled = false
+                        return@onPreviewKeyEvent true
                     }
                     if (state.isAiConciergeOpen || state.showAiKeyboardInput) return@onPreviewKeyEvent false
                     if (isCenterKey && event.type == KeyEventType.KeyDown) {
                         if ((event.nativeKeyEvent.isLongPress || event.nativeKeyEvent.repeatCount > 0) && !isLongPressHandled) {
-                            isLongPressHandled = true; state.isAiConciergeOpen = true
-                            state.aiTicketManager.issue(AiFocusTicket.PANEL_DEFAULT); return@onPreviewKeyEvent true
+                            isLongPressHandled = true
+                            state.isAiConciergeOpen = true
+                            state.aiTicketManager.issue(AiFocusTicket.PANEL_DEFAULT)
+                            return@onPreviewKeyEvent true
                         }
                         if (isLongPressHandled) return@onPreviewKeyEvent true
                     }
@@ -741,7 +746,7 @@ fun MainRootScreen(
                 isSettingsInitialized = isSettingsInitialized,
                 hasSyncError = hasSyncError,
                 detailFocusRequester = detailFocusRequester,
-                apiKey = geminiApiKey,
+                apiKey = if (AI_FEATURES_ENABLED) geminiApiKey else "",
                 onExitApp = onExitApp,
                 closeSettingsAndRefresh = closeSettingsAndRefresh,
                 closeAiConcierge = closeAiConcierge,

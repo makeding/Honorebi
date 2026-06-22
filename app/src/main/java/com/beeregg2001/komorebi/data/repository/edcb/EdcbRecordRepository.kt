@@ -221,7 +221,7 @@ class EdcbRecordRepository @Inject constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    override suspend fun getRecordedPrograms(page: Int): RecordedApiResponse =
+    override suspend fun getRecordedPrograms(page: Int, order: String): RecordedApiResponse =
         withContext(Dispatchers.IO) {
             recordMutex.withLock {
                 try {
@@ -234,7 +234,11 @@ class EdcbRecordRepository @Inject constructor(
                         if (result.isSuccess) {
                             val validInfos =
                                 result.getOrNull()?.filter { isValidRecord(it) } ?: emptyList()
-                            cachedRecInfos = validInfos.sortedByDescending { it.startTime }
+                            cachedRecInfos = if (order == "asc") {
+                                validInfos.sortedBy { it.startTime }
+                            } else {
+                                validInfos.sortedByDescending { it.startTime }
+                            }
                             lastRecFetchTime = System.currentTimeMillis()
                         } else {
                             return@withContext RecordedApiResponse(0, emptyList())
@@ -695,7 +699,7 @@ class EdcbRecordRepository @Inject constructor(
         fetchResolverUrls(baseUrl, videoId)?.tileImageUrl?.let { "$baseUrl$it" }
     }
 
-    override suspend fun searchRecordedPrograms(keyword: String, page: Int): RecordedApiResponse =
+    override suspend fun searchRecordedPrograms(keyword: String, page: Int, order: String): RecordedApiResponse =
         RecordedApiResponse(0, emptyList())
 
     override suspend fun keepAlive(videoId: Int, quality: String, sessionId: String) {

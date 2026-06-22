@@ -21,7 +21,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Komorebi"
+rootProject.name = "Honorebi"
 include(":app")
 // settings.gradle.kts (Kotlin DSL 形式)
 //include(":media-decoder-ffmpeg")
