@@ -191,17 +191,27 @@ fun HomeLauncherScreen(
         val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
         ui.isCurrentTabContentReady = false
 
-        if (currentLabel == "ホーム") {
-            channelViewModel.startPolling()
-            val now = System.currentTimeMillis()
-            if (now - lastHomeRefreshTime > 300_000L) {
-                homeViewModel.refreshHomeData()
-                lastHomeRefreshTime = now
+        when (currentLabel) {
+            "ホーム" -> {
+                channelViewModel.startPolling()
+                val now = System.currentTimeMillis()
+                if (now - lastHomeRefreshTime > 300_000L) {
+                    homeViewModel.refreshHomeData()
+                    lastHomeRefreshTime = now
+                }
             }
-        } else if (currentLabel == "ライブ") {
-            channelViewModel.startPolling()
-        } else {
-            channelViewModel.stopPolling()
+
+            "ライブ" -> {
+                channelViewModel.startPolling()
+            }
+
+            "録画予約" -> {
+                channelViewModel.stopPolling()
+            }
+
+            else -> {
+                channelViewModel.stopPolling()
+            }
         }
     }
 
@@ -401,12 +411,8 @@ fun HomeLauncherScreen(
                                         ui.selectedTabIndex = index
                                         ui.onTabSelected(
                                             index,
-                                            tabs,
                                             onTabChange,
-                                            homeViewModel,
-                                            channelViewModel,
-                                            recordViewModel,
-                                            reserveViewModel
+                                            homeViewModel
                                         )
                                     }
                                     ui.topNavHasFocus = true
@@ -545,12 +551,8 @@ fun HomeLauncherScreen(
                                 ui.tabFocusRequesters.getOrNull(targetIndex)
                                     ?.safeRequestFocus(TAG); ui.onTabSelected(
                                 targetIndex,
-                                tabs,
                                 onTabChange,
-                                homeViewModel,
-                                channelViewModel,
-                                recordViewModel,
-                                reserveViewModel
+                                homeViewModel
                             )
                             },
                             konomiIp = konomiIp,

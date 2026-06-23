@@ -88,6 +88,21 @@ fun VideoTabContent(
     val programDetail by recordViewModel.programDetail.collectAsState()
     val backendType by settingViewModel.backendType.collectAsState()
     var focusedProgramId by remember { mutableStateOf<Int?>(null) }
+    val recentItems = remember(recentRecordings) { recentRecordings.take(20) }
+    val historyItems = remember(watchHistory) { watchHistory.take(20) }
+    val historyByProgramId = remember(watchHistory) {
+        watchHistory.associateBy { it.program.id.toString() }
+    }
+    val recentByProgramId = remember(recentRecordings) {
+        recentRecordings.associateBy { it.id.toString() }
+    }
+    val genreList = remember(availableGenres) { listOf<String?>(null) + availableGenres }
+    val seriesPreviewItems = remember(groupedSeries, selectedGenre) {
+        val source =
+            if (selectedGenre == null) groupedSeries.values.asSequence().flatten()
+            else groupedSeries[selectedGenre].orEmpty().asSequence()
+        source.take(20).toList()
+    }
 
     val initialHeroInfo = remember {
         HomeHeroInfo(
@@ -160,17 +175,17 @@ fun VideoTabContent(
             var recentColIndex = -1
             var historyColIndex = -1
 
-            if (recentRecordings.isNotEmpty()) recentColIndex = currentIndex++
-            if (watchHistory.isNotEmpty()) historyColIndex = currentIndex++
+            if (recentItems.isNotEmpty()) recentColIndex = currentIndex++
+            if (historyItems.isNotEmpty()) historyColIndex = currentIndex++
 
-            val rIndex = recentRecordings.take(20).indexOfFirst { it.id.toString() == targetId }
+            val rIndex = recentItems.indexOfFirst { it.id.toString() == targetId }
             if (rIndex != -1 && recentColIndex != -1) {
                 listState.scrollToItem(recentColIndex)
                 recentRowState.scrollToItem(maxOf(0, rIndex - 1))
                 return@LaunchedEffect
             }
 
-            val hIndex = watchHistory.take(20).indexOfFirst { it.program.id.toString() == targetId }
+            val hIndex = historyItems.indexOfFirst { it.program.id.toString() == targetId }
             if (hIndex != -1 && historyColIndex != -1) {
                 listState.scrollToItem(historyColIndex)
                 historyRowState.scrollToItem(maxOf(0, hIndex - 1))
@@ -270,9 +285,8 @@ fun VideoTabContent(
                     }
                 }
 
-                if (recentRecordings.isNotEmpty()) {
+                if (recentItems.isNotEmpty()) {
                     item {
-                        val itemsToTake = recentRecordings.take(20)
                         Column {
                             SectionHeader(
                                 title = "最近の録画",
@@ -285,13 +299,13 @@ fun VideoTabContent(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 itemsIndexed(
-                                    itemsToTake,
+                                    recentItems,
                                     key = { _, it -> "rec_${it.id}" }) { index, program ->
                                     val isCurrentlyRecording =
                                         program.isRecording || program.recordedVideo.status == "Recording"
                                     VideoRecentRecordCard(
                                         program = program,
-                                        history = watchHistory.find { h -> h.program.id.toString() == program.id.toString() },
+                                        history = historyByProgramId[program.id.toString()],
                                         konomiIp = konomiIp, konomiPort = konomiPort,
                                         ticketManager = ticketManager,
                                         onReturnFocusConsumed = onReturnFocusConsumed,
@@ -344,7 +358,7 @@ fun VideoTabContent(
                                         isCurrentlyRecording = isCurrentlyRecording,
                                         modifier = Modifier.focusProperties {
                                             if (index == 0) left = FocusRequester.Cancel
-                                            if (index == itemsToTake.lastIndex) right =
+                                            if (index == recentItems.lastIndex) right =
                                                 FocusRequester.Cancel
                                         },
                                         timeFormat = timeFormat,
@@ -356,9 +370,8 @@ fun VideoTabContent(
                     }
                 }
 
-                if (watchHistory.isNotEmpty()) {
+                if (historyItems.isNotEmpty()) {
                     item {
-                        val itemsToTake = watchHistory.take(20)
                         Column {
                             SectionHeader(
                                 title = "続きから見る",
@@ -371,10 +384,10 @@ fun VideoTabContent(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 itemsIndexed(
-                                    itemsToTake,
+                                    historyItems,
                                     key = { _, it -> "hist_${it.program.id}" }) { index, historyItem ->
                                     val matchedProgram =
-                                        recentRecordings.find { it.id.toString() == historyItem.program.id.toString() }
+                                        recentByProgramId[historyItem.program.id.toString()]
                                     VideoWatchHistoryCard(
                                         historyItem = historyItem, matchedProgram = matchedProgram,
                                         konomiIp = konomiIp, konomiPort = konomiPort,
@@ -422,7 +435,7 @@ fun VideoTabContent(
                                         },
                                         modifier = Modifier.focusProperties {
                                             if (index == 0) left = FocusRequester.Cancel
-                                            if (index == itemsToTake.lastIndex) right =
+                                            if (index == historyItems.lastIndex) right =
                                                 FocusRequester.Cancel
                                         },
                                         backendType = backendType
@@ -435,7 +448,6 @@ fun VideoTabContent(
 
                 if (groupedSeries.isNotEmpty()) {
                     item {
-                        val genreList = listOf(null) + availableGenres
                         Column {
                             SectionHeader(
                                 title = "ジャンル別シリーズ",
@@ -502,15 +514,12 @@ fun VideoTabContent(
                                 }
                             }
                             Spacer(Modifier.height(16.dp))
-                            val filteredSeries =
-                                if (selectedGenre == null) groupedSeries.values.flatten() else groupedSeries[selectedGenre]
-                                    ?: emptyList()
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 itemsIndexed(
-                                    filteredSeries,
+                                    seriesPreviewItems,
                                     key = { _, it -> it.displayTitle }) { index, series ->
                                     VideoSeriesCard(
                                         series = series,
@@ -539,7 +548,7 @@ fun VideoTabContent(
                                         },
                                         modifier = Modifier.focusProperties {
                                             if (index == 0) left = FocusRequester.Cancel
-                                            if (index == filteredSeries.lastIndex) right =
+                                            if (index == seriesPreviewItems.lastIndex) right =
                                                 FocusRequester.Cancel
                                         },
                                         backendType = backendType

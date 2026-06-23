@@ -109,49 +109,12 @@ class HomeLauncherState(
     @RequiresApi(Build.VERSION_CODES.O)
     fun onTabSelected(
         index: Int,
-        tabs: List<String>, // ★ 追加: 実際のタブ名リストを受け取り、ハードコードを排除
         onTabChange: (Int) -> Unit,
         homeViewModel: HomeViewModel,
-        channelViewModel: ChannelViewModel,
-        recordViewModel: RecordViewModel,
-        reserveViewModel: ReserveViewModel
     ) {
         onTabChange(index)
         isCurrentTabContentReady = false
         homeViewModel.clearFocusMemory()
-
-        val tabName = tabs.getOrNull(index)
-
-        when (tabName) {
-            "ホーム" -> {
-                homeViewModel.refreshHomeData()
-                channelViewModel.startPolling()
-            }
-
-            "ライブ" -> {
-                channelViewModel.startPolling()
-            }
-
-            "ビデオ" -> {
-                channelViewModel.stopPolling()
-                recordViewModel.fetchRecentRecordings(forceRefresh = false)
-            }
-
-            "番組表" -> {
-                channelViewModel.stopPolling()
-            }
-
-            "録画予約" -> {
-                channelViewModel.stopPolling()
-                reserveViewModel.fetchReserves()
-            }
-
-            "プロ野球" -> {
-                channelViewModel.stopPolling()
-            }
-
-            else -> channelViewModel.stopPolling()
-        }
     }
 
     fun isFullScreen(
