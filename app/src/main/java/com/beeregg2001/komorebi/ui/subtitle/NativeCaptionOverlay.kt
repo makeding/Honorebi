@@ -19,10 +19,14 @@ private const val MAX_AUTO_HIDE_DURATION_MS = 60_000L
 @Composable
 fun rememberNativeCaptionCue(
     events: Flow<NativeCaptionCue>,
-    enabled: Boolean
+    enabled: Boolean,
+    resetKey: Any? = null
 ): MutableState<NativeCaptionCue?> {
     val cueState = remember { mutableStateOf<NativeCaptionCue?>(null) }
-    LaunchedEffect(events, enabled) {
+    LaunchedEffect(resetKey) {
+        cueState.value = null
+    }
+    LaunchedEffect(events, enabled, resetKey) {
         if (!enabled) {
             cueState.value = null
             return@LaunchedEffect

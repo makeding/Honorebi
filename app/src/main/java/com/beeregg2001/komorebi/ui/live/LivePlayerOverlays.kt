@@ -32,6 +32,123 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
 
+private data class DataBroadcastingColorKeySpec(
+    val key: DataBroadcastingColorKey,
+    val label: String,
+    val color: Color,
+    val contentColor: Color,
+    val alignment: Alignment
+)
+
+private val dataBroadcastingColorKeySpecs = listOf(
+    DataBroadcastingColorKeySpec(
+        key = DataBroadcastingColorKey.Blue,
+        label = "青",
+        color = Color(0xFF006EDC),
+        contentColor = Color.White,
+        alignment = Alignment.TopCenter
+    ),
+    DataBroadcastingColorKeySpec(
+        key = DataBroadcastingColorKey.Red,
+        label = "赤",
+        color = Color(0xFFC90000),
+        contentColor = Color.White,
+        alignment = Alignment.CenterStart
+    ),
+    DataBroadcastingColorKeySpec(
+        key = DataBroadcastingColorKey.Green,
+        label = "緑",
+        color = Color(0xFF1B8700),
+        contentColor = Color.White,
+        alignment = Alignment.CenterEnd
+    ),
+    DataBroadcastingColorKeySpec(
+        key = DataBroadcastingColorKey.Yellow,
+        label = "黄",
+        color = Color(0xFFE3B200),
+        contentColor = Color.Black,
+        alignment = Alignment.BottomCenter
+    )
+)
+
+@Composable
+fun DataBroadcastingColorSelectorOverlay(
+    selectedKey: DataBroadcastingColorKey,
+    onColorSelected: (DataBroadcastingColorKey) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 72.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .size(248.dp)
+                .background(Color.Black.copy(alpha = 0.68f), CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+                .padding(14.dp)
+        ) {
+            dataBroadcastingColorKeySpecs.forEach { spec ->
+                DataBroadcastingColorSelectorButton(
+                    spec = spec,
+                    selected = selectedKey == spec.key,
+                    onClick = { onColorSelected(spec.key) },
+                    modifier = Modifier.align(spec.alignment)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "×",
+                    color = Color.White.copy(alpha = 0.78f),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Light
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DataBroadcastingColorSelectorButton(
+    spec: DataBroadcastingColorKeySpec,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val borderColor = if (selected) Color.White else Color.White.copy(alpha = 0.18f)
+    val borderWidth = if (selected) 4.dp else 1.dp
+    val buttonSize = if (selected) 76.dp else 68.dp
+
+    Box(
+        modifier = modifier
+            .size(buttonSize)
+            .clip(CircleShape)
+            .background(spec.color)
+            .border(borderWidth, borderColor, CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = spec.label,
+            color = spec.contentColor,
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 22.sp),
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
 /**
  * REGZA風の信号情報オーバーレイ
  */

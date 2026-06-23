@@ -35,6 +35,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -57,6 +58,15 @@ private const val TAG = "LivePlayerScreen"
 private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
 private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 36
 private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 12
+
+private fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
+    if (keyEvent.type != KeyEventType.KeyUp) return false
+    return when (keyEvent.nativeKeyEvent.keyCode) {
+        NativeKeyEvent.KEYCODE_TV_DATA_SERVICE,
+        NativeKeyEvent.KEYCODE_D -> true
+        else -> false
+    }
+}
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -83,7 +93,10 @@ fun LivePlayerScreen(
     reserveViewModel: ReserveViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     livePlayerViewModel: LivePlayerViewModel = hiltViewModel(),
-    timeFormat: String = "24H"
+    timeFormat: String = "24H",
+    isDataBroadcastingMode: Boolean = false,
+    onDataBroadcastingBack: () -> Unit = {},
+    onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = {}
 ) {
     val uiContext = LocalContext.current
     val colors = KomorebiTheme.colors
@@ -160,17 +173,22 @@ fun LivePlayerScreen(
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
     val mainCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.mainSubtitleEvents,
-        enabled = isSubtitleEnabled
+        enabled = isSubtitleEnabled,
+        resetKey = currentChannelItem.id
     )
     val dualCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.dualSubtitleEvents,
-        enabled = isSubtitleEnabled
+        enabled = isSubtitleEnabled,
+        resetKey = ps.dualRightChannel?.id
     )
 
     val mainFocusRequester = remember { FocusRequester() }
     val listFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }
     val scrollState = rememberScrollState()
+    var localDataBroadcastingMode by rememberSaveable { mutableStateOf(false) }
+    var dataBroadcastingRemoteSequence by rememberSaveable { mutableLongStateOf(0L) }
+    var dataBroadcastingRemoteCommand by remember { mutableStateOf<DataBroadcastingRemoteCommand?>(null) }
 
     val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
@@ -186,6 +204,36 @@ fun LivePlayerScreen(
     val isQualitiesLoaded by livePlayerViewModel.isQualitiesLoaded.collectAsState()
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
+    val isDataBroadcastingActive = isDataBroadcastingMode || localDataBroadcastingMode
+    val dataBroadcastingWatchUrl = remember(
+        konomiIp,
+        konomiPort,
+        currentChannelItem.displayChannelId
+    ) {
+        UrlBuilder.getKonomiTvWatchUrl(konomiIp, konomiPort, currentChannelItem.displayChannelId)
+    }
+    val dispatchDataBroadcastingRemoteKey: (String) -> Unit = { key ->
+        dataBroadcastingRemoteSequence += 1L
+        dataBroadcastingRemoteCommand = DataBroadcastingRemoteCommand(
+            id = dataBroadcastingRemoteSequence,
+            key = key
+        )
+    }
+    val dispatchDataBroadcastingBack: () -> Unit = {
+        onDataBroadcastingBack()
+        dispatchDataBroadcastingRemoteKey("back")
+    }
+    val dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = { colorKey ->
+        onDataBroadcastingColorKey(colorKey)
+        dispatchDataBroadcastingRemoteKey(
+            when (colorKey) {
+                DataBroadcastingColorKey.Blue -> "blue"
+                DataBroadcastingColorKey.Red -> "red"
+                DataBroadcastingColorKey.Green -> "green"
+                DataBroadcastingColorKey.Yellow -> "yellow"
+            }
+        )
+    }
 
     LaunchedEffect(mainError, mainStatus, mainDetail, mainSignal) {
         ps.playerError = mainError
@@ -477,6 +525,23 @@ fun LivePlayerScreen(
         delay(800); isHeavyUiReady = true
     }
 
+    LaunchedEffect(
+        isDataBroadcastingActive,
+        ps.isDataBroadcastingColorSelectorVisible,
+        ps.selectedDataBroadcastingColorKey
+    ) {
+        if (isDataBroadcastingActive && ps.isDataBroadcastingColorSelectorVisible) {
+            delay(5000)
+            ps.closeDataBroadcastingColorSelector()
+        }
+    }
+
+    LaunchedEffect(isDataBroadcastingActive, isPiPMode, ps.isDualDisplayMode) {
+        if (!isDataBroadcastingActive || isPiPMode || ps.isDualDisplayMode) {
+            ps.closeDataBroadcastingColorSelector()
+        }
+    }
+
     val isUiVisible =
         isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
 
@@ -514,6 +579,19 @@ fun LivePlayerScreen(
             .background(Color.Black)
             .onKeyEvent { keyEvent ->
                 if (isPiPMode) return@onKeyEvent false
+                if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
+                    if (!isDataBroadcastingMode && !ps.isDualDisplayMode) {
+                        localDataBroadcastingMode = !localDataBroadcastingMode
+                        ps.closeDataBroadcastingColorSelector()
+                        if (localDataBroadcastingMode) {
+                            dispatchDataBroadcastingRemoteKey("data")
+                            onShowToast("データ放送を表示します")
+                        } else {
+                            onShowToast("データ放送を閉じました")
+                        }
+                    }
+                    return@onKeyEvent true
+                }
                 ps.handleKeyEvent(
                     keyEvent = keyEvent,
                     isSubMenuOpen = isSubMenuOpen,
@@ -533,7 +611,11 @@ fun LivePlayerScreen(
                     onMiniListToggle = onMiniListToggle,
                     onShowToast = onShowToast,
                     onPiPRequested = onPiPRequested,
-                    onBackPressed = onBackPressed
+                    onBackPressed = onBackPressed,
+                    isDataBroadcastingMode = isDataBroadcastingActive,
+                    onDataBroadcastingBack = dispatchDataBroadcastingBack,
+                    onDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
+                    onDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey
                 )
             }
     ) {
@@ -558,6 +640,34 @@ fun LivePlayerScreen(
                 isSubtitleEnabled = isSubtitleEnabled
             )
         } else {
+            if (isDataBroadcastingActive) {
+                DataBroadcastingWebViewOverlay(
+                    url = dataBroadcastingWatchUrl,
+                    remoteCommand = dataBroadcastingRemoteCommand,
+                    onRemoteCommandConsumed = { consumedId ->
+                        if (dataBroadcastingRemoteCommand?.id == consumedId) {
+                            dataBroadcastingRemoteCommand = null
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(1f)
+                )
+            }
+
+            val mainPlayerModifier =
+                if (isDataBroadcastingActive) {
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(24.dp)
+                        .fillMaxWidth(0.34f)
+                        .aspectRatio(16f / 9f)
+                        .zIndex(2f)
+                        .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                } else {
+                    Modifier.fillMaxSize()
+                }
+
             AndroidView(
                 factory = {
                     PlayerView(it).apply {
@@ -579,8 +689,7 @@ fun LivePlayerScreen(
                     }
                 },
                 onRelease = { view -> view.player = null },
-                modifier = Modifier
-                    .fillMaxSize()
+                modifier = mainPlayerModifier
                     .graphicsLayer {
                         if (ps.lCropEnabled) {
                             scaleX = ps.lCropZoom / 100f; scaleY = ps.lCropZoom / 100f
@@ -909,6 +1018,25 @@ fun LivePlayerScreen(
                 },
                 onCloseMenu = {
                     onSubMenuToggle(false)
+                }
+            )
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isPiPMode &&
+                !ps.isDualDisplayMode &&
+                isDataBroadcastingMode &&
+                ps.isDataBroadcastingColorSelectorVisible,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            DataBroadcastingColorSelectorOverlay(
+                selectedKey = ps.selectedDataBroadcastingColorKey,
+                onColorSelected = { colorKey ->
+                    ps.dispatchDataBroadcastingColorKey(colorKey, onDataBroadcastingColorKey)
+                },
+                onDismiss = {
+                    ps.closeDataBroadcastingColorSelector()
                 }
             )
         }

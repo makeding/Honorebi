@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.common
 
+import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
@@ -80,6 +81,11 @@ object UrlBuilder {
     ): String {
         val baseUrl = formatBaseUrl(ip, port, "https")
         return "$baseUrl/api/streams/live/$displayChannelId/$quality/events"
+    }
+
+    fun getKonomiTvWatchUrl(ip: String, port: String, displayChannelId: String): String {
+        val baseUrl = formatBaseUrl(ip, port, "https")
+        return "$baseUrl/tv/watch/${Uri.encode(displayChannelId)}"
     }
 
     @OptIn(UnstableApi::class)
