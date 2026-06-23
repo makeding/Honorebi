@@ -691,10 +691,11 @@ fun MainRootScreen(
                                         title = state.selectedSmbItem!!.name,
                                         description = "SMBネットワーク再生: ${state.selectedSmbItem!!.path}"
                                     )
-                                    com.beeregg2001.komorebi.ui.video.smb.player.SmbVlcPlayerScreen(
+                                    VideoPlayerScreen(
                                         program = dummyProgram,
                                         smbItem = state.selectedSmbItem!!,
                                         initialPositionMs = state.initialPlaybackPositionMs,
+                                        initialQuality = defaultVideoQuality,
                                         showControls = state.showPlayerControls,
                                         onShowControlsChange = { state.showPlayerControls = it },
                                         isSubMenuOpen = state.isPlayerSubMenuOpen,
@@ -713,8 +714,7 @@ fun MainRootScreen(
                                         onPiPRequested = {
                                             state.isMiniPlayerMode = true
                                             state.toastMessage = "ミニプレイヤーに変更しました"
-                                        },
-                                        settingsViewModel = settingsViewModel
+                                        }
                                     )
                                 } else {
                                     LaunchedEffect(Unit) {
