@@ -636,6 +636,21 @@ fun MainRootScreen(
                                             null; homeViewModel.saveLastChannel(newChannel)
                                         state.isReturningFromPlayer = false
                                     },
+                                    onChasePlaybackSelect = { program ->
+                                        state.selectedChannel = null
+                                        state.selectedSmbItem = null
+                                        state.isPlayerMiniListOpen = false
+                                        state.playerIsSubMenuOpen = false
+                                        state.isPlayerSubMenuOpen = false
+                                        state.isPlayerSceneSearchOpen = false
+                                        state.isMiniPlayerMode = false
+                                        state.initialPlaybackPositionMs = 0L
+                                        state.selectedProgram = program
+                                        state.lastSelectedProgramId = program.id.toString()
+                                        state.lastPlayedRecordingId = program.id
+                                        state.showPlayerControls = true
+                                        state.isReturningFromPlayer = false
+                                    },
                                     onBackPressed = {
                                         state.selectedChannel = null; state.isReturningFromPlayer =
                                         true; state.isMiniPlayerMode = false

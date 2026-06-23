@@ -16,8 +16,10 @@ import com.beeregg2001.komorebi.data.local.dao.RecordedProgramDao
 import com.beeregg2001.komorebi.data.local.dao.SeriesProjection
 import com.beeregg2001.komorebi.data.mapper.RecordDataMapper
 import com.beeregg2001.komorebi.data.model.ArchivedComment
+import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.paging.RecordedProgramPagingSource
+import com.beeregg2001.komorebi.data.repository.AppContentStore
 import com.beeregg2001.komorebi.data.repository.LiveProvider
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.ReserveProvider
@@ -79,6 +81,7 @@ class RecordViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val syncEngine: RecordSyncEngine,
     private val programDao: RecordedProgramDao,
+    private val appContentStore: AppContentStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -175,13 +178,7 @@ class RecordViewModel @Inject constructor(
         _programDetail.value = null
     }
 
-    val recentRecordings: StateFlow<List<RecordedProgram>> = programDao.getRecentRecordingsFlow()
-        .map { entities -> entities.map { RecordDataMapper.toDomainModel(it) } }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    val recentRecordings: StateFlow<List<RecordedProgram>> = appContentStore.recentRecordings
 
     init {
         loadSearchHistory()
@@ -370,8 +367,51 @@ class RecordViewModel @Inject constructor(
     }
 
     fun fetchRecentRecordings(forceRefresh: Boolean = false) {
-        Log.i(TAG, "Local recorded-program sync is disabled; refresh the online paging list instead.")
+        appContentStore.refreshRecentRecordings()
     }
+
+    fun findCurrentRecordingForChannel(
+        channel: Channel,
+        recordings: List<RecordedProgram> = recentRecordings.value
+    ): RecordedProgram? {
+        val present = channel.programPresent
+        val recordingCandidates = recordings.filter {
+            it.isRecording || it.recordedVideo.status.equals("Recording", ignoreCase = true)
+        }
+
+        return recordingCandidates.firstOrNull { program ->
+            val recordedChannel = program.channel
+            val sameChannel = when {
+                recordedChannel == null -> false
+                recordedChannel.id == channel.id -> true
+                recordedChannel.displayChannelId == channel.displayChannelId -> true
+                recordedChannel.networkId?.toLong() == channel.networkId &&
+                        recordedChannel.serviceId?.toLong() == channel.serviceId -> true
+                else -> false
+            }
+            if (!sameChannel) return@firstOrNull false
+
+            present == null ||
+                    program.title == present.title ||
+                    program.startTime == present.startTime ||
+                    program.endTime == present.endTime
+        }
+    }
+
+    suspend fun fetchCurrentRecordingForChannel(channel: Channel): RecordedProgram? =
+        withContext(Dispatchers.IO) {
+            findCurrentRecordingForChannel(channel)?.let { return@withContext it }
+
+            runCatching {
+                recordProvider.getRecordedPrograms(page = 1, order = "desc").recordedPrograms
+            }.onSuccess { latest ->
+                if (latest.isNotEmpty()) {
+                    appContentStore.refreshRecentRecordings()
+                }
+            }.map { latest ->
+                findCurrentRecordingForChannel(channel, latest)
+            }.getOrNull()
+        }
 
     fun loadNextPage() {}
 

@@ -41,6 +41,7 @@ import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
@@ -85,12 +86,14 @@ fun LivePlayerScreen(
     isSubMenuOpen: Boolean,
     onSubMenuToggle: (Boolean) -> Unit,
     onChannelSelect: (Channel) -> Unit,
+    onChasePlaybackSelect: (RecordedProgram) -> Unit = {},
     onBackPressed: () -> Unit,
     onShowToast: (String) -> Unit,
     isPiPMode: Boolean = false,
     onPiPRequested: () -> Unit = {},
     channelViewModel: ChannelViewModel = hiltViewModel(),
     reserveViewModel: ReserveViewModel = hiltViewModel(),
+    recordViewModel: RecordViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     livePlayerViewModel: LivePlayerViewModel = hiltViewModel(),
     timeFormat: String = "24H",
@@ -157,10 +160,15 @@ fun LivePlayerScreen(
     val isSubtitleEnabled by subtitleEnabledState
 
     val reserves by reserveViewModel.reserves.collectAsState()
+    val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val activeReserve = remember(reserves, currentChannelItem.programPresent?.id) {
         reserves.find { it.program.id == currentChannelItem.programPresent?.id }
     }
-    val isRecording = activeReserve != null
+    val currentRecordingProgram = remember(currentChannelItem, recentRecordings) {
+        recordViewModel.findCurrentRecordingForChannel(currentChannelItem, recentRecordings)
+    }
+    val isRecording = activeReserve != null || currentRecordingProgram != null
+    var isChasePlaybackResolving by remember { mutableStateOf(false) }
 
     val currentIsManualOverlay by rememberUpdatedState(isManualOverlay)
     val currentIsPinnedOverlay by rememberUpdatedState(isPinnedOverlay)
@@ -550,9 +558,7 @@ fun LivePlayerScreen(
     }
 
     LaunchedEffect(isMiniListOpen) {
-        if (isMiniListOpen) {
-            channelViewModel.fetchChannels(); delay(200); listFocusRequester.safeRequestFocus(TAG)
-        } else if (!currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.lCropMode == LCropMode.HIDDEN) {
+        if (!isMiniListOpen && !currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.lCropMode == LCropMode.HIDDEN) {
             delay(100); mainFocusRequester.safeRequestFocus(TAG)
         }
     }
@@ -567,8 +573,8 @@ fun LivePlayerScreen(
         channelViewModel.prefetchChannelLogoUrls(listOf(currentChannelItem))
     }
 
-    LaunchedEffect(isMiniListOpen, isSubMenuOpen, displayFlatChannels) {
-        if ((isMiniListOpen || isSubMenuOpen) && displayFlatChannels.isNotEmpty()) {
+    LaunchedEffect(displayFlatChannels) {
+        if (displayFlatChannels.isNotEmpty()) {
             channelViewModel.prefetchChannelLogoUrls(displayFlatChannels)
         }
     }
@@ -846,8 +852,8 @@ fun LivePlayerScreen(
 
         androidx.compose.animation.AnimatedVisibility(
             visible = !isPiPMode && isMiniListOpen && ps.playerError == null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -887,6 +893,7 @@ fun LivePlayerScreen(
                 isCommentEnabled = isCommentEnabled,
                 isLCropEnabled = ps.lCropEnabled,
                 isRecording = isRecording,
+                canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
                 isDualDisplayMode = ps.isDualDisplayMode,
                 groupedChannels = displayGroupedChannels,
@@ -928,6 +935,23 @@ fun LivePlayerScreen(
                         onChannelSelect(selectedChannel)
                     } else {
                         ps.dualRightChannel = selectedChannel
+                    }
+                },
+                onChasePlayback = {
+                    if (!isChasePlaybackResolving) {
+                        scope.launch {
+                            isChasePlaybackResolving = true
+                            val program = currentRecordingProgram
+                                ?: recordViewModel.fetchCurrentRecordingForChannel(currentChannelItem)
+                            isChasePlaybackResolving = false
+
+                            if (program == null) {
+                                onShowToast("追いかけ再生の準備中です")
+                            } else {
+                                onSubMenuToggle(false)
+                                onChasePlaybackSelect(program)
+                            }
+                        }
                     }
                 },
                 onRecordToggle = {

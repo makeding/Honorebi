@@ -3,6 +3,8 @@
 package com.beeregg2001.komorebi.ui.live
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +55,7 @@ fun LiveTopSubMenuUI(
     isCommentEnabled: Boolean,
     isLCropEnabled: Boolean,
     isRecording: Boolean,
+    canStartChasePlayback: Boolean,
     isSignalInfoVisible: Boolean,
     isDualDisplayMode: Boolean,
     groupedChannels: Map<String, List<Channel>>,
@@ -60,6 +63,7 @@ fun LiveTopSubMenuUI(
     onDualDisplayToggle: () -> Unit,
     onSwapScreens: () -> Unit,
     onChannelSelect: (Channel) -> Unit,
+    onChasePlayback: () -> Unit,
     onRecordToggle: () -> Unit,
     onSignalInfoToggle: () -> Unit,
     focusRequester: FocusRequester,
@@ -261,6 +265,17 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
                 } else {
+                    if (isRecording) {
+                        LiveMenuTileItem(
+                            title = "追いかけ再生",
+                            icon = Icons.Default.PlayCircle,
+                            subtitle = if (canStartChasePlayback) "録画中番組を再生" else "準備中",
+                            onClick = onChasePlayback,
+                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                            contentColor = if (canStartChasePlayback) colors.accent else colors.textPrimary.copy(alpha = 0.55f)
+                        )
+                    }
+
                     LiveMenuTileItem(
                         title = if (isRecording) "録画停止" else "録画開始",
                         icon = if (isRecording) Icons.Default.StopCircle else Icons.Default.RadioButtonChecked,
@@ -355,8 +370,8 @@ fun LiveTopSubMenuUI(
             // --- 展開メニュー: クイック選局 ---
             AnimatedVisibility(
                 visible = selectedCategory == LiveSubMenuCategory.QUICK_CHANNELS,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                enter = EnterTransition.None,
+                exit = ExitTransition.None
             ) {
                 QuickChannelPanel(
                     grChannels = grQuickChannels,
