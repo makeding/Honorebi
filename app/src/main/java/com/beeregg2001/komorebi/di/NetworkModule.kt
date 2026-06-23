@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.di
 
 import com.beeregg2001.komorebi.data.SettingsRepository
+import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.api.KonomiApi
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.google.gson.Gson
@@ -52,7 +53,8 @@ object NetworkModule {
         }
 
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level =
+                if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
         }
 
         return OkHttpClient.Builder()
@@ -61,6 +63,7 @@ object NetworkModule {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .addInterceptor(logging)
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
             .addInterceptor(Interceptor { chain ->
                 val originalRequest = chain.request()

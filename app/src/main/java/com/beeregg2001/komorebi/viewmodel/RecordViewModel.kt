@@ -149,6 +149,8 @@ class RecordViewModel @Inject constructor(
 
     private var currentSearchQuery: String = ""
     private var streamMaintenanceJob: Job? = null
+    private var onlineChannelIndexJob: Job? = null
+    private var onlineFilterIndexJob: Job? = null
 
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
@@ -183,7 +185,6 @@ class RecordViewModel @Inject constructor(
 
     init {
         loadSearchHistory()
-        loadOnlineFilterIndexes()
     }
 
     fun handleBackNavigation(onExit: () -> Unit) {
@@ -196,6 +197,7 @@ class RecordViewModel @Inject constructor(
 
     fun triggerSmartSync() {
         Log.i(TAG, "Local recorded-program sync is disabled; online paging is used instead.")
+        ensureOnlineChannels()
     }
 
     // ★ 修正: ソート状態も Pager のトリガーとして Combine に含める
@@ -314,11 +316,15 @@ class RecordViewModel @Inject constructor(
 
     fun updateCategory(category: RecordCategory) {
         if (_selectedCategory.value == category) return
+        when (category) {
+            RecordCategory.CHANNEL -> ensureOnlineChannels()
+            RecordCategory.GENRE, RecordCategory.SERIES -> loadOnlineFilterIndexes()
+            else -> Unit
+        }
         _selectedCategory.value = category
         _selectedGenre.value = null
         _selectedChannelId.value = null
         _selectedDay.value = null
-        if (category == RecordCategory.SERIES && _groupedSeries.value.isEmpty()) loadOnlineFilterIndexes()
     }
 
     fun updateGenre(genre: String?) {
@@ -470,8 +476,27 @@ class RecordViewModel @Inject constructor(
 
     fun buildSeriesIndex() {}
 
+    private fun ensureOnlineChannels() {
+        if (_groupedChannels.value.isNotEmpty() || onlineChannelIndexJob?.isActive == true) return
+        onlineChannelIndexJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val channelsResponse = liveProvider.getChannels()
+                buildOnlineChannelMap(channelsResponse)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load online channel index", e)
+            }
+        }
+    }
+
     private fun loadOnlineFilterIndexes() {
-        viewModelScope.launch(Dispatchers.IO) {
+        if (
+            (_availableGenres.value.isNotEmpty() && _groupedSeries.value.isNotEmpty()) ||
+            onlineFilterIndexJob?.isActive == true
+        ) {
+            return
+        }
+
+        onlineFilterIndexJob = viewModelScope.launch(Dispatchers.IO) {
             _isSeriesLoading.value = true
             try {
                 val channelsResponse = runCatching { liveProvider.getChannels() }.getOrNull()
