@@ -133,6 +133,10 @@ fun ReserveListScreen(
 
     var previousOverlayOpen by remember { mutableStateOf(isReserveOverlayOpen) }
 
+    LaunchedEffect(Unit) {
+        viewModel.refreshAll()
+    }
+
     // ★ 追加(Step3): AIコンシェルジュから戻ってきた時のフォーカス復元（チケット発行）
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {

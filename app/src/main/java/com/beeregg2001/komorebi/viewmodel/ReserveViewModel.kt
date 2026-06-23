@@ -65,7 +65,7 @@ class ReserveViewModel @Inject constructor(
     val conditions: StateFlow<List<ReservationCondition>> = _conditions.asStateFlow()
 
     // API通信中かどうかを示すローディングフラグ
-    private val _isLoading = MutableStateFlow(true)
+    private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     // 🌟 追加: フォーカス復帰用のID記憶（画面破棄対策）
@@ -75,12 +75,6 @@ class ReserveViewModel @Inject constructor(
     fun clearFocusMemory() {
         lastClickedReserveId = null
         lastClickedConditionId = null
-    }
-
-    init {
-        // ViewModel生成時に初期データをサーバーから取得
-        fetchReserves()
-        fetchConditions()
     }
 
     // ==========================================

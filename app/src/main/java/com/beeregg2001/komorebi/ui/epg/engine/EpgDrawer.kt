@@ -70,8 +70,8 @@ class EpgDrawer(
                     .coerceAtMost(state.uiChannels.lastIndex)
 
                 if (startCol <= endCol && state.uiChannels.isNotEmpty()) {
-                    val visibleTopY = -curY - config.hhAreaPx
-                    val visibleBottomY = visibleTopY + size.height
+                    val visibleTopY = -curY
+                    val visibleBottomY = size.height - config.hhAreaPx - curY
 
                     for (c in startCol..endCol) {
                         val uiChannel = state.uiChannels[c]
@@ -493,10 +493,14 @@ class EpgDrawer(
                     if (timeFormat == "12H") {
                         // 12時間表記 (AM/PM 付き)
                         val displayHour = if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
-                        val amPmLayout =
-                            textMeasurer.measure(if (hour < 12) "AM" else "PM", config.styleAmPm)
-                        val hourLayout =
-                            textMeasurer.measure(displayHour.toString(), config.styleTime)
+                        val amPmText = if (hour < 12) "AM" else "PM"
+                        val amPmLayout = state.textLayoutCache.getOrPut("axis:$timeFormat:ampm:$amPmText") {
+                            textMeasurer.measure(amPmText, config.styleAmPm)
+                        }
+                        val hourText = displayHour.toString()
+                        val hourLayout = state.textLayoutCache.getOrPut("axis:$timeFormat:hour:$hourText") {
+                            textMeasurer.measure(hourText, config.styleTime)
+                        }
 
                         val startY =
                             fy + (config.hhPx - (amPmLayout.size.height + hourLayout.size.height + 2f)) / 2
@@ -513,7 +517,10 @@ class EpgDrawer(
                         )
                     } else {
                         // 24時間表記 (AM/PM なしで数字だけを中央に大きく表示)
-                        val hourLayout = textMeasurer.measure(hour.toString(), config.styleTime)
+                        val hourText = hour.toString()
+                        val hourLayout = state.textLayoutCache.getOrPut("axis:$timeFormat:hour:$hourText") {
+                            textMeasurer.measure(hourText, config.styleTime)
+                        }
                         val startY = fy + (config.hhPx - hourLayout.size.height) / 2
                         drawText(
                             hourLayout,
@@ -545,10 +552,10 @@ class EpgDrawer(
                         val logoW = 30.sp.toPx()
                         val logoH = 18.sp.toPx()
 
-                        val numLayout = textMeasurer.measure(
-                            wrapper.channel.channel_number ?: "---",
-                            config.styleChNum
-                        )
+                        val channelNumber = wrapper.channel.channel_number ?: "---"
+                        val numLayout = state.textLayoutCache.getOrPut("header:num:${wrapper.channel.id}:$channelNumber") {
+                            textMeasurer.measure(channelNumber, config.styleChNum)
+                        }
                         val startX = x + (config.cwPx - (logoW + 6f + numLayout.size.width)) / 2
 
                         if (c < logoPainters.size) {
@@ -585,12 +592,17 @@ class EpgDrawer(
                                 6f + (logoH - numLayout.size.height) / 2
                             )
                         )
-                        val nameLayout = textMeasurer.measure(
-                            wrapper.channel.name,
-                            config.styleChName,
-                            overflow = TextOverflow.Ellipsis,
-                            constraints = Constraints(maxWidth = (config.cwPx - 16f).toInt())
-                        )
+                        val nameMaxWidth = (config.cwPx - 16f).toInt()
+                        val nameLayout = state.textLayoutCache.getOrPut(
+                            "header:name:${wrapper.channel.id}:$nameMaxWidth:${wrapper.channel.name}"
+                        ) {
+                            textMeasurer.measure(
+                                wrapper.channel.name,
+                                config.styleChName,
+                                overflow = TextOverflow.Ellipsis,
+                                constraints = Constraints(maxWidth = nameMaxWidth)
+                            )
+                        }
                         drawText(
                             nameLayout,
                             topLeft = Offset(
@@ -622,29 +634,31 @@ class EpgDrawer(
                 7 -> Color(0xFFFF5252); 6 -> Color(0xFF448AFF); else -> config.colorTextPrimary
             }
 
-            val dateLayout = textMeasurer.measure(
-                text = AnnotatedString(
-                    text = "$dateStr\n$dayStr",
-                    spanStyles = listOf(
-                        AnnotatedString.Range(
-                            SpanStyle(
-                                color = config.colorTextPrimary,
-                                fontSize = 11.sp
-                            ), 0, dateStr.length
-                        ),
-                        AnnotatedString.Range(
-                            SpanStyle(color = dayColor, fontSize = 11.sp),
-                            dateStr.length + 1,
-                            dateStr.length + 1 + dayStr.length
+            val dateLayout = state.textLayoutCache.getOrPut("date:$dateStr:$dayStr") {
+                textMeasurer.measure(
+                    text = AnnotatedString(
+                        text = "$dateStr\n$dayStr",
+                        spanStyles = listOf(
+                            AnnotatedString.Range(
+                                SpanStyle(
+                                    color = config.colorTextPrimary,
+                                    fontSize = 11.sp
+                                ), 0, dateStr.length
+                            ),
+                            AnnotatedString.Range(
+                                SpanStyle(color = dayColor, fontSize = 11.sp),
+                                dateStr.length + 1,
+                                dateStr.length + 1 + dayStr.length
+                            )
                         )
-                    )
-                ),
-                style = config.styleDateLabel.copy(
-                    textAlign = TextAlign.Center,
-                    lineHeight = 14.sp
-                ),
-                constraints = Constraints(maxWidth = config.twPx.toInt())
-            )
+                    ),
+                    style = config.styleDateLabel.copy(
+                        textAlign = TextAlign.Center,
+                        lineHeight = 14.sp
+                    ),
+                    constraints = Constraints(maxWidth = config.twPx.toInt())
+                )
+            }
             drawText(
                 dateLayout,
                 topLeft = Offset(
