@@ -16,6 +16,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -31,18 +33,29 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import coil.compose.AsyncImage
+import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 @Composable
 fun VideoTopSubMenuUI(
+    currentProgram: RecordedProgram,
+    seriesPrograms: List<RecordedProgram>,
+    quickPrograms: List<RecordedProgram>,
+    backendType: String,
+    konomiIp: String,
+    konomiPort: String,
     currentAudioMode: AudioMode,
     currentSpeed: Float,
     isSubtitleEnabled: Boolean,
@@ -59,6 +72,8 @@ fun VideoTopSubMenuUI(
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
+    onVideoSelect: (RecordedProgram) -> Unit,
+    onCloseMenu: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ (既存に影響しないようデフォルトは true)
     isAudioSupported: Boolean = true,
     isQualitySupported: Boolean = true,
@@ -68,8 +83,10 @@ fun VideoTopSubMenuUI(
 ) {
     val colors = KomorebiTheme.colors
     var selectedCategory by remember { mutableStateOf<SubMenuCategory?>(null) }
+    val quickVideoButtonRequester = remember { FocusRequester() }
     val qualityButtonRequester = remember { FocusRequester() }
     val qualityListRequester = remember { FocusRequester() }
+    val quickVideoListRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         delay(50)
@@ -80,10 +97,14 @@ fun VideoTopSubMenuUI(
     }
 
     LaunchedEffect(selectedCategory) {
-        if (selectedCategory == SubMenuCategory.QUALITY) {
+        if (selectedCategory == SubMenuCategory.QUALITY || selectedCategory == SubMenuCategory.QUICK_VIDEOS) {
             delay(100)
             try {
-                qualityListRequester.requestFocus()
+                if (selectedCategory == SubMenuCategory.QUALITY) {
+                    qualityListRequester.requestFocus()
+                } else {
+                    quickVideoListRequester.requestFocus()
+                }
             } catch (e: Exception) {
             }
         }
@@ -105,9 +126,11 @@ fun VideoTopSubMenuUI(
                             keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE)
                 ) {
                     if (selectedCategory != null) {
+                        val targetRequester =
+                            if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) quickVideoButtonRequester else qualityButtonRequester
                         selectedCategory = null
                         try {
-                            qualityButtonRequester.requestFocus()
+                            targetRequester.requestFocus()
                         } catch (e: Exception) {
                         }
                         true
@@ -126,6 +149,23 @@ fun VideoTopSubMenuUI(
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 32.dp, vertical = 8.dp)
             ) {
+                VideoMenuTileItem(
+                    title = "クイック選局",
+                    icon = Icons.Default.Tv,
+                    subtitle = "シリーズ / 録画",
+                    onClick = {
+                        selectedCategory =
+                            if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) null else SubMenuCategory.QUICK_VIDEOS
+                    },
+                    modifier = Modifier
+                        .focusRequester(quickVideoButtonRequester)
+                        .focusProperties {
+                            if (selectedCategory != SubMenuCategory.QUICK_VIDEOS) down =
+                                FocusRequester.Cancel
+                        },
+                    contentColor = colors.textPrimary,
+                    enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty()
+                )
                 VideoMenuTileItem(
                     title = "音声切替",
                     icon = Icons.Default.Audiotrack,
@@ -206,6 +246,28 @@ fun VideoTopSubMenuUI(
             }
 
             AnimatedVisibility(
+                visible = selectedCategory == SubMenuCategory.QUICK_VIDEOS,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                QuickVideoPanel(
+                    currentProgram = currentProgram,
+                    seriesPrograms = seriesPrograms,
+                    quickPrograms = quickPrograms,
+                    backendType = backendType,
+                    konomiIp = konomiIp,
+                    konomiPort = konomiPort,
+                    focusRequester = quickVideoListRequester,
+                    upRequester = quickVideoButtonRequester,
+                    onVideoSelect = {
+                        onVideoSelect(it)
+                        selectedCategory = null
+                        onCloseMenu()
+                    }
+                )
+            }
+
+            AnimatedVisibility(
                 visible = selectedCategory == SubMenuCategory.QUALITY,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
@@ -259,6 +321,197 @@ fun VideoTopSubMenuUI(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickVideoPanel(
+    currentProgram: RecordedProgram,
+    seriesPrograms: List<RecordedProgram>,
+    quickPrograms: List<RecordedProgram>,
+    backendType: String,
+    konomiIp: String,
+    konomiPort: String,
+    focusRequester: FocusRequester,
+    upRequester: FocusRequester,
+    onVideoSelect: (RecordedProgram) -> Unit
+) {
+    val colors = KomorebiTheme.colors
+    val recentFocusRequester = remember { FocusRequester() }
+    val initialSeriesFocusRequester = if (seriesPrograms.isEmpty()) recentFocusRequester else focusRequester
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(16.dp))
+        Box(
+            modifier = Modifier
+                .width(480.dp)
+                .height(2.dp)
+                .background(colors.textPrimary.copy(alpha = 0.2f))
+        )
+        Spacer(Modifier.height(16.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            QuickVideoSection(
+                title = "シリーズ",
+                programs = seriesPrograms,
+                currentProgramId = currentProgram.id,
+                backendType = backendType,
+                konomiIp = konomiIp,
+                konomiPort = konomiPort,
+                focusRequester = initialSeriesFocusRequester,
+                upRequester = upRequester,
+                downRequester = if (quickPrograms.isNotEmpty()) recentFocusRequester else null,
+                onVideoSelect = onVideoSelect
+            )
+            QuickVideoSection(
+                title = "最近の録画",
+                programs = quickPrograms,
+                currentProgramId = currentProgram.id,
+                backendType = backendType,
+                konomiIp = konomiIp,
+                konomiPort = konomiPort,
+                focusRequester = recentFocusRequester,
+                upRequester = if (seriesPrograms.isNotEmpty()) initialSeriesFocusRequester else upRequester,
+                downRequester = null,
+                onVideoSelect = onVideoSelect
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickVideoSection(
+    title: String,
+    programs: List<RecordedProgram>,
+    currentProgramId: Int,
+    backendType: String,
+    konomiIp: String,
+    konomiPort: String,
+    focusRequester: FocusRequester?,
+    upRequester: FocusRequester,
+    downRequester: FocusRequester?,
+    onVideoSelect: (RecordedProgram) -> Unit
+) {
+    val colors = KomorebiTheme.colors
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
+
+        if (programs.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(112.dp)
+                    .background(colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("該当録画なし", color = colors.textSecondary)
+            }
+        } else {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(programs, key = { it.id }) { program ->
+                    val isSelected = program.id == currentProgramId
+                    val requesterModifier =
+                        if ((isSelected || program == programs.first()) && focusRequester != null) {
+                            Modifier.focusRequester(focusRequester)
+                        } else {
+                            Modifier
+                        }
+                    QuickVideoCard(
+                        program = program,
+                        isSelected = isSelected,
+                        backendType = backendType,
+                        konomiIp = konomiIp,
+                        konomiPort = konomiPort,
+                        onClick = { onVideoSelect(program) },
+                        modifier = requesterModifier.focusProperties {
+                            up = upRequester
+                            down = downRequester ?: FocusRequester.Cancel
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun QuickVideoCard(
+    program: RecordedProgram,
+    isSelected: Boolean,
+    backendType: String,
+    konomiIp: String,
+    konomiPort: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+    val thumbnailUrl = program.directThumbnailUrl ?: program.apiThumbnailUrl
+    ?: UrlBuilder.getThumbnailUrl(backendType, konomiIp, konomiPort, program.id.toString())
+
+    Surface(
+        onClick = onClick,
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isSelected) colors.surface else colors.surface.copy(alpha = 0.7f),
+            focusedContainerColor = colors.textPrimary,
+            contentColor = colors.textPrimary,
+            focusedContentColor = if (colors.isDark) Color.Black else Color.White
+        ),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
+        modifier = modifier.size(width = 240.dp, height = 112.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 86.dp, height = 52.dp)
+                    .background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f)) {
+                Text(
+                    text = program.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = program.seriesName?.takeIf { it.isNotBlank() }
+                        ?: program.channel?.name
+                        ?: "",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = LocalContentColor.current.copy(alpha = 0.7f)
+                )
             }
         }
     }

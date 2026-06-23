@@ -18,7 +18,7 @@ class BaselineProfileGenerator {
     fun generate() {
         // ★修正: 引数から取得。取得できない場合はデフォルト値を試行
         val targetAppId = InstrumentationRegistry.getArguments().getString("targetAppId")
-            ?: "com.beeregg2001.komorebi"
+            ?: "com.beeregg2001.Honorebi"
 
         baselineProfileRule.collect(
             packageName = targetAppId
@@ -26,11 +26,20 @@ class BaselineProfileGenerator {
             pressHome()
             startActivityAndWait()
 
-            // TV操作のシミュレーション
+            // Default tab is Video. Cover the real TV path: Video -> Home -> Live/Video/EPG.
             device.waitForIdle()
-            repeat(3) {
-                device.pressDPadDown()
-                Thread.sleep(500)
+            Thread.sleep(2000)
+
+            repeat(2) {
+                device.pressDPadLeft()
+                device.waitForIdle()
+                Thread.sleep(700)
+            }
+
+            repeat(4) {
+                device.pressDPadRight()
+                device.waitForIdle()
+                Thread.sleep(1200)
             }
         }
     }

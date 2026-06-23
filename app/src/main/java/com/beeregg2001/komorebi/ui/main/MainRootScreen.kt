@@ -659,6 +659,17 @@ fun MainRootScreen(
                                     onSubMenuToggle = { state.isPlayerSubMenuOpen = it },
                                     isSceneSearchOpen = state.isPlayerSceneSearchOpen,
                                     onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
+                                    recentRecordings = recentRecordings,
+                                    onProgramSelect = { program ->
+                                        state.initialPlaybackPositionMs = 0L
+                                        state.selectedProgram = program
+                                        state.lastSelectedProgramId = program.id.toString()
+                                        state.lastPlayedRecordingId = program.id
+                                        state.isPlayerSubMenuOpen = false
+                                        state.isPlayerSceneSearchOpen = false
+                                        state.showPlayerControls = true
+                                        state.isReturningFromPlayer = false
+                                    },
                                     onBackPressed = {
                                         state.selectedProgram = null
                                         state.isReturningFromPlayer = true

@@ -759,6 +759,12 @@ fun SmbVlcPlayerScreen(
                     enter = slideInVertically { -it } + fadeIn(),
                     exit = slideOutVertically { -it } + fadeOut()) {
                     VideoTopSubMenuUI(
+                        currentProgram = program,
+                        seriesPrograms = emptyList(),
+                        quickPrograms = emptyList(),
+                        backendType = "",
+                        konomiIp = "",
+                        konomiPort = "",
                         currentAudioMode = vs.currentAudioMode,
                         currentSpeed = vs.currentSpeed,
                         isSubtitleEnabled = vs.isSubtitleEnabled,
@@ -815,7 +821,9 @@ fun SmbVlcPlayerScreen(
                         onAutoCmSkipToggle = {
                             vs.isAutoCmSkipEnabled = !vs.isAutoCmSkipEnabled
                             onShowToast("自動CMスキップ: ${if (vs.isAutoCmSkipEnabled) "ON" else "OFF"}")
-                        }
+                        },
+                        onVideoSelect = { },
+                        onCloseMenu = { onSubMenuToggle(false) }
                     )
                 }
 

@@ -64,6 +64,8 @@ fun VideoPlayerScreen(
     onSubMenuToggle: (Boolean) -> Unit,
     isSceneSearchOpen: Boolean,
     onSceneSearchToggle: (Boolean) -> Unit,
+    recentRecordings: List<RecordedProgram> = emptyList(),
+    onProgramSelect: (RecordedProgram) -> Unit = {},
     onBackPressed: () -> Unit,
     onShowToast: (String) -> Unit,
     isPiPMode: Boolean = false,
@@ -227,6 +229,8 @@ fun VideoPlayerScreen(
     }
 
     val backendType by settingsViewModel.backendType.collectAsState()
+    val konomiIp by settingsViewModel.konomiIp.collectAsState(initial = "")
+    val konomiPort by settingsViewModel.konomiPort.collectAsState(initial = "")
     val edcbPlayMethod by settingsViewModel.edcbRecordPlayMethod.collectAsState()
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
 
@@ -462,6 +466,24 @@ fun VideoPlayerScreen(
     val safeHouseFocusRequester = remember { FocusRequester() }
     val sceneSearchFocusRequester = remember { FocusRequester() }
     var isLongPressHandled by remember { mutableStateOf(false) }
+    val seriesQuickPrograms = remember(currentProgram.id, currentProgram.seriesName, recentRecordings) {
+        val seriesName = currentProgram.seriesName?.trim().orEmpty()
+        if (seriesName.isBlank()) {
+            emptyList()
+        } else {
+            recentRecordings
+                .filter { it.seriesName?.trim() == seriesName }
+                .distinctBy { it.id }
+                .sortedBy { it.startTime }
+                .take(24)
+        }
+    }
+    val recentQuickPrograms = remember(currentProgram.id, recentRecordings) {
+        recentRecordings
+            .distinctBy { it.id }
+            .sortedByDescending { it.startTime }
+            .take(24)
+    }
 
     BackHandler(enabled = isPiPMode) {}
 
@@ -751,6 +773,12 @@ fun VideoPlayerScreen(
                 enter = slideInVertically { -it } + fadeIn(),
                 exit = slideOutVertically { -it } + fadeOut()) {
                 VideoTopSubMenuUI(
+                    currentProgram = currentProgram,
+                    seriesPrograms = seriesQuickPrograms,
+                    quickPrograms = recentQuickPrograms,
+                    backendType = backendType,
+                    konomiIp = konomiIp,
+                    konomiPort = konomiPort,
                     currentAudioMode = vs.currentAudioMode,
                     currentSpeed = vs.currentSpeed,
                     isSubtitleEnabled = vs.isSubtitleEnabled,
@@ -840,6 +868,12 @@ fun VideoPlayerScreen(
                             "自動CMスキップ: ${if (vs.isAutoCmSkipEnabled) "ON" else "OFF"}"
                         )
                     },
+                    onVideoSelect = {
+                        if (it.id != currentProgram.id) {
+                            onProgramSelect(it)
+                        }
+                    },
+                    onCloseMenu = { onSubMenuToggle(false) },
                 )
             }
 

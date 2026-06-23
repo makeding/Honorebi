@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
 import com.beeregg2001.komorebi.data.repository.LiveProvider
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
@@ -23,7 +24,8 @@ class ChannelViewModel @Inject constructor(
     private val liveProvider: LiveProvider,
     private val recordProvider: RecordProvider,
     private val watchHistoryRepository: WatchHistoryRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val channelLogoCache: ChannelLogoCache
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(true)
@@ -133,7 +135,7 @@ class ChannelViewModel @Inject constructor(
 
     private var isPollingPaused = false
 
-    private val logoCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    val channelLogoUrls: StateFlow<Map<String, String>> = channelLogoCache.channelLogoUrls
 
     init {
         startPolling()
@@ -352,10 +354,15 @@ class ChannelViewModel @Inject constructor(
         }
     }
 
-    suspend fun getChannelLogoUrl(channelId: String): String {
-        logoCache[channelId]?.let { return it }
-        return liveProvider.getChannelLogoUrl(channelId).also {
-            logoCache[channelId] = it
+    fun prefetchChannelLogoUrls(channels: Collection<Channel>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            channelLogoCache.prefetchChannelLogoUrls(channels)
         }
     }
+
+    suspend fun getChannelLogoUrl(channel: Channel): String =
+        channelLogoCache.getChannelLogoUrl(channel)
+
+    suspend fun getChannelLogoUrl(channelId: String): String =
+        channelLogoCache.getChannelLogoUrl(channelId)
 }

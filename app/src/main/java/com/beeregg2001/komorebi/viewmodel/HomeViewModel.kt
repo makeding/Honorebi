@@ -10,6 +10,7 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.local.entity.LastChannelEntity
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
 import com.beeregg2001.komorebi.data.repository.KonomiRepository
 import com.beeregg2001.komorebi.data.repository.EpgRepository
 import com.beeregg2001.komorebi.data.repository.LastChannelRepository
@@ -48,6 +49,7 @@ class HomeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val lastChannelRepository: LastChannelRepository,
     private val watchHistoryRepository: WatchHistoryRepository,
+    private val channelLogoCache: ChannelLogoCache,
     private val appUpdater: AppUpdater
 ) : ViewModel() {
 
@@ -261,7 +263,7 @@ class HomeViewModel @Inject constructor(
                 start.isAfter(targetDateStart) && start.isBefore(targetDateEnd)
             }.map { (prog, channel) ->
 
-                val logoUrl = liveProvider.getChannelLogoUrl(channel.display_channel_id)
+                val logoUrl = channelLogoCache.getChannelLogoUrl(channel.display_channel_id)
 
                 BaseballGameInfo(
                     program = prog,

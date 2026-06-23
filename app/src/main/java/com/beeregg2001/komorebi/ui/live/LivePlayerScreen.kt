@@ -112,8 +112,12 @@ fun LivePlayerScreen(
 
     val availableSources by livePlayerViewModel.availableSources.collectAsState()
     val currentLogoUrl by livePlayerViewModel.currentLogoUrl.collectAsState()
+    val channelLogoUrls by channelViewModel.channelLogoUrls.collectAsState()
     val shouldCropLogo by livePlayerViewModel.shouldCropLogo.collectAsState()
     val mainBackendType by livePlayerViewModel.mainBackendType.collectAsState()
+    val sharedCurrentLogoUrl = remember(channelLogoUrls, currentChannelItem, currentLogoUrl) {
+        channelLogoUrls.logoUrlFor(currentChannelItem).ifBlank { currentLogoUrl }
+    }
 
     val commentSpeedStr by settingsViewModel.commentSpeed.collectAsState()
     val commentFontSizeStr by settingsViewModel.commentFontSize.collectAsState()
@@ -494,6 +498,16 @@ fun LivePlayerScreen(
         }
     }
 
+    LaunchedEffect(currentChannelItem.id, currentChannelItem.displayChannelId) {
+        channelViewModel.prefetchChannelLogoUrls(listOf(currentChannelItem))
+    }
+
+    LaunchedEffect(isMiniListOpen, isSubMenuOpen, displayFlatChannels) {
+        if ((isMiniListOpen || isSubMenuOpen) && displayFlatChannels.isNotEmpty()) {
+            channelViewModel.prefetchChannelLogoUrls(displayFlatChannels)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -697,7 +711,7 @@ fun LivePlayerScreen(
         androidx.compose.animation.AnimatedVisibility(visible = !isPiPMode && !ps.isDualDisplayMode && isPinnedOverlay && ps.playerError == null) {
             StatusOverlay(
                 channel = currentChannelItem,
-                logoUrl = currentLogoUrl,
+                logoUrl = sharedCurrentLogoUrl,
                 shouldCropLogo = shouldCropLogo,
                 timeFormatSetting = timeFormat
             )
@@ -712,7 +726,7 @@ fun LivePlayerScreen(
                 channel = currentChannelItem,
                 programTitle = currentChannelItem.programPresent?.title
                     ?: AppStrings.PROGRAM_INFO_NONE,
-                logoUrl = currentLogoUrl,
+                logoUrl = sharedCurrentLogoUrl,
                 shouldCropLogo = shouldCropLogo,
                 showDesc = isManualOverlay,
                 isRecording = isRecording,
@@ -742,7 +756,7 @@ fun LivePlayerScreen(
                 )
                 }
                 },
-                getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
+                logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,
                 focusRequester = listFocusRequester
             )
@@ -827,7 +841,7 @@ fun LivePlayerScreen(
                 },
                 availableQualities = availableQualities,
                 focusRequester = subMenuFocusRequester,
-                getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
+                logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,
                 onSourceSelect = { source, isDirect ->
                     ps.currentStreamSource = source

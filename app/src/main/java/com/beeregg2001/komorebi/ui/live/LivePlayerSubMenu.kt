@@ -63,7 +63,7 @@ fun LiveTopSubMenuUI(
     onRecordToggle: () -> Unit,
     onSignalInfoToggle: () -> Unit,
     focusRequester: FocusRequester,
-    getLogoUrl: suspend (String) -> String,
+    logoUrls: Map<String, String>,
     shouldCropLogo: Boolean,
     onSourceSelect: (StreamSource, Boolean) -> Unit,
     onAudioToggle: () -> Unit,
@@ -367,7 +367,7 @@ fun LiveTopSubMenuUI(
                         selectedCategory = null
                         onCloseMenu()
                     },
-                    getLogoUrl = getLogoUrl,
+                    logoUrls = logoUrls,
                     shouldCropLogo = shouldCropLogo,
                     focusRequester = listFocusRequester,
                     upRequester = quickChannelButtonRequester
@@ -567,7 +567,7 @@ private fun QuickChannelPanel(
     animeChannels: List<Channel>,
     currentChannelId: String,
     onChannelSelect: (Channel) -> Unit,
-    getLogoUrl: suspend (String) -> String,
+    logoUrls: Map<String, String>,
     shouldCropLogo: Boolean,
     focusRequester: FocusRequester,
     upRequester: FocusRequester
@@ -597,7 +597,7 @@ private fun QuickChannelPanel(
                 channels = grChannels,
                 currentChannelId = currentChannelId,
                 onChannelSelect = onChannelSelect,
-                getLogoUrl = getLogoUrl,
+                logoUrls = logoUrls,
                 shouldCropLogo = shouldCropLogo,
                 focusRequester = focusRequester,
                 upRequester = upRequester,
@@ -609,7 +609,7 @@ private fun QuickChannelPanel(
                 channels = animeChannels,
                 currentChannelId = currentChannelId,
                 onChannelSelect = onChannelSelect,
-                getLogoUrl = getLogoUrl,
+                logoUrls = logoUrls,
                 shouldCropLogo = shouldCropLogo,
                 focusRequester = animeInitialFocusRequester,
                 upRequester = if (grChannels.isNotEmpty()) focusRequester else upRequester,
@@ -626,7 +626,7 @@ private fun QuickChannelSection(
     channels: List<Channel>,
     currentChannelId: String,
     onChannelSelect: (Channel) -> Unit,
-    getLogoUrl: suspend (String) -> String,
+    logoUrls: Map<String, String>,
     shouldCropLogo: Boolean,
     focusRequester: FocusRequester?,
     upRequester: FocusRequester,
@@ -679,7 +679,7 @@ private fun QuickChannelSection(
                     ChannelCardItem(
                         channel = channel,
                         isSelected = isSelected,
-                        getLogoUrl = getLogoUrl,
+                        logoUrl = logoUrls.logoUrlFor(channel),
                         shouldCropLogo = shouldCropLogo,
                         onClick = { onChannelSelect(channel) },
                         modifier = requesterModifier.focusProperties {

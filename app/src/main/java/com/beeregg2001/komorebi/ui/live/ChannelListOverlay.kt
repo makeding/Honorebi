@@ -45,7 +45,7 @@ fun ChannelListOverlay(
     groupedChannels: Map<String, List<Channel>>,
     currentChannelId: String,
     onChannelSelect: (Channel) -> Unit,
-    getLogoUrl: suspend (String) -> String,
+    logoUrls: Map<String, String>,
     shouldCropLogo: Boolean, // ★ 追加: クロップフラグ
     focusRequester: FocusRequester
 ) {
@@ -175,7 +175,7 @@ fun ChannelListOverlay(
                 ChannelCardItem(
                     channel = channel,
                     isSelected = isSelected,
-                    getLogoUrl = getLogoUrl,
+                    logoUrl = logoUrls.logoUrlFor(channel),
                     shouldCropLogo = shouldCropLogo, // ★ 修正: クロップフラグを渡す
                     onClick = { onChannelSelect(channel) },
                     modifier = Modifier
@@ -196,7 +196,7 @@ fun ChannelListOverlay(
 fun ChannelCardItem(
     channel: Channel,
     isSelected: Boolean,
-    getLogoUrl: suspend (String) -> String,
+    logoUrl: String,
     shouldCropLogo: Boolean, // ★ 追加: クロップフラグ
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -225,11 +225,6 @@ fun ChannelCardItem(
 
     val borderWidth = if (isFocused) 3.dp else 0.dp
     val borderColor = if (isFocused) colors.accent else Color.Transparent
-
-    var logoUrl by remember(channel.id) { mutableStateOf<String>("") }
-    LaunchedEffect(channel.id) {
-        logoUrl = getLogoUrl(channel.id)
-    }
 
     Box(
         modifier = modifier
@@ -313,3 +308,7 @@ fun ChannelCardItem(
         }
     }
 }
+
+fun Map<String, String>.logoUrlFor(channel: Channel): String =
+    this[channel.id].takeUnless { it.isNullOrBlank() }
+        ?: this[channel.displayChannelId].orEmpty()
