@@ -5,8 +5,6 @@ package com.beeregg2001.komorebi.ui.live
 import android.os.Build
 import android.util.Log
 import android.view.KeyEvent as NativeKeyEvent
-import android.view.ViewGroup
-import android.webkit.*
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
@@ -44,6 +42,8 @@ import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
+import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -154,9 +154,14 @@ fun LivePlayerScreen(
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") || Build.PRODUCT == "google_sdk" }
 
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
-
-    val webViewRef = remember { mutableStateOf<WebView?>(null) }
-    val dualWebViewRef = remember { mutableStateOf<WebView?>(null) }
+    val mainCaptionCue = rememberNativeCaptionCue(
+        events = livePlayerViewModel.mainSubtitleEvents,
+        enabled = isSubtitleEnabled
+    )
+    val dualCaptionCue = rememberNativeCaptionCue(
+        events = livePlayerViewModel.dualSubtitleEvents,
+        enabled = isSubtitleEnabled
+    )
 
     val mainFocusRequester = remember { FocusRequester() }
     val listFocusRequester = remember { FocusRequester() }
@@ -366,15 +371,6 @@ fun LivePlayerScreen(
         livePlayerViewModel.setVolumes(mainVol, dualVol)
     }
 
-    LaunchedEffect(Unit) {
-        livePlayerViewModel.subtitleEvents.collect { (pts, base64) ->
-            webViewRef.value?.evaluateJavascript(
-                "if(window.receiveSubtitleData){ window.receiveSubtitleData($pts, '$base64'); }",
-                null
-            )
-        }
-    }
-
     LaunchedEffect(isSubtitleEnabled) {
         livePlayerViewModel.setSubtitlesEnabled(isSubtitleEnabled)
     }
@@ -539,12 +535,12 @@ fun LivePlayerScreen(
                 mainVideoWidth = videoWidth,
                 mainVideoHeight = videoHeight,
                 mainPixelRatio = pixelWidthHeightRatio,
-                mainWebViewRef = webViewRef,
+                mainCaptionCue = mainCaptionCue.value,
                 dualPlayer = dualPlayer,
                 dualVideoWidth = dualVideoWidth,
                 dualVideoHeight = dualVideoHeight,
                 dualPixelRatio = dualPixelWidthHeightRatio,
-                dualWebViewRef = dualWebViewRef,
+                dualCaptionCue = dualCaptionCue.value,
                 isSubtitleEnabled = isSubtitleEnabled
             )
         } else {
@@ -601,26 +597,9 @@ fun LivePlayerScreen(
 
             if (!isPiPMode) {
                 if (isHeavyUiReady) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                layoutParams = ViewGroup.LayoutParams(-1, -1)
-                                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                settings.apply {
-                                    javaScriptEnabled = true; domStorageEnabled = true
-                                }
-                                loadUrl("file:///android_asset/subtitle_renderer.html")
-                                webViewRef.value = this
-                            }
-                        },
-                        update = { view ->
-                            view.visibility =
-                                if (isSubtitleEnabled && !isUiVisible) android.view.View.VISIBLE else android.view.View.INVISIBLE
-                        },
-                        onRelease = { view ->
-                            view.destroy()
-                            webViewRef.value = null
-                        },
+                    NativeCaptionOverlay(
+                        cue = mainCaptionCue.value,
+                        visible = isSubtitleEnabled && !isUiVisible,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

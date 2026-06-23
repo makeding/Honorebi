@@ -6,7 +6,6 @@ import android.os.Build
 import android.util.Log
 import android.view.SurfaceView
 import android.view.ViewGroup
-import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -38,9 +37,13 @@ import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
+import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -159,7 +162,8 @@ fun VideoPlayerScreen(
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
     val currentSessionId = remember(vs.currentQuality) { UUID.randomUUID().toString() }
-    val webViewRef = remember { mutableStateOf<WebView?>(null) }
+    val subtitleEvents = remember { MutableSharedFlow<NativeCaptionCue>(extraBufferCapacity = 10) }
+    val subtitleCue = rememberNativeCaptionCue(subtitleEvents, vs.isSubtitleEnabled)
 
     val mainFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }
@@ -201,7 +205,7 @@ fun VideoPlayerScreen(
         vs = vs,
         isLiveStream = isLiveStream,
         scope = scope,
-        webViewRef = webViewRef,
+        onSubtitleCue = { subtitleEvents.tryEmit(it) },
         onVideoSizeChanged = { w, h, ratio ->
             videoWidth = w
             videoHeight = h
@@ -550,26 +554,9 @@ fun VideoPlayerScreen(
             }
             val subtitleLayer = @Composable {
                 if (isHeavyUiReady) {
-                    AndroidView(
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                layoutParams = ViewGroup.LayoutParams(-1, -1)
-                                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                                settings.apply {
-                                    javaScriptEnabled = true; domStorageEnabled = true
-                                }
-                                loadUrl("file:///android_asset/subtitle_renderer.html")
-                                webViewRef.value = this
-                            }
-                        },
-                        update = { view ->
-                            val targetAlpha =
-                                if (vs.isSubtitleEnabled && !isSubOverlayOpen) 1f else 0f
-                            if (view.alpha != targetAlpha) {
-                                view.alpha = targetAlpha
-                            }
-                        },
-                        onRelease = { view -> view.destroy(); webViewRef.value = null },
+                    NativeCaptionOverlay(
+                        cue = subtitleCue.value,
+                        visible = vs.isSubtitleEnabled && !isSubOverlayOpen,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

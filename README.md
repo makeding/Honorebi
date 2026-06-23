@@ -217,7 +217,7 @@ bash "${MODULE_PATH}/jni/build_ffmpeg.sh" \
 本アプリの開発にあたり、以下の素晴らしいプロジェクトと成果物を活用させていただいております。
 
 * **[tsreadex](https://github.com/xtne6f/tsreadex)**: TS ストリーム解析および読み込み処理の基盤。
-* **[aribb24.js](https://github.com/monyone/aribb24.js)**: 高精度な字幕描画ロジックの提供。
+* **[libaribcaption](https://github.com/xqq/libaribcaption)**: ARIB STD-B24 字幕デコード処理の提供。
 * **[KonomiTV](https://github.com/tsukumijima/KonomiTV)**: 強力な API バックエンドおよび配信プラットフォーム。
 * **[Mirakurun](https://github.com/Chinachu/Mirakurun)**: チューナー管理および配信 API。
 * **[DanmakuFlameMaster](https://github.com/bilibili/DanmakuFlameMaster)**: ニコニコ実況およびNX-Jikkyoのコメント表示。

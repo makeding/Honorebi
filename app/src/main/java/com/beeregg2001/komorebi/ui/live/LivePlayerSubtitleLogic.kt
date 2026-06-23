@@ -2,7 +2,6 @@
 
 package com.beeregg2001.komorebi.ui.live
 
-import android.util.Base64
 import android.util.SparseArray
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.TimestampAdjuster
@@ -14,11 +13,11 @@ import com.beeregg2001.komorebi.data.model.LivePlayerConstants
 import java.io.ByteArrayOutputStream
 
 /**
- * 字幕データを抽出し、UI層（WebView等）へコールバックでデータを渡す PayloadReader
+ * 字幕データを抽出し、native デコーダーへ渡す PayloadReader
  */
 @UnstableApi
 class DirectSubtitlePayloadReader(
-    private val onSubtitleDataReceived: (Long, String) -> Unit, // ★ WebViewの代わりにコールバック関数を受取
+    private val onSubtitleDataReceived: (Long, ByteArray) -> Unit,
     private val isSubtitleEnabled: () -> Boolean                // ★ 状態確認も関数で受取
 ) : TsPayloadReader {
     private var timestampAdjuster: TimestampAdjuster? = null
@@ -83,12 +82,10 @@ class DirectSubtitlePayloadReader(
                                 privateDataStart,
                                 privateDataStart + privateDataLength
                             )
-                            // ★ 抽出したデータをUI層へコールバックで通知
-                            val base64Data = Base64.encodeToString(privateData, Base64.NO_WRAP)
                             val currentPtsMs = ((timestampAdjuster?.lastAdjustedTimestampUs
                                 ?: 0L) / 1000) + LivePlayerConstants.SUBTITLE_SYNC_OFFSET_MS
 
-                            onSubtitleDataReceived(currentPtsMs, base64Data)
+                            onSubtitleDataReceived(currentPtsMs, privateData)
                         }
                     }
                 }
@@ -103,7 +100,7 @@ class DirectSubtitlePayloadReader(
 
 @UnstableApi
 class DirectSubtitlePayloadReaderFactory(
-    private val onSubtitleDataReceived: (Long, String) -> Unit,
+    private val onSubtitleDataReceived: (Long, ByteArray) -> Unit,
     private val isSubtitleEnabled: () -> Boolean
 ) : TsPayloadReader.Factory {
     private val defaultFactory = DefaultTsPayloadReaderFactory(

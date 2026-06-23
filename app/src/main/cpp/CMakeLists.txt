@@ -23,10 +23,12 @@ add_library(
 
 # 3. ログ出力用のライブラリをリンク（Android の Logcat 用）
 find_library(log-lib log)
+find_library(dl-lib dl)
 
 target_link_libraries(
     komorebi-native
     ${log-lib}
+    ${dl-lib}
 )
 
 # インクルードディレクトリの設定（カレントディレクトリを参照）
