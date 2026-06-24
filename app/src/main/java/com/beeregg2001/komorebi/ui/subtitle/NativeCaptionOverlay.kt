@@ -15,6 +15,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 
 private const val MAX_AUTO_HIDE_DURATION_MS = 60_000L
+private const val INDEFINITE_AUTO_HIDE_DURATION_MS = 5_000L
+private const val UNKNOWN_AUTO_HIDE_DURATION_MS = 5_000L
 
 @Composable
 fun rememberNativeCaptionCue(
@@ -37,11 +39,14 @@ fun rememberNativeCaptionCue(
     }
     LaunchedEffect(cueState.value, enabled) {
         val cue = cueState.value ?: return@LaunchedEffect
-        val duration = cue.durationMs
-        if (enabled && duration in 1..MAX_AUTO_HIDE_DURATION_MS) {
-            delay(duration)
-            if (cueState.value === cue) cueState.value = null
+        if (!enabled) return@LaunchedEffect
+        val duration = when (cue.durationMs) {
+            -1L -> INDEFINITE_AUTO_HIDE_DURATION_MS
+            in 1..MAX_AUTO_HIDE_DURATION_MS -> cue.durationMs
+            else -> UNKNOWN_AUTO_HIDE_DURATION_MS
         }
+        delay(duration)
+        if (cueState.value === cue) cueState.value = null
     }
     return cueState
 }
