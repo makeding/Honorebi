@@ -150,9 +150,18 @@ class VideoPlayerState {
 
         // UI非表示時の安全装置
         if (!showControls) {
+            if (keyCode == NativeKeyEvent.KEYCODE_DPAD_CENTER || keyCode == NativeKeyEvent.KEYCODE_ENTER) {
+                if (isActionDown) {
+                    return true
+                } else if (isActionUp) {
+                    onShowControlsChange(true)
+                    togglePlayPause(exoPlayerIsPlaying)
+                    if (exoPlayerIsPlaying) onPause() else onPlay()
+                    return true
+                }
+            }
+
             if (keyCode in listOf(
-                    NativeKeyEvent.KEYCODE_DPAD_CENTER,
-                    NativeKeyEvent.KEYCODE_ENTER,
                     NativeKeyEvent.KEYCODE_DPAD_UP,
                     NativeKeyEvent.KEYCODE_DPAD_DOWN
                 )
