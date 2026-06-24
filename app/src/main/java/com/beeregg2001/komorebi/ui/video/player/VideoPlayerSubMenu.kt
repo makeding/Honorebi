@@ -46,6 +46,7 @@ import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 @Composable
@@ -499,7 +500,7 @@ private fun QuickVideoCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
-                model = thumbnailUrl,
+                model = program.recordedThumbnailModel(thumbnailUrl),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

@@ -28,6 +28,8 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -78,12 +80,14 @@ fun RecordListItem(
     val context = LocalContext.current
 
     val imageRequest = remember(currentThumbnailUrl) {
+        val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
         ImageRequest.Builder(context)
-            .data(currentThumbnailUrl)
+            .data(program.recordedThumbnailModel(currentThumbnailUrl))
             .size(180, 100)
-            .memoryCacheKey(currentThumbnailUrl)
-            .diskCacheKey(currentThumbnailUrl)
+            .memoryCacheKey(thumbnailCacheKey)
+            .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
     }
 

@@ -37,6 +37,8 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
@@ -91,12 +93,14 @@ fun VideoRecentRecordCard(
 
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl) {
+        val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
         ImageRequest.Builder(context)
-            .data(currentThumbnailUrl)
+            .data(program.recordedThumbnailModel(currentThumbnailUrl))
             .crossfade(true)
-            .memoryCacheKey(currentThumbnailUrl)
-            .diskCacheKey(currentThumbnailUrl)
+            .memoryCacheKey(thumbnailCacheKey)
+            .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
     }
 
@@ -258,12 +262,15 @@ fun VideoWatchHistoryCard(
 
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl) {
+        val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
+            ?: currentThumbnailUrl
         ImageRequest.Builder(context)
-            .data(currentThumbnailUrl)
+            .data(matchedProgram?.recordedThumbnailModel(currentThumbnailUrl) ?: currentThumbnailUrl)
             .crossfade(true)
-            .memoryCacheKey(currentThumbnailUrl)
-            .diskCacheKey(currentThumbnailUrl)
+            .memoryCacheKey(thumbnailCacheKey)
+            .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
     }
 

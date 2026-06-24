@@ -115,13 +115,15 @@ fun RecordedCard(
             if (!scrolling) {
                 val context = LocalContext.current
                 val imageRequest = remember(currentThumbnailUrl) {
+                    val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
                     ImageRequest.Builder(context)
-                        .data(currentThumbnailUrl)
+                        .data(program.recordedThumbnailModel(currentThumbnailUrl))
                         .size(coil.size.Size(300, 168))
                         .crossfade(true)
-                        .memoryCacheKey(currentThumbnailUrl)
-                        .diskCacheKey(currentThumbnailUrl)
+                        .memoryCacheKey(thumbnailCacheKey)
+                        .diskCacheKey(thumbnailCacheKey)
                         .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
                         .build()
                 }
 

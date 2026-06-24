@@ -117,6 +117,11 @@ fun VideoPlayerScreen(
             initialPositionMs
         }
     }
+    var playbackPositionMs by remember(currentProgram.id) {
+        mutableLongStateOf(effectiveInitialPositionMs.coerceAtLeast(0L))
+    }
+    var playbackDurationMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
+    var bufferedPositionMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
 
     val vs = rememberVideoPlayerState()
 
@@ -235,8 +240,44 @@ fun VideoPlayerScreen(
         }
     )
 
-    val getCurrentPositionMs: () -> Long = remember(vs, exoPlayer) {
-        { if (isLiveStream) vs.playbackOffsetMs + exoPlayer.currentPosition else exoPlayer.currentPosition }
+    val getCurrentPositionMs: () -> Long = {
+        val rawPosition = exoPlayer.currentPosition
+        if (rawPosition == C.TIME_UNSET) {
+            playbackPositionMs
+        } else if (isLiveStream && !isRecordingChasePlayback) {
+            vs.playbackOffsetMs + rawPosition
+        } else {
+            rawPosition
+        }.coerceAtLeast(0L)
+    }
+
+    LaunchedEffect(exoPlayer, currentProgram.id, isLiveStream, isRecordingChasePlayback) {
+        while (isActive) {
+            val currentPosition = getCurrentPositionMs()
+            if (vs.pendingSeekPositionMs == null) {
+                playbackPositionMs = currentPosition
+            }
+
+            val rawBufferedPosition = exoPlayer.bufferedPosition
+            bufferedPositionMs = if (rawBufferedPosition == C.TIME_UNSET) {
+                playbackPositionMs
+            } else if (isLiveStream && !isRecordingChasePlayback) {
+                vs.playbackOffsetMs + rawBufferedPosition
+            } else {
+                rawBufferedPosition
+            }.coerceAtLeast(playbackPositionMs)
+
+            val rawDuration = exoPlayer.duration
+            if (rawDuration != C.TIME_UNSET && rawDuration > 0L) {
+                playbackDurationMs = if (isLiveStream && !isRecordingChasePlayback) {
+                    vs.playbackOffsetMs + rawDuration
+                } else {
+                    rawDuration
+                }.coerceAtLeast(playbackDurationMs)
+            }
+
+            delay(250L)
+        }
     }
 
     val backendType by settingsViewModel.backendType.collectAsState()
@@ -247,8 +288,36 @@ fun VideoPlayerScreen(
 
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
+    val buildVideoMediaItem: (String) -> MediaItem = { url ->
+        val mediaItemBuilder = MediaItem.Builder().setUri(url)
+        if (url.contains("/api/streams/") || url.contains("/api/videos/") || url.contains("konomi.tv") || url.contains(
+                "m3u8"
+            )
+        ) {
+            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            if (isRecordingChasePlayback) {
+                mediaItemBuilder.setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder()
+                        .setMinPlaybackSpeed(1f)
+                        .setMaxPlaybackSpeed(1f)
+                        .build()
+                )
+            }
+        }
+        mediaItemBuilder.build()
+    }
+
     val totalDurationForControls =
-        if (smbItem != null) smbDurationMs.coerceAtLeast(0L) else (currentProgram.recordedVideo.duration * 1000).toLong()
+        if (smbItem != null) {
+            smbDurationMs.coerceAtLeast(0L)
+        } else {
+            maxOf(
+                (currentProgram.recordedVideo.duration * 1000).toLong(),
+                playbackDurationMs,
+                playbackPositionMs,
+                bufferedPositionMs
+            ).coerceAtLeast(0L)
+        }
 
     val performSeek: (Long) -> Unit = { targetMs: Long ->
         val safeTarget = targetMs.coerceIn(
@@ -277,14 +346,7 @@ fun VideoPlayerScreen(
                     isRecordingChasePlayback
                 )
                 if (newUrl.isNotEmpty()) {
-                    val mediaItemBuilder = MediaItem.Builder().setUri(newUrl)
-                    if (newUrl.contains("/api/streams/") || newUrl.contains("/api/videos/") || newUrl.contains(
-                            "konomi.tv"
-                        ) || newUrl.contains("m3u8")
-                    ) {
-                        mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-                    }
-                    exoPlayer.setMediaItem(mediaItemBuilder.build())
+                    exoPlayer.setMediaItem(buildVideoMediaItem(newUrl))
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
                 } else {
@@ -387,15 +449,7 @@ fun VideoPlayerScreen(
         )
 
         if (url.isNotEmpty()) {
-            val mediaItemBuilder = MediaItem.Builder().setUri(url)
-            if (url.contains("/api/streams/") || url.contains("/api/videos/") || url.contains("konomi.tv") || url.contains(
-                    "m3u8"
-                )
-            ) {
-                mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            }
-            val mediaItem = mediaItemBuilder.build()
-            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.setMediaItem(buildVideoMediaItem(url))
             if (isFirstLoad && effectiveInitialPositionMs > 0 && !isLiveStream) {
                 exoPlayer.seekTo(effectiveInitialPositionMs)
             }
@@ -610,7 +664,6 @@ fun VideoPlayerScreen(
             )
 
             PlayerControls(
-                exoPlayer = exoPlayer,
                 program = currentProgram,
                 tiledThumbnailUrl = tiledThumbnailUrl,
                 allComments = allComments,
@@ -622,6 +675,7 @@ fun VideoPlayerScreen(
                 externalChapters = chapters,
                 currentPositionMs = getEffectivePositionMs(),
                 totalDurationMs = totalDurationForControls,
+                bufferedPositionMs = bufferedPositionMs,
                 controlsFocusRequester = playerControlsFocusRequester,
                 onSeekBarFocusChanged = { vs.isSeekBarFocused = it },
                 onPlayPauseToggle = {
@@ -747,7 +801,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         0.0,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.seekTo(
+                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
@@ -763,7 +817,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.play()
+                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.play()
                                 }
                             }
                             onShowToast("画質を ${it.label} に変更しました")
@@ -858,7 +912,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         0.0,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.seekTo(
+                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
@@ -874,7 +928,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(MediaItem.fromUri(newUrl)); player.prepare(); player.play()
+                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.play()
                                 }
                             }
                             onShowToast("画質を ${it.label} に変更しました")

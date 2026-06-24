@@ -48,7 +48,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -61,7 +60,6 @@ import kotlin.math.pow
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun PlayerControls(
-    exoPlayer: ExoPlayer?,
     program: RecordedProgram,
     allComments: List<ArchivedComment>,
     tiledThumbnailUrl: String?,
@@ -73,6 +71,7 @@ fun PlayerControls(
     externalChapters: List<ChapterInfo> = emptyList(),
     currentPositionMs: Long,
     totalDurationMs: Long,
+    bufferedPositionMs: Long,
     controlsFocusRequester: FocusRequester,
     onSeekBarFocusChanged: (Boolean) -> Unit,
     onPlayPauseToggle: () -> Unit,
@@ -91,9 +90,7 @@ fun PlayerControls(
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
 
-    var bufferedPosition by remember {
-        mutableStateOf(exoPlayer?.bufferedPosition?.coerceAtLeast(0L) ?: 0L)
-    }
+    val bufferedPosition = bufferedPositionMs.coerceAtLeast(0L)
     var displayPositionMs by remember { mutableStateOf(currentPositionMs) }
 
     val tileInfo = program.recordedVideo.thumbnailInfo?.tile
@@ -127,21 +124,6 @@ fun PlayerControls(
                 }
             } catch (e: Exception) {
             }
-        }
-    }
-
-    LaunchedEffect(isVisible, isPlaying) {
-        var lastUpdate = System.currentTimeMillis()
-        while (isVisible) {
-            val now = System.currentTimeMillis()
-            if (isPlaying) {
-                val elapsed = now - lastUpdate
-                val safeMax = if (totalDurationMs > 0L) totalDurationMs else Long.MAX_VALUE
-                displayPositionMs = (displayPositionMs + elapsed).coerceIn(0L, safeMax)
-            }
-            bufferedPosition = exoPlayer?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
-            lastUpdate = now
-            delay(50)
         }
     }
 
@@ -422,7 +404,7 @@ fun PlayerControls(
                             }
                         }
 
-                        val exoDuration = exoPlayer?.duration ?: 0L
+                        val exoDuration = totalDurationMs.coerceAtLeast(1L)
                         val bufferProgress =
                             if (exoDuration.coerceAtLeast(1L) > 0) (bufferedPosition.toFloat() / exoDuration.coerceAtLeast(
                                 1L

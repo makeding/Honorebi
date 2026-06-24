@@ -25,9 +25,12 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
@@ -116,9 +119,16 @@ fun RecordDetailPanel(
                     .padding(bottom = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
+                val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current).data(currentThumbnailUrl)
-                        .crossfade(true).build(),
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(program.recordedThumbnailModel(currentThumbnailUrl))
+                        .crossfade(true)
+                        .memoryCacheKey(thumbnailCacheKey)
+                        .diskCacheKey(thumbnailCacheKey)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier
                         .width(160.dp)

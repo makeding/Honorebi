@@ -31,6 +31,8 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
+import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import java.time.Instant
@@ -279,12 +281,15 @@ fun WatchHistoryCard(
 
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl) {
+        val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
+            ?: currentThumbnailUrl
         ImageRequest.Builder(context)
-            .data(currentThumbnailUrl)
+            .data(matchedProgram?.recordedThumbnailModel(currentThumbnailUrl) ?: currentThumbnailUrl)
             .crossfade(true)
-            .memoryCacheKey(currentThumbnailUrl)
-            .diskCacheKey(currentThumbnailUrl)
+            .memoryCacheKey(thumbnailCacheKey)
+            .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
     }
 
