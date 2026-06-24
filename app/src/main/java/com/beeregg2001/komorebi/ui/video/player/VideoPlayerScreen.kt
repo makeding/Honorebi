@@ -189,11 +189,12 @@ fun VideoPlayerScreen(
     var pixelWidthHeightRatio by remember { mutableStateOf(1f) }
 
     var isChapterListOpen by remember { mutableStateOf(false) }
+    var isKeyframeGridOpen by remember { mutableStateOf(false) }
     var isSeekingPreviewVisible by remember { mutableStateOf(false) }
     var seekingPreviewJob by remember { mutableStateOf<Job?>(null) }
 
     val isSubOverlayOpen =
-        isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isProgramInfoOpen || isModernSettingsOpen
+        isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
 
     val triggerSeekingPreview: () -> Unit = {
         isSeekingPreviewVisible = true
@@ -406,8 +407,8 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(isSceneSearchOpen, isChapterListOpen) {
-        if (isSceneSearchOpen || isChapterListOpen) {
+    LaunchedEffect(isSceneSearchOpen, isChapterListOpen, isKeyframeGridOpen) {
+        if (isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen) {
             vs.wasPlayingBeforeSceneSearch = exoPlayer.isPlaying
             if (vs.wasPlayingBeforeSceneSearch) exoPlayer.pause()
         } else if (vs.wasPlayingBeforeSceneSearch) {
@@ -523,6 +524,10 @@ fun VideoPlayerScreen(
                     onPiPRequested = onPiPRequested,
                     onBackPressed = onBackPressed,
                     onSceneSearchToggle = { onSceneSearchToggle(it) },
+                    onSettingsMenuToggle = {
+                        isModernSettingsOpen = true
+                        onShowControlsChange(true)
+                    },
                     onChapterListToggle = { isChapterListOpen = it },
                     onSubMenuToggle = onSubMenuToggle,
                     exoPlayerIsPlaying = exoPlayer.playWhenReady,
@@ -683,6 +688,18 @@ fun VideoPlayerScreen(
                     onClose = { isChapterListOpen = false })
             }
 
+            AnimatedVisibility(
+                isKeyframeGridOpen,
+                enter = fadeIn(),
+                exit = fadeOut()) {
+                KeyframeGridOverlay(
+                    program = currentProgram,
+                    tiledThumbnailUrl = tiledThumbnailUrl,
+                    currentPositionMs = getEffectivePositionMs(),
+                    onSeekRequested = { performSeek(it); isKeyframeGridOpen = false },
+                    onClose = { isKeyframeGridOpen = false })
+            }
+
             AnimatedVisibility(visible = isModernSettingsOpen, enter = fadeIn(), exit = fadeOut()) {
                 ModernVideoSettingsOverlay(
                     currentAudioMode = vs.currentAudioMode,
@@ -757,6 +774,12 @@ fun VideoPlayerScreen(
                     onCommentToggle = {
                         vs.isCommentEnabled =
                             !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
+                    },
+                    canOpenKeyframeGrid = totalDurationForControls > 0L,
+                    onKeyframeGridToggle = {
+                        isModernSettingsOpen = false
+                        isKeyframeGridOpen = true
+                        onShowControlsChange(true)
                     },
                     onLCropToggle = {
                         vs.lCropEnabled = !vs.lCropEnabled
@@ -861,6 +884,12 @@ fun VideoPlayerScreen(
                     onCommentToggle = {
                         vs.isCommentEnabled =
                             !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
+                    },
+                    canOpenKeyframeGrid = totalDurationForControls > 0L,
+                    onKeyframeGridToggle = {
+                        onSubMenuToggle(false)
+                        isKeyframeGridOpen = true
+                        onShowControlsChange(true)
                     },
                     onLCropToggle = {
                         vs.lCropEnabled = !vs.lCropEnabled

@@ -70,6 +70,8 @@ fun VideoTopSubMenuUI(
     onSubtitleToggle: () -> Unit,
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
+    canOpenKeyframeGrid: Boolean = false,
+    onKeyframeGridToggle: () -> Unit = {},
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit,
@@ -166,6 +168,17 @@ fun VideoTopSubMenuUI(
                     contentColor = colors.textPrimary,
                     enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty()
                 )
+                if (canOpenKeyframeGrid) {
+                    VideoMenuTileItem(
+                        title = "サムネイル",
+                        icon = Icons.Default.GridView,
+                        subtitle = "一覧",
+                        onClick = onKeyframeGridToggle,
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = colors.textPrimary,
+                        enabled = true
+                    )
+                }
                 VideoMenuTileItem(
                     title = "音声切替",
                     icon = Icons.Default.Audiotrack,
@@ -594,6 +607,8 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
     onSubtitleToggle: () -> Unit,
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
+    canOpenKeyframeGrid: Boolean = false,
+    onKeyframeGridToggle: () -> Unit = {},
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ
@@ -681,12 +696,22 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        if (canOpenKeyframeGrid) {
+                            ModernSettingRow(
+                                title = "サムネイル",
+                                value = "一覧",
+                                icon = Icons.Default.GridView,
+                                onClick = onKeyframeGridToggle,
+                                modifier = Modifier.focusRequester(initialFocusRequester),
+                                enabled = true
+                            )
+                        }
                         ModernSettingRow(
                             title = "音声切替",
                             value = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
                             icon = Icons.Default.Audiotrack,
                             onClick = onAudioToggle,
-                            modifier = Modifier.focusRequester(initialFocusRequester),
+                            modifier = if (canOpenKeyframeGrid) Modifier else Modifier.focusRequester(initialFocusRequester),
                             enabled = isAudioSupported // ★ 適用
                         )
                         ModernSettingRow(

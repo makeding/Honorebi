@@ -207,5 +207,4 @@ dependencies {
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
 
 //    implementation("org.videolan.android:libvlc-all:3.7.0")
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }

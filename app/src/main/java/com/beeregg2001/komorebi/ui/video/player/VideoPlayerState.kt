@@ -83,6 +83,7 @@ class VideoPlayerState {
         onPiPRequested: () -> Unit,
         onBackPressed: () -> Unit,
         onSceneSearchToggle: (Boolean) -> Unit,
+        onSettingsMenuToggle: () -> Unit,
         onChapterListToggle: (Boolean) -> Unit,
         onSubMenuToggle: (Boolean) -> Unit,
         exoPlayerIsPlaying: Boolean,
@@ -93,6 +94,14 @@ class VideoPlayerState {
         val keyCode = keyEvent.nativeKeyEvent.keyCode
         val isActionDown = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_DOWN
         val isActionUp = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_UP
+
+        fun openModernSettingsMenu(): Boolean {
+            if (isActionDown) {
+                onShowControlsChange(true)
+                onSettingsMenuToggle()
+            }
+            return true
+        }
 
         // ★ 安全装置: UIが非表示になったら必ずクイックシークモードを解除する
         if (!showControls) {
@@ -150,6 +159,10 @@ class VideoPlayerState {
 
         // UI非表示時の安全装置
         if (!showControls) {
+            if (isModern && keyCode == NativeKeyEvent.KEYCODE_DPAD_UP) {
+                return openModernSettingsMenu()
+            }
+
             if (keyCode == NativeKeyEvent.KEYCODE_DPAD_CENTER || keyCode == NativeKeyEvent.KEYCODE_ENTER) {
                 if (isActionDown) {
                     return true
@@ -175,6 +188,10 @@ class VideoPlayerState {
 
         // ★ モダンUI表示時のフォーカスとクイックシークの制御
         if (isModern && showControls) {
+            if (keyCode == NativeKeyEvent.KEYCODE_DPAD_UP) {
+                return openModernSettingsMenu()
+            }
+
             if (isQuickSeeking) {
                 // クイックシーク中に別のナビゲーションキー（上下決定）が押されたら、
                 // モードを解除してCompose側に処理（フォーカス移動やボタン押下）を譲る

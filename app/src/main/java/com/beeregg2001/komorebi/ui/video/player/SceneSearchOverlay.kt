@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -36,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -355,6 +359,8 @@ fun TiledThumbnailItem(
     onClick: () -> Unit,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier,
+    itemWidth: androidx.compose.ui.unit.Dp = 224.dp,
+    itemHeight: androidx.compose.ui.unit.Dp = 126.dp,
     imageTimeOffsetSec: Long = 0L,
     overlayContent: @Composable BoxScope.() -> Unit = {}
 ) {
@@ -394,8 +400,8 @@ fun TiledThumbnailItem(
             focusedContentColor = Color.Black
         ),
         modifier = modifier
-            .width(224.dp)
-            .height(126.dp)
+            .width(itemWidth)
+            .height(itemHeight)
             .onFocusChanged { if (it.isFocused) onFocused() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -428,6 +434,188 @@ fun TiledThumbnailItem(
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun KeyframeGridOverlay(
+    program: RecordedProgram,
+    tiledThumbnailUrl: String?,
+    currentPositionMs: Long,
+    onSeekRequested: (Long) -> Unit,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val loader = remember { TileSheetLoader(context) }
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(Unit) { onDispose { loader.release() } }
+
+    val tileInfo = program.recordedVideo.thumbnailInfo?.tile
+    val tileColumns = tileInfo?.columnCount ?: 1
+    val tileInterval = tileInfo?.intervalSec ?: 10.0
+    val tileWidth = tileInfo?.tileWidth ?: 320
+    val tileHeight = tileInfo?.tileHeight ?: 180
+
+    val totalSec = program.recordedVideo.duration.toLong().coerceAtLeast(0L)
+    val itemCount = remember(totalSec, tileInterval) {
+        if (totalSec <= 0L || tileInterval <= 0.0) 1
+        else (floor(totalSec / tileInterval).toInt() + 1).coerceAtLeast(1)
+    }
+    val initialIndex = remember(currentPositionMs, tileInterval, itemCount) {
+        if (tileInterval <= 0.0) 0
+        else floor((currentPositionMs / 1000.0) / tileInterval)
+            .toInt()
+            .coerceIn(0, itemCount - 1)
+    }
+
+    val gridState = rememberLazyGridState()
+    val focusRequester = remember { FocusRequester() }
+    var requestedFocusIndex by remember { mutableIntStateOf(initialIndex) }
+    var focusedIndex by remember { mutableIntStateOf(initialIndex) }
+    val focusedTime = remember(focusedIndex, tileInterval, totalSec) {
+        floor(focusedIndex * tileInterval).toLong().coerceIn(0L, totalSec)
+    }
+
+    fun requestGridFocus(index: Int) {
+        val target = index.coerceIn(0, itemCount - 1)
+        requestedFocusIndex = target
+        focusedIndex = target
+        scope.launch {
+            gridState.animateScrollToItem((target - 4).coerceAtLeast(0))
+            delay(80)
+            focusRequester.safeRequestFocus(TAG)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        gridState.scrollToItem((initialIndex - 4).coerceAtLeast(0))
+        delay(150)
+        focusRequester.safeRequestFocus(TAG)
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.96f))
+            .onPreviewKeyEvent {
+                if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (it.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_BACK -> {
+                        onClose()
+                        true
+                    }
+
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (focusedIndex < 4) {
+                            onClose()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+
+                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                        requestGridFocus(focusedIndex + 16)
+                        true
+                    }
+
+                    KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                        requestGridFocus(focusedIndex - 16)
+                        true
+                    }
+
+                    else -> false
+                }
+            }
+    ) {
+        val columns = 4
+        val horizontalPadding = 80.dp
+        val spacing = 12.dp
+        val itemWidth = (maxWidth - horizontalPadding * 2 - spacing * (columns - 1)) / columns
+        val itemHeight = itemWidth * 9f / 16f
+        val gridHeight = itemHeight * 4 + spacing * 3
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = horizontalPadding, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = program.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(24.dp))
+                Text(
+                    text = "${formatSecondsToTime(focusedTime)} / ${formatSecondsToTime(totalSec)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                state = gridState,
+                horizontalArrangement = Arrangement.spacedBy(spacing),
+                verticalArrangement = Arrangement.spacedBy(spacing),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(gridHeight)
+            ) {
+                repeat(itemCount) { index ->
+                    item(key = index) {
+                        val time = floor(index * tileInterval).toLong().coerceIn(0L, totalSec)
+                        TiledThumbnailItem(
+                            time = time,
+                            imageUrl = tiledThumbnailUrl ?: "",
+                            loader = loader,
+                            tileColumns = tileColumns,
+                            tileInterval = tileInterval,
+                            tileWidth = tileWidth,
+                            tileHeight = tileHeight,
+                            itemWidth = itemWidth,
+                            itemHeight = itemHeight,
+                            onClick = { onSeekRequested(time * 1000) },
+                            onFocused = { focusedIndex = index },
+                            modifier = if (index == requestedFocusIndex) {
+                                Modifier.focusRequester(focusRequester)
+                            } else {
+                                Modifier
+                            }
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp)
+                    .height(4.dp)
+                    .background(Color.White.copy(alpha = 0.18f), RoundedCornerShape(2.dp))
+            ) {
+                val progress = if (totalSec > 0L) focusedTime.toFloat() / totalSec.toFloat() else 0f
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(Color.White, RoundedCornerShape(2.dp))
                 )
             }
         }

@@ -112,7 +112,6 @@ fun PlayerControls(
         if (isSeekBarFocused) 80.dp else 48.dp,
         label = "graphHeight"
     )
-
     LaunchedEffect(currentPositionMs) {
         if (kotlin.math.abs(displayPositionMs - currentPositionMs) > 1000) {
             displayPositionMs = currentPositionMs
@@ -333,6 +332,7 @@ fun PlayerControls(
                                             onSeekRequested(newPos)
                                             return@onKeyEvent true
                                         }
+
                                     }
                                 }
                                 false
