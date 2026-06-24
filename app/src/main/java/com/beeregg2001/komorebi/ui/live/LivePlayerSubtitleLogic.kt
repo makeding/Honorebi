@@ -44,9 +44,8 @@ class DirectSubtitlePayloadReader(
         }
         val bytesAvailable = data.bytesLeft()
         if (bytesAvailable > 0) {
-            val chunk = ByteArray(bytesAvailable)
-            data.readBytes(chunk, 0, bytesAvailable)
-            buffer.write(chunk)
+            buffer.write(data.data, data.position, bytesAvailable)
+            data.skipBytes(bytesAvailable)
         }
     }
 
@@ -62,18 +61,14 @@ class DirectSubtitlePayloadReader(
         try {
             var offset = id3StartIndex + 10
             while (offset < rawData.size - 10) {
-                val frameId = String(rawData, offset, 4)
                 val frameSize =
                     (rawData[offset + 4].toInt() and 0x7F shl 21) or (rawData[offset + 5].toInt() and 0x7F shl 14) or (rawData[offset + 6].toInt() and 0x7F shl 7) or (rawData[offset + 7].toInt() and 0x7F)
                 offset += 10
-                if (frameId == "PRIV") {
+                if (isPrivFrame(rawData, offset - 10)) {
                     var ownerEnd = offset
                     while (ownerEnd < offset + frameSize && ownerEnd < rawData.size && rawData[ownerEnd].toInt() != 0) ownerEnd++
-                    val ownerString = String(rawData, offset, ownerEnd - offset)
-                    if (ownerString.contains("aribb24", true) || ownerString.contains(
-                            "B24",
-                            true
-                        )
+                    if (containsAsciiIgnoreCase(rawData, offset, ownerEnd, "aribb24") ||
+                        containsAsciiIgnoreCase(rawData, offset, ownerEnd, "B24")
                     ) {
                         val privateDataStart = ownerEnd + 1
                         val privateDataLength = frameSize - (privateDataStart - offset)
@@ -95,6 +90,40 @@ class DirectSubtitlePayloadReader(
         } catch (e: Exception) {
             android.util.Log.e("DirectSubtitle", "Parse error", e)
         }
+    }
+
+    private fun isPrivFrame(data: ByteArray, offset: Int): Boolean {
+        return data[offset] == 'P'.code.toByte() &&
+            data[offset + 1] == 'R'.code.toByte() &&
+            data[offset + 2] == 'I'.code.toByte() &&
+            data[offset + 3] == 'V'.code.toByte()
+    }
+
+    private fun containsAsciiIgnoreCase(
+        data: ByteArray,
+        start: Int,
+        endExclusive: Int,
+        needle: String
+    ): Boolean {
+        val needleLength = needle.length
+        if (needleLength == 0 || endExclusive - start < needleLength) return false
+        val lastStart = endExclusive - needleLength
+        for (i in start..lastStart) {
+            var matched = true
+            for (j in 0 until needleLength) {
+                if (toLowerAscii(data[i + j]) != needle[j].lowercaseChar().code) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) return true
+        }
+        return false
+    }
+
+    private fun toLowerAscii(value: Byte): Int {
+        val charCode = value.toInt() and 0xff
+        return if (charCode in 'A'.code..'Z'.code) charCode + 32 else charCode
     }
 }
 

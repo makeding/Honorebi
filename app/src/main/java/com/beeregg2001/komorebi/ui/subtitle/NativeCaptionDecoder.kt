@@ -12,7 +12,7 @@ class NativeCaptionDecoder(
         val activeHandle = handle
         if (activeHandle == 0L) return null
         return try {
-            nativeLib.decodeCaption(activeHandle, data, ptsMs)?.let(NativeCaptionCue::fromJson)
+            nativeLib.decodeCaption(activeHandle, data, ptsMs)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to decode ARIB caption", e)
             null

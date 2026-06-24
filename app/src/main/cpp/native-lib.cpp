@@ -7,7 +7,6 @@
 #include <cstring>
 #include <mutex>
 #include <deque>
-#include <sstream>
 
 #include <aribcaption/aribcaption.h>
 
@@ -29,78 +28,62 @@ struct AribCaptionDecoderContext {
     std::mutex mutex;
 };
 
-void appendJsonEscaped(std::ostringstream& out, const char* text) {
-    out << '"';
-    if (text) {
-        for (const unsigned char* p = reinterpret_cast<const unsigned char*>(text); *p; ++p) {
-            switch (*p) {
-                case '"': out << "\\\""; break;
-                case '\\': out << "\\\\"; break;
-                case '\b': out << "\\b"; break;
-                case '\f': out << "\\f"; break;
-                case '\n': out << "\\n"; break;
-                case '\r': out << "\\r"; break;
-                case '\t': out << "\\t"; break;
-                default:
-                    if (*p < 0x20) {
-                        out << "\\u00";
-                        const char* hex = "0123456789abcdef";
-                        out << hex[(*p >> 4) & 0x0f] << hex[*p & 0x0f];
-                    } else {
-                        out << *p;
-                    }
-                    break;
-            }
-        }
-    }
-    out << '"';
-}
-
-std::string base64Encode(const uint8_t* data, size_t size) {
-    static constexpr char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve(((size + 2) / 3) * 4);
-    for (size_t i = 0; i < size; i += 3) {
-        uint32_t chunk = data[i] << 16;
-        if (i + 1 < size) chunk |= data[i + 1] << 8;
-        if (i + 2 < size) chunk |= data[i + 2];
-        out.push_back(table[(chunk >> 18) & 0x3f]);
-        out.push_back(table[(chunk >> 12) & 0x3f]);
-        out.push_back(i + 1 < size ? table[(chunk >> 6) & 0x3f] : '=');
-        out.push_back(i + 2 < size ? table[chunk & 0x3f] : '=');
-    }
-    return out;
-}
-
-std::string renderResultToJson(aribcc_render_result_t& result, int64_t fallbackPtsMs) {
-    std::ostringstream out;
+jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t fallbackPtsMs) {
     int64_t duration = result.duration == ARIBCC_DURATION_INDEFINITE ? -1 : result.duration;
     int64_t pts = result.pts < 0 ? fallbackPtsMs : result.pts;
-    out << "{\"ptsMs\":" << pts
-        << ",\"durationMs\":" << duration
-        << ",\"clearScreen\":" << (result.image_count == 0 ? "true" : "false")
-        << ",\"planeWidth\":" << ARIBCC_RENDER_FRAME_WIDTH
-        << ",\"planeHeight\":" << ARIBCC_RENDER_FRAME_HEIGHT
-        << ",\"images\":[";
+
+    jclass arrayListClass = env->FindClass("java/util/ArrayList");
+    jmethodID arrayListCtor = env->GetMethodID(arrayListClass, "<init>", "(I)V");
+    jmethodID arrayListAdd = env->GetMethodID(arrayListClass, "add", "(Ljava/lang/Object;)Z");
+    jobject images = env->NewObject(arrayListClass, arrayListCtor, static_cast<jint>(result.image_count));
+
+    jclass imageClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionImage");
+    jmethodID imageCtor = env->GetMethodID(imageClass, "<init>", "(IIIII[B)V");
 
     for (uint32_t i = 0; i < result.image_count; ++i) {
-        if (i > 0) out << ',';
         aribcc_image_t& image = result.images[i];
-        std::string rgba = image.bitmap && image.bitmap_size > 0
-            ? base64Encode(image.bitmap, image.bitmap_size)
-            : "";
-        out << "{\"x\":" << image.dst_x
-            << ",\"y\":" << image.dst_y
-            << ",\"width\":" << image.width
-            << ",\"height\":" << image.height
-            << ",\"stride\":" << image.stride
-            << ",\"rgba\":";
-        appendJsonEscaped(out, rgba.c_str());
-        out << '}';
+        jsize bitmapSize = image.bitmap && image.bitmap_size > 0
+            ? static_cast<jsize>(image.bitmap_size)
+            : 0;
+        jbyteArray rgba = env->NewByteArray(bitmapSize);
+        if (bitmapSize > 0) {
+            env->SetByteArrayRegion(
+                rgba,
+                0,
+                bitmapSize,
+                reinterpret_cast<const jbyte*>(image.bitmap));
+        }
+        jobject captionImage = env->NewObject(
+            imageClass,
+            imageCtor,
+            static_cast<jint>(image.dst_x),
+            static_cast<jint>(image.dst_y),
+            static_cast<jint>(image.width),
+            static_cast<jint>(image.height),
+            static_cast<jint>(image.stride),
+            rgba);
+        env->CallBooleanMethod(images, arrayListAdd, captionImage);
+        env->DeleteLocalRef(captionImage);
+        env->DeleteLocalRef(rgba);
     }
 
-    out << "]}";
-    return out.str();
+    jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
+    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;)V");
+    jobject cue = env->NewObject(
+        cueClass,
+        cueCtor,
+        static_cast<jlong>(pts),
+        static_cast<jlong>(duration),
+        result.image_count == 0 ? JNI_TRUE : JNI_FALSE,
+        static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
+        static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
+        images);
+
+    env->DeleteLocalRef(images);
+    env->DeleteLocalRef(imageClass);
+    env->DeleteLocalRef(arrayListClass);
+    env->DeleteLocalRef(cueClass);
+    return cue;
 }
 
 } // namespace
@@ -319,7 +302,7 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject 
     return reinterpret_cast<jlong>(ctx);
 }
 
-JNIEXPORT jstring JNICALL
+JNIEXPORT jobject JNICALL
 Java_com_beeregg2001_komorebi_NativeLib_decodeCaption(JNIEnv *env, jobject thiz, jlong handle, jbyteArray data, jlong ptsMs) {
     auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
     if (!ctx || !ctx->decoder || !ctx->renderer || !data) return nullptr;
@@ -361,10 +344,10 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeCaption(JNIEnv *env, jobject thiz,
         return nullptr;
     }
 
-    std::string json = renderResultToJson(renderResult, ptsMs);
+    jobject cue = renderResultToCue(env, renderResult, ptsMs);
     aribcc_render_result_cleanup(&renderResult);
     aribcc_caption_cleanup(&caption);
-    return env->NewStringUTF(json.c_str());
+    return cue;
 }
 
 JNIEXPORT void JNICALL

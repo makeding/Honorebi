@@ -41,6 +41,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -164,7 +165,12 @@ fun VideoPlayerScreen(
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
     val currentSessionId = remember(vs.currentQuality) { UUID.randomUUID().toString() }
-    val subtitleEvents = remember { MutableSharedFlow<NativeCaptionCue>(extraBufferCapacity = 10) }
+    val subtitleEvents = remember {
+        MutableSharedFlow<NativeCaptionCue>(
+            extraBufferCapacity = 10,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
+    }
     val subtitleCue = rememberNativeCaptionCue(
         events = subtitleEvents,
         enabled = vs.isSubtitleEnabled,

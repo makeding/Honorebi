@@ -8,16 +8,20 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 
 private const val MAX_AUTO_HIDE_DURATION_MS = 60_000L
 private const val INDEFINITE_AUTO_HIDE_DURATION_MS = 5_000L
 private const val UNKNOWN_AUTO_HIDE_DURATION_MS = 5_000L
+private const val AUTO_HIDE_TICK_MS = 250L
 
 @Composable
 fun rememberNativeCaptionCue(
@@ -50,7 +54,13 @@ fun rememberNativeCaptionCue(
         }
         var remainingMs = duration
         while (remainingMs > 0 && cueState.value === cue) {
-            val tickMs = minOf(remainingMs, 100L)
+            if (!currentClockRunning.value) {
+                snapshotFlow { currentClockRunning.value }
+                    .filter { it }
+                    .first()
+                continue
+            }
+            val tickMs = minOf(remainingMs, AUTO_HIDE_TICK_MS)
             delay(tickMs)
             if (currentClockRunning.value) {
                 remainingMs -= tickMs

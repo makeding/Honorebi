@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi
 
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import java.nio.ByteBuffer
 
 class NativeLib {
@@ -27,7 +28,7 @@ class NativeLib {
     external fun popDataBuffer(handle: Long, outputBuffer: ByteBuffer, maxLen: Int): Int
 
     external fun openCaptionDecoder(): Long
-    external fun decodeCaption(handle: Long, data: ByteArray, ptsMs: Long): String?
+    external fun decodeCaption(handle: Long, data: ByteArray, ptsMs: Long): NativeCaptionCue?
     external fun flushCaptionDecoder(handle: Long)
     external fun closeCaptionDecoder(handle: Long)
 }

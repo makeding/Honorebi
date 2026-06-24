@@ -36,6 +36,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -109,10 +110,16 @@ class LivePlayerViewModel @Inject constructor(
     private val _dualSseDetail = MutableStateFlow(AppStrings.SSE_CONNECTING)
     val dualSseDetail: StateFlow<String> = _dualSseDetail.asStateFlow()
 
-    private val _mainSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(extraBufferCapacity = 10)
+    private val _mainSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
+        extraBufferCapacity = 10,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val mainSubtitleEvents: SharedFlow<NativeCaptionCue> = _mainSubtitleEvents.asSharedFlow()
 
-    private val _dualSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(extraBufferCapacity = 10)
+    private val _dualSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
+        extraBufferCapacity = 10,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val dualSubtitleEvents: SharedFlow<NativeCaptionCue> = _dualSubtitleEvents.asSharedFlow()
 
     private val _availableSources = MutableStateFlow<List<StreamSource>>(emptyList())
@@ -605,12 +612,12 @@ class LivePlayerViewModel @Inject constructor(
 
     private fun decodeAndEmitMainSubtitle(ptsMs: Long, data: ByteArray) {
         val cue = mainCaptionDecoder.decode(data, ptsMs) ?: return
-        viewModelScope.launch(Dispatchers.Main) { _mainSubtitleEvents.emit(cue) }
+        _mainSubtitleEvents.tryEmit(cue)
     }
 
     private fun decodeAndEmitDualSubtitle(ptsMs: Long, data: ByteArray) {
         val cue = dualCaptionDecoder.decode(data, ptsMs) ?: return
-        viewModelScope.launch(Dispatchers.Main) { _dualSubtitleEvents.emit(cue) }
+        _dualSubtitleEvents.tryEmit(cue)
     }
 
     fun setVolumes(mainVolume: Float, dualVolume: Float) {
