@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntOffset
@@ -22,9 +23,11 @@ private const val UNKNOWN_AUTO_HIDE_DURATION_MS = 5_000L
 fun rememberNativeCaptionCue(
     events: Flow<NativeCaptionCue>,
     enabled: Boolean,
-    resetKey: Any? = null
+    resetKey: Any? = null,
+    clockRunning: Boolean = true
 ): MutableState<NativeCaptionCue?> {
     val cueState = remember { mutableStateOf<NativeCaptionCue?>(null) }
+    val currentClockRunning = rememberUpdatedState(clockRunning)
     LaunchedEffect(resetKey) {
         cueState.value = null
     }
@@ -45,7 +48,14 @@ fun rememberNativeCaptionCue(
             in 1..MAX_AUTO_HIDE_DURATION_MS -> cue.durationMs
             else -> UNKNOWN_AUTO_HIDE_DURATION_MS
         }
-        delay(duration)
+        var remainingMs = duration
+        while (remainingMs > 0 && cueState.value === cue) {
+            val tickMs = minOf(remainingMs, 100L)
+            delay(tickMs)
+            if (currentClockRunning.value) {
+                remainingMs -= tickMs
+            }
+        }
         if (cueState.value === cue) cueState.value = null
     }
     return cueState

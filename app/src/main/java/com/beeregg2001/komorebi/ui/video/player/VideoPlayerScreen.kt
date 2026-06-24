@@ -165,7 +165,11 @@ fun VideoPlayerScreen(
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
     val currentSessionId = remember(vs.currentQuality) { UUID.randomUUID().toString() }
     val subtitleEvents = remember { MutableSharedFlow<NativeCaptionCue>(extraBufferCapacity = 10) }
-    val subtitleCue = rememberNativeCaptionCue(subtitleEvents, vs.isSubtitleEnabled)
+    val subtitleCue = rememberNativeCaptionCue(
+        events = subtitleEvents,
+        enabled = vs.isSubtitleEnabled,
+        clockRunning = vs.isPlayerPlaying
+    )
 
     val mainFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }

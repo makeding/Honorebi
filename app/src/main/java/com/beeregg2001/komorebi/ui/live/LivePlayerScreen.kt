@@ -179,15 +179,19 @@ fun LivePlayerScreen(
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") || Build.PRODUCT == "google_sdk" }
 
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
+    var isMainPlaying by remember { mutableStateOf(false) }
+    var isDualPlaying by remember { mutableStateOf(false) }
     val mainCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.mainSubtitleEvents,
         enabled = isSubtitleEnabled,
-        resetKey = currentChannelItem.id
+        resetKey = currentChannelItem.id,
+        clockRunning = isMainPlaying
     )
     val dualCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.dualSubtitleEvents,
         enabled = isSubtitleEnabled,
-        resetKey = ps.dualRightChannel?.id
+        resetKey = ps.dualRightChannel?.id,
+        clockRunning = isDualPlaying
     )
 
     val mainFocusRequester = remember { FocusRequester() }
@@ -320,6 +324,7 @@ fun LivePlayerScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 ps.isPlayerPlaying = isPlaying
+                isMainPlaying = isPlaying
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -332,12 +337,17 @@ fun LivePlayerScreen(
             }
         }
         mainPlayer?.addListener(listener)
+        isMainPlaying = mainPlayer?.isPlaying == true
         isMainBuffering = mainPlayer?.playbackState == Player.STATE_BUFFERING
         onDispose { mainPlayer?.removeListener(listener) }
     }
 
     DisposableEffect(dualPlayer) {
         val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                isDualPlaying = isPlaying
+            }
+
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 dualVideoWidth = videoSize.width; dualVideoHeight =
                     videoSize.height; dualPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
@@ -348,6 +358,7 @@ fun LivePlayerScreen(
             }
         }
         dualPlayer?.addListener(listener)
+        isDualPlaying = dualPlayer?.isPlaying == true
         isDualBuffering = dualPlayer?.playbackState == Player.STATE_BUFFERING
         onDispose { dualPlayer?.removeListener(listener) }
     }
