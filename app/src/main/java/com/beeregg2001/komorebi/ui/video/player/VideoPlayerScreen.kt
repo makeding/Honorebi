@@ -169,7 +169,7 @@ fun VideoPlayerScreen(
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
-    val currentSessionId = remember(vs.currentQuality) { UUID.randomUUID().toString() }
+    val currentSessionId = remember(vs.currentQuality.value) { UUID.randomUUID().toString() }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
             extraBufferCapacity = 10,
@@ -406,15 +406,28 @@ fun VideoPlayerScreen(
     }
 
     var isFirstLoad by remember { mutableStateOf(true) }
+    var preparedPlaybackKey by remember { mutableStateOf<String?>(null) }
+    val qualityOptionsKey = remember(availableQualities) {
+        availableQualities.joinToString(separator = "|") { it.value }
+    }
 
     LaunchedEffect(
         currentProgram.id,
-        currentProgram.recordedVideo.status,
-        currentProgram.recordingStartMargin,
-        smbItem,
-        vs.currentQuality,
-        availableQualities
+        smbItem?.path,
+        vs.currentQuality.value,
+        qualityOptionsKey,
+        isQualitiesLoaded,
+        isRecordingChasePlayback
     ) {
+        val playbackKey = if (smbItem != null) {
+            "smb:${smbItem.path}"
+        } else {
+            "video:${currentProgram.id}:${vs.currentQuality.value}:$isRecordingChasePlayback"
+        }
+        if (preparedPlaybackKey == playbackKey && exoPlayer.mediaItemCount > 0) {
+            return@LaunchedEffect
+        }
+
         if (smbItem != null) {
             isBuffering = true
             vs.playbackOffsetMs = 0L
@@ -425,6 +438,7 @@ fun VideoPlayerScreen(
             }
             isFirstLoad = false
             exoPlayer.prepare()
+            preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
             return@LaunchedEffect
         }
@@ -455,6 +469,7 @@ fun VideoPlayerScreen(
             }
             isFirstLoad = false
             exoPlayer.prepare()
+            preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
         } else {
             if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
@@ -476,7 +491,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(vs.currentQuality, currentSessionId, smbItem) {
+    DisposableEffect(vs.currentQuality.value, currentSessionId, smbItem) {
         if (smbItem == null) {
             videoPlayerViewModel.startStreamMaintenance(
                 program,
