@@ -37,10 +37,12 @@ import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
+import com.beeregg2001.komorebi.util.TitleNormalizer
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -66,7 +68,10 @@ fun VideoPlayerScreen(
     isSceneSearchOpen: Boolean,
     onSceneSearchToggle: (Boolean) -> Unit,
     recentRecordings: List<RecordedProgram> = emptyList(),
+    animeChannels: List<Channel> = emptyList(),
     onProgramSelect: (RecordedProgram) -> Unit = {},
+    onChannelSelect: (Channel) -> Unit = {},
+    onPlaybackEnded: () -> Unit = {},
     onBackPressed: () -> Unit,
     onShowToast: (String) -> Unit,
     isPiPMode: Boolean = false,
@@ -91,6 +96,7 @@ fun VideoPlayerScreen(
     var isBuffering by remember { mutableStateOf(true) }
 
     LaunchedEffect(program.id) {
+        currentProgram = program
         if (smbItem == null) {
             videoPlayerViewModel.fetchProgramDetail(program.id)
             videoPlayerViewModel.fetchAvailableQualities()
@@ -169,7 +175,9 @@ fun VideoPlayerScreen(
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
-    val currentSessionId = remember(vs.currentQuality.value) { UUID.randomUUID().toString() }
+    val currentSessionId = remember(currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback) {
+        UUID.randomUUID().toString()
+    }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
             extraBufferCapacity = 10,
@@ -207,10 +215,10 @@ fun VideoPlayerScreen(
         seekingPreviewJob = scope.launch { delay(2000); isSeekingPreviewVisible = false }
     }
 
-    LaunchedEffect(program.recordedVideo.id) {
+    LaunchedEffect(currentProgram.recordedVideo.id) {
         if (smbItem == null) {
             allComments.clear()
-            allComments.addAll(videoPlayerViewModel.getArchivedComments(program.recordedVideo.id))
+            allComments.addAll(videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id))
         }
     }
 
@@ -219,7 +227,7 @@ fun VideoPlayerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val exoPlayer = rememberManagedExoPlayer(
-        program = program,
+        program = currentProgram,
         vs = vs,
         isLiveStream = isLiveStream,
         scope = scope,
@@ -231,6 +239,13 @@ fun VideoPlayerScreen(
         },
         onBufferingChanged = { isBuffering = it },
         onDurationChanged = { smbDurationMs = it },
+        onPlaybackEnded = {
+            if (smbItem == null) {
+                onPlaybackEnded()
+                onSubMenuToggle(true)
+                onShowControlsChange(false)
+            }
+        },
         onStopOrDispose = { player ->
             if (smbItem == null) {
                 val posMs =
@@ -318,6 +333,25 @@ fun VideoPlayerScreen(
                 bufferedPositionMs
             ).coerceAtLeast(0L)
         }
+    val canOpenKeyframeGrid =
+        !isRecordingChasePlayback &&
+                currentProgram.recordedVideo.hasKeyFrames != false &&
+                !tiledThumbnailUrl.isNullOrBlank() &&
+                totalDurationForControls > 0L
+    val openKeyframeGridOrToast: () -> Unit = {
+        if (canOpenKeyframeGrid) {
+            isKeyframeGridOpen = true
+            onShowControlsChange(true)
+        } else {
+            onShowToast(
+                if (isRecordingChasePlayback) {
+                    "録画中のためサムネイルはまだ生成されていません"
+                } else {
+                    "サムネイルはまだ生成されていません"
+                }
+            )
+        }
+    }
 
     val performSeek: (Long) -> Unit = { targetMs: Long ->
         val safeTarget = targetMs.coerceIn(
@@ -409,6 +443,16 @@ fun VideoPlayerScreen(
     var preparedPlaybackKey by remember { mutableStateOf<String?>(null) }
     val qualityOptionsKey = remember(availableQualities) {
         availableQualities.joinToString(separator = "|") { it.value }
+    }
+
+    LaunchedEffect(currentProgram.id, smbItem?.path) {
+        isFirstLoad = true
+        preparedPlaybackKey = null
+        vs.playbackOffsetMs = 0L
+        vs.pendingSeekPositionMs = null
+        playbackPositionMs = effectiveInitialPositionMs.coerceAtLeast(0L)
+        playbackDurationMs = 0L
+        bufferedPositionMs = 0L
     }
 
     LaunchedEffect(
@@ -546,20 +590,31 @@ fun VideoPlayerScreen(
     val safeHouseFocusRequester = remember { FocusRequester() }
     val sceneSearchFocusRequester = remember { FocusRequester() }
     var isLongPressHandled by remember { mutableStateOf(false) }
-    val seriesQuickPrograms = remember(currentProgram.id, currentProgram.seriesName, recentRecordings) {
+    val seriesQuickPrograms = remember(
+        currentProgram.id,
+        currentProgram.title,
+        currentProgram.seriesName,
+        recentRecordings
+    ) {
         val seriesName = currentProgram.seriesName?.trim().orEmpty()
-        if (seriesName.isBlank()) {
-            emptyList()
-        } else {
-            recentRecordings
-                .filter { it.seriesName?.trim() == seriesName }
-                .distinctBy { it.id }
-                .sortedBy { it.startTime }
-                .take(24)
-        }
+        val displayTitle = seriesName.ifBlank { TitleNormalizer.extractDisplayTitle(currentProgram.title) }
+        val normalizedSeries = normalizeQuickSeriesKey(displayTitle)
+        val candidates = (listOf(currentProgram) + recentRecordings)
+            .distinctBy { it.id }
+        candidates
+            .filter { candidate ->
+                val candidateSeries = candidate.seriesName?.trim().orEmpty()
+                val candidateDisplay =
+                    candidateSeries.ifBlank { TitleNormalizer.extractDisplayTitle(candidate.title) }
+                normalizeQuickSeriesKey(candidateDisplay) == normalizedSeries ||
+                        (displayTitle.isNotBlank() && candidate.title.contains(displayTitle))
+            }
+            .distinctBy { it.id }
+            .sortedBy { it.startTime }
+            .take(24)
     }
     val recentQuickPrograms = remember(currentProgram.id, recentRecordings) {
-        recentRecordings
+        (listOf(currentProgram) + recentRecordings)
             .distinctBy { it.id }
             .sortedByDescending { it.startTime }
             .take(24)
@@ -811,7 +866,7 @@ fun VideoPlayerScreen(
                                 scope.launch {
                                     isBuffering = true;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        program.id,
+                                        currentProgram.id,
                                         it.value,
                                         currentSessionId,
                                         0.0,
@@ -827,7 +882,7 @@ fun VideoPlayerScreen(
                                     isBuffering = true;
                                     val offsetSec = currentPos / 1000.0;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        program.id,
+                                        currentProgram.id,
                                         it.value,
                                         currentSessionId,
                                         offsetSec,
@@ -844,11 +899,10 @@ fun VideoPlayerScreen(
                         vs.isCommentEnabled =
                             !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
                     },
-                    canOpenKeyframeGrid = totalDurationForControls > 0L,
+                    canOpenKeyframeGrid = canOpenKeyframeGrid,
                     onKeyframeGridToggle = {
                         isModernSettingsOpen = false
-                        isKeyframeGridOpen = true
-                        onShowControlsChange(true)
+                        openKeyframeGridOrToast()
                     },
                     onLCropToggle = {
                         vs.lCropEnabled = !vs.lCropEnabled
@@ -878,6 +932,7 @@ fun VideoPlayerScreen(
                     currentProgram = currentProgram,
                     seriesPrograms = seriesQuickPrograms,
                     quickPrograms = recentQuickPrograms,
+                    animeChannels = animeChannels,
                     backendType = backendType,
                     konomiIp = konomiIp,
                     konomiPort = konomiPort,
@@ -922,7 +977,7 @@ fun VideoPlayerScreen(
                                 scope.launch {
                                     isBuffering = true;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        program.id,
+                                        currentProgram.id,
                                         it.value,
                                         currentSessionId,
                                         0.0,
@@ -938,7 +993,7 @@ fun VideoPlayerScreen(
                                     isBuffering = true;
                                     val offsetSec = currentPos / 1000.0;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        program.id,
+                                        currentProgram.id,
                                         it.value,
                                         currentSessionId,
                                         offsetSec,
@@ -954,11 +1009,10 @@ fun VideoPlayerScreen(
                         vs.isCommentEnabled =
                             !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
                     },
-                    canOpenKeyframeGrid = totalDurationForControls > 0L,
+                    canOpenKeyframeGrid = canOpenKeyframeGrid,
                     onKeyframeGridToggle = {
                         onSubMenuToggle(false)
-                        isKeyframeGridOpen = true
-                        onShowControlsChange(true)
+                        openKeyframeGridOrToast()
                     },
                     onLCropToggle = {
                         vs.lCropEnabled = !vs.lCropEnabled
@@ -981,6 +1035,7 @@ fun VideoPlayerScreen(
                             onProgramSelect(it)
                         }
                     },
+                    onChannelSelect = onChannelSelect,
                     onCloseMenu = { onSubMenuToggle(false) },
                 )
             }
@@ -991,3 +1046,9 @@ fun VideoPlayerScreen(
         }
     }
 }
+
+private fun normalizeQuickSeriesKey(value: String): String =
+    value
+        .trim()
+        .replace(Regex("[\\s　]+"), "")
+        .lowercase()

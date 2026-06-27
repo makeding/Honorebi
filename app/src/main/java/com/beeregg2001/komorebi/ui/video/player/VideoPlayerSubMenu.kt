@@ -43,6 +43,7 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
@@ -54,6 +55,7 @@ fun VideoTopSubMenuUI(
     currentProgram: RecordedProgram,
     seriesPrograms: List<RecordedProgram>,
     quickPrograms: List<RecordedProgram>,
+    animeChannels: List<Channel> = emptyList(),
     backendType: String,
     konomiIp: String,
     konomiPort: String,
@@ -76,6 +78,7 @@ fun VideoTopSubMenuUI(
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit,
+    onChannelSelect: (Channel) -> Unit = {},
     onCloseMenu: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ (既存に影響しないようデフォルトは true)
     isAudioSupported: Boolean = true,
@@ -94,7 +97,7 @@ fun VideoTopSubMenuUI(
     LaunchedEffect(Unit) {
         delay(50)
         try {
-            focusRequester.requestFocus()
+            quickVideoButtonRequester.requestFocus()
         } catch (e: Exception) {
         }
     }
@@ -124,11 +127,24 @@ fun VideoTopSubMenuUI(
             )
             .padding(top = 24.dp, bottom = 48.dp)
             .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown &&
-                    (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
-                            keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE)
-                ) {
-                    if (selectedCategory != null) {
+                when {
+                    keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.key == Key.DirectionUp &&
+                            selectedCategory == null -> {
+                        selectedCategory = SubMenuCategory.QUICK_VIDEOS
+                        true
+                    }
+
+                    keyEvent.type == KeyEventType.KeyDown &&
+                            keyEvent.key == Key.DirectionUp &&
+                            selectedCategory == SubMenuCategory.QUICK_VIDEOS -> {
+                        true
+                    }
+
+                    keyEvent.type == KeyEventType.KeyDown &&
+                            (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
+                                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE) &&
+                            selectedCategory != null -> {
                         val targetRequester =
                             if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) quickVideoButtonRequester else qualityButtonRequester
                         selectedCategory = null
@@ -137,8 +153,10 @@ fun VideoTopSubMenuUI(
                         } catch (e: Exception) {
                         }
                         true
-                    } else false
-                } else false
+                    }
+
+                    else -> false
+                }
             },
         contentAlignment = Alignment.TopCenter
     ) {
@@ -167,19 +185,17 @@ fun VideoTopSubMenuUI(
                                 FocusRequester.Cancel
                         },
                     contentColor = colors.textPrimary,
-                    enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty()
+                    enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty()
                 )
-                if (canOpenKeyframeGrid) {
-                    VideoMenuTileItem(
-                        title = "サムネイル",
-                        icon = Icons.Default.GridView,
-                        subtitle = "一覧",
-                        onClick = onKeyframeGridToggle,
-                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                        contentColor = colors.textPrimary,
-                        enabled = true
-                    )
-                }
+                VideoMenuTileItem(
+                    title = "サムネイル",
+                    icon = Icons.Default.GridView,
+                    subtitle = if (canOpenKeyframeGrid) "一覧" else "未生成",
+                    onClick = onKeyframeGridToggle,
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = colors.textPrimary,
+                    enabled = true
+                )
                 VideoMenuTileItem(
                     title = "音声切替",
                     icon = Icons.Default.Audiotrack,
@@ -268,13 +284,20 @@ fun VideoTopSubMenuUI(
                     currentProgram = currentProgram,
                     seriesPrograms = seriesPrograms,
                     quickPrograms = quickPrograms,
+                    animeChannels = animeChannels,
                     backendType = backendType,
                     konomiIp = konomiIp,
                     konomiPort = konomiPort,
                     focusRequester = quickVideoListRequester,
                     upRequester = quickVideoButtonRequester,
+                    onOpenKeyframeGrid = onKeyframeGridToggle,
                     onVideoSelect = {
                         onVideoSelect(it)
+                        selectedCategory = null
+                        onCloseMenu()
+                    },
+                    onChannelSelect = {
+                        onChannelSelect(it)
                         selectedCategory = null
                         onCloseMenu()
                     }
@@ -345,16 +368,24 @@ private fun QuickVideoPanel(
     currentProgram: RecordedProgram,
     seriesPrograms: List<RecordedProgram>,
     quickPrograms: List<RecordedProgram>,
+    animeChannels: List<Channel>,
     backendType: String,
     konomiIp: String,
     konomiPort: String,
     focusRequester: FocusRequester,
     upRequester: FocusRequester,
-    onVideoSelect: (RecordedProgram) -> Unit
+    onOpenKeyframeGrid: () -> Unit,
+    onVideoSelect: (RecordedProgram) -> Unit,
+    onChannelSelect: (Channel) -> Unit
 ) {
     val colors = KomorebiTheme.colors
     val recentFocusRequester = remember { FocusRequester() }
-    val initialSeriesFocusRequester = if (seriesPrograms.isEmpty()) recentFocusRequester else focusRequester
+    val channelFocusRequester = remember { FocusRequester() }
+    val seriesFocusRequester = if (seriesPrograms.isNotEmpty()) focusRequester else null
+    val recentInitialFocusRequester =
+        if (seriesPrograms.isEmpty() && quickPrograms.isNotEmpty()) focusRequester else recentFocusRequester
+    val channelInitialFocusRequester =
+        if (seriesPrograms.isEmpty() && quickPrograms.isEmpty()) focusRequester else channelFocusRequester
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(16.dp))
@@ -379,9 +410,10 @@ private fun QuickVideoPanel(
                 backendType = backendType,
                 konomiIp = konomiIp,
                 konomiPort = konomiPort,
-                focusRequester = initialSeriesFocusRequester,
+                focusRequester = seriesFocusRequester,
                 upRequester = upRequester,
                 downRequester = if (quickPrograms.isNotEmpty()) recentFocusRequester else null,
+                onOpenKeyframeGrid = onOpenKeyframeGrid,
                 onVideoSelect = onVideoSelect
             )
             QuickVideoSection(
@@ -391,10 +423,18 @@ private fun QuickVideoPanel(
                 backendType = backendType,
                 konomiIp = konomiIp,
                 konomiPort = konomiPort,
-                focusRequester = recentFocusRequester,
-                upRequester = if (seriesPrograms.isNotEmpty()) initialSeriesFocusRequester else upRequester,
-                downRequester = null,
+                focusRequester = recentInitialFocusRequester,
+                upRequester = if (seriesPrograms.isNotEmpty()) focusRequester else upRequester,
+                downRequester = if (animeChannels.isNotEmpty()) channelFocusRequester else null,
+                onOpenKeyframeGrid = onOpenKeyframeGrid,
                 onVideoSelect = onVideoSelect
+            )
+            QuickChannelSection(
+                title = "放送中のアニメ",
+                channels = animeChannels,
+                focusRequester = channelInitialFocusRequester,
+                upRequester = if (quickPrograms.isNotEmpty()) recentInitialFocusRequester else upRequester,
+                onChannelSelect = onChannelSelect
             )
         }
     }
@@ -411,6 +451,7 @@ private fun QuickVideoSection(
     focusRequester: FocusRequester?,
     upRequester: FocusRequester,
     downRequester: FocusRequester?,
+    onOpenKeyframeGrid: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit
 ) {
     val colors = KomorebiTheme.colors
@@ -455,12 +496,125 @@ private fun QuickVideoSection(
                         konomiIp = konomiIp,
                         konomiPort = konomiPort,
                         onClick = { onVideoSelect(program) },
+                        onOpenKeyframeGrid = onOpenKeyframeGrid,
+                        modifier = requesterModifier
+                            .focusProperties {
+                                up = FocusRequester.Cancel
+                                down = downRequester ?: FocusRequester.Cancel
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun QuickChannelSection(
+    title: String,
+    channels: List<Channel>,
+    focusRequester: FocusRequester,
+    upRequester: FocusRequester,
+    onChannelSelect: (Channel) -> Unit
+) {
+    val colors = KomorebiTheme.colors
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
+
+        if (channels.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(84.dp)
+                    .background(colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("放送中のアニメなし", color = colors.textSecondary)
+            }
+        } else {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(channels, key = { it.id }) { channel ->
+                    val requesterModifier =
+                        if (channel == channels.first()) Modifier.focusRequester(focusRequester) else Modifier
+                    QuickChannelCard(
+                        channel = channel,
+                        onClick = { onChannelSelect(channel) },
                         modifier = requesterModifier.focusProperties {
                             up = upRequester
-                            down = downRequester ?: FocusRequester.Cancel
+                            down = FocusRequester.Cancel
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun QuickChannelCard(
+    channel: Channel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+    val focusedContentColor = if (colors.isDark) Color.Black else Color.White
+
+    Surface(
+        onClick = onClick,
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface.copy(alpha = 0.72f),
+            focusedContainerColor = colors.textPrimary,
+            contentColor = colors.textPrimary,
+            focusedContentColor = focusedContentColor
+        ),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
+        modifier = modifier.size(width = 260.dp, height = 88.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(colors.accent.copy(alpha = 0.18f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Tv, contentDescription = null, tint = colors.accent)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(verticalArrangement = Arrangement.Center, modifier = Modifier.weight(1f)) {
+                Text(
+                    text = channel.programPresent?.title ?: channel.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = channel.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -475,6 +629,7 @@ private fun QuickVideoCard(
     konomiIp: String,
     konomiPort: String,
     onClick: () -> Unit,
+    onOpenKeyframeGrid: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
@@ -491,7 +646,16 @@ private fun QuickVideoCard(
             focusedContentColor = if (colors.isDark) Color.Black else Color.White
         ),
         shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
-        modifier = modifier.size(width = 240.dp, height = 112.dp)
+        modifier = modifier
+            .size(width = 240.dp, height = 112.dp)
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                    onOpenKeyframeGrid()
+                    true
+                } else {
+                    false
+                }
+            }
     ) {
         Row(
             modifier = Modifier
@@ -697,22 +861,20 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (canOpenKeyframeGrid) {
-                            ModernSettingRow(
-                                title = "サムネイル",
-                                value = "一覧",
-                                icon = Icons.Default.GridView,
-                                onClick = onKeyframeGridToggle,
-                                modifier = Modifier.focusRequester(initialFocusRequester),
-                                enabled = true
-                            )
-                        }
+                        ModernSettingRow(
+                            title = "サムネイル",
+                            value = if (canOpenKeyframeGrid) "一覧" else "未生成",
+                            icon = Icons.Default.GridView,
+                            onClick = onKeyframeGridToggle,
+                            modifier = Modifier.focusRequester(initialFocusRequester),
+                            enabled = true
+                        )
                         ModernSettingRow(
                             title = "音声切替",
                             value = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
                             icon = Icons.Default.Audiotrack,
                             onClick = onAudioToggle,
-                            modifier = if (canOpenKeyframeGrid) Modifier else Modifier.focusRequester(initialFocusRequester),
+                            modifier = Modifier,
                             enabled = isAudioSupported // ★ 適用
                         )
                         ModernSettingRow(

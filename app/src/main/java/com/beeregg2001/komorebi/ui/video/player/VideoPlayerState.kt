@@ -159,8 +159,15 @@ class VideoPlayerState {
 
         // UI非表示時の安全装置
         if (!showControls) {
-            if (isModern && keyCode == NativeKeyEvent.KEYCODE_DPAD_UP) {
-                return openModernSettingsMenu()
+            if (keyCode == NativeKeyEvent.KEYCODE_DPAD_UP) {
+                if (isActionDown) {
+                    if (isModern) {
+                        openModernSettingsMenu()
+                    } else {
+                        onSubMenuToggle(true)
+                    }
+                }
+                return true
             }
 
             if (keyCode == NativeKeyEvent.KEYCODE_DPAD_CENTER || keyCode == NativeKeyEvent.KEYCODE_ENTER) {
@@ -175,7 +182,6 @@ class VideoPlayerState {
             }
 
             if (keyCode in listOf(
-                    NativeKeyEvent.KEYCODE_DPAD_UP,
                     NativeKeyEvent.KEYCODE_DPAD_DOWN
                 )
             ) {
@@ -259,23 +265,8 @@ class VideoPlayerState {
         }
 
         if (keyCode == NativeKeyEvent.KEYCODE_DPAD_DOWN) {
-            val isChapterMode = !isModern || !showControls
-            if (!isChapterMode) return false
-            if (isActionDown) {
-                if (downKeyDownTime == 0L) downKeyDownTime = System.currentTimeMillis()
-                val elapsed = System.currentTimeMillis() - downKeyDownTime
-                if (!isDownKeyLongPressed && elapsed > 500) {
-                    isDownKeyLongPressed = true
-                    if (chapters.size > 1) {
-                        onChapterListToggle(true)
-                        onShowControlsChange(true)
-                    }
-                }
-            } else if (isActionUp) {
-                if (!isDownKeyLongPressed) {
-                    onShowControlsChange(true); onSceneSearchToggle(true)
-                }
-                downKeyDownTime = 0L; isDownKeyLongPressed = false
+            if (isActionUp) {
+                onShowControlsChange(true)
             }
             return true
         }

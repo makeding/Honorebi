@@ -70,15 +70,7 @@ class KonomiRepository @Inject constructor(
                 genre = genre
             )
 
-            val ip = settingsRepository.konomiIp.first()
-            val port = settingsRepository.konomiPort.first()
-            val updatedPrograms = response.recordedPrograms.map { program ->
-                val fallbackUrl =
-                    UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, program.id.toString())
-                program.copy(apiThumbnailUrl = fallbackUrl)
-            }
-
-            response.copy(recordedPrograms = updatedPrograms)
+            response.withThumbnailUrls()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get recorded programs", e)
             // ★ 修正: 例外をスロー
@@ -109,6 +101,7 @@ class KonomiRepository @Inject constructor(
         return try {
             Log.d(TAG, "Calling API searchVideos. Keyword: $keyword, Page: $page")
             apiService.searchVideos(keyword = keyword, page = page, order = order)
+                .withThumbnailUrls()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to search recorded programs", e)
             // ★ 修正: 例外をスロー
@@ -122,6 +115,7 @@ class KonomiRepository @Inject constructor(
         order: String
     ): RecordedApiResponse {
         return apiService.getRecordedProgramsBySeries(seriesId = seriesId, page = page, order = order)
+            .withThumbnailUrls()
     }
 
     override suspend fun getSeriesList(page: Int, order: String): SeriesApiResponse {
@@ -368,5 +362,20 @@ class KonomiRepository @Inject constructor(
 
     override suspend fun getPinnedEpgPrograms(pinnedChannelIds: String): List<EpgChannelWrapper> {
         return apiService.getEpgPrograms(pinnedChannelIds = pinnedChannelIds).channels
+    }
+
+    private suspend fun RecordedApiResponse.withThumbnailUrls(): RecordedApiResponse {
+        val ip = settingsRepository.konomiIp.first()
+        val port = settingsRepository.konomiPort.first()
+        val updatedPrograms = recordedPrograms.map { program ->
+            if (!program.apiThumbnailUrl.isNullOrBlank()) {
+                program
+            } else {
+                val fallbackUrl =
+                    UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, program.id.toString())
+                program.copy(apiThumbnailUrl = fallbackUrl)
+            }
+        }
+        return copy(recordedPrograms = updatedPrograms)
     }
 }

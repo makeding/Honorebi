@@ -318,9 +318,11 @@ fun MainRootScreen(
     val isChannelLoading by channelViewModel.isLoading.collectAsState()
     val isHomeLoading by homeViewModel.isLoading.collectAsState()
     val isChannelError by channelViewModel.connectionError.collectAsState()
+    val isNetworkAvailable by rememberNetworkAvailableState()
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
     val watchHistory by homeViewModel.watchHistory.collectAsState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
+    val localRecordedCount by recordViewModel.localRecordedCount.collectAsState()
     val lastChannels by homeViewModel.lastWatchedChannelFlow.collectAsState(initial = emptyList())
     val conditions by reserveViewModel.conditions.collectAsState()
     val reserves by reserveViewModel.reserves.collectAsState()
@@ -397,6 +399,7 @@ fun MainRootScreen(
     val closeSettingsAndRefresh = {
         state.isSettingsOpen = false; state.isDataReady = false; state.isUiReady =
         false; state.showConnectionErrorDialog = false
+        state.isOfflineMode = false
         state.currentTabIndex = 0
         channelViewModel.fetchChannels(); epgViewModel.preloadAllEpgData(); homeViewModel.refreshHomeData()
         recordViewModel.fetchRecentRecordings(forceRefresh = false); reserveViewModel.fetchReserves()
@@ -466,9 +469,17 @@ fun MainRootScreen(
                 state.isSeriesListOpen = false; recordViewModel.searchRecordings("")
             }
 
-            state.showConnectionErrorDialog -> onExitApp()
+            state.showConnectionErrorDialog -> {}
             !(state.isDataReady && state.isUiReady) -> {}
             else -> state.triggerHomeBack = true
+        }
+    }
+
+    LaunchedEffect(isNetworkAvailable, isSettingsInitialized, state.isOfflineMode) {
+        if (isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {
+            state.showConnectionErrorDialog = true
+            state.isDataReady = false
+            state.isSplashFinished = true
         }
     }
 
@@ -479,6 +490,7 @@ fun MainRootScreen(
                 state.showConnectionErrorDialog = true; state.isDataReady = false
             } else {
                 state.showConnectionErrorDialog = false; state.isDataReady = true
+                state.isOfflineMode = false
             }
         }
     }
@@ -499,7 +511,7 @@ fun MainRootScreen(
 
     val isSystemReady =
         ((state.isDataReady && state.isSplashFinished) || (!isSettingsInitialized && state.isSplashFinished)) &&
-                state.hasAppliedStartupTab && (startupChannelSetting == "OFF" || state.hasAppliedStartupChannel)
+                state.hasAppliedStartupTab && (startupChannelSetting == "OFF" || state.hasAppliedStartupChannel || state.isOfflineMode)
 
     KomorebiTheme(theme = currentTheme) {
         val colors = KomorebiTheme.colors
@@ -598,6 +610,19 @@ fun MainRootScreen(
                             label = "padding",
                             animationSpec = tween(400)
                         )
+                        val animeChannels = remember(groupedChannels) {
+                            groupedChannels.values
+                                .flatten()
+                                .filter { channel ->
+                                    val present = channel.programPresent ?: return@filter false
+                                    val genreHit = present.genres.orEmpty().any {
+                                        it.major == "アニメ・特撮" || it.major.contains("アニメ")
+                                    }
+                                    genreHit || present.title.contains("アニメ")
+                                }
+                                .distinctBy { it.id }
+                                .take(20)
+                        }
 
                         Box(
                             modifier = Modifier
@@ -675,6 +700,7 @@ fun MainRootScreen(
                                     isSceneSearchOpen = state.isPlayerSceneSearchOpen,
                                     onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
                                     recentRecordings = recentRecordings,
+                                    animeChannels = animeChannels,
                                     onProgramSelect = { program ->
                                         state.initialPlaybackPositionMs = 0L
                                         state.selectedProgram = program
@@ -684,6 +710,23 @@ fun MainRootScreen(
                                         state.isPlayerSceneSearchOpen = false
                                         state.showPlayerControls = true
                                         state.isReturningFromPlayer = false
+                                    },
+                                    onChannelSelect = { channel ->
+                                        state.selectedProgram = null
+                                        state.selectedSmbItem = null
+                                        state.selectedChannel = channel
+                                        state.lastSelectedChannelId = channel.id
+                                        state.lastSelectedProgramId = null
+                                        state.isPlayerSubMenuOpen = false
+                                        state.isPlayerSceneSearchOpen = false
+                                        state.showPlayerControls = false
+                                        state.playerShowOverlay = false
+                                        state.isReturningFromPlayer = false
+                                        homeViewModel.saveLastChannel(channel)
+                                    },
+                                    onPlaybackEnded = {
+                                        recordViewModel.fetchRecentRecordings(forceRefresh = true)
+                                        channelViewModel.fetchChannels()
                                     },
                                     onBackPressed = {
                                         state.selectedProgram = null
@@ -755,6 +798,51 @@ fun MainRootScreen(
                         if (currentSync.total > 0) currentSync.current.toFloat() / currentSync.total.toFloat() else 0f
                     LoadingScreen(message = currentSync.progressText, progressRatio = pRatio)
                 } else LoadingScreen()
+            }
+
+            if (state.showConnectionErrorDialog && isSettingsInitialized && !state.isSettingsOpen) {
+                val hasOfflineCache = remember(
+                    groupedChannels,
+                    watchHistory,
+                    recentRecordings,
+                    lastChannels,
+                    localRecordedCount
+                ) {
+                    groupedChannels.isNotEmpty() ||
+                            watchHistory.isNotEmpty() ||
+                            recentRecordings.isNotEmpty() ||
+                            lastChannels.isNotEmpty() ||
+                            localRecordedCount > 0
+                }
+
+                OfflineGuideScreen(
+                    hasOfflineCache = hasOfflineCache,
+                    isDeviceOffline = !isNetworkAvailable,
+                    onContinueOffline = {
+                        state.showConnectionErrorDialog = false
+                        state.isOfflineMode = true
+                        state.isDataReady = true
+                        state.isSplashFinished = true
+                        state.isUiReady = true
+                        state.hasAppliedStartupChannel = true
+                    },
+                    onRetry = {
+                        state.showConnectionErrorDialog = false
+                        state.isOfflineMode = false
+                        state.isDataReady = false
+                        state.isUiReady = false
+                        channelViewModel.fetchChannels()
+                        recordViewModel.fetchRecentRecordings(forceRefresh = true)
+                        homeViewModel.refreshHomeData()
+                    },
+                    onOpenSettings = {
+                        state.showConnectionErrorDialog = false
+                        state.settingsInitialCategoryIndex = 1
+                        state.settingsInitialFocusItemIndex = null
+                        state.isSettingsOpen = true
+                    },
+                    modifier = Modifier.zIndex(6f)
+                )
             }
 
             MainRootDialogs(

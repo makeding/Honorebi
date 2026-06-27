@@ -61,8 +61,13 @@ fun RecordListItem(
     val isAnalyzed = isTempAnalyzed && !isCurrentlyRecording
     val isVisualFocused = isFocused || isPersistentFocused
 
-    // 変更後：KonomiTV、EDCBともに、Repositoryが用意してくれたURLをそのまま使う！
-    val fallbackUrl = program.apiThumbnailUrl
+    // Repository側のURLを優先し、古い/検索直後のデータではIDから標準APIへフォールバックする。
+    val fallbackUrl = program.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
+        backendType,
+        konomiIp,
+        konomiPort,
+        program.id.toString()
+    )
     val primaryUrl = program.directThumbnailUrl ?: fallbackUrl
 
     // 現在表示を試みているURL（失敗したらfallbackUrlに切り替わる）

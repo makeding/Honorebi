@@ -394,23 +394,6 @@ fun MainRootDialogs(
         InitialSetupDialog(onConfirm = { state.isSettingsOpen = true })
     }
 
-    if (state.showConnectionErrorDialog && isSettingsInitialized && !state.isSettingsOpen) {
-        ConnectionErrorDialog(
-            onRetry = {
-                state.showConnectionErrorDialog = false
-                state.isDataReady = false
-                channelViewModel.fetchChannels()
-            },
-            onGoToSettings = {
-                state.showConnectionErrorDialog = false
-                state.settingsInitialCategoryIndex = 1
-                state.settingsInitialFocusItemIndex = null
-                state.isSettingsOpen = true
-            },
-            onExit = onExitApp
-        )
-    }
-
     if (state.isSettingsOpen) {
         SettingsScreen(
             onBack = closeSettingsAndRefresh,

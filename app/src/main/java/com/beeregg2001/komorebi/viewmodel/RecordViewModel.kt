@@ -27,7 +27,6 @@ import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.data.sync.RecordSyncEngine
 import com.beeregg2001.komorebi.data.sync.SyncProgress
 import com.beeregg2001.komorebi.ui.video.components.RecordCategory
-import com.beeregg2001.komorebi.util.TitleNormalizer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -179,6 +178,8 @@ class RecordViewModel @Inject constructor(
     }
 
     val recentRecordings: StateFlow<List<RecordedProgram>> = appContentStore.recentRecordings
+    val localRecordedCount: StateFlow<Int> = programDao.getTotalCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     init {
         loadSearchHistory()
@@ -640,11 +641,9 @@ class RecordViewModel @Inject constructor(
                     val majorGenre = proj.genres?.firstOrNull()?.major ?: "その他"
                     genresSet.add(majorGenre)
 
-                    val searchKeyword = TitleNormalizer.toSqlSearchQuery(proj.seriesName)
-
                     val seriesInfo = SeriesInfo(
                         displayTitle = proj.seriesName,
-                        searchKeyword = searchKeyword,
+                        searchKeyword = proj.seriesName,
                         programCount = proj.programCount,
                         representativeVideoId = proj.representativeVideoId,
                         isEpisodic = proj.isEpisodic,

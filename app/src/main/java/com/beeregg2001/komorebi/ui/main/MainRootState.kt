@@ -109,6 +109,7 @@ class MainRootState {
     var isUiReady by mutableStateOf(false)
     var isSplashFinished by mutableStateOf(false)
     var showConnectionErrorDialog by mutableStateOf(false)
+    var isOfflineMode by mutableStateOf(false)
     var hasAppliedStartupTab by mutableStateOf(false)
 
     var hasAppliedStartupChannel by mutableStateOf(false)

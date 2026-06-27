@@ -75,6 +75,7 @@ fun rememberManagedExoPlayer(
     onVideoSizeChanged: (Int, Int, Float) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
     onDurationChanged: (Long) -> Unit = {},
+    onPlaybackEnded: () -> Unit = {},
     onStopOrDispose: (ExoPlayer) -> Unit,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
@@ -123,7 +124,7 @@ fun rememberManagedExoPlayer(
         }
     }
 
-    val exoPlayer = remember(smbServerList) {
+    val exoPlayer = remember(smbServerList, program?.id, program?.recordedVideo?.duration) {
         val renderersFactory = DefaultRenderersFactory(context).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
@@ -278,6 +279,7 @@ fun rememberManagedExoPlayer(
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         onBufferingChanged(playbackState == Player.STATE_BUFFERING)
                         if (playbackState == Player.STATE_READY) onDurationChanged(duration)
+                        if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
                     }
 
                     override fun onPlayerError(error: PlaybackException) {

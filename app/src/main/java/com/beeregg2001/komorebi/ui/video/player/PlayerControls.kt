@@ -284,7 +284,7 @@ fun PlayerControls(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(32.dp)
+                            .height(graphHeight)
                             .onFocusChanged {
                                 isSeekBarFocused = it.isFocused
                                 onSeekBarFocusChanged(it.isFocused)
@@ -330,9 +330,8 @@ fun PlayerControls(
                                 unplayedColor = Color.White.copy(alpha = 0.2f),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .requiredHeight(graphHeight)
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 16.dp)
+                                    .fillMaxHeight()
+                                    .align(Alignment.BottomStart)
                             )
                         }
 
@@ -340,6 +339,7 @@ fun PlayerControls(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(trackHeight)
+                                .align(Alignment.BottomStart)
                                 .background(
                                     Color.White.copy(alpha = 0.3f),
                                     RoundedCornerShape(4.dp)
@@ -364,6 +364,7 @@ fun PlayerControls(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(trackHeight)
+                                    .align(Alignment.BottomStart)
                             ) {
                                 val canvasWidth = size.width
                                 val canvasHeight = size.height
@@ -415,6 +416,7 @@ fun PlayerControls(
                                 modifier = Modifier
                                     .fillMaxWidth(bufferProgress)
                                     .height(trackHeight)
+                                    .align(Alignment.BottomStart)
                                     .background(
                                         Color.White.copy(alpha = 0.5f),
                                         RoundedCornerShape(4.dp)
@@ -433,6 +435,7 @@ fun PlayerControls(
                                 modifier = Modifier
                                     .fillMaxWidth(playProgress)
                                     .height(trackHeight)
+                                    .align(Alignment.BottomStart)
                                     .background(
                                         if (isSeekBarFocused) colors.accent else colors.accent.copy(
                                             alpha = 0.8f
@@ -444,12 +447,12 @@ fun PlayerControls(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(playProgress)
-                                .height(32.dp),
-                            contentAlignment = Alignment.CenterEnd
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.BottomEnd
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .offset(x = (playHeadSize / 2))
+                                    .offset(x = (playHeadSize / 2), y = (playHeadSize / 2))
                                     .size(playHeadSize)
                                     .background(
                                         if (isSeekBarFocused) colors.accent else Color.White,
