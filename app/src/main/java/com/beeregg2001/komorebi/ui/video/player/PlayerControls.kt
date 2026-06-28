@@ -80,6 +80,8 @@ fun PlayerControls(
     onSeekRequested: (Long) -> Unit, // ★ 追加: シークバーでのシーク用コールバック
     onSkipPreviousChapter: () -> Unit = {},
     onSkipNextChapter: () -> Unit = {},
+    canOpenKeyframeGrid: Boolean = false,
+    onKeyframeGridToggle: () -> Unit = {},
     onChapterListToggle: () -> Unit,
     onInfoToggle: () -> Unit,
     onSettingsToggle: () -> Unit
@@ -490,6 +492,13 @@ fun PlayerControls(
                                     icon = Icons.Default.FormatListBulleted,
                                     label = "チャプター",
                                     onClick = onChapterListToggle
+                                )
+                            }
+                            if (canOpenKeyframeGrid) {
+                                OsdIconButton(
+                                    icon = Icons.Default.GridView,
+                                    label = "サムネイル",
+                                    onClick = onKeyframeGridToggle
                                 )
                             }
                         }

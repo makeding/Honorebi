@@ -12,11 +12,13 @@ import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
+import com.beeregg2001.komorebi.util.TitleNormalizer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +30,15 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 
+data class QuickVideoCandidates(
+    val seriesPrograms: List<RecordedProgram> = emptyList(),
+    val recentPrograms: List<RecordedProgram> = emptyList(),
+    val sourceProgramId: Int = 0,
+    val seriesKey: String = "",
+    val fetchedAtMillis: Long = 0L,
+    val isLoading: Boolean = false
+)
+
 @HiltViewModel
 class VideoPlayerViewModel @Inject constructor(
     private val recordProvider: RecordProvider,
@@ -37,6 +48,8 @@ class VideoPlayerViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "VideoPlayerViewModel"
+        private const val QUICK_VIDEO_CACHE_TTL_MS = 60_000L
+        private const val QUICK_VIDEO_LIMIT = 48
     }
 
     private val gson = Gson()
@@ -64,8 +77,14 @@ class VideoPlayerViewModel @Inject constructor(
     private val _isQualitiesLoaded = MutableStateFlow(false)
     val isQualitiesLoaded: StateFlow<Boolean> = _isQualitiesLoaded.asStateFlow()
 
+    private val _quickVideoCandidates = MutableStateFlow(QuickVideoCandidates())
+    val quickVideoCandidates: StateFlow<QuickVideoCandidates> =
+        _quickVideoCandidates.asStateFlow()
+
     private var detailFetchJob: Job? = null
     private var streamMaintenanceJob: Job? = null
+    private var quickVideoFetchJob: Job? = null
+    private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
 
     fun fetchAvailableQualities() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -226,6 +245,177 @@ class VideoPlayerViewModel @Inject constructor(
         _isLiveStream.value = false
     }
 
+    fun refreshQuickVideoCandidates(
+        program: RecordedProgram,
+        localRecentPrograms: List<RecordedProgram>,
+        force: Boolean = false
+    ) {
+        val seriesTitle = quickSeriesDisplayTitle(program)
+        val seriesKey = normalizeQuickSeriesKey(seriesTitle)
+        val cacheKey = seriesKey.ifBlank { "program:${program.id}" }
+        val now = System.currentTimeMillis()
+        val localCandidates = QuickVideoCandidates(
+            seriesPrograms = buildSeriesProgramList(program, localRecentPrograms, seriesKey, seriesTitle),
+            recentPrograms = buildRecentProgramList(program, localRecentPrograms),
+            sourceProgramId = program.id,
+            seriesKey = seriesKey,
+            fetchedAtMillis = 0L
+        )
+        val current = _quickVideoCandidates.value
+        if (
+            !force &&
+            current.isLoading &&
+            current.sourceProgramId == program.id &&
+            current.seriesKey == seriesKey
+        ) {
+            return
+        }
+        val cached = quickVideoCache[cacheKey]
+
+        if (cached != null && now - cached.fetchedAtMillis < QUICK_VIDEO_CACHE_TTL_MS) {
+            _quickVideoCandidates.value = cached.copy(
+                sourceProgramId = program.id,
+                isLoading = false,
+                seriesPrograms = buildSeriesProgramList(
+                    program,
+                    cached.seriesPrograms + localCandidates.seriesPrograms,
+                    seriesKey,
+                    seriesTitle
+                ),
+                recentPrograms = buildRecentProgramList(program, cached.recentPrograms + localCandidates.recentPrograms)
+            )
+            if (!force) return
+        } else {
+            _quickVideoCandidates.value = localCandidates.copy(isLoading = true)
+        }
+
+        quickVideoFetchJob?.cancel()
+        quickVideoFetchJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val seriesDeferred = async {
+                    runQuickVideoFetch {
+                        fetchSeriesProgramsForQuickMenu(program, seriesTitle, seriesKey)
+                    }
+                }
+                val recentDeferred = async {
+                    runQuickVideoFetch {
+                        recordProvider.getRecordedPrograms(page = 1, order = "desc")
+                            .recordedPrograms
+                    }
+                }
+
+                val fetchedSeries = seriesDeferred.await().getOrElse {
+                    Log.w(TAG, "Failed to fetch quick series programs", it)
+                    localCandidates.seriesPrograms
+                }
+                val fetchedRecent = recentDeferred.await().getOrElse {
+                    Log.w(TAG, "Failed to fetch latest recorded programs", it)
+                    localCandidates.recentPrograms
+                }
+                val fresh = QuickVideoCandidates(
+                    seriesPrograms = buildSeriesProgramList(
+                        program,
+                        fetchedSeries + localCandidates.seriesPrograms,
+                        seriesKey,
+                        seriesTitle
+                    ),
+                    recentPrograms = buildRecentProgramList(
+                        program,
+                        fetchedRecent + localCandidates.recentPrograms
+                    ),
+                    sourceProgramId = program.id,
+                    seriesKey = seriesKey,
+                    fetchedAtMillis = System.currentTimeMillis(),
+                    isLoading = false
+                )
+                quickVideoCache[cacheKey] = fresh
+                _quickVideoCandidates.value = fresh
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to refresh quick video candidates", e)
+                _quickVideoCandidates.value = localCandidates.copy(isLoading = false)
+            }
+        }
+    }
+
+    private suspend fun <T> runQuickVideoFetch(block: suspend () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+    private suspend fun fetchSeriesProgramsForQuickMenu(
+        program: RecordedProgram,
+        seriesTitle: String,
+        seriesKey: String
+    ): List<RecordedProgram> {
+        val keywords = listOf(
+            seriesTitle,
+            program.seriesName?.trim().orEmpty(),
+            TitleNormalizer.extractDisplayTitle(program.title),
+            program.title
+        )
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        val fetched = mutableListOf<RecordedProgram>()
+        for (keyword in keywords.take(3)) {
+            val result = recordProvider.searchRecordedPrograms(
+                keyword = keyword,
+                page = 1,
+                order = "desc"
+            ).recordedPrograms
+            fetched += result
+            if (buildSeriesProgramList(program, fetched, seriesKey, seriesTitle).size >= QUICK_VIDEO_LIMIT) {
+                break
+            }
+        }
+        return fetched
+    }
+
+    private fun buildSeriesProgramList(
+        program: RecordedProgram,
+        candidates: List<RecordedProgram>,
+        seriesKey: String,
+        seriesTitle: String
+    ): List<RecordedProgram> =
+        (listOf(program) + candidates)
+            .distinctBy { it.id }
+            .filter { candidate ->
+                val candidateTitle = quickSeriesDisplayTitle(candidate)
+                val candidateKey = normalizeQuickSeriesKey(candidateTitle)
+                candidate.id == program.id ||
+                        (seriesKey.isNotBlank() && candidateKey == seriesKey) ||
+                        (seriesTitle.isNotBlank() && candidate.title.contains(seriesTitle))
+            }
+            .sortedByDescending { it.startTime }
+            .take(QUICK_VIDEO_LIMIT)
+
+    private fun buildRecentProgramList(
+        program: RecordedProgram,
+        candidates: List<RecordedProgram>
+    ): List<RecordedProgram> =
+        (listOf(program) + candidates)
+            .distinctBy { it.id }
+            .sortedByDescending { it.startTime }
+            .take(QUICK_VIDEO_LIMIT)
+
+    private fun quickSeriesDisplayTitle(program: RecordedProgram): String {
+        val seriesName = program.seriesName?.trim().orEmpty()
+        return seriesName.ifBlank { TitleNormalizer.extractDisplayTitle(program.title) }
+    }
+
+    private fun normalizeQuickSeriesKey(value: String): String =
+        value
+            .trim()
+            .replace(Regex("[\\s　]+"), "")
+            .lowercase()
+
     private fun calculateChapters(
         durationMs: Long,
         cmSections: List<CmSection>
@@ -325,5 +515,6 @@ class VideoPlayerViewModel @Inject constructor(
         super.onCleared()
         stopStreamMaintenance()
         detailFetchJob?.cancel()
+        quickVideoFetchJob?.cancel()
     }
 }

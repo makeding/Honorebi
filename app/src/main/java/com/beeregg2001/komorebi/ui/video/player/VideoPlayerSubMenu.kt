@@ -73,12 +73,12 @@ fun VideoTopSubMenuUI(
     onSubtitleToggle: () -> Unit,
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
-    canOpenKeyframeGrid: Boolean = false,
-    onKeyframeGridToggle: () -> Unit = {},
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit,
     onChannelSelect: (Channel) -> Unit = {},
+    canOpenKeyframeGrid: Boolean = false,
+    onKeyframeGridToggle: () -> Unit = {},
     onCloseMenu: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ (既存に影響しないようデフォルトは true)
     isAudioSupported: Boolean = true,
@@ -188,15 +188,6 @@ fun VideoTopSubMenuUI(
                     enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty()
                 )
                 VideoMenuTileItem(
-                    title = "サムネイル",
-                    icon = Icons.Default.GridView,
-                    subtitle = if (canOpenKeyframeGrid) "一覧" else "未生成",
-                    onClick = onKeyframeGridToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                    contentColor = colors.textPrimary,
-                    enabled = true
-                )
-                VideoMenuTileItem(
                     title = "音声切替",
                     icon = Icons.Default.Audiotrack,
                     subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
@@ -206,6 +197,15 @@ fun VideoTopSubMenuUI(
                         .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
                     enabled = isAudioSupported // ★ 適用
+                )
+                VideoMenuTileItem(
+                    title = "サムネイル",
+                    icon = Icons.Default.GridView,
+                    subtitle = if (canOpenKeyframeGrid) "一覧" else "未生成",
+                    onClick = onKeyframeGridToggle,
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = if (canOpenKeyframeGrid) colors.textPrimary else colors.textSecondary,
+                    enabled = true
                 )
                 VideoMenuTileItem(
                     title = "再生速度",
@@ -290,7 +290,6 @@ fun VideoTopSubMenuUI(
                     konomiPort = konomiPort,
                     focusRequester = quickVideoListRequester,
                     upRequester = quickVideoButtonRequester,
-                    onOpenKeyframeGrid = onKeyframeGridToggle,
                     onVideoSelect = {
                         onVideoSelect(it)
                         selectedCategory = null
@@ -374,7 +373,6 @@ private fun QuickVideoPanel(
     konomiPort: String,
     focusRequester: FocusRequester,
     upRequester: FocusRequester,
-    onOpenKeyframeGrid: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit,
     onChannelSelect: (Channel) -> Unit
 ) {
@@ -413,7 +411,6 @@ private fun QuickVideoPanel(
                 focusRequester = seriesFocusRequester,
                 upRequester = upRequester,
                 downRequester = if (quickPrograms.isNotEmpty()) recentFocusRequester else null,
-                onOpenKeyframeGrid = onOpenKeyframeGrid,
                 onVideoSelect = onVideoSelect
             )
             QuickVideoSection(
@@ -426,7 +423,6 @@ private fun QuickVideoPanel(
                 focusRequester = recentInitialFocusRequester,
                 upRequester = if (seriesPrograms.isNotEmpty()) focusRequester else upRequester,
                 downRequester = if (animeChannels.isNotEmpty()) channelFocusRequester else null,
-                onOpenKeyframeGrid = onOpenKeyframeGrid,
                 onVideoSelect = onVideoSelect
             )
             QuickChannelSection(
@@ -451,7 +447,6 @@ private fun QuickVideoSection(
     focusRequester: FocusRequester?,
     upRequester: FocusRequester,
     downRequester: FocusRequester?,
-    onOpenKeyframeGrid: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit
 ) {
     val colors = KomorebiTheme.colors
@@ -478,7 +473,7 @@ private fun QuickVideoSection(
         } else {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(programs, key = { it.id }) { program ->
@@ -496,7 +491,6 @@ private fun QuickVideoSection(
                         konomiIp = konomiIp,
                         konomiPort = konomiPort,
                         onClick = { onVideoSelect(program) },
-                        onOpenKeyframeGrid = onOpenKeyframeGrid,
                         modifier = requesterModifier
                             .focusProperties {
                                 up = FocusRequester.Cancel
@@ -542,7 +536,7 @@ private fun QuickChannelSection(
         } else {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(channels, key = { it.id }) { channel ->
@@ -629,7 +623,6 @@ private fun QuickVideoCard(
     konomiIp: String,
     konomiPort: String,
     onClick: () -> Unit,
-    onOpenKeyframeGrid: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
@@ -648,14 +641,6 @@ private fun QuickVideoCard(
         shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
         modifier = modifier
             .size(width = 240.dp, height = 112.dp)
-            .onKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
-                    onOpenKeyframeGrid()
-                    true
-                } else {
-                    false
-                }
-            }
     ) {
         Row(
             modifier = Modifier
@@ -772,8 +757,6 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
     onSubtitleToggle: () -> Unit,
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
-    canOpenKeyframeGrid: Boolean = false,
-    onKeyframeGridToggle: () -> Unit = {},
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ
@@ -862,19 +845,11 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         ModernSettingRow(
-                            title = "サムネイル",
-                            value = if (canOpenKeyframeGrid) "一覧" else "未生成",
-                            icon = Icons.Default.GridView,
-                            onClick = onKeyframeGridToggle,
-                            modifier = Modifier.focusRequester(initialFocusRequester),
-                            enabled = true
-                        )
-                        ModernSettingRow(
                             title = "音声切替",
                             value = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
                             icon = Icons.Default.Audiotrack,
                             onClick = onAudioToggle,
-                            modifier = Modifier,
+                            modifier = Modifier.focusRequester(initialFocusRequester),
                             enabled = isAudioSupported // ★ 適用
                         )
                         ModernSettingRow(

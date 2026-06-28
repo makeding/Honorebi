@@ -75,6 +75,7 @@ class VideoPlayerState {
         showControls: Boolean,
         isSubOverlayOpen: Boolean,
         chapters: List<ChapterInfo>,
+        canOpenSceneSearch: Boolean,
         totalDurationMs: Long,
         getCurrentPositionMs: () -> Long,
         performSeek: (Long) -> Unit,
@@ -86,6 +87,7 @@ class VideoPlayerState {
         onSettingsMenuToggle: () -> Unit,
         onChapterListToggle: (Boolean) -> Unit,
         onSubMenuToggle: (Boolean) -> Unit,
+        onQuickMenuRequested: () -> Unit = {},
         exoPlayerIsPlaying: Boolean,
         onPause: () -> Unit,
         onPlay: () -> Unit
@@ -164,6 +166,7 @@ class VideoPlayerState {
                     if (isModern) {
                         openModernSettingsMenu()
                     } else {
+                        onQuickMenuRequested()
                         onSubMenuToggle(true)
                     }
                 }
@@ -187,6 +190,9 @@ class VideoPlayerState {
             ) {
                 if (isActionUp) {
                     onShowControlsChange(true)
+                    if (canOpenSceneSearch) {
+                        onSceneSearchToggle(true)
+                    }
                 }
                 return true
             }
@@ -267,6 +273,9 @@ class VideoPlayerState {
         if (keyCode == NativeKeyEvent.KEYCODE_DPAD_DOWN) {
             if (isActionUp) {
                 onShowControlsChange(true)
+                if (canOpenSceneSearch) {
+                    onSceneSearchToggle(true)
+                }
             }
             return true
         }
@@ -276,7 +285,10 @@ class VideoPlayerState {
             if (!isChapterMode) return false
             if (isActionDown) {
                 onShowControlsChange(true)
-                if (!isModern) onSubMenuToggle(true)
+                if (!isModern) {
+                    onQuickMenuRequested()
+                    onSubMenuToggle(true)
+                }
             }
             return true
         }

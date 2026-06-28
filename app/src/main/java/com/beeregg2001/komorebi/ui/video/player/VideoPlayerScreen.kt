@@ -90,6 +90,7 @@ fun VideoPlayerScreen(
 
     val availableQualities by videoPlayerViewModel.availableQualities.collectAsState()
     val isQualitiesLoaded by videoPlayerViewModel.isQualitiesLoaded.collectAsState()
+    val quickVideoCandidates by videoPlayerViewModel.quickVideoCandidates.collectAsState()
     val currentVideoQualityStr by settingsViewModel.videoQuality.collectAsState()
 
     val isModern = false
@@ -333,25 +334,11 @@ fun VideoPlayerScreen(
                 bufferedPositionMs
             ).coerceAtLeast(0L)
         }
-    val canOpenKeyframeGrid =
+    val canOpenSceneSearch =
         !isRecordingChasePlayback &&
                 currentProgram.recordedVideo.hasKeyFrames != false &&
                 !tiledThumbnailUrl.isNullOrBlank() &&
                 totalDurationForControls > 0L
-    val openKeyframeGridOrToast: () -> Unit = {
-        if (canOpenKeyframeGrid) {
-            isKeyframeGridOpen = true
-            onShowControlsChange(true)
-        } else {
-            onShowToast(
-                if (isRecordingChasePlayback) {
-                    "録画中のためサムネイルはまだ生成されていません"
-                } else {
-                    "サムネイルはまだ生成されていません"
-                }
-            )
-        }
-    }
 
     val performSeek: (Long) -> Unit = { targetMs: Long ->
         val safeTarget = targetMs.coerceIn(
@@ -610,7 +597,7 @@ fun VideoPlayerScreen(
                         (displayTitle.isNotBlank() && candidate.title.contains(displayTitle))
             }
             .distinctBy { it.id }
-            .sortedBy { it.startTime }
+            .sortedByDescending { it.startTime }
             .take(24)
     }
     val recentQuickPrograms = remember(currentProgram.id, recentRecordings) {
@@ -618,6 +605,60 @@ fun VideoPlayerScreen(
             .distinctBy { it.id }
             .sortedByDescending { it.startTime }
             .take(24)
+    }
+    val quickMenuSeriesPrograms = remember(
+        currentProgram.id,
+        seriesQuickPrograms,
+        quickVideoCandidates
+    ) {
+        if (
+            quickVideoCandidates.sourceProgramId == currentProgram.id &&
+            quickVideoCandidates.seriesPrograms.isNotEmpty()
+        ) {
+            quickVideoCandidates.seriesPrograms
+        } else {
+            seriesQuickPrograms
+        }
+    }
+    val quickMenuRecentPrograms = remember(
+        currentProgram.id,
+        recentQuickPrograms,
+        quickVideoCandidates
+    ) {
+        if (
+            quickVideoCandidates.sourceProgramId == currentProgram.id &&
+            quickVideoCandidates.recentPrograms.isNotEmpty()
+        ) {
+            quickVideoCandidates.recentPrograms
+        } else {
+            recentQuickPrograms
+        }
+    }
+    val refreshQuickMenuVideos: () -> Unit = {
+        videoPlayerViewModel.refreshQuickVideoCandidates(currentProgram, recentRecordings)
+    }
+    val openKeyframeGrid: () -> Unit = {
+        onShowControlsChange(true)
+        if (canOpenSceneSearch) {
+            onSceneSearchToggle(false)
+            onSubMenuToggle(false)
+            isChapterListOpen = false
+            isKeyframeGridOpen = true
+        } else {
+            onShowToast(
+                if (isRecordingChasePlayback) {
+                    "録画中のためサムネイルはまだ生成されていません"
+                } else {
+                    "サムネイルが生成されていません"
+                }
+            )
+        }
+    }
+
+    LaunchedEffect(isSubMenuOpen, currentProgram.id, recentRecordings) {
+        if (isSubMenuOpen) {
+            refreshQuickMenuVideos()
+        }
     }
 
     BackHandler(enabled = isPiPMode) {}
@@ -640,6 +681,7 @@ fun VideoPlayerScreen(
                     showControls = showControls,
                     isSubOverlayOpen = isSubOverlayOpen,
                     chapters = chapters,
+                    canOpenSceneSearch = canOpenSceneSearch,
                     totalDurationMs = totalDurationForControls,
                     getCurrentPositionMs = getCurrentPositionMs,
                     performSeek = performSeek,
@@ -654,6 +696,7 @@ fun VideoPlayerScreen(
                     },
                     onChapterListToggle = { isChapterListOpen = it },
                     onSubMenuToggle = onSubMenuToggle,
+                    onQuickMenuRequested = refreshQuickMenuVideos,
                     exoPlayerIsPlaying = exoPlayer.playWhenReady,
                     onPause = { exoPlayer.pause() },
                     onPlay = { exoPlayer.play() }
@@ -772,6 +815,8 @@ fun VideoPlayerScreen(
                     vs.lastInteractionTime = System.currentTimeMillis()
                     skipToNextChapter()
                 },
+                canOpenKeyframeGrid = canOpenSceneSearch,
+                onKeyframeGridToggle = openKeyframeGrid,
                 onChapterListToggle = { isChapterListOpen = true; onShowControlsChange(true) },
                 onInfoToggle = { isProgramInfoOpen = true; onShowControlsChange(true) },
                 onSettingsToggle = {
@@ -899,11 +944,6 @@ fun VideoPlayerScreen(
                         vs.isCommentEnabled =
                             !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
                     },
-                    canOpenKeyframeGrid = canOpenKeyframeGrid,
-                    onKeyframeGridToggle = {
-                        isModernSettingsOpen = false
-                        openKeyframeGridOrToast()
-                    },
                     onLCropToggle = {
                         vs.lCropEnabled = !vs.lCropEnabled
                         if (vs.lCropEnabled) {
@@ -930,8 +970,8 @@ fun VideoPlayerScreen(
                 exit = slideOutVertically { -it } + fadeOut()) {
                 VideoTopSubMenuUI(
                     currentProgram = currentProgram,
-                    seriesPrograms = seriesQuickPrograms,
-                    quickPrograms = recentQuickPrograms,
+                    seriesPrograms = quickMenuSeriesPrograms,
+                    quickPrograms = quickMenuRecentPrograms,
                     animeChannels = animeChannels,
                     backendType = backendType,
                     konomiIp = konomiIp,
@@ -1009,11 +1049,6 @@ fun VideoPlayerScreen(
                         vs.isCommentEnabled =
                             !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
                     },
-                    canOpenKeyframeGrid = canOpenKeyframeGrid,
-                    onKeyframeGridToggle = {
-                        onSubMenuToggle(false)
-                        openKeyframeGridOrToast()
-                    },
                     onLCropToggle = {
                         vs.lCropEnabled = !vs.lCropEnabled
                         if (vs.lCropEnabled) {
@@ -1036,6 +1071,8 @@ fun VideoPlayerScreen(
                         }
                     },
                     onChannelSelect = onChannelSelect,
+                    canOpenKeyframeGrid = canOpenSceneSearch,
+                    onKeyframeGridToggle = openKeyframeGrid,
                     onCloseMenu = { onSubMenuToggle(false) },
                 )
             }
