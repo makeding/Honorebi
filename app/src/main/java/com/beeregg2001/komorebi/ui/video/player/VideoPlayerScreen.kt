@@ -12,9 +12,16 @@ import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
@@ -24,6 +31,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -52,6 +62,9 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 private const val TAG = "VideoPlayerScreen"
+private const val PLAYBACK_END_FALLBACK_WINDOW_MS = 10_000L
+private const val PLAYBACK_END_FALLBACK_GRACE_MS = 750L
+private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
@@ -226,6 +239,27 @@ fun VideoPlayerScreen(
     var smbDurationMs by remember { mutableLongStateOf(0L) }
     val isBackground = remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    var hasHandledPlaybackEnd by remember(currentProgram.id) { mutableStateOf(false) }
+    var hasAutoStartedNextEpisode by remember(currentProgram.id) { mutableStateOf(false) }
+    var isNextEpisodeCountdownCancelled by remember(currentProgram.id) { mutableStateOf(false) }
+    var nextEpisodeProgramForEnd by remember(currentProgram.id) { mutableStateOf<RecordedProgram?>(null) }
+    var openQuickVideosOnSubMenuOpen by remember(currentProgram.id) { mutableStateOf(false) }
+
+    val handlePlaybackEnded: () -> Unit = {
+        if (!hasHandledPlaybackEnd && smbItem == null) {
+            hasHandledPlaybackEnd = true
+            val nextEpisode = nextEpisodeProgramForEnd
+            if (nextEpisode != null && !hasAutoStartedNextEpisode && !isNextEpisodeCountdownCancelled) {
+                hasAutoStartedNextEpisode = true
+                onProgramSelect(nextEpisode)
+            } else {
+                openQuickVideosOnSubMenuOpen = true
+                onPlaybackEnded()
+                onSubMenuToggle(true)
+                onShowControlsChange(false)
+            }
+        }
+    }
 
     val exoPlayer = rememberManagedExoPlayer(
         program = currentProgram,
@@ -241,11 +275,7 @@ fun VideoPlayerScreen(
         onBufferingChanged = { isBuffering = it },
         onDurationChanged = { smbDurationMs = it },
         onPlaybackEnded = {
-            if (smbItem == null) {
-                onPlaybackEnded()
-                onSubMenuToggle(true)
-                onShowControlsChange(false)
-            }
+            handlePlaybackEnded()
         },
         onStopOrDispose = { player ->
             if (smbItem == null) {
@@ -334,6 +364,27 @@ fun VideoPlayerScreen(
                 bufferedPositionMs
             ).coerceAtLeast(0L)
         }
+
+    LaunchedEffect(isSubMenuOpen, currentProgram.id) {
+        if (!isSubMenuOpen) openQuickVideosOnSubMenuOpen = false
+    }
+
+    LaunchedEffect(currentProgram.id, smbItem, totalDurationForControls) {
+        if (smbItem != null || totalDurationForControls <= PLAYBACK_END_FALLBACK_WINDOW_MS) {
+            return@LaunchedEffect
+        }
+        while (isActive && !hasHandledPlaybackEnd) {
+            val remainingMs = totalDurationForControls - getCurrentPositionMs()
+            if (remainingMs in 0..PLAYBACK_END_FALLBACK_WINDOW_MS) {
+                delay(remainingMs + PLAYBACK_END_FALLBACK_GRACE_MS)
+                if (!hasHandledPlaybackEnd && getCurrentPositionMs() >= totalDurationForControls - 1_500L) {
+                    handlePlaybackEnded()
+                }
+            }
+            delay(500L)
+        }
+    }
+
     val canOpenSceneSearch =
         !isRecordingChasePlayback &&
                 currentProgram.recordedVideo.hasKeyFrames != false &&
@@ -354,7 +405,7 @@ fun VideoPlayerScreen(
             }
         }
 
-        if (isLiveStream && smbItem == null) {
+        if (isLiveStream && !isRecordingChasePlayback && smbItem == null) {
             scope.launch {
                 isBuffering = true; exoPlayer.pause()
                 vs.playbackOffsetMs = safeTarget
@@ -495,7 +546,7 @@ fun VideoPlayerScreen(
 
         if (url.isNotEmpty()) {
             exoPlayer.setMediaItem(buildVideoMediaItem(url))
-            if (isFirstLoad && effectiveInitialPositionMs > 0 && !isLiveStream) {
+            if (isFirstLoad && effectiveInitialPositionMs > 0 && (!isLiveStream || isRecordingChasePlayback)) {
                 exoPlayer.seekTo(effectiveInitialPositionMs)
             }
             isFirstLoad = false
@@ -634,9 +685,67 @@ fun VideoPlayerScreen(
             recentQuickPrograms
         }
     }
+    val nextSeriesProgram = remember(currentProgram.id, quickMenuSeriesPrograms) {
+        val newestFirst = quickMenuSeriesPrograms
+            .distinctBy { it.id }
+            .sortedByDescending { it.startTime }
+        val currentIndex = newestFirst.indexOfFirst { it.id == currentProgram.id }
+        if (currentIndex > 0) newestFirst[currentIndex - 1] else null
+    }
+    LaunchedEffect(nextSeriesProgram?.id) {
+        nextEpisodeProgramForEnd = nextSeriesProgram
+    }
     val refreshQuickMenuVideos: () -> Unit = {
         videoPlayerViewModel.refreshQuickVideoCandidates(currentProgram, recentRecordings)
     }
+    LaunchedEffect(currentProgram.id, recentRecordings) {
+        refreshQuickMenuVideos()
+    }
+
+    val nextEpisodeRemainingMs =
+        (totalDurationForControls - getEffectivePositionMs()).coerceAtLeast(0L)
+    val showNextEpisodeCountdown =
+        nextSeriesProgram != null &&
+                !isRecordingChasePlayback &&
+                !hasAutoStartedNextEpisode &&
+                !isNextEpisodeCountdownCancelled &&
+                totalDurationForControls > NEXT_EPISODE_COUNTDOWN_WINDOW_MS &&
+                nextEpisodeRemainingMs <= NEXT_EPISODE_COUNTDOWN_WINDOW_MS
+    val nextEpisodeCountdownProgress =
+        (1f - (nextEpisodeRemainingMs.toFloat() / NEXT_EPISODE_COUNTDOWN_WINDOW_MS.toFloat()))
+            .coerceIn(0f, 1f)
+
+    LaunchedEffect(showNextEpisodeCountdown, nextEpisodeRemainingMs, nextSeriesProgram?.id) {
+        val nextEpisode = nextSeriesProgram
+        if (
+            showNextEpisodeCountdown &&
+            nextEpisodeRemainingMs <= 500L &&
+            !hasAutoStartedNextEpisode &&
+            !isNextEpisodeCountdownCancelled
+        ) {
+            nextEpisode?.let {
+                hasAutoStartedNextEpisode = true
+                hasHandledPlaybackEnd = true
+                onProgramSelect(it)
+            }
+        }
+    }
+    val playNextEpisodeNow: () -> Unit = {
+        val nextEpisode = nextSeriesProgram
+        if (nextEpisode != null && !hasAutoStartedNextEpisode) {
+            hasAutoStartedNextEpisode = true
+            hasHandledPlaybackEnd = true
+            onProgramSelect(nextEpisode)
+        }
+    }
+    val cancelNextEpisodeCountdown: () -> Unit = {
+        isNextEpisodeCountdownCancelled = true
+    }
+
+    BackHandler(enabled = showNextEpisodeCountdown) {
+        cancelNextEpisodeCountdown()
+    }
+
     val openKeyframeGrid: () -> Unit = {
         onShowControlsChange(true)
         if (canOpenSceneSearch) {
@@ -775,6 +884,23 @@ fun VideoPlayerScreen(
                 modifier = Modifier.align(Alignment.Center),
                 color = Color.White
             )
+
+            val nextCountdownProgram = nextSeriesProgram
+            if (nextCountdownProgram != null) {
+                AnimatedVisibility(
+                    visible = showNextEpisodeCountdown && !isSubOverlayOpen,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                ) {
+                    NextEpisodeCountdownOverlay(
+                        program = nextCountdownProgram,
+                        progress = nextEpisodeCountdownProgress,
+                        onPlayNow = playNextEpisodeNow,
+                        onCancel = cancelNextEpisodeCountdown
+                    )
+                }
+            }
 
             PlayerControls(
                 program = currentProgram,
@@ -932,7 +1058,9 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.play()
+                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
+                                    if (isRecordingChasePlayback) player.seekTo(currentPos)
+                                    player.play()
                                 }
                             }
                             onShowToast("画質を ${it.label} に変更しました")
@@ -1038,7 +1166,9 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.play()
+                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
+                                    if (isRecordingChasePlayback) player.seekTo(currentPos)
+                                    player.play()
                                 }
                             }
                             onShowToast("画質を ${it.label} に変更しました")
@@ -1073,6 +1203,7 @@ fun VideoPlayerScreen(
                     onChannelSelect = onChannelSelect,
                     canOpenKeyframeGrid = canOpenSceneSearch,
                     onKeyframeGridToggle = openKeyframeGrid,
+                    openQuickVideosInitially = openQuickVideosOnSubMenuOpen,
                     onCloseMenu = { onSubMenuToggle(false) },
                 )
             }
@@ -1089,3 +1220,92 @@ private fun normalizeQuickSeriesKey(value: String): String =
         .trim()
         .replace(Regex("[\\s　]+"), "")
         .lowercase()
+
+@Composable
+private fun NextEpisodeCountdownOverlay(
+    program: RecordedProgram,
+    progress: Float,
+    onPlayNow: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val playNowRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(50)
+        playNowRequester.safeRequestFocus(TAG)
+    }
+
+    Box(
+        modifier = Modifier
+            .padding(end = 48.dp, bottom = 64.dp)
+            .width(420.dp)
+            .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+            .padding(18.dp)
+            .onPreviewKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyDown &&
+                    (event.key == Key.Back || event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE)
+                ) {
+                    onCancel()
+                    true
+                } else {
+                    false
+                }
+            }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "次のエピソードを再生します",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = program.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.86f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp),
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.24f)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onPlayNow,
+                    modifier = Modifier.focusRequester(playNowRequester),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("今すぐ")
+                }
+                Button(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.14f),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("キャンセル")
+                }
+            }
+        }
+    }
+}

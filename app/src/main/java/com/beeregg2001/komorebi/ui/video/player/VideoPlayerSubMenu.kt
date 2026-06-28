@@ -79,6 +79,7 @@ fun VideoTopSubMenuUI(
     onChannelSelect: (Channel) -> Unit = {},
     canOpenKeyframeGrid: Boolean = false,
     onKeyframeGridToggle: () -> Unit = {},
+    openQuickVideosInitially: Boolean = false,
     onCloseMenu: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ (既存に影響しないようデフォルトは true)
     isAudioSupported: Boolean = true,
@@ -88,7 +89,9 @@ fun VideoTopSubMenuUI(
     isAutoCmSkipSupported: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
-    var selectedCategory by remember { mutableStateOf<SubMenuCategory?>(null) }
+    var selectedCategory by remember(currentProgram.id) {
+        mutableStateOf(if (openQuickVideosInitially) SubMenuCategory.QUICK_VIDEOS else null)
+    }
     val quickVideoButtonRequester = remember { FocusRequester() }
     val qualityButtonRequester = remember { FocusRequester() }
     val qualityListRequester = remember { FocusRequester() }
@@ -113,6 +116,12 @@ fun VideoTopSubMenuUI(
                 }
             } catch (e: Exception) {
             }
+        }
+    }
+
+    LaunchedEffect(openQuickVideosInitially) {
+        if (openQuickVideosInitially) {
+            selectedCategory = SubMenuCategory.QUICK_VIDEOS
         }
     }
 
@@ -188,6 +197,15 @@ fun VideoTopSubMenuUI(
                     enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty()
                 )
                 VideoMenuTileItem(
+                    title = "サムネイル",
+                    icon = Icons.Default.GridView,
+                    subtitle = if (canOpenKeyframeGrid) "一覧" else "未生成",
+                    onClick = onKeyframeGridToggle,
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = if (canOpenKeyframeGrid) colors.textPrimary else colors.textSecondary,
+                    enabled = true
+                )
+                VideoMenuTileItem(
                     title = "音声切替",
                     icon = Icons.Default.Audiotrack,
                     subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
@@ -197,15 +215,6 @@ fun VideoTopSubMenuUI(
                         .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
                     enabled = isAudioSupported // ★ 適用
-                )
-                VideoMenuTileItem(
-                    title = "サムネイル",
-                    icon = Icons.Default.GridView,
-                    subtitle = if (canOpenKeyframeGrid) "一覧" else "未生成",
-                    onClick = onKeyframeGridToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                    contentColor = if (canOpenKeyframeGrid) colors.textPrimary else colors.textSecondary,
-                    enabled = true
                 )
                 VideoMenuTileItem(
                     title = "再生速度",

@@ -64,6 +64,28 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "VideoPlayerManager"
 
+private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
+    val path = dataSpec.uri.path.orEmpty()
+    val lastSegment = dataSpec.uri.lastPathSegment.orEmpty()
+    return path.endsWith(".m3u8", ignoreCase = true) ||
+            lastSegment.equals("playlist", ignoreCase = true) ||
+            lastSegment.endsWith(".m3u8", ignoreCase = true)
+}
+
+private fun withFreshPlaylistCacheKey(uri: Uri): Uri {
+    val builder = uri.buildUpon().clearQuery()
+    uri.queryParameterNames.forEach { name ->
+        if (name != "cache_key") {
+            uri.getQueryParameters(name).forEach { value ->
+                builder.appendQueryParameter(name, value)
+            }
+        }
+    }
+    return builder
+        .appendQueryParameter("cache_key", System.currentTimeMillis().toString())
+        .build()
+}
+
 @Composable
 @androidx.annotation.OptIn(UnstableApi::class)
 fun rememberManagedExoPlayer(
@@ -165,6 +187,7 @@ fun rememberManagedExoPlayer(
                         "-a", "13", "-b", "5", "-c", "5", "-u", "1", "-d", "13"
                     )
 
+                    var isHttpSource = false
                     val source = if (isSmb) {
                         val host = dataSpec.uri.host ?: ""
                         val server = smbServerList.find { s -> s.ip.substringBefore("/") == host }
@@ -174,12 +197,26 @@ fun rememberManagedExoPlayer(
                         // ★ 修正: ファイルサイズ格納用の参照を渡す
                         TsReadExDataSource(nativeLib, dynamicTsArgs, fileSizeBytesRef)
                     } else {
+                        isHttpSource = true
                         httpDataSourceFactory.createDataSource()
                     }
 
                     transferListeners.forEach { source.addTransferListener(it) }
                     activeDataSource = source
-                    return source.open(dataSpec)
+                    val requestSpec = if (isHttpSource && shouldBypassPlaylistCache(dataSpec)) {
+                        val freshUri = withFreshPlaylistCacheKey(dataSpec.uri)
+                        val headers = dataSpec.httpRequestHeaders.toMutableMap().apply {
+                            put("Cache-Control", "no-cache")
+                            put("Pragma", "no-cache")
+                        }
+                        dataSpec.buildUpon()
+                            .setUri(freshUri)
+                            .setHttpRequestHeaders(headers)
+                            .build()
+                    } else {
+                        dataSpec
+                    }
+                    return source.open(requestSpec)
                 }
 
                 override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
