@@ -190,9 +190,6 @@ class VideoPlayerState {
             ) {
                 if (isActionUp) {
                     onShowControlsChange(true)
-                    if (canOpenSceneSearch) {
-                        onSceneSearchToggle(true)
-                    }
                 }
                 return true
             }

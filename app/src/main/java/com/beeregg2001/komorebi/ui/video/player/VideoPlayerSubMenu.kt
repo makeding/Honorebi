@@ -100,7 +100,11 @@ fun VideoTopSubMenuUI(
     LaunchedEffect(Unit) {
         delay(50)
         try {
-            quickVideoButtonRequester.requestFocus()
+            if (openQuickVideosInitially) {
+                quickVideoButtonRequester.requestFocus()
+            } else {
+                focusRequester.requestFocus()
+            }
         } catch (e: Exception) {
         }
     }
