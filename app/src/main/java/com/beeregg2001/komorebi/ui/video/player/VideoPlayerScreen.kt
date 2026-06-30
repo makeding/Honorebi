@@ -579,7 +579,12 @@ fun VideoPlayerScreen(
                 program,
                 vs.currentQuality.value,
                 currentSessionId
-            ) { getCurrentPositionMs() / 1000.0 }
+            ) {
+                exoPlayer.currentMediaItem
+                    ?.localConfiguration
+                    ?.uri
+                    ?.toString()
+            }
         }
         onDispose { if (smbItem == null) videoPlayerViewModel.stopStreamMaintenance() }
     }

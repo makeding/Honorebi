@@ -107,6 +107,7 @@ fun PlayerControls(
         if (isSeekBarFocused) 16.dp else 12.dp,
         label = "playHeadSize"
     )
+    val playHeadVerticalOffset = (playHeadSize - trackHeight) / 2
     val graphHeight by animateDpAsState(
         if (isSeekBarFocused) 80.dp else 48.dp,
         label = "graphHeight"
@@ -454,7 +455,7 @@ fun PlayerControls(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .offset(x = (playHeadSize / 2), y = (playHeadSize / 2))
+                                    .offset(x = (playHeadSize / 2), y = playHeadVerticalOffset)
                                     .size(playHeadSize)
                                     .background(
                                         if (isSeekBarFocused) colors.accent else Color.White,

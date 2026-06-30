@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.viewmodel
 
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -487,22 +488,80 @@ class VideoPlayerViewModel @Inject constructor(
         program: RecordedProgram,
         quality: String,
         sessionId: String,
-        currentPositionProvider: () -> Double
+        currentStreamUrlProvider: () -> String? = { null }
     ) {
         streamMaintenanceJob?.cancel()
         streamMaintenanceJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
+                    val streamSession = resolveCurrentStreamSession(
+                        currentStreamUrl = currentStreamUrlProvider(),
+                        fallbackQuality = quality,
+                        fallbackSessionId = sessionId
+                    )
+                    if (streamSession == null) {
+                        delay(5000L)
+                        continue
+                    }
+
                     recordProvider.keepAlive(
                         videoId = program.recordedVideo.id,
-                        sessionId = sessionId,
-                        quality = quality
+                        sessionId = streamSession.sessionId,
+                        quality = streamSession.quality
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to send Keep-Alive", e)
                 }
-                delay(4000L)
+                delay(5000L)
             }
+        }
+    }
+
+    private data class StreamSession(
+        val quality: String,
+        val sessionId: String
+    )
+
+    private fun resolveCurrentStreamSession(
+        currentStreamUrl: String?,
+        fallbackQuality: String,
+        fallbackSessionId: String
+    ): StreamSession? {
+        val fallback = StreamSession(
+            quality = fallbackQuality,
+            sessionId = fallbackSessionId
+        ).takeIf { it.quality.isNotBlank() && it.sessionId.isNotBlank() }
+
+        if (currentStreamUrl.isNullOrBlank()) {
+            return fallback
+        }
+
+        return runCatching {
+            val uri = Uri.parse(currentStreamUrl)
+            val segments = uri.pathSegments
+            val streamsIndex = segments.indexOf("streams")
+            val videoIndex = if (
+                streamsIndex >= 0 &&
+                segments.getOrNull(streamsIndex + 1) == "video"
+            ) {
+                streamsIndex + 1
+            } else {
+                -1
+            }
+            val qualityFromUrl = if (videoIndex >= 0) {
+                segments.getOrNull(videoIndex + 2)
+            } else {
+                null
+            }
+            val sessionIdFromUrl = uri.getQueryParameter("session_id")
+
+            if (!qualityFromUrl.isNullOrBlank() && !sessionIdFromUrl.isNullOrBlank()) {
+                StreamSession(qualityFromUrl, sessionIdFromUrl)
+            } else {
+                fallback
+            }
+        }.getOrElse {
+            fallback
         }
     }
 
