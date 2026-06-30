@@ -189,8 +189,8 @@ fun VideoPlayerScreen(
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
-    val currentSessionId = remember(currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback) {
-        UUID.randomUUID().toString()
+    var currentSessionId by remember(currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback) {
+        mutableStateOf(UUID.randomUUID().toString())
     }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
@@ -222,6 +222,25 @@ fun VideoPlayerScreen(
 
     val isSubOverlayOpen =
         isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
+
+    val buildVideoMediaItem: (String) -> MediaItem = { url ->
+        val mediaItemBuilder = MediaItem.Builder().setUri(url)
+        if (url.contains("/api/streams/") || url.contains("/api/videos/") || url.contains("konomi.tv") || url.contains(
+                "m3u8"
+            )
+        ) {
+            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            if (isRecordingChasePlayback) {
+                mediaItemBuilder.setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder()
+                        .setMinPlaybackSpeed(1f)
+                        .setMaxPlaybackSpeed(1f)
+                        .build()
+                )
+            }
+        }
+        mediaItemBuilder.build()
+    }
 
     val triggerSeekingPreview: () -> Unit = {
         isSeekingPreviewVisible = true
@@ -276,6 +295,48 @@ fun VideoPlayerScreen(
         onDurationChanged = { smbDurationMs = it },
         onPlaybackEnded = {
             handlePlaybackEnded()
+        },
+        onStreamSessionExpired = { player ->
+            if (smbItem != null || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
+                return@rememberManagedExoPlayer false
+            }
+
+            val rawPosition = player.currentPosition
+            val resumePositionMs = if (rawPosition == C.TIME_UNSET || rawPosition < 0L) {
+                playbackPositionMs
+            } else if (isLiveStream && !isRecordingChasePlayback) {
+                vs.playbackOffsetMs + rawPosition
+            } else {
+                rawPosition
+            }.coerceAtLeast(0L)
+
+            val newSessionId = UUID.randomUUID().toString()
+            currentSessionId = newSessionId
+            vs.playbackOffsetMs = resumePositionMs
+            isBuffering = true
+
+            val newUrl = videoPlayerViewModel.resolveStreamUrl(
+                currentProgram.id,
+                vs.currentQuality.value,
+                newSessionId,
+                resumePositionMs / 1000.0,
+                isRecordingChasePlayback
+            )
+            if (newUrl.isEmpty()) {
+                return@rememberManagedExoPlayer false
+            }
+
+            Log.i(
+                TAG,
+                "Recovered expired stream session for video=${currentProgram.id}, quality=${vs.currentQuality.value}"
+            )
+            player.setMediaItem(buildVideoMediaItem(newUrl))
+            player.prepare()
+            if (resumePositionMs > 0L && (!isLiveStream || isRecordingChasePlayback)) {
+                player.seekTo(resumePositionMs)
+            }
+            player.playWhenReady = true
+            true
         },
         onStopOrDispose = { player ->
             if (smbItem == null) {
@@ -342,25 +403,6 @@ fun VideoPlayerScreen(
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
 
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
-
-    val buildVideoMediaItem: (String) -> MediaItem = { url ->
-        val mediaItemBuilder = MediaItem.Builder().setUri(url)
-        if (url.contains("/api/streams/") || url.contains("/api/videos/") || url.contains("konomi.tv") || url.contains(
-                "m3u8"
-            )
-        ) {
-            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            if (isRecordingChasePlayback) {
-                mediaItemBuilder.setLiveConfiguration(
-                    MediaItem.LiveConfiguration.Builder()
-                        .setMinPlaybackSpeed(1f)
-                        .setMaxPlaybackSpeed(1f)
-                        .build()
-                )
-            }
-        }
-        mediaItemBuilder.build()
-    }
 
     val totalDurationForControls =
         if (smbItem != null) {

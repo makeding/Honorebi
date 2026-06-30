@@ -29,6 +29,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -86,6 +87,17 @@ private fun withFreshPlaylistCacheKey(uri: Uri): Uri {
         .build()
 }
 
+private fun Throwable.hasHttpResponseCode(responseCode: Int): Boolean {
+    var cause: Throwable? = this
+    while (cause != null) {
+        if (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == responseCode) {
+            return true
+        }
+        cause = cause.cause
+    }
+    return false
+}
+
 @Composable
 @androidx.annotation.OptIn(UnstableApi::class)
 fun rememberManagedExoPlayer(
@@ -98,6 +110,7 @@ fun rememberManagedExoPlayer(
     onBufferingChanged: (Boolean) -> Unit,
     onDurationChanged: (Long) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
+    onStreamSessionExpired: suspend (ExoPlayer) -> Boolean = { false },
     onStopOrDispose: (ExoPlayer) -> Unit,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
@@ -322,6 +335,9 @@ fun rememberManagedExoPlayer(
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e(TAG, "ExoPlayer Source Error: ${error.message}", error)
                         scope.launch {
+                            if (error.hasHttpResponseCode(422) && onStreamSessionExpired(this@apply)) {
+                                return@launch
+                            }
                             onBufferingChanged(true)
                             delay(3000L)
                             prepare()
