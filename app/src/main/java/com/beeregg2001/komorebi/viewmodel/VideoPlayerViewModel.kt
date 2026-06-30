@@ -496,6 +496,7 @@ class VideoPlayerViewModel @Inject constructor(
                 try {
                     val streamSession = resolveCurrentStreamSession(
                         currentStreamUrl = currentStreamUrlProvider(),
+                        expectedVideoId = program.recordedVideo.id,
                         fallbackQuality = quality,
                         fallbackSessionId = sessionId
                     )
@@ -524,6 +525,7 @@ class VideoPlayerViewModel @Inject constructor(
 
     private fun resolveCurrentStreamSession(
         currentStreamUrl: String?,
+        expectedVideoId: Int,
         fallbackQuality: String,
         fallbackSessionId: String
     ): StreamSession? {
@@ -553,9 +555,18 @@ class VideoPlayerViewModel @Inject constructor(
             } else {
                 null
             }
+            val videoIdFromUrl = if (videoIndex >= 0) {
+                segments.getOrNull(videoIndex + 1)?.toIntOrNull()
+            } else {
+                null
+            }
             val sessionIdFromUrl = uri.getQueryParameter("session_id")
 
-            if (!qualityFromUrl.isNullOrBlank() && !sessionIdFromUrl.isNullOrBlank()) {
+            if (
+                videoIdFromUrl == expectedVideoId &&
+                !qualityFromUrl.isNullOrBlank() &&
+                !sessionIdFromUrl.isNullOrBlank()
+            ) {
                 StreamSession(qualityFromUrl, sessionIdFromUrl)
             } else {
                 fallback

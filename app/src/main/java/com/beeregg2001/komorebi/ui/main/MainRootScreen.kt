@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
+import com.beeregg2001.komorebi.data.model.RecordedProgram
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -326,6 +327,14 @@ fun MainRootScreen(
     val lastChannels by homeViewModel.lastWatchedChannelFlow.collectAsState(initial = emptyList())
     val conditions by reserveViewModel.conditions.collectAsState()
     val reserves by reserveViewModel.reserves.collectAsState()
+    fun resumePositionMsFor(program: RecordedProgram): Long {
+        val history = watchHistory.firstOrNull { history ->
+            history.program.id.toIntOrNull() == program.id ||
+                    history.videoId == program.recordedVideo.id
+        }
+        val positionSeconds = history?.playback_position ?: program.playbackPosition
+        return (positionSeconds.coerceAtLeast(0.0) * 1000.0).toLong()
+    }
 
     val updateState by homeViewModel.updateState.collectAsState()
 
@@ -669,7 +678,7 @@ fun MainRootScreen(
                                         state.isPlayerSubMenuOpen = false
                                         state.isPlayerSceneSearchOpen = false
                                         state.isMiniPlayerMode = false
-                                        state.initialPlaybackPositionMs = 0L
+                                        state.initialPlaybackPositionMs = resumePositionMsFor(program)
                                         state.selectedProgram = program
                                         state.lastSelectedProgramId = program.id.toString()
                                         state.lastPlayedRecordingId = program.id

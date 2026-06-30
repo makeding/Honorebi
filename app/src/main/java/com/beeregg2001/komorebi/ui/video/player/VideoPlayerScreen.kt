@@ -279,9 +279,18 @@ fun VideoPlayerScreen(
         },
         onStopOrDispose = { player ->
             if (smbItem == null) {
-                val posMs =
-                    if (isLiveStream) vs.playbackOffsetMs + player.currentPosition else player.currentPosition
-                videoPlayerViewModel.updateWatchHistory(program, posMs / 1000.0)
+                val rawPosition = player.currentPosition
+                val playerPosition = if (rawPosition == C.TIME_UNSET || rawPosition < 0L) {
+                    playbackPositionMs
+                } else {
+                    rawPosition
+                }
+                val posMs = if (isLiveStream && !isRecordingChasePlayback) {
+                    vs.playbackOffsetMs + playerPosition
+                } else {
+                    playerPosition
+                }.coerceAtLeast(0L)
+                videoPlayerViewModel.updateWatchHistory(currentProgram, posMs / 1000.0)
             }
         }
     )
@@ -573,10 +582,10 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(vs.currentQuality.value, currentSessionId, smbItem) {
+    DisposableEffect(currentProgram.recordedVideo.id, vs.currentQuality.value, currentSessionId, smbItem) {
         if (smbItem == null) {
             videoPlayerViewModel.startStreamMaintenance(
-                program,
+                currentProgram,
                 vs.currentQuality.value,
                 currentSessionId
             ) {
