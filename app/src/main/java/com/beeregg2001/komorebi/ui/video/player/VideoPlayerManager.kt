@@ -64,6 +64,11 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "VideoPlayerManager"
+private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 256 * 1024 * 1024
+private const val RECORDED_PLAYER_MIN_BUFFER_MS = 60_000
+private const val RECORDED_PLAYER_MAX_BUFFER_MS = 180_000
+private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 5_000
+private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 12_000
 
 private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
     val path = dataSpec.uri.path.orEmpty()
@@ -298,9 +303,14 @@ fun rememberManagedExoPlayer(
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
-            .setTargetBufferBytes(150 * 1024 * 1024)
-            .setBufferDurationsMs(30000, 120000, 2500, 5000)
-            .setPrioritizeTimeOverSizeThresholds(false)
+            .setTargetBufferBytes(RECORDED_PLAYER_TARGET_BUFFER_BYTES)
+            .setBufferDurationsMs(
+                RECORDED_PLAYER_MIN_BUFFER_MS,
+                RECORDED_PLAYER_MAX_BUFFER_MS,
+                RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS,
+                RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
         ExoPlayer.Builder(context, renderersFactory)
