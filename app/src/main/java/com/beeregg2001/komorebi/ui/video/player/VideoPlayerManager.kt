@@ -31,6 +31,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -69,6 +70,11 @@ private const val RECORDED_PLAYER_MIN_BUFFER_MS = 60_000
 private const val RECORDED_PLAYER_MAX_BUFFER_MS = 180_000
 private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 5_000
 private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 12_000
+private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
+private const val CHASE_PLAYER_MIN_BUFFER_MS = 8_000
+private const val CHASE_PLAYER_MAX_BUFFER_MS = 45_000
+private const val CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS = 2_500
+private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
 
 private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
     val path = dataSpec.uri.path.orEmpty()
@@ -133,6 +139,8 @@ fun rememberManagedExoPlayer(
     val backendType by settingsViewModel.backendType.collectAsState()
     val edcbPlayMethod by settingsViewModel.edcbRecordPlayMethod.collectAsState()
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
+    val isRecordingChasePlayback =
+        program?.isRecording == true || program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
     val smbServerList by settingsViewModel.smbServerList.collectAsState()
 
     val applyAudioSelectionAndMatrix = { mode: AudioMode, player: ExoPlayer ->
@@ -301,21 +309,37 @@ fun rememberManagedExoPlayer(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, customExtractorsFactory)
 
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
+        val targetBufferBytes =
+            if (isRecordingChasePlayback) CHASE_PLAYER_TARGET_BUFFER_BYTES else RECORDED_PLAYER_TARGET_BUFFER_BYTES
+        val minBufferMs =
+            if (isRecordingChasePlayback) CHASE_PLAYER_MIN_BUFFER_MS else RECORDED_PLAYER_MIN_BUFFER_MS
+        val maxBufferMs =
+            if (isRecordingChasePlayback) CHASE_PLAYER_MAX_BUFFER_MS else RECORDED_PLAYER_MAX_BUFFER_MS
+        val bufferForPlaybackMs =
+            if (isRecordingChasePlayback) CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS else RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS
+        val bufferForPlaybackAfterRebufferMs =
+            if (isRecordingChasePlayback) CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS else RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
-            .setTargetBufferBytes(RECORDED_PLAYER_TARGET_BUFFER_BYTES)
+            .setTargetBufferBytes(targetBufferBytes)
             .setBufferDurationsMs(
-                RECORDED_PLAYER_MIN_BUFFER_MS,
-                RECORDED_PLAYER_MAX_BUFFER_MS,
-                RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS,
-                RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS
+                minBufferMs,
+                maxBufferMs,
+                bufferForPlaybackMs,
+                bufferForPlaybackAfterRebufferMs
             )
             .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        val livePlaybackSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
+            .setFallbackMinPlaybackSpeed(1.0f)
+            .setFallbackMaxPlaybackSpeed(1.0f)
             .build()
 
         ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
+            .setLivePlaybackSpeedControl(livePlaybackSpeedControl)
             .build().apply {
                 setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
                 setAudioAttributes(

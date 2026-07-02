@@ -68,6 +68,11 @@ import java.util.UUID
 private const val TAG = "VideoPlayerScreen"
 private const val PLAYBACK_END_FALLBACK_WINDOW_MS = 10_000L
 private const val PLAYBACK_END_FALLBACK_GRACE_MS = 750L
+private const val CHASE_PLAYBACK_TARGET_LIVE_OFFSET_MS = 30_000L
+private const val CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS = 20_000L
+private const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
+private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 120_000L
+private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 30_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
 private const val THIRTY_MINUTE_RECORDING_MIN_MS = 27 * 60 * 1000L
@@ -254,6 +259,9 @@ fun VideoPlayerScreen(
             if (isRecordingChasePlayback) {
                 mediaItemBuilder.setLiveConfiguration(
                     MediaItem.LiveConfiguration.Builder()
+                        .setTargetOffsetMs(CHASE_PLAYBACK_TARGET_LIVE_OFFSET_MS)
+                        .setMinOffsetMs(CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS)
+                        .setMaxOffsetMs(CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS)
                         .setMinPlaybackSpeed(1f)
                         .setMaxPlaybackSpeed(1f)
                         .build()
@@ -269,10 +277,41 @@ fun VideoPlayerScreen(
         seekingPreviewJob = scope.launch { delay(2000); isSeekingPreviewVisible = false }
     }
 
-    LaunchedEffect(currentProgram.recordedVideo.id) {
-        if (smbItem == null) {
-            allComments.clear()
-            allComments.addAll(videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id))
+    LaunchedEffect(currentProgram.recordedVideo.id, smbItem, isRecordingChasePlayback) {
+        if (smbItem != null) {
+            return@LaunchedEffect
+        }
+
+        suspend fun reloadArchivedComments(mergeOnly: Boolean) {
+            val fetchedComments = videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
+            if (!mergeOnly) {
+                allComments.clear()
+                allComments.addAll(fetchedComments)
+                return
+            }
+
+            val existingKeys = allComments
+                .asSequence()
+                .map { it.stableCommentKey() }
+                .toMutableSet()
+            val newComments = fetchedComments.filter { existingKeys.add(it.stableCommentKey()) }
+            if (newComments.isNotEmpty()) {
+                val mergedComments = (allComments + newComments).sortedBy { it.time }
+                allComments.clear()
+                allComments.addAll(mergedComments)
+                Log.i(
+                    TAG,
+                    "Reloaded chase playback comments. [video=${currentProgram.recordedVideo.id}, added=${newComments.size}, total=${allComments.size}]"
+                )
+            }
+        }
+
+        reloadArchivedComments(mergeOnly = false)
+        if (isRecordingChasePlayback) {
+            while (isActive) {
+                delay(CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS)
+                reloadArchivedComments(mergeOnly = true)
+            }
         }
     }
 
@@ -559,6 +598,13 @@ fun VideoPlayerScreen(
 
     var isFirstLoad by remember { mutableStateOf(true) }
     var preparedPlaybackKey by remember { mutableStateOf<String?>(null) }
+    var lastChasePlaylistRefreshAt by remember(
+        currentProgram.id,
+        vs.currentQuality.value,
+        isRecordingChasePlayback
+    ) {
+        mutableLongStateOf(System.currentTimeMillis())
+    }
     val qualityOptionsKey = remember(availableQualities) {
         availableQualities.joinToString(separator = "|") { it.value }
     }
@@ -630,11 +676,63 @@ fun VideoPlayerScreen(
                 exoPlayer.seekTo(effectiveInitialPositionMs)
             }
             isFirstLoad = false
+            if (isRecordingChasePlayback) {
+                lastChasePlaylistRefreshAt = System.currentTimeMillis()
+            }
             exoPlayer.prepare()
             preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
         } else {
             if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
+        }
+    }
+
+    LaunchedEffect(
+        exoPlayer,
+        currentProgram.id,
+        smbItem,
+        vs.currentQuality.value,
+        currentSessionId,
+        isRecordingChasePlayback
+    ) {
+        if (smbItem != null || !isRecordingChasePlayback) {
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            delay(5_000L)
+            if (!exoPlayer.playWhenReady || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
+                continue
+            }
+            val now = System.currentTimeMillis()
+            if (now - lastChasePlaylistRefreshAt < CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS) {
+                continue
+            }
+
+            val currentPos = getCurrentPositionMs()
+            if (currentPos <= 0L) {
+                lastChasePlaylistRefreshAt = now
+                continue
+            }
+
+            lastChasePlaylistRefreshAt = now
+            val newUrl = videoPlayerViewModel.resolveStreamUrl(
+                currentProgram.id,
+                vs.currentQuality.value,
+                currentSessionId,
+                currentPos / 1000.0,
+                isRecordingChasePlayback
+            )
+            if (newUrl.isNotEmpty()) {
+                Log.i(
+                    TAG,
+                    "Refreshing chase playback playlist. [video=${currentProgram.id}, position_ms=$currentPos]"
+                )
+                isBuffering = true
+                exoPlayer.setMediaItem(buildVideoMediaItem(newUrl))
+                exoPlayer.prepare()
+                exoPlayer.seekTo(currentPos)
+                exoPlayer.playWhenReady = true
+            }
         }
     }
 
@@ -1570,6 +1668,9 @@ private fun calculateCommentClimaxCountdownStartMs(
     )
     return (climaxRegionEndMs - COMMENT_CLIMAX_LEAD_MS).coerceAtLeast(0L)
 }
+
+private fun ArchivedComment.stableCommentKey(): String =
+    "${time}:${author}:${type}:${size}:${color}:${text}"
 
 @Composable
 private fun NextEpisodeCountdownOverlay(
