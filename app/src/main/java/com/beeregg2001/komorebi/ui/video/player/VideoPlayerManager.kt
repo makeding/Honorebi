@@ -6,11 +6,10 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -36,6 +35,8 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.metadata.id3.PrivFrame
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -62,19 +63,22 @@ import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "VideoPlayerManager"
-private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 256 * 1024 * 1024
-private const val RECORDED_PLAYER_MIN_BUFFER_MS = 60_000
-private const val RECORDED_PLAYER_MAX_BUFFER_MS = 180_000
-private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 5_000
-private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 12_000
+private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 96 * 1024 * 1024
+private const val RECORDED_PLAYER_MIN_BUFFER_MS = 15_000
+private const val RECORDED_PLAYER_MAX_BUFFER_MS = 45_000
+private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 2_500
+private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
 private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
 private const val CHASE_PLAYER_MIN_BUFFER_MS = 8_000
 private const val CHASE_PLAYER_MAX_BUFFER_MS = 45_000
 private const val CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS = 2_500
 private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
+private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
+private const val HLS_LOAD_MAX_RETRY_DELAY_MS = 8_000L
 
 private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
     val path = dataSpec.uri.path.orEmpty()
@@ -99,6 +103,44 @@ private fun withFreshPlaylistCacheKey(uri: Uri): Uri {
 }
 
 private fun Throwable.hasHttpResponseCode(responseCode: Int): Boolean {
+    var cause: Throwable? = this
+    while (cause != null) {
+        if (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == responseCode) {
+            return true
+        }
+        cause = cause.cause
+    }
+    return false
+}
+
+private class HonomiLikeHlsLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy() {
+    override fun getMinimumLoadableRetryCount(dataType: Int): Int {
+        return when (dataType) {
+            C.DATA_TYPE_MANIFEST -> 4
+            C.DATA_TYPE_MEDIA, C.DATA_TYPE_MEDIA_INITIALIZATION -> 7
+            else -> super.getMinimumLoadableRetryCount(dataType)
+        }
+    }
+
+    override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+        val exception = loadErrorInfo.exception
+        if (exception.isHttpResponseCode(422)) {
+            return C.TIME_UNSET
+        }
+        val defaultDelayMs = super.getRetryDelayMsFor(loadErrorInfo)
+        if (defaultDelayMs == C.TIME_UNSET) {
+            return C.TIME_UNSET
+        }
+        return if (loadErrorInfo.errorCount <= 2) {
+            0L
+        } else {
+            ((loadErrorInfo.errorCount - 2) * HLS_LOAD_RETRY_DELAY_MS)
+                .coerceAtMost(HLS_LOAD_MAX_RETRY_DELAY_MS)
+        }
+    }
+}
+
+private fun IOException.isHttpResponseCode(responseCode: Int): Boolean {
     var cause: Throwable? = this
     while (cause != null) {
         if (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == responseCode) {
@@ -181,8 +223,8 @@ fun rememberManagedExoPlayer(
         val httpDataSourceFactory = DefaultHttpDataSource.Factory().apply {
             setUserAgent("DTVClient/1.0")
             setAllowCrossProtocolRedirects(true)
-            setConnectTimeoutMs(90000)
-            setReadTimeoutMs(90000)
+            setConnectTimeoutMs(1_000_000)
+            setReadTimeoutMs(1_000_000)
         }
 
         val nativeLib = NativeLib()
@@ -307,6 +349,7 @@ fun rememberManagedExoPlayer(
         }
 
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, customExtractorsFactory)
+            .setLoadErrorHandlingPolicy(HonomiLikeHlsLoadErrorHandlingPolicy())
 
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
         val targetBufferBytes =

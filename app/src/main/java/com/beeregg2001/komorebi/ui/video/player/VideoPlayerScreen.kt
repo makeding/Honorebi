@@ -71,7 +71,8 @@ private const val PLAYBACK_END_FALLBACK_GRACE_MS = 750L
 private const val CHASE_PLAYBACK_TARGET_LIVE_OFFSET_MS = 30_000L
 private const val CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS = 20_000L
 private const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
-private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 120_000L
+private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 45_000L
+private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
 private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 30_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
@@ -711,6 +712,13 @@ fun VideoPlayerScreen(
             val currentPos = getCurrentPositionMs()
             if (currentPos <= 0L) {
                 lastChasePlaylistRefreshAt = now
+                continue
+            }
+            val remainingBufferMs = (exoPlayer.bufferedPosition - exoPlayer.currentPosition).coerceAtLeast(0L)
+            if (
+                exoPlayer.playbackState != Player.STATE_BUFFERING &&
+                remainingBufferMs > CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS
+            ) {
                 continue
             }
 

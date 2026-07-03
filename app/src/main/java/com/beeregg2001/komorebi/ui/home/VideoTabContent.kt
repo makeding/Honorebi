@@ -550,6 +550,7 @@ fun VideoTabContent(
                                             if (index == 0) left = FocusRequester.Cancel
                                             if (index == seriesPreviewItems.lastIndex) right =
                                                 FocusRequester.Cancel
+                                            down = FocusRequester.Cancel
                                         },
                                         backendType = backendType
                                     )
