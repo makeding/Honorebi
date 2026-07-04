@@ -698,57 +698,60 @@ fun MainRootScreen(
                                     timeFormat = timeFormat
                                 )
                             } else if (state.selectedProgram != null) {
-                                VideoPlayerScreen(
-                                    program = state.selectedProgram!!,
-                                    initialPositionMs = state.initialPlaybackPositionMs,
-                                    initialQuality = defaultVideoQuality,
-                                    showControls = state.showPlayerControls,
-                                    onShowControlsChange = { state.showPlayerControls = it },
-                                    isSubMenuOpen = state.isPlayerSubMenuOpen,
-                                    onSubMenuToggle = { state.isPlayerSubMenuOpen = it },
-                                    isSceneSearchOpen = state.isPlayerSceneSearchOpen,
-                                    onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
-                                    recentRecordings = recentRecordings,
-                                    animeChannels = animeChannels,
-                                    onProgramSelect = { program ->
-                                        state.initialPlaybackPositionMs = 0L
-                                        state.selectedProgram = program
-                                        state.lastSelectedProgramId = program.id.toString()
-                                        state.lastPlayedRecordingId = program.id
-                                        state.isPlayerSubMenuOpen = false
-                                        state.isPlayerSceneSearchOpen = false
-                                        state.showPlayerControls = true
-                                        state.isReturningFromPlayer = false
-                                    },
-                                    onChannelSelect = { channel ->
-                                        state.selectedProgram = null
-                                        state.selectedSmbItem = null
-                                        state.selectedChannel = channel
-                                        state.lastSelectedChannelId = channel.id
-                                        state.lastSelectedProgramId = null
-                                        state.isPlayerSubMenuOpen = false
-                                        state.isPlayerSceneSearchOpen = false
-                                        state.showPlayerControls = false
-                                        state.playerShowOverlay = false
-                                        state.isReturningFromPlayer = false
-                                        homeViewModel.saveLastChannel(channel)
-                                    },
-                                    onPlaybackEnded = {
-                                        recordViewModel.fetchRecentRecordings(forceRefresh = true)
-                                        channelViewModel.fetchChannels()
-                                    },
-                                    onBackPressed = {
-                                        state.selectedProgram = null
-                                        state.isReturningFromPlayer = true
-                                        state.isMiniPlayerMode = false
-                                    },
-                                    onShowToast = { state.toastMessage = it },
-                                    isPiPMode = state.isMiniPlayerMode,
-                                    onPiPRequested = {
-                                        state.isMiniPlayerMode = true
-                                        state.toastMessage = "ミニプレイヤーに変更しました"
-                                    }
-                                )
+                                val selectedProgram = state.selectedProgram!!
+                                key(selectedProgram.id) {
+                                    VideoPlayerScreen(
+                                        program = selectedProgram,
+                                        initialPositionMs = state.initialPlaybackPositionMs,
+                                        initialQuality = defaultVideoQuality,
+                                        showControls = state.showPlayerControls,
+                                        onShowControlsChange = { state.showPlayerControls = it },
+                                        isSubMenuOpen = state.isPlayerSubMenuOpen,
+                                        onSubMenuToggle = { state.isPlayerSubMenuOpen = it },
+                                        isSceneSearchOpen = state.isPlayerSceneSearchOpen,
+                                        onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
+                                        recentRecordings = recentRecordings,
+                                        animeChannels = animeChannels,
+                                        onProgramSelect = { program ->
+                                            state.initialPlaybackPositionMs = 0L
+                                            state.selectedProgram = program
+                                            state.lastSelectedProgramId = program.id.toString()
+                                            state.lastPlayedRecordingId = program.id
+                                            state.isPlayerSubMenuOpen = false
+                                            state.isPlayerSceneSearchOpen = false
+                                            state.showPlayerControls = true
+                                            state.isReturningFromPlayer = false
+                                        },
+                                        onChannelSelect = { channel ->
+                                            state.selectedProgram = null
+                                            state.selectedSmbItem = null
+                                            state.selectedChannel = channel
+                                            state.lastSelectedChannelId = channel.id
+                                            state.lastSelectedProgramId = null
+                                            state.isPlayerSubMenuOpen = false
+                                            state.isPlayerSceneSearchOpen = false
+                                            state.showPlayerControls = false
+                                            state.playerShowOverlay = false
+                                            state.isReturningFromPlayer = false
+                                            homeViewModel.saveLastChannel(channel)
+                                        },
+                                        onPlaybackEnded = {
+                                            recordViewModel.fetchRecentRecordings(forceRefresh = true)
+                                            channelViewModel.fetchChannels()
+                                        },
+                                        onBackPressed = {
+                                            state.selectedProgram = null
+                                            state.isReturningFromPlayer = true
+                                            state.isMiniPlayerMode = false
+                                        },
+                                        onShowToast = { state.toastMessage = it },
+                                        isPiPMode = state.isMiniPlayerMode,
+                                        onPiPRequested = {
+                                            state.isMiniPlayerMode = true
+                                            state.toastMessage = "ミニプレイヤーに変更しました"
+                                        }
+                                    )
+                                }
                             } else if (state.selectedSmbItem != null) {
                                 val baseProgram =
                                     recordViewModel.recentRecordings.collectAsState().value.firstOrNull()

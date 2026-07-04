@@ -61,16 +61,19 @@ import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TsReadExDataSource
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "VideoPlayerManager"
-private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 96 * 1024 * 1024
-private const val RECORDED_PLAYER_MIN_BUFFER_MS = 15_000
-private const val RECORDED_PLAYER_MAX_BUFFER_MS = 45_000
-private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 2_500
+private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 192 * 1024 * 1024
+private const val RECORDED_PLAYER_MIN_BUFFER_MS = 45_000
+private const val RECORDED_PLAYER_MAX_BUFFER_MS = 150_000
+private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 4_000
 private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
 private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
 private const val CHASE_PLAYER_MIN_BUFFER_MS = 8_000
@@ -79,6 +82,7 @@ private const val CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS = 2_500
 private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
 private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
 private const val HLS_LOAD_MAX_RETRY_DELAY_MS = 8_000L
+private const val RECORDED_SEGMENT_PREFETCH_COUNT = 1
 
 private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
     val path = dataSpec.uri.path.orEmpty()
@@ -100,6 +104,80 @@ private fun withFreshPlaylistCacheKey(uri: Uri): Uri {
     return builder
         .appendQueryParameter("cache_key", System.currentTimeMillis().toString())
         .build()
+}
+
+private fun isRecordedSegmentUri(uri: Uri): Boolean {
+    return uri.pathSegments.contains("streams") &&
+            uri.pathSegments.contains("video") &&
+            uri.lastPathSegment == "segment" &&
+            uri.getQueryParameter("sequence")?.toIntOrNull() != null
+}
+
+private fun withSegmentSequence(uri: Uri, sequence: Int): Uri {
+    val builder = uri.buildUpon().clearQuery()
+    uri.queryParameterNames.forEach { name ->
+        val values = if (name == "sequence") {
+            listOf(sequence.toString())
+        } else {
+            uri.getQueryParameters(name)
+        }
+        values.forEach { value ->
+            builder.appendQueryParameter(name, value)
+        }
+    }
+    return builder.build()
+}
+
+private fun prefetchRecordedSegments(
+    scope: CoroutineScope,
+    uri: Uri,
+    prefetchesInFlight: MutableSet<String>,
+    prefetchCount: Int
+) {
+    val currentSequence = uri.getQueryParameter("sequence")?.toIntOrNull() ?: return
+    repeat(prefetchCount) { index ->
+        val prefetchUri = withSegmentSequence(uri, currentSequence + index + 1)
+        val prefetchUrl = prefetchUri.toString()
+        synchronized(prefetchesInFlight) {
+            if (!prefetchesInFlight.add(prefetchUrl)) {
+                return@repeat
+            }
+        }
+        scope.launch(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(prefetchUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 1_000_000
+                    readTimeout = 1_000_000
+                    setRequestProperty("Cache-Control", "no-cache")
+                    setRequestProperty("Pragma", "no-cache")
+                }
+                val responseCode = connection.responseCode
+                val stream = if (responseCode in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+                stream?.use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (input.read(buffer) != -1) {
+                        // Drain the response so KonomiTV completes and caches the segment.
+                    }
+                }
+                if (responseCode !in 200..299) {
+                    Log.d(TAG, "Recorded segment prefetch skipped. [code=$responseCode, url=$prefetchUrl]")
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Recorded segment prefetch failed. [url=$prefetchUrl]", e)
+            } finally {
+                connection?.disconnect()
+                synchronized(prefetchesInFlight) {
+                    prefetchesInFlight.remove(prefetchUrl)
+                }
+            }
+        }
+    }
 }
 
 private fun Throwable.hasHttpResponseCode(responseCode: Int): Boolean {
@@ -231,6 +309,7 @@ fun rememberManagedExoPlayer(
 
         // ★ 追加: HTTPリクエスト時に取得したファイルサイズを保持する共有変数
         val fileSizeBytesRef = AtomicLong(0L)
+        val segmentPrefetchesInFlight = mutableSetOf<String>()
 
         val dataSourceFactory = DataSource.Factory {
             object : DataSource {
@@ -284,7 +363,16 @@ fun rememberManagedExoPlayer(
                     } else {
                         dataSpec
                     }
-                    return source.open(requestSpec)
+                    val openedLength = source.open(requestSpec)
+                    if (isHttpSource && isRecordedSegmentUri(requestSpec.uri)) {
+                        prefetchRecordedSegments(
+                            scope,
+                            requestSpec.uri,
+                            segmentPrefetchesInFlight,
+                            RECORDED_SEGMENT_PREFETCH_COUNT
+                        )
+                    }
+                    return openedLength
                 }
 
                 override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -391,6 +479,8 @@ fun rememberManagedExoPlayer(
                     true
                 )
                 addListener(object : Player.Listener {
+                    private var wasBuffering = false
+
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
                         onVideoSizeChanged(videoSize.width, videoSize.height, videoSize.pixelWidthHeightRatio)
                     }
@@ -404,8 +494,24 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        onBufferingChanged(playbackState == Player.STATE_BUFFERING)
-                        if (playbackState == Player.STATE_READY) onDurationChanged(duration)
+                        val isBuffering = playbackState == Player.STATE_BUFFERING
+                        onBufferingChanged(isBuffering)
+                        if (isBuffering && !wasBuffering) {
+                            Log.i(
+                                TAG,
+                                "Video buffering started. [recording_chase=$isRecordingChasePlayback, position_ms=$currentPosition, buffered_ms=$bufferedPosition, duration_ms=$duration]"
+                            )
+                        }
+                        if (playbackState == Player.STATE_READY) {
+                            onDurationChanged(duration)
+                            if (wasBuffering) {
+                                Log.i(
+                                    TAG,
+                                    "Video buffering ended. [recording_chase=$isRecordingChasePlayback, position_ms=$currentPosition, buffered_ms=$bufferedPosition, duration_ms=$duration]"
+                                )
+                            }
+                        }
+                        wasBuffering = isBuffering
                         if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
                     }
 
