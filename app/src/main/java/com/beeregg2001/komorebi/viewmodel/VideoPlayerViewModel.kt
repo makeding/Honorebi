@@ -341,6 +341,15 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
+    fun cancelQuickVideoRefresh() {
+        quickVideoFetchJob?.cancel()
+        quickVideoFetchJob = null
+        val current = _quickVideoCandidates.value
+        if (current.isLoading) {
+            _quickVideoCandidates.value = current.copy(isLoading = false)
+        }
+    }
+
     private suspend fun <T> runQuickVideoFetch(block: suspend () -> T): Result<T> =
         try {
             Result.success(block())

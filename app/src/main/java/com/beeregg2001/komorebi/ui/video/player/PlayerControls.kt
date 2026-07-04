@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -130,11 +131,13 @@ fun PlayerControls(
         }
     }
 
-    AnimatedVisibility(
-        visible = isVisible,
-        enter = slideInVertically { fullHeight -> fullHeight } + fadeIn(),
-        exit = slideOutVertically { fullHeight -> fullHeight } + fadeOut(),
+    Box(
         modifier = Modifier.fillMaxSize()
+            .graphicsLayer {
+                alpha = if (isVisible) 1f else 0f
+                translationY = if (isVisible) 0f else 80f
+            }
+            .focusProperties { canFocus = isVisible }
     ) {
         Box(
             modifier = Modifier

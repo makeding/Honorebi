@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
@@ -80,6 +81,7 @@ fun VideoTopSubMenuUI(
     canOpenKeyframeGrid: Boolean = false,
     onKeyframeGridToggle: () -> Unit = {},
     openQuickVideosInitially: Boolean = false,
+    isVisible: Boolean = true,
     onCloseMenu: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ (既存に影響しないようデフォルトは true)
     isAudioSupported: Boolean = true,
@@ -97,7 +99,8 @@ fun VideoTopSubMenuUI(
     val qualityListRequester = remember { FocusRequester() }
     val quickVideoListRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isVisible) {
+        if (!isVisible) return@LaunchedEffect
         delay(50)
         try {
             if (openQuickVideosInitially) {
@@ -133,6 +136,11 @@ fun VideoTopSubMenuUI(
         modifier = Modifier
             .fillMaxWidth()
             .wrapContentHeight()
+            .graphicsLayer {
+                alpha = if (isVisible) 1f else 0f
+                translationY = if (isVisible) 0f else -80f
+            }
+            .focusProperties { canFocus = isVisible }
             .background(
                 Brush.verticalGradient(
                     colors = listOf(colors.background.copy(alpha = 0.9f), Color.Transparent)

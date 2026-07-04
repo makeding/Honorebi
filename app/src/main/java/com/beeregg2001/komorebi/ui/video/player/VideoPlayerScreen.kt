@@ -77,6 +77,7 @@ private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
 private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 30_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
+private const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
 private const val THIRTY_MINUTE_RECORDING_MIN_MS = 27 * 60 * 1000L
 private const val THIRTY_MINUTE_RECORDING_MAX_MS = 36 * 60 * 1000L
 private const val COMMENT_CLIMAX_WINDOW_START_MS = 25 * 60 * 1000L
@@ -891,7 +892,18 @@ fun VideoPlayerScreen(
     val refreshQuickMenuVideos: () -> Unit = {
         videoPlayerViewModel.refreshQuickVideoCandidates(currentProgram, recentRecordings)
     }
-    LaunchedEffect(currentProgram.id, recentRecordings) {
+    val recentRecordingsQuickKey = remember(recentRecordings) {
+        recentRecordings.take(24).joinToString(separator = "|") { "${it.id}:${it.recordedVideo.status}" }
+    }
+    LaunchedEffect(currentProgram.id, recentRecordingsQuickKey, showControls, isSubOverlayOpen) {
+        if (showControls || isSubOverlayOpen) {
+            videoPlayerViewModel.cancelQuickVideoRefresh()
+            return@LaunchedEffect
+        }
+        delay(QUICK_MENU_REFRESH_DEBOUNCE_MS)
+        if (showControls || isSubOverlayOpen) {
+            return@LaunchedEffect
+        }
         refreshQuickMenuVideos()
     }
 
@@ -978,12 +990,6 @@ fun VideoPlayerScreen(
                     "サムネイルが生成されていません"
                 }
             )
-        }
-    }
-
-    LaunchedEffect(isSubMenuOpen, currentProgram.id, recentRecordings) {
-        if (isSubMenuOpen) {
-            refreshQuickMenuVideos()
         }
     }
 
@@ -1309,10 +1315,7 @@ fun VideoPlayerScreen(
                 )
             }
 
-            AnimatedVisibility(
-                isSubMenuOpen,
-                enter = slideInVertically { -it } + fadeIn(),
-                exit = slideOutVertically { -it } + fadeOut()) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 VideoTopSubMenuUI(
                     currentProgram = currentProgram,
                     seriesPrograms = quickMenuSeriesPrograms,
@@ -1421,6 +1424,7 @@ fun VideoPlayerScreen(
                     canOpenKeyframeGrid = canOpenSceneSearch,
                     onKeyframeGridToggle = openKeyframeGrid,
                     openQuickVideosInitially = openQuickVideosOnSubMenuOpen,
+                    isVisible = isSubMenuOpen,
                     onCloseMenu = { onSubMenuToggle(false) },
                 )
             }
