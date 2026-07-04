@@ -67,6 +67,8 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "VideoPlayerManager"
@@ -82,7 +84,7 @@ private const val CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS = 2_500
 private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
 private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
 private const val HLS_LOAD_MAX_RETRY_DELAY_MS = 8_000L
-private const val RECORDED_SEGMENT_PREFETCH_COUNT = 1
+private const val RECORDED_SEGMENT_PREFETCH_COUNT = 0
 
 private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
     val path = dataSpec.uri.path.orEmpty()
@@ -128,20 +130,76 @@ private fun withSegmentSequence(uri: Uri, sequence: Int): Uri {
     return builder.build()
 }
 
+private class PrefetchedSegmentDataSource(
+    private val bytes: ByteArray,
+    private val sourceUri: Uri
+) : DataSource {
+    private var readPosition = 0
+    private var bytesRemaining = 0
+
+    override fun addTransferListener(transferListener: TransferListener) = Unit
+
+    override fun open(dataSpec: DataSpec): Long {
+        readPosition = dataSpec.position.coerceAtMost(bytes.size.toLong()).toInt()
+        bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
+            bytes.size - readPosition
+        } else {
+            dataSpec.length.coerceAtMost((bytes.size - readPosition).toLong()).toInt()
+        }
+        return bytesRemaining.toLong()
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (bytesRemaining <= 0) {
+            return C.RESULT_END_OF_INPUT
+        }
+        val bytesToRead = length.coerceAtMost(bytesRemaining)
+        System.arraycopy(bytes, readPosition, buffer, offset, bytesToRead)
+        readPosition += bytesToRead
+        bytesRemaining -= bytesToRead
+        return bytesToRead
+    }
+
+    override fun getUri(): Uri = sourceUri
+
+    override fun close() = Unit
+}
+
+private class SegmentPrefetchCache {
+    private val segments = ConcurrentHashMap<String, CompletableFuture<ByteArray>>()
+
+    fun take(uri: Uri): ByteArray? {
+        val key = uri.toString()
+        val future = segments[key] ?: return null
+        if (!future.isDone) {
+            return null
+        }
+        segments.remove(key, future)
+        return try {
+            future.get()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun prefetch(scope: CoroutineScope, uri: Uri, prefetchCount: Int) {
+        prefetchRecordedSegments(scope, uri, segments, prefetchCount)
+    }
+}
+
 private fun prefetchRecordedSegments(
     scope: CoroutineScope,
     uri: Uri,
-    prefetchesInFlight: MutableSet<String>,
+    prefetchedSegments: ConcurrentHashMap<String, CompletableFuture<ByteArray>>,
     prefetchCount: Int
 ) {
     val currentSequence = uri.getQueryParameter("sequence")?.toIntOrNull() ?: return
     repeat(prefetchCount) { index ->
         val prefetchUri = withSegmentSequence(uri, currentSequence + index + 1)
         val prefetchUrl = prefetchUri.toString()
-        synchronized(prefetchesInFlight) {
-            if (!prefetchesInFlight.add(prefetchUrl)) {
-                return@repeat
-            }
+        val future = CompletableFuture<ByteArray>()
+        if (prefetchedSegments.putIfAbsent(prefetchUrl, future) != null) {
+            return@repeat
         }
         scope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
@@ -159,22 +217,31 @@ private fun prefetchRecordedSegments(
                 } else {
                     connection.errorStream
                 }
-                stream?.use { input ->
+                val bytes = stream?.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (input.read(buffer) != -1) {
-                        // Drain the response so KonomiTV completes and caches the segment.
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
                     }
+                    output.toByteArray()
+                } ?: ByteArray(0)
+                if (responseCode in 200..299) {
+                    future.complete(bytes)
+                } else {
+                    future.completeExceptionally(IOException("HTTP $responseCode"))
+                    prefetchedSegments.remove(prefetchUrl, future)
                 }
                 if (responseCode !in 200..299) {
                     Log.d(TAG, "Recorded segment prefetch skipped. [code=$responseCode, url=$prefetchUrl]")
                 }
             } catch (e: Exception) {
+                future.completeExceptionally(e)
+                prefetchedSegments.remove(prefetchUrl, future)
                 Log.d(TAG, "Recorded segment prefetch failed. [url=$prefetchUrl]", e)
             } finally {
                 connection?.disconnect()
-                synchronized(prefetchesInFlight) {
-                    prefetchesInFlight.remove(prefetchUrl)
-                }
             }
         }
     }
@@ -309,7 +376,7 @@ fun rememberManagedExoPlayer(
 
         // ★ 追加: HTTPリクエスト時に取得したファイルサイズを保持する共有変数
         val fileSizeBytesRef = AtomicLong(0L)
-        val segmentPrefetchesInFlight = mutableSetOf<String>()
+        val segmentPrefetchCache = SegmentPrefetchCache()
 
         val dataSourceFactory = DataSource.Factory {
             object : DataSource {
@@ -363,12 +430,35 @@ fun rememberManagedExoPlayer(
                     } else {
                         dataSpec
                     }
-                    val openedLength = source.open(requestSpec)
                     if (isHttpSource && isRecordedSegmentUri(requestSpec.uri)) {
-                        prefetchRecordedSegments(
+                        val prefetchedSegment = segmentPrefetchCache.take(requestSpec.uri)
+                        if (prefetchedSegment != null) {
+                            val prefetchedSource =
+                                PrefetchedSegmentDataSource(prefetchedSegment, requestSpec.uri)
+                            activeDataSource = prefetchedSource
+                            val openedLength = prefetchedSource.open(requestSpec)
+                            segmentPrefetchCache.prefetch(
+                                scope,
+                                requestSpec.uri,
+                                RECORDED_SEGMENT_PREFETCH_COUNT
+                            )
+                            return openedLength
+                        }
+                    }
+                    val openedLength = try {
+                        source.open(requestSpec)
+                    } catch (e: HttpDataSource.InvalidResponseCodeException) {
+                        Log.e(
+                            TAG,
+                            "HTTP source open failed. [code=${e.responseCode}, uri=${requestSpec.uri}]",
+                            e
+                        )
+                        throw e
+                    }
+                    if (isHttpSource && isRecordedSegmentUri(requestSpec.uri)) {
+                        segmentPrefetchCache.prefetch(
                             scope,
                             requestSpec.uri,
-                            segmentPrefetchesInFlight,
                             RECORDED_SEGMENT_PREFETCH_COUNT
                         )
                     }

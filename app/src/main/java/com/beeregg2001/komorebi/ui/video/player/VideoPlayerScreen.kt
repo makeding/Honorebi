@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.Normalizer
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import java.util.UUID
@@ -219,6 +220,7 @@ fun VideoPlayerScreen(
     var currentSessionId by remember(currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback) {
         mutableStateOf(UUID.randomUUID().toString())
     }
+    val currentStreamUrlRef = remember(currentProgram.id) { AtomicReference<String?>(null) }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
             extraBufferCapacity = 10,
@@ -399,6 +401,7 @@ fun VideoPlayerScreen(
                 TAG,
                 "Recovered expired stream session for video=${currentProgram.id}, quality=${vs.currentQuality.value}"
             )
+            currentStreamUrlRef.set(newUrl)
             player.setMediaItem(buildVideoMediaItem(newUrl))
             player.prepare()
             if (resumePositionMs > 0L && (!isLiveStream || isRecordingChasePlayback)) {
@@ -538,6 +541,7 @@ fun VideoPlayerScreen(
                     isRecordingChasePlayback
                 )
                 if (newUrl.isNotEmpty()) {
+                    currentStreamUrlRef.set(newUrl)
                     exoPlayer.setMediaItem(buildVideoMediaItem(newUrl))
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
@@ -613,6 +617,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentProgram.id, smbItem?.path) {
         isFirstLoad = true
         preparedPlaybackKey = null
+        currentStreamUrlRef.set(null)
         vs.playbackOffsetMs = 0L
         vs.pendingSeekPositionMs = null
         playbackPositionMs = effectiveInitialPositionMs.coerceAtLeast(0L)
@@ -672,6 +677,7 @@ fun VideoPlayerScreen(
         )
 
         if (url.isNotEmpty()) {
+            currentStreamUrlRef.set(url)
             exoPlayer.setMediaItem(buildVideoMediaItem(url))
             if (isFirstLoad && effectiveInitialPositionMs > 0 && (!isLiveStream || isRecordingChasePlayback)) {
                 exoPlayer.seekTo(effectiveInitialPositionMs)
@@ -736,6 +742,7 @@ fun VideoPlayerScreen(
                     "Refreshing chase playback playlist. [video=${currentProgram.id}, position_ms=$currentPos]"
                 )
                 isBuffering = true
+                currentStreamUrlRef.set(newUrl)
                 exoPlayer.setMediaItem(buildVideoMediaItem(newUrl))
                 exoPlayer.prepare()
                 exoPlayer.seekTo(currentPos)
@@ -765,12 +772,7 @@ fun VideoPlayerScreen(
                 currentProgram,
                 vs.currentQuality.value,
                 currentSessionId
-            ) {
-                exoPlayer.currentMediaItem
-                    ?.localConfiguration
-                    ?.uri
-                    ?.toString()
-            }
+            ) { currentStreamUrlRef.get() }
         }
         onDispose { if (smbItem == null) videoPlayerViewModel.stopStreamMaintenance() }
     }
@@ -1257,7 +1259,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         0.0,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
+                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
@@ -1273,7 +1275,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
+                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
                                     if (isRecordingChasePlayback) player.seekTo(currentPos)
                                     player.play()
                                 }
@@ -1365,7 +1367,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         0.0,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
+                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
@@ -1381,7 +1383,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
+                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
                                     if (isRecordingChasePlayback) player.seekTo(currentPos)
                                     player.play()
                                 }

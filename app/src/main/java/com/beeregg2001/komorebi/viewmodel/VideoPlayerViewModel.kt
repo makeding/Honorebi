@@ -51,6 +51,7 @@ class VideoPlayerViewModel @Inject constructor(
         private const val TAG = "VideoPlayerViewModel"
         private const val QUICK_VIDEO_CACHE_TTL_MS = 60_000L
         private const val QUICK_VIDEO_LIMIT = 48
+        private const val STREAM_KEEP_ALIVE_INTERVAL_MS = 3_000L
     }
 
     private val gson = Gson()
@@ -501,7 +502,7 @@ class VideoPlayerViewModel @Inject constructor(
                         fallbackSessionId = sessionId
                     )
                     if (streamSession == null) {
-                        delay(5000L)
+                        delay(STREAM_KEEP_ALIVE_INTERVAL_MS)
                         continue
                     }
 
@@ -510,10 +511,14 @@ class VideoPlayerViewModel @Inject constructor(
                         sessionId = streamSession.sessionId,
                         quality = streamSession.quality
                     )
+                    Log.d(
+                        TAG,
+                        "Keep-Alive sent. [video=${program.recordedVideo.id}, quality=${streamSession.quality}, session=${streamSession.sessionId}]"
+                    )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to send Keep-Alive", e)
                 }
-                delay(5000L)
+                delay(STREAM_KEEP_ALIVE_INTERVAL_MS)
             }
         }
     }
