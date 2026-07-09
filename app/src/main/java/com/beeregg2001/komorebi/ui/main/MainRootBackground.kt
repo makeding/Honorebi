@@ -256,7 +256,10 @@ fun MainRootBackground(
                         onEpgJumpMenuStateChanged = { state.isEpgJumpMenuOpen = it },
                         triggerBack = state.triggerHomeBack,
                         onBackTriggered = { state.triggerHomeBack = false },
-                        onFinalBack = onExitApp,
+                        onFinalBack = {
+                            state.currentTabIndex = 0
+                            state.triggerHomeBack = false
+                        },
                         onUiReady = { state.isUiReady = true },
                         onNavigateToPlayer = { channelId, _, _ ->
                             val channel =

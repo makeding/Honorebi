@@ -19,10 +19,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.beeregg2001.komorebi.common.safeRequestFocus
-import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
-import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppCard
-import com.beeregg2001.komorebi.ui.home.components.LauncherAppManagementDialog
 import com.beeregg2001.komorebi.ui.home.components.SectionHeader
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
@@ -41,7 +38,7 @@ fun AppsTabContent(
         launcherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }
     }
     val gridState = rememberLazyGridState()
-    var managedApp by remember { mutableStateOf<LauncherApp?>(null) }
+    var editingAppId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(apps.isNotEmpty()) {
         delay(250)
@@ -55,94 +52,85 @@ fun AppsTabContent(
         return currentItem.offset.y == firstItem.offset.y
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 24.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 24.dp)
+    ) {
+        SectionHeader(
+            "アプリ",
+            Icons.Default.Apps,
+            Modifier.padding(horizontal = 48.dp)
+        )
+        Spacer(Modifier.height(12.dp))
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 160.dp),
+            state = gridState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 80.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SectionHeader(
-                "アプリ",
-                Icons.Default.Apps,
-                Modifier.padding(horizontal = 48.dp)
-            )
-            Spacer(Modifier.height(12.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 160.dp),
-                state = gridState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 80.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                itemsIndexed(apps, key = { _, app -> "app_${app.stableId}" }) { index, app ->
-                    LauncherAppCard(
-                        app = app,
-                        onClick = { homeViewModel.launchApp(app) },
-                        onManage = { managedApp = app },
-                        onFocus = {},
-                        cardWidth = 160.dp,
-                        cardHeight = 118.dp,
-                        bannerWidth = 144.dp,
-                        bannerHeight = 72.dp,
-                        iconSize = 72.dp,
-                        showBorder = false,
-                        fullBleedBanner = true,
-                        modifier = Modifier
-                            .then(
-                                if (index == 0) {
-                                    Modifier.focusRequester(contentFirstItemRequester)
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .focusProperties {
-                                if (index == 0) left = FocusRequester.Cancel
+            itemsIndexed(apps, key = { _, app -> "app_${app.stableId}" }) { index, app ->
+                LauncherAppCard(
+                    app = app,
+                    onClick = {
+                        if (editingAppId == app.stableId) {
+                            editingAppId = null
+                        } else if (editingAppId == null) {
+                            homeViewModel.launchApp(app)
+                        }
+                    },
+                    onManage = { editingAppId = app.stableId },
+                    onFocus = {},
+                    cardWidth = 160.dp,
+                    cardHeight = 136.dp,
+                    bannerWidth = 160.dp,
+                    bannerHeight = 90.dp,
+                    iconSize = 72.dp,
+                    showBorder = false,
+                    fullBleedBanner = true,
+                    manualConfirmHandling = true,
+                    isEditing = editingAppId == app.stableId,
+                    onMoveLeft = { homeViewModel.moveLauncherApp(app, -1) },
+                    onMoveRight = { homeViewModel.moveLauncherApp(app, 1) },
+                    onHide = {
+                        homeViewModel.hideLauncherApp(app)
+                        editingAppId = null
+                    },
+                    onDoneEditing = { editingAppId = null },
+                    modifier = Modifier
+                        .then(
+                            if (index == 0) {
+                                Modifier.focusRequester(contentFirstItemRequester)
+                            } else {
+                                Modifier
                             }
-                            .onKeyEvent {
-                                if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                    it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP &&
-                                    isFirstGridRow(index)
-                                ) {
-                                    tabFocusRequester.safeRequestFocus(TAG)
-                                    true
-                                } else {
-                                    false
-                                }
+                        )
+                        .focusProperties {
+                            if (index == 0) left = FocusRequester.Cancel
+                        }
+                        .onKeyEvent {
+                            if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP &&
+                                isFirstGridRow(index) &&
+                                editingAppId == null
+                            ) {
+                                tabFocusRequester.safeRequestFocus(TAG)
+                                true
+                            } else {
+                                false
                             }
-                            .onFocusChanged {
-                                if (it.isFocused) {
-                                    homeViewModel.lastClickedSection = "apps"
-                                    homeViewModel.lastClickedItemId = app.stableId
-                                }
+                        }
+                        .onFocusChanged {
+                            if (it.isFocused) {
+                                homeViewModel.lastClickedSection = "apps"
+                                homeViewModel.lastClickedItemId = app.stableId
                             }
-                    )
-                }
+                        }
+                )
             }
         }
     }
 
-    LaunchedEffect(apps) {
-        if (apps.isNotEmpty()) {
-            delay(350)
-            contentFirstItemRequester.safeRequestFocusWithRetry("AppsTabInitialFocus")
-        }
-    }
-
-    managedApp?.let { app ->
-        val appIndex = apps.indexOfFirst { it.stableId == app.stableId }
-        LauncherAppManagementDialog(
-            app = app,
-            canMoveLeft = appIndex > 0,
-            canMoveRight = appIndex in 0 until apps.lastIndex,
-            onMoveLeft = { homeViewModel.moveLauncherApp(app, -1) },
-            onMoveRight = { homeViewModel.moveLauncherApp(app, 1) },
-            onHide = {
-                homeViewModel.hideLauncherApp(app)
-                managedApp = null
-            },
-            onShowAll = { homeViewModel.showAllLauncherApps() },
-            onDismiss = { managedApp = null }
-        )
-    }
 }

@@ -7,6 +7,7 @@ import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Build
+import android.provider.Settings
 import com.beeregg2001.komorebi.data.model.LauncherApp
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +87,24 @@ class LauncherAppRepository @Inject constructor(
         return fallbackApp?.let { launch(it) } ?: false
     }
 
+    fun launchSystemSettings(): Boolean {
+        val settingsIntent = Intent(Settings.ACTION_SETTINGS).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        }
+
+        if (tryStartActivity(settingsIntent)) return true
+
+        SETTINGS_PACKAGES.forEach { packageName ->
+            val fallback = packageManager.getLaunchIntentForPackage(packageName)
+            if (fallback != null) {
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                if (tryStartActivity(fallback)) return true
+            }
+        }
+
+        return false
+    }
+
     private fun queryMainActivities(category: String): List<ResolveInfo> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(category)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -122,5 +141,10 @@ class LauncherAppRepository @Inject constructor(
         const val ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS"
         const val LIVE_TV_PACKAGE = "com.mitv.livetv"
         const val LIVE_TV_INPUT_ACTIVITY = "com.mitv.livetv.input.SelectInputActivity"
+        val SETTINGS_PACKAGES = listOf(
+            "com.android.tv.settings",
+            "com.android.settings",
+            "com.xiaomi.mitv.settings"
+        )
     }
 }

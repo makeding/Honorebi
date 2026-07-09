@@ -10,6 +10,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
@@ -196,6 +197,7 @@ fun HomeLauncherScreen(
 
     val returnPlayerFocusRequester = remember { FocusRequester() }
     val inputSourceFocusRequester = remember { FocusRequester() }
+    val systemSettingsFocusRequester = remember { FocusRequester() }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
@@ -530,9 +532,9 @@ fun HomeLauncherScreen(
                             modifier = Modifier
                                 .focusRequester(returnPlayerFocusRequester)
                                 .focusProperties {
-                                    left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
-                                        ?: FocusRequester.Default
-                                    right = ui.settingsFocusRequester
+                                left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
+                                    ?: FocusRequester.Default
+                                    right = systemSettingsFocusRequester
                                     canFocus = !isEpgJumping
                                     up = FocusRequester.Cancel
                                 },
@@ -563,7 +565,7 @@ fun HomeLauncherScreen(
                     IconButton(
                         onClick = { onSettingsToggle(true) },
                         modifier = Modifier
-                            .focusRequester(ui.settingsFocusRequester)
+                            .focusRequester(systemSettingsFocusRequester)
                             .focusProperties {
                                 val isEpgJumping =
                                     tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
@@ -571,6 +573,28 @@ fun HomeLauncherScreen(
                                     if (hasActivePlayer) returnPlayerFocusRequester else (ui.tabFocusRequesters.getOrNull(
                                         tabs.lastIndex
                                     ) ?: FocusRequester.Default)
+                                right = ui.settingsFocusRequester
+                                canFocus = !isEpgJumping
+                                up = FocusRequester.Cancel
+                            },
+                        colors = IconButtonDefaults.colors(
+                            focusedContainerColor = colors.textPrimary,
+                            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
+                            contentColor = colors.textSecondary
+                        )
+                    ) {
+                        Icon(Icons.Default.Build, contentDescription = "設定")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    IconButton(
+                        onClick = { homeViewModel.launchSystemSettings() },
+                        modifier = Modifier
+                            .focusRequester(ui.settingsFocusRequester)
+                            .focusProperties {
+                                val isEpgJumping =
+                                    tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
+                                left = systemSettingsFocusRequester
                                 canFocus = !isEpgJumping
                                 up = FocusRequester.Cancel
                                 right = FocusRequester.Cancel
@@ -581,7 +605,7 @@ fun HomeLauncherScreen(
                             contentColor = colors.textSecondary
                         )
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "設定")
+                        Icon(Icons.Default.Settings, contentDescription = "システム設定")
                     }
                 }
             }

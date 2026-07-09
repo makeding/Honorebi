@@ -107,6 +107,8 @@ class HomeViewModel @Inject constructor(
     fun launchInputSourcePicker(fallbackApp: LauncherApp?): Boolean =
         launcherAppRepository.launchInputSourcePicker(fallbackApp)
 
+    fun launchSystemSettings(): Boolean = launcherAppRepository.launchSystemSettings()
+
     fun isPinnedSystemApp(app: LauncherApp): Boolean =
         app.packageName in PINNED_SYSTEM_APP_PACKAGES
 

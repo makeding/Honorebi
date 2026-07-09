@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,11 +16,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +42,7 @@ import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -581,60 +585,147 @@ fun LauncherAppCard(
     bannerHeight: Dp = 64.dp,
     iconSize: Dp = 56.dp,
     showBorder: Boolean = true,
-    fullBleedBanner: Boolean = false
+    fullBleedBanner: Boolean = false,
+    manualConfirmHandling: Boolean = false,
+    isEditing: Boolean = false,
+    onMoveLeft: () -> Unit = {},
+    onMoveRight: () -> Unit = {},
+    onHide: () -> Unit = {},
+    onDoneEditing: () -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    var consumedLongPress by remember(app.stableId) { mutableStateOf(false) }
+    var confirmPressed by remember(app.stableId) { mutableStateOf(false) }
+    var longPressJob by remember(app.stableId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val scope = rememberCoroutineScope()
     val colors = KomorebiTheme.colors
+    val shape = RoundedCornerShape(8.dp)
+    val containerColor = when {
+        isEditing -> colors.accent.copy(alpha = 0.2f)
+        isFocused -> colors.surface
+        else -> colors.surface.copy(alpha = 0.6f)
+    }
 
-    Surface(
-        onClick = onClick,
+    DisposableEffect(app.stableId) {
+        onDispose { longPressJob?.cancel() }
+    }
+
+    Box(
         modifier = modifier
             .width(cardWidth)
             .height(cardHeight)
-            .onFocusChanged {
-                isFocused = it.isFocused
-                if (it.isFocused) onFocus()
+            .clip(shape)
+            .background(containerColor, shape)
+            .drawWithContent {
+                drawContent()
+                val ringColor = when {
+                    isEditing -> colors.accent
+                    isFocused -> Color(0xFFFF8AAE)
+                    showBorder -> colors.textPrimary.copy(alpha = 0.1f)
+                    else -> Color.Transparent
+                }
+                if (ringColor != Color.Transparent) {
+                    val stroke = if (isFocused || isEditing) 3.dp.toPx() else 1.dp.toPx()
+                    drawRoundRect(
+                        color = ringColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(stroke / 2f, stroke / 2f),
+                        size = androidx.compose.ui.geometry.Size(
+                            size.width - stroke,
+                            size.height - stroke
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
+                        style = Stroke(width = stroke)
+                    )
+                }
             }
-            .onKeyEvent { event ->
+            .onPreviewKeyEvent { event ->
+                val keyCode = event.nativeKeyEvent.keyCode
+                val isConfirmKey = keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                    keyCode == android.view.KeyEvent.KEYCODE_ENTER
+
                 when {
-                    event.type == KeyEventType.KeyUp &&
-                        event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MENU -> {
-                        onManage()
+                    isEditing &&
+                        event.type == KeyEventType.KeyDown &&
+                        keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        onMoveLeft()
                         true
                     }
 
-                    event.type == KeyEventType.KeyDown &&
-                        event.nativeKeyEvent.repeatCount > 0 &&
-                        (
-                            event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
-                                event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER
-                            ) -> {
+                    isEditing &&
+                        event.type == KeyEventType.KeyDown &&
+                        keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        onMoveRight()
+                        true
+                    }
+
+                    isEditing &&
+                        event.type == KeyEventType.KeyUp &&
+                        keyCode == android.view.KeyEvent.KEYCODE_MENU -> {
+                        onHide()
+                        true
+                    }
+
+                    isEditing &&
+                        event.type == KeyEventType.KeyUp &&
+                        keyCode == android.view.KeyEvent.KEYCODE_BACK -> {
+                        longPressJob?.cancel()
+                        confirmPressed = false
+                        consumedLongPress = false
+                        onDoneEditing()
+                        true
+                    }
+
+                    isConfirmKey &&
+                        event.type == KeyEventType.KeyDown &&
+                        event.nativeKeyEvent.repeatCount == 0 -> {
+                        confirmPressed = true
+                        consumedLongPress = false
+                        longPressJob?.cancel()
+                        longPressJob = scope.launch {
+                            kotlinx.coroutines.delay(350)
+                            if (confirmPressed) {
+                                consumedLongPress = true
+                                onManage()
+                            }
+                        }
+                        true
+                    }
+
+                    isConfirmKey &&
+                        event.type == KeyEventType.KeyDown -> true
+
+                    isConfirmKey &&
+                        event.type == KeyEventType.KeyUp -> {
+                        longPressJob?.cancel()
+                        val wasLongPress = consumedLongPress
+                        confirmPressed = false
+                        consumedLongPress = false
+                        if (!wasLongPress) {
+                            if (isEditing) onDoneEditing() else onClick()
+                        }
+                        true
+                    }
+
+                    event.type == KeyEventType.KeyUp &&
+                        keyCode == android.view.KeyEvent.KEYCODE_MENU -> {
                         onManage()
                         true
                     }
 
                     else -> false
                 }
-            },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.07f),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
-            focusedContainerColor = colors.surface,
-            contentColor = colors.textPrimary,
-            focusedContentColor = colors.textPrimary
-        ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        border = if (showBorder) {
-            ClickableSurfaceDefaults.border(
-                border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-                focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
-            )
-        } else {
-            ClickableSurfaceDefaults.border(
-                border = Border.None,
-                focusedBorder = Border.None
-            )
-        }
+            }
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (!it.isFocused) {
+                    longPressJob?.cancel()
+                    confirmPressed = false
+                    consumedLongPress = false
+                }
+                if (it.isFocused) onFocus()
+            }
+            .focusable(),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
@@ -652,7 +743,7 @@ fun LauncherAppCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(bannerHeight),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Fit
                 )
             } else {
                 Box(
