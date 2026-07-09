@@ -18,6 +18,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -560,6 +563,96 @@ fun GenrePickupCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun LauncherAppCard(
+    app: LauncherApp,
+    onClick: () -> Unit,
+    onManage: () -> Unit,
+    onFocus: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val colors = KomorebiTheme.colors
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .width(220.dp)
+            .height(124.dp)
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
+            .onKeyEvent { event ->
+                when {
+                    event.type == KeyEventType.KeyUp &&
+                        event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_MENU -> {
+                        onManage()
+                        true
+                    }
+
+                    event.type == KeyEventType.KeyDown &&
+                        event.nativeKeyEvent.repeatCount > 0 &&
+                        (
+                            event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                                event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER
+                            ) -> {
+                        onManage()
+                        true
+                    }
+
+                    else -> false
+                }
+            },
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.07f),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
+            focusedContainerColor = colors.surface,
+            contentColor = colors.textPrimary,
+            focusedContentColor = colors.textPrimary
+        ),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
+            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(if (app.banner != null) 168.dp else 56.dp)
+                    .height(if (app.banner != null) 64.dp else 56.dp)
+                    .clip(RoundedCornerShape(if (app.banner != null) 8.dp else 12.dp))
+                    .background(colors.textPrimary.copy(alpha = 0.06f)),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = app.banner ?: app.icon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(if (app.banner != null) 0.dp else 4.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = app.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.82f),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

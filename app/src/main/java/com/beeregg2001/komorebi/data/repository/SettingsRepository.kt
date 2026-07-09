@@ -67,6 +67,8 @@ class SettingsRepository @Inject constructor(
         val TIME_FORMAT = stringPreferencesKey("time_format")
         val APP_THEME = stringPreferencesKey("app_theme")
         val DEFAULT_RECORD_LIST_VIEW = stringPreferencesKey("default_record_list_view")
+        val LAUNCHER_APP_ORDER = stringPreferencesKey("launcher_app_order")
+        val LAUNCHER_APP_HIDDEN = stringPreferencesKey("launcher_app_hidden")
 
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
@@ -159,6 +161,10 @@ class SettingsRepository @Inject constructor(
     val appTheme: Flow<String> = context.dataStore.data.map { it[APP_THEME] ?: "MONOTONE" }
     val defaultRecordListView: Flow<String> =
         context.dataStore.data.map { it[DEFAULT_RECORD_LIST_VIEW] ?: "LIST" }
+    val launcherAppOrder: Flow<String> =
+        context.dataStore.data.map { it[LAUNCHER_APP_ORDER] ?: "[]" }
+    val launcherAppHidden: Flow<String> =
+        context.dataStore.data.map { it[LAUNCHER_APP_HIDDEN] ?: "[]" }
     val receiveBetaUpdates: Flow<Boolean> =
         context.dataStore.data.map { it[RECEIVE_BETA_UPDATES] ?: false }
     val hideSubChannels: Flow<Boolean> =

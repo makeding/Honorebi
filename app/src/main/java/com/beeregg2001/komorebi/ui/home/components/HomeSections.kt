@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.AlertDialog
 // ★ 変更: TvLazy系のインポートを削除し、標準のLazy系のインポートに変更
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -462,7 +463,7 @@ fun UpcomingReserveSection(
         NavigationLinkButton(
             "録画予約リストを表示",
             Icons.Default.List,
-            onClick = { onNavigateToTab(4) })
+            onClick = { onNavigateToTab(5) })
     }
 }
 
@@ -567,6 +568,187 @@ fun GenrePickupSection(
         NavigationLinkButton(
             "番組表を開く",
             Icons.Default.CalendarToday,
-            onClick = { onNavigateToTab(3) })
+            onClick = { onNavigateToTab(4) })
     }
+}
+
+@Composable
+fun LauncherAppSection(
+    apps: List<LauncherApp>,
+    modifier: Modifier = Modifier,
+    contentFirstItemRequester: FocusRequester? = null,
+    onAppClick: (LauncherApp) -> Unit,
+    onAppManage: (LauncherApp) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    ticketManager: HomeFocusTicketManager,
+    homeViewModel: HomeViewModel,
+    sectionId: String
+) {
+    val rowState = rememberLazyListState()
+
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
+            val index = apps.indexOfFirst { it.stableId == ticketManager.targetItemId }
+            if (index != -1) rowState.scrollToItem(index)
+        }
+    }
+
+    Column(modifier = Modifier.animateContentSize()) {
+        SectionHeader(
+            "アプリ",
+            Icons.Default.Apps,
+            Modifier.padding(horizontal = 48.dp)
+        )
+        LazyRow(
+            state = rowState,
+            modifier = modifier,
+            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            itemsIndexed(apps, key = { _, it -> "app_${it.stableId}" }) { index, app ->
+                val specificRequester = remember { FocusRequester() }
+                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
+                        ticketManager.targetSection == sectionId &&
+                        ticketManager.targetItemId == app.stableId
+                    ) {
+                        delay(150)
+                        specificRequester.safeRequestFocusWithRetry("HomeRestore_App")
+                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
+                        homeViewModel.clearFocusMemory()
+                    }
+                }
+
+                LauncherAppCard(
+                    app = app,
+                    onClick = { onAppClick(app) },
+                    onManage = { onAppManage(app) },
+                    onFocus = {
+                        onUpdateHeroInfo(
+                            HomeHeroInfo(
+                                title = app.label,
+                                subtitle = "アプリ",
+                                description = app.packageName,
+                                tag = "App"
+                            )
+                        )
+                    },
+                    modifier = Modifier
+                        .focusRequester(specificRequester)
+                        .then(
+                            if (index == 0 && contentFirstItemRequester != null) Modifier.focusRequester(
+                                contentFirstItemRequester
+                            ) else Modifier
+                        )
+                        .focusProperties {
+                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == apps.size - 1) right = FocusRequester.Cancel
+                        }
+                        .onFocusChanged {
+                            if (it.isFocused || it.hasFocus) {
+                                homeViewModel.lastClickedSection = sectionId
+                                homeViewModel.lastClickedItemId = app.stableId
+                            }
+                        }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LauncherAppManagementDialog(
+    app: LauncherApp,
+    canMoveLeft: Boolean,
+    canMoveRight: Boolean,
+    onMoveLeft: () -> Unit,
+    onMoveRight: () -> Unit,
+    onHide: () -> Unit,
+    onShowAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val colors = KomorebiTheme.colors
+
+    LaunchedEffect(app.stableId) {
+        delay(80)
+        focusRequester.safeRequestFocusWithRetry("LauncherAppManagement")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.background,
+        titleContentColor = colors.textPrimary,
+        textContentColor = colors.textSecondary,
+        title = {
+            Text(
+                text = app.label,
+                style = MaterialTheme.typography.titleLarge,
+                color = colors.textPrimary
+            )
+        },
+        text = {
+            Text(
+                text = app.packageName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary
+            )
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onMoveLeft,
+                    enabled = canMoveLeft,
+                    modifier = Modifier.focusRequester(focusRequester),
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface,
+                        focusedContainerColor = colors.textPrimary,
+                        contentColor = colors.textPrimary,
+                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                    )
+                ) { Text("左へ") }
+                Button(
+                    onClick = onMoveRight,
+                    enabled = canMoveRight,
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface,
+                        focusedContainerColor = colors.textPrimary,
+                        contentColor = colors.textPrimary,
+                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                    )
+                ) { Text("右へ") }
+                Button(
+                    onClick = onHide,
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface,
+                        focusedContainerColor = Color(0xFFFF8AAE),
+                        contentColor = colors.textPrimary,
+                        focusedContentColor = Color.Black
+                    )
+                ) { Text("非表示") }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onShowAll,
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface.copy(alpha = 0.7f),
+                        focusedContainerColor = colors.textPrimary,
+                        contentColor = colors.textSecondary,
+                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                    )
+                ) { Text("すべて表示") }
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface.copy(alpha = 0.7f),
+                        focusedContainerColor = colors.textPrimary,
+                        contentColor = colors.textSecondary,
+                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                    )
+                ) { Text("閉じる") }
+            }
+        }
+    )
 }

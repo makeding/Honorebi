@@ -278,6 +278,7 @@ object AppStrings {
 
     const val SETTINGS_VALUE_TAB_HOME = "ホーム"
     const val SETTINGS_VALUE_TAB_LIVE = "ライブ"
+    const val SETTINGS_VALUE_TAB_APPS = "アプリ"
     const val SETTINGS_VALUE_TAB_VIDEO = "ビデオ"
     const val SETTINGS_VALUE_TAB_EPG = "番組表"
     const val SETTINGS_VALUE_TAB_RESERVE = "録画予約"

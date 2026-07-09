@@ -751,6 +751,7 @@ fun SettingsScreen(
                                     if (prefs.favoriteBaseballTeams.isNotEmpty()) listOf(
                                         "ホーム" to "ホーム",
                                         "ライブ" to "ライブ",
+                                        "アプリ" to "アプリ",
                                         "ビデオ" to "ビデオ",
                                         "番組表" to "番組表",
                                         "録画予約" to "録画予約",
@@ -758,6 +759,7 @@ fun SettingsScreen(
                                     ) else listOf(
                                         "ホーム" to "ホーム",
                                         "ライブ" to "ライブ",
+                                        "アプリ" to "アプリ",
                                         "ビデオ" to "ビデオ",
                                         "番組表" to "番組表",
                                         "録画予約" to "録画予約"
@@ -836,6 +838,7 @@ fun SettingsScreen(
                                     if (prefs.favoriteBaseballTeams.isNotEmpty()) listOf(
                                         "ホーム" to "ホーム",
                                         "ライブ" to "ライブ",
+                                        "アプリ" to "アプリ",
                                         "ビデオ" to "ビデオ",
                                         "番組表" to "番組表",
                                         "録画予約" to "録画予約",
@@ -843,6 +846,7 @@ fun SettingsScreen(
                                     ) else listOf(
                                         "ホーム" to "ホーム",
                                         "ライブ" to "ライブ",
+                                        "アプリ" to "アプリ",
                                         "ビデオ" to "ビデオ",
                                         "番組表" to "番組表",
                                         "録画予約" to "録画予約"

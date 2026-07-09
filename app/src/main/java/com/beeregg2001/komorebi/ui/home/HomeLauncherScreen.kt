@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -25,9 +26,11 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
@@ -64,6 +67,46 @@ fun DigitalClock(timeFormat: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
         modifier = modifier
     )
+}
+
+@Composable
+private fun PinnedSystemAppButton(
+    app: LauncherApp,
+    focusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester,
+    downFocusRequester: FocusRequester,
+    canMoveDown: Boolean,
+    onClick: () -> Unit
+) {
+    val colors = KomorebiTheme.colors
+
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(48.dp)
+            .focusRequester(focusRequester)
+            .focusProperties {
+                left = FocusRequester.Cancel
+                right = rightFocusRequester
+                down = if (canMoveDown) downFocusRequester else FocusRequester.Default
+                up = FocusRequester.Cancel
+            },
+        colors = IconButtonDefaults.colors(
+            containerColor = colors.textPrimary.copy(alpha = 0.06f),
+            focusedContainerColor = colors.textPrimary,
+            contentColor = colors.textPrimary,
+            focusedContentColor = if (colors.isDark) Color.Black else Color.White
+        )
+    ) {
+        AsyncImage(
+            model = app.icon,
+            contentDescription = app.label,
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(6.dp)),
+            contentScale = ContentScale.Fit
+        )
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -131,12 +174,16 @@ fun HomeLauncherScreen(
     val favoriteBaseballTeams by homeViewModel.favoriteBaseballTeams.collectAsState()
     val favoriteBaseballGames by homeViewModel.favoriteBaseballGames.collectAsState()
     val baseballDateOffset by homeViewModel.baseballDateOffset.collectAsState()
+    val launcherApps by homeViewModel.launcherApps.collectAsState()
+    val inputSourceApp = remember(launcherApps) {
+        launcherApps.firstOrNull { homeViewModel.isPinnedSystemApp(it) }
+    }
 
     val backendType by homeViewModel.backendType.collectAsState()
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
     val tabs = remember(favoriteBaseballTeams, backendType) {
-        val base = listOf("ホーム", "ライブ", "ビデオ", "番組表", "録画予約")
+        val base = listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
         if (favoriteBaseballTeams.isNotEmpty()) base + "プロ野球" else base
     }
 
@@ -148,6 +195,7 @@ fun HomeLauncherScreen(
     ) && !hasActivePlayer
 
     val returnPlayerFocusRequester = remember { FocusRequester() }
+    val inputSourceFocusRequester = remember { FocusRequester() }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
@@ -386,7 +434,22 @@ fun HomeLauncherScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     DigitalClock(timeFormat = timeFormat)
-                    Spacer(modifier = Modifier.width(32.dp))
+                    Spacer(modifier = Modifier.width(24.dp))
+                    if (inputSourceApp != null) {
+                        PinnedSystemAppButton(
+                            app = inputSourceApp,
+                            focusRequester = inputSourceFocusRequester,
+                            rightFocusRequester = ui.tabFocusRequesters.getOrNull(0)
+                                ?: FocusRequester.Default,
+                            downFocusRequester = ui.contentFirstItemRequesters.getOrNull(safeTabIndex)
+                                ?: FocusRequester.Default,
+                            canMoveDown = ui.isCurrentTabContentReady,
+                            onClick = { homeViewModel.launchInputSourcePicker(inputSourceApp) }
+                        )
+                        Spacer(modifier = Modifier.width(18.dp))
+                    } else {
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     TabRow(
                         selectedTabIndex = safeTabIndex,
                         modifier = Modifier
@@ -433,7 +496,9 @@ fun HomeLauncherScreen(
 
                                         up = FocusRequester.Cancel
                                         if (index == 0) {
-                                            left = FocusRequester.Cancel
+                                            left =
+                                                if (inputSourceApp != null) inputSourceFocusRequester
+                                                else FocusRequester.Cancel
                                         }
                                     }) {
                                 Text(
@@ -597,6 +662,16 @@ fun HomeLauncherScreen(
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
                             LaunchedEffect(Unit) { delay(500); handleUiReady() }
+                        }
+
+                        "アプリ" -> {
+                            AppsTabContent(
+                                homeViewModel = homeViewModel,
+                                tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
+                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
+                                isTopNavFocused = ui.topNavHasFocus,
+                                onUiReady = handleUiReady
+                            )
                         }
 
                         "ビデオ" -> {

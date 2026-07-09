@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,6 +9,15 @@ plugins {
     id("com.google.devtools.ksp")
     alias(libs.plugins.baselineprofile)
 }
+
+val releaseKeystorePropertiesFile =
+    file("${System.getProperty("user.home")}/honorebi-release-keystore.properties")
+val releaseKeystoreProperties = Properties().apply {
+    if (releaseKeystorePropertiesFile.exists()) {
+        releaseKeystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseSigningConfig = releaseKeystorePropertiesFile.exists()
 
 android {
     namespace = "com.beeregg2001.komorebi"
@@ -56,10 +67,25 @@ android {
     // 指定しない場合は最新が使われますが、固定したほうがビルドが安定します
     // ndkVersion = "25.1.8937393"
 
+    signingConfigs {
+        if (hasReleaseSigningConfig) {
+            create("release") {
+                storeFile = file(releaseKeystoreProperties.getProperty("storeFile"))
+                storePassword = releaseKeystoreProperties.getProperty("storePassword")
+                keyAlias = releaseKeystoreProperties.getProperty("keyAlias")
+                keyPassword = releaseKeystoreProperties.getProperty("keyPassword")
+                storeType = "JKS"
+            }
+        }
+    }
+
     buildTypes {
         release {
 //            isMinifyEnabled = true       // コード圧縮を有効化
 //            isShrinkResources = true     // 未使用の画像やリソースも削除
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -206,5 +232,4 @@ dependencies {
     // ★ 追加: SMB (ファイルライブラリ) 用
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
 
-//    implementation("org.videolan.android:libvlc-all:3.7.0")
 }

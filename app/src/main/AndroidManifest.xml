@@ -12,7 +12,21 @@
     <uses-feature
         android:name="android.software.leanback"
         android:required="false" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="com.android.tv.action.VIEW_INPUTS" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent>
+    </queries>
 
     <application
         android:name=".MainApplication"

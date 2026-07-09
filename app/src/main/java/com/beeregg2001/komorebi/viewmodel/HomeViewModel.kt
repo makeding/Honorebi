@@ -13,6 +13,7 @@ import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
 import com.beeregg2001.komorebi.data.repository.KonomiRepository
 import com.beeregg2001.komorebi.data.repository.EpgRepository
+import com.beeregg2001.komorebi.data.repository.LauncherAppRepository
 import com.beeregg2001.komorebi.data.repository.LastChannelRepository
 import com.beeregg2001.komorebi.data.repository.LiveProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
@@ -39,6 +40,9 @@ data class BaseballGameInfo(
     val logoUrl: String
 )
 
+private val PINNED_SYSTEM_APP_PACKAGES = setOf("com.mitv.livetv")
+private val STRING_LIST_TYPE = object : TypeToken<List<String>>() {}.type
+
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(FlowPreview::class)
 @HiltViewModel
@@ -50,6 +54,7 @@ class HomeViewModel @Inject constructor(
     private val lastChannelRepository: LastChannelRepository,
     private val watchHistoryRepository: WatchHistoryRepository,
     private val channelLogoCache: ChannelLogoCache,
+    private val launcherAppRepository: LauncherAppRepository,
     private val appUpdater: AppUpdater
 ) : ViewModel() {
 
@@ -65,10 +70,88 @@ class HomeViewModel @Inject constructor(
     private val _isFallbackTriggered = MutableStateFlow(false)
     val isFallbackTriggered: StateFlow<Boolean> = _isFallbackTriggered.asStateFlow()
 
+    private val _rawLauncherApps = MutableStateFlow<List<LauncherApp>>(emptyList())
+    val launcherApps: StateFlow<List<LauncherApp>> = combine(
+        _rawLauncherApps,
+        settingsRepository.launcherAppOrder,
+        settingsRepository.launcherAppHidden
+    ) { apps, orderJson, hiddenJson ->
+        val hidden = parseStringList(hiddenJson).toSet()
+        val order = parseStringList(orderJson)
+        val orderIndex = order.withIndex().associate { it.value to it.index }
+
+        apps.filterNot { it.stableId in hidden }
+            .sortedWith(
+                compareBy<LauncherApp> { orderIndex[it.stableId] ?: Int.MAX_VALUE }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.label }
+            )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    init {
+        refreshLauncherApps()
+    }
+
     fun clearFocusMemory() {
         lastClickedSection = null
         lastClickedItemId = null
     }
+
+    fun refreshLauncherApps() {
+        viewModelScope.launch {
+            _rawLauncherApps.value = launcherAppRepository.loadLauncherApps()
+        }
+    }
+
+    fun launchApp(app: LauncherApp): Boolean = launcherAppRepository.launch(app)
+
+    fun launchInputSourcePicker(fallbackApp: LauncherApp?): Boolean =
+        launcherAppRepository.launchInputSourcePicker(fallbackApp)
+
+    fun isPinnedSystemApp(app: LauncherApp): Boolean =
+        app.packageName in PINNED_SYSTEM_APP_PACKAGES
+
+    fun hideLauncherApp(app: LauncherApp) {
+        viewModelScope.launch {
+            val current = parseStringList(settingsRepository.launcherAppHidden.first())
+            if (app.stableId !in current) {
+                settingsRepository.saveString(
+                    SettingsRepository.LAUNCHER_APP_HIDDEN,
+                    Gson().toJson(current + app.stableId)
+                )
+            }
+        }
+    }
+
+    fun moveLauncherApp(app: LauncherApp, delta: Int) {
+        viewModelScope.launch {
+            val visibleIds = launcherApps.value
+                .filterNot { isPinnedSystemApp(it) }
+                .map { it.stableId }
+                .toMutableList()
+            val currentIndex = visibleIds.indexOf(app.stableId)
+            if (currentIndex == -1) return@launch
+            val targetIndex = (currentIndex + delta).coerceIn(0, visibleIds.lastIndex)
+            if (targetIndex == currentIndex) return@launch
+
+            val item = visibleIds.removeAt(currentIndex)
+            visibleIds.add(targetIndex, item)
+            settingsRepository.saveString(
+                SettingsRepository.LAUNCHER_APP_ORDER,
+                Gson().toJson(visibleIds)
+            )
+        }
+    }
+
+    fun showAllLauncherApps() {
+        viewModelScope.launch {
+            settingsRepository.saveString(SettingsRepository.LAUNCHER_APP_HIDDEN, "[]")
+        }
+    }
+
+    private fun parseStringList(json: String): List<String> =
+        runCatching {
+            Gson().fromJson<List<String>>(json, STRING_LIST_TYPE) ?: emptyList()
+        }.getOrDefault(emptyList())
 
     fun dismissFallbackWarning() {
         _isFallbackTriggered.value = false
