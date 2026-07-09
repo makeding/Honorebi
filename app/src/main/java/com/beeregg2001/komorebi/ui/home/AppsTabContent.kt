@@ -44,16 +44,38 @@ fun AppsTabContent(
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var showHiddenAppsDialog by remember { mutableStateOf(false) }
+    var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
+    val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
+
+    LaunchedEffect(apps.map { it.stableId }) {
+        val visibleIds = apps.map { it.stableId }.toSet()
+        appFocusRequesters.keys
+            .filter { it !in visibleIds }
+            .forEach { appFocusRequesters.remove(it) }
+    }
 
     LaunchedEffect(apps.isNotEmpty()) {
         delay(250)
         onUiReady()
     }
 
+    LaunchedEffect(pendingFocusAppId, apps) {
+        val targetId = pendingFocusAppId ?: return@LaunchedEffect
+        delay(60)
+        val targetIndex = apps.indexOfFirst { it.stableId == targetId }
+        if (targetIndex == 0) {
+            contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFirst")
+        } else {
+            appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMoved")
+        }
+        pendingFocusAppId = null
+    }
+
     fun moveVisibleApp(appIndex: Int, delta: Int) {
         val app = apps.getOrNull(appIndex) ?: return
         val targetIndex = (appIndex + delta).coerceIn(0, apps.lastIndex)
         if (targetIndex == appIndex) return
+        pendingFocusAppId = app.stableId
         homeViewModel.moveLauncherApp(app, targetIndex - appIndex)
     }
 
@@ -76,6 +98,9 @@ fun AppsTabContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(horizontalSpacing)) {
                         rowApps.forEachIndexed { columnIndex, app ->
                             val index = rowIndex * columnCount + columnIndex
+                            val appFocusRequester = appFocusRequesters.getOrPut(app.stableId) {
+                                FocusRequester()
+                            }
                             LauncherAppCard(
                                 app = app,
                                 onClick = {
@@ -114,7 +139,7 @@ fun AppsTabContent(
                                         if (index == 0) {
                                             Modifier.focusRequester(contentFirstItemRequester)
                                         } else {
-                                            Modifier
+                                            Modifier.focusRequester(appFocusRequester)
                                         }
                                     )
                                     .focusProperties {
@@ -134,6 +159,12 @@ fun AppsTabContent(
                                     }
                                     .onFocusChanged {
                                         if (it.isFocused) {
+                                            if (editingAppId != null &&
+                                                editingAppId != app.stableId &&
+                                                pendingFocusAppId == null
+                                            ) {
+                                                editingAppId = null
+                                            }
                                             homeViewModel.lastClickedSection = "apps"
                                             homeViewModel.lastClickedItemId = app.stableId
                                         }
