@@ -86,6 +86,21 @@ class HomeViewModel @Inject constructor(
                     .thenBy(String.CASE_INSENSITIVE_ORDER) { it.label }
             )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val hiddenLauncherApps: StateFlow<List<LauncherApp>> = combine(
+        _rawLauncherApps,
+        settingsRepository.launcherAppOrder,
+        settingsRepository.launcherAppHidden
+    ) { apps, orderJson, hiddenJson ->
+        val hidden = parseStringList(hiddenJson).toSet()
+        val order = parseStringList(orderJson)
+        val orderIndex = order.withIndex().associate { it.value to it.index }
+
+        apps.filter { it.stableId in hidden }
+            .sortedWith(
+                compareBy<LauncherApp> { orderIndex[it.stableId] ?: Int.MAX_VALUE }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.label }
+            )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         refreshLauncherApps()
@@ -109,6 +124,8 @@ class HomeViewModel @Inject constructor(
 
     fun launchSystemSettings(): Boolean = launcherAppRepository.launchSystemSettings()
 
+    fun launchAppDetails(app: LauncherApp): Boolean = launcherAppRepository.launchAppDetails(app)
+
     fun isPinnedSystemApp(app: LauncherApp): Boolean =
         app.packageName in PINNED_SYSTEM_APP_PACKAGES
 
@@ -121,6 +138,16 @@ class HomeViewModel @Inject constructor(
                     Gson().toJson(current + app.stableId)
                 )
             }
+        }
+    }
+
+    fun restoreLauncherApp(app: LauncherApp) {
+        viewModelScope.launch {
+            val current = parseStringList(settingsRepository.launcherAppHidden.first())
+            settingsRepository.saveString(
+                SettingsRepository.LAUNCHER_APP_HIDDEN,
+                Gson().toJson(current.filterNot { it == app.stableId })
+            )
         }
     }
 

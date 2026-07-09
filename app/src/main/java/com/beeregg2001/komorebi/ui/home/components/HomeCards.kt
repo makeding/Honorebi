@@ -590,7 +590,10 @@ fun LauncherAppCard(
     isEditing: Boolean = false,
     onMoveLeft: () -> Unit = {},
     onMoveRight: () -> Unit = {},
+    onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {},
     onHide: () -> Unit = {},
+    onOpenActions: () -> Unit = {},
     onDoneEditing: () -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -659,9 +662,23 @@ fun LauncherAppCard(
                     }
 
                     isEditing &&
+                        event.type == KeyEventType.KeyDown &&
+                        keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                        onMoveUp()
+                        true
+                    }
+
+                    isEditing &&
+                        event.type == KeyEventType.KeyDown &&
+                        keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        onMoveDown()
+                        true
+                    }
+
+                    isEditing &&
                         event.type == KeyEventType.KeyUp &&
                         keyCode == android.view.KeyEvent.KEYCODE_MENU -> {
-                        onHide()
+                        onOpenActions()
                         true
                     }
 
@@ -671,7 +688,7 @@ fun LauncherAppCard(
                         longPressJob?.cancel()
                         confirmPressed = false
                         consumedLongPress = false
-                        onDoneEditing()
+                        onOpenActions()
                         true
                     }
 

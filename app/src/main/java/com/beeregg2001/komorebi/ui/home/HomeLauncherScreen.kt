@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsInputHdmi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -99,13 +100,10 @@ private fun PinnedSystemAppButton(
             focusedContentColor = if (colors.isDark) Color.Black else Color.White
         )
     ) {
-        AsyncImage(
-            model = app.icon,
+        Icon(
+            Icons.Default.SettingsInputHdmi,
             contentDescription = app.label,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(6.dp)),
-            contentScale = ContentScale.Fit
+            modifier = Modifier.size(28.dp)
         )
     }
 }

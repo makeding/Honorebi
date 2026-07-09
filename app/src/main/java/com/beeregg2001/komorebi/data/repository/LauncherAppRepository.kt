@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import com.beeregg2001.komorebi.data.model.LauncherApp
@@ -103,6 +104,15 @@ class LauncherAppRepository @Inject constructor(
         }
 
         return false
+    }
+
+    fun launchAppDetails(app: LauncherApp): Boolean {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${app.packageName}")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        }
+
+        return tryStartActivity(intent)
     }
 
     private fun queryMainActivities(category: String): List<ResolveInfo> {
