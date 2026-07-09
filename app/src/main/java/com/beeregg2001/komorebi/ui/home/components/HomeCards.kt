@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -573,7 +574,14 @@ fun LauncherAppCard(
     onClick: () -> Unit,
     onManage: () -> Unit,
     onFocus: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cardWidth: Dp = 220.dp,
+    cardHeight: Dp = 124.dp,
+    bannerWidth: Dp = 168.dp,
+    bannerHeight: Dp = 64.dp,
+    iconSize: Dp = 56.dp,
+    showBorder: Boolean = true,
+    fullBleedBanner: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
@@ -581,8 +589,8 @@ fun LauncherAppCard(
     Surface(
         onClick = onClick,
         modifier = modifier
-            .width(220.dp)
-            .height(124.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .onFocusChanged {
                 isFocused = it.isFocused
                 if (it.isFocused) onFocus()
@@ -616,37 +624,59 @@ fun LauncherAppCard(
             focusedContentColor = colors.textPrimary
         ),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
-        )
+        border = if (showBorder) {
+            ClickableSurfaceDefaults.border(
+                border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
+                focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            )
+        } else {
+            ClickableSurfaceDefaults.border(
+                border = Border.None,
+                focusedBorder = Border.None
+            )
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .then(
+                    if (fullBleedBanner && app.banner != null) Modifier
+                    else Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+                ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier
-                    .width(if (app.banner != null) 168.dp else 56.dp)
-                    .height(if (app.banner != null) 64.dp else 56.dp)
-                    .clip(RoundedCornerShape(if (app.banner != null) 8.dp else 12.dp))
-                    .background(colors.textPrimary.copy(alpha = 0.06f)),
-                contentAlignment = Alignment.Center
-            ) {
+            if (fullBleedBanner && app.banner != null) {
                 AsyncImage(
-                    model = app.banner ?: app.icon,
+                    model = app.banner,
                     contentDescription = null,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(if (app.banner != null) 0.dp else 4.dp),
-                    contentScale = ContentScale.Fit
+                        .fillMaxWidth()
+                        .height(bannerHeight),
+                    contentScale = ContentScale.Crop
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .width(if (app.banner != null) bannerWidth else iconSize)
+                        .height(if (app.banner != null) bannerHeight else iconSize)
+                        .clip(RoundedCornerShape(if (app.banner != null) 8.dp else 12.dp))
+                        .background(colors.textPrimary.copy(alpha = 0.06f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = app.banner ?: app.icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(if (app.banner != null) 0.dp else 4.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = app.label,
+                modifier = Modifier.padding(horizontal = 8.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.82f),
                 fontWeight = FontWeight.SemiBold,

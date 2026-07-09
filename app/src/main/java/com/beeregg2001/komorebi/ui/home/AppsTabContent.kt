@@ -21,8 +21,6 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.LauncherApp
-import com.beeregg2001.komorebi.ui.home.components.HomeHeroDashboard
-import com.beeregg2001.komorebi.ui.home.components.HomeHeroInfo
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppCard
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppManagementDialog
 import com.beeregg2001.komorebi.ui.home.components.SectionHeader
@@ -36,7 +34,6 @@ fun AppsTabContent(
     homeViewModel: HomeViewModel,
     tabFocusRequester: FocusRequester,
     contentFirstItemRequester: FocusRequester,
-    isTopNavFocused: Boolean,
     onUiReady: () -> Unit,
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
@@ -44,26 +41,7 @@ fun AppsTabContent(
         launcherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }
     }
     val gridState = rememberLazyGridState()
-    val initialHeroInfo = remember {
-        HomeHeroInfo(
-            title = "Apps",
-            subtitle = "アプリ",
-            description = "",
-            tag = "App"
-        )
-    }
-    var pendingHeroInfo by remember { mutableStateOf(initialHeroInfo) }
-    var currentHeroInfo by remember { mutableStateOf(initialHeroInfo) }
     var managedApp by remember { mutableStateOf<LauncherApp?>(null) }
-
-    LaunchedEffect(isTopNavFocused) {
-        if (isTopNavFocused) pendingHeroInfo = initialHeroInfo
-    }
-
-    LaunchedEffect(pendingHeroInfo) {
-        delay(180)
-        currentHeroInfo = pendingHeroInfo
-    }
 
     LaunchedEffect(apps.isNotEmpty()) {
         delay(250)
@@ -78,82 +56,67 @@ fun AppsTabContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.42f)
-                .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 16.dp)
+                .fillMaxSize()
+                .padding(top = 24.dp)
         ) {
-            HomeHeroDashboard(
-                state = currentHeroInfo,
-                getLogoUrl = { "" },
-                shouldCropLogo = false
+            SectionHeader(
+                "アプリ",
+                Icons.Default.Apps,
+                Modifier.padding(horizontal = 48.dp)
             )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.58f)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                SectionHeader(
-                    "アプリ",
-                    Icons.Default.Apps,
-                    Modifier.padding(horizontal = 48.dp)
-                )
-                Spacer(Modifier.height(10.dp))
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 220.dp),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 80.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    itemsIndexed(apps, key = { _, app -> "app_${app.stableId}" }) { index, app ->
-                        LauncherAppCard(
-                            app = app,
-                            onClick = { homeViewModel.launchApp(app) },
-                            onManage = { managedApp = app },
-                            onFocus = {
-                                pendingHeroInfo = HomeHeroInfo(
-                                    title = app.label,
-                                    subtitle = "アプリ",
-                                    description = app.packageName,
-                                    tag = "App"
-                                )
-                            },
-                            modifier = Modifier
-                                .then(
-                                    if (index == 0) {
-                                        Modifier.focusRequester(contentFirstItemRequester)
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .focusProperties {
-                                    if (index == 0) left = FocusRequester.Cancel
+            Spacer(Modifier.height(12.dp))
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 160.dp),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 80.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                itemsIndexed(apps, key = { _, app -> "app_${app.stableId}" }) { index, app ->
+                    LauncherAppCard(
+                        app = app,
+                        onClick = { homeViewModel.launchApp(app) },
+                        onManage = { managedApp = app },
+                        onFocus = {},
+                        cardWidth = 160.dp,
+                        cardHeight = 118.dp,
+                        bannerWidth = 144.dp,
+                        bannerHeight = 72.dp,
+                        iconSize = 72.dp,
+                        showBorder = false,
+                        fullBleedBanner = true,
+                        modifier = Modifier
+                            .then(
+                                if (index == 0) {
+                                    Modifier.focusRequester(contentFirstItemRequester)
+                                } else {
+                                    Modifier
                                 }
-                                .onKeyEvent {
-                                    if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                        it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP &&
-                                        isFirstGridRow(index)
-                                    ) {
-                                        tabFocusRequester.safeRequestFocus(TAG)
-                                        true
-                                    } else {
-                                        false
-                                    }
+                            )
+                            .focusProperties {
+                                if (index == 0) left = FocusRequester.Cancel
+                            }
+                            .onKeyEvent {
+                                if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                    it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP &&
+                                    isFirstGridRow(index)
+                                ) {
+                                    tabFocusRequester.safeRequestFocus(TAG)
+                                    true
+                                } else {
+                                    false
                                 }
-                                .onFocusChanged {
-                                    if (it.isFocused) {
-                                        homeViewModel.lastClickedSection = "apps"
-                                        homeViewModel.lastClickedItemId = app.stableId
-                                    }
+                            }
+                            .onFocusChanged {
+                                if (it.isFocused) {
+                                    homeViewModel.lastClickedSection = "apps"
+                                    homeViewModel.lastClickedItemId = app.stableId
                                 }
-                        )
-                    }
+                            }
+                    )
                 }
             }
         }

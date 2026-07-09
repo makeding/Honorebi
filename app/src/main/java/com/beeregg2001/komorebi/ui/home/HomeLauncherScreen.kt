@@ -456,6 +456,14 @@ fun HomeLauncherScreen(
                             .weight(1f)
                             .focusProperties {
                                 canFocus = !isReturningFromPlayer
+                            }
+                            .onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                                    homeViewModel.launchInputSourcePicker(inputSourceApp)
+                                    true
+                                } else {
+                                    false
+                                }
                             },
                         indicator = { tabPositions, doesTabRowHaveFocus ->
                             if (safeTabIndex < tabPositions.size) {
@@ -669,7 +677,6 @@ fun HomeLauncherScreen(
                                 homeViewModel = homeViewModel,
                                 tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                isTopNavFocused = ui.topNavHasFocus,
                                 onUiReady = handleUiReady
                             )
                         }
