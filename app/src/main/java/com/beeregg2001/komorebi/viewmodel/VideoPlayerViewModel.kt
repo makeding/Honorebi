@@ -487,6 +487,18 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
+    suspend fun getChaseArchivedComments(program: RecordedProgram): List<ArchivedComment> {
+        return withContext(Dispatchers.IO) {
+            recordProvider.getChaseArchivedJikkyo(program).getOrDefault(emptyList()).sortedBy { it.time }
+        }
+    }
+
+    suspend fun getChaseJikkyoWatchSessionUrl(program: RecordedProgram): String? {
+        return withContext(Dispatchers.IO) {
+            recordProvider.getChaseJikkyoWatchSessionUrl(program)
+        }
+    }
+
     fun updateWatchHistory(program: RecordedProgram, positionSeconds: Double) {
         viewModelScope.launch(Dispatchers.IO) {
             historyRepository.saveWatchHistory(program, positionSeconds)

@@ -41,6 +41,11 @@ interface RecordProvider {
 
     suspend fun getArchivedJikkyo(videoId: Int): Result<List<ArchivedComment>>
 
+    suspend fun getChaseArchivedJikkyo(program: RecordedProgram): Result<List<ArchivedComment>> =
+        getArchivedJikkyo(program.recordedVideo.id)
+
+    suspend fun getChaseJikkyoWatchSessionUrl(program: RecordedProgram): String? = null
+
     @androidx.annotation.OptIn(UnstableApi::class)
     suspend fun keepAlive(videoId: Int, quality: String, sessionId: String)
 

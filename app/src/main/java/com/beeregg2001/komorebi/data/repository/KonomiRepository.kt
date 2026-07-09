@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.data.repository
 
+import android.content.Context
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
@@ -7,10 +8,19 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.api.KonomiApi
 import com.beeregg2001.komorebi.data.model.*
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.time.OffsetDateTime
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,7 +34,9 @@ private const val TAG = "Komorebi_Repo"
 class KonomiRepository @Inject constructor(
     private val apiService: KonomiApi,
     // ★ 追加: URL生成のためにIP/Portを取得する SettingsRepository を Inject
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    @param:ApplicationContext private val context: Context,
+    private val okHttpClient: OkHttpClient
 ) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider { // ★ インターフェースを実装
 
     // ==========================================
@@ -32,6 +44,7 @@ class KonomiRepository @Inject constructor(
     // ==========================================
     private val _currentUser = MutableStateFlow<KonomiUser?>(null)
     val currentUser: StateFlow<KonomiUser?> = _currentUser.asStateFlow()
+    private var jikkyoChannelsCache: JSONArray? = null
 
     /**
      * 現在ログインしているKonomiTVユーザーの情報を取得・更新します。
@@ -173,6 +186,66 @@ class KonomiRepository @Inject constructor(
             // ★ 修正
             Result.failure(Exception("過去ログ実況の取得に失敗しました。\n[詳細]: ${e.message}"))
         }
+    }
+
+    override suspend fun getChaseArchivedJikkyo(program: RecordedProgram): Result<List<ArchivedComment>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val channel = program.channel
+                    ?: return@withContext Result.failure(Exception("チャンネル情報がないため追いかけ実況を取得できません。"))
+                val jikkyoId = getJikkyoId(channel.networkId, channel.serviceId)
+                    ?: return@withContext Result.failure(Exception("このチャンネルは実況(過去ログ)に対応していません。"))
+
+                val programStart = OffsetDateTime.parse(program.startTime)
+                val programEnd = OffsetDateTime.parse(program.endTime)
+                val startUnix = programStart.toEpochSecond()
+                val endUnix = minOf(
+                    System.currentTimeMillis() / 1000L,
+                    programEnd.toEpochSecond()
+                ).coerceAtLeast(startUnix + 1L)
+
+                val url =
+                    "https://jikkyo.tsukumijima.net/api/kakolog/jk$jikkyoId?starttime=$startUnix&endtime=$endUnix&format=json"
+                Log.i(
+                    TAG,
+                    "Fetching chase jikkyo past log for jk$jikkyoId (${program.id}: $startUnix ~ $endUnix)"
+                )
+
+                val request = Request.Builder().url(url).build()
+                val client = okHttpClient.newBuilder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(Exception("NX-Jikkyo APIエラー: HTTP ${response.code}"))
+                    }
+
+                    val jsonObject = JSONObject(response.body?.string().orEmpty())
+                    if (jsonObject.has("error")) {
+                        return@withContext Result.failure(
+                            Exception("NX-Jikkyo APIエラー: ${jsonObject.getString("error")}")
+                        )
+                    }
+
+                    val comments = parseNxJikkyoPackets(jsonObject, startUnix)
+                    Log.i(
+                        TAG,
+                        "Successfully mapped ${comments.size} chase jikkyo comments. [video=${program.id}]"
+                    )
+                    Result.success(comments)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to fetch chase archived jikkyo", e)
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun getChaseJikkyoWatchSessionUrl(program: RecordedProgram): String? {
+        val channel = program.channel ?: return null
+        val jikkyoId = getJikkyoId(channel.networkId, channel.serviceId) ?: return null
+        return "wss://nx-jikkyo.tsukumijima.net/api/v1/channels/jk$jikkyoId/ws/watch"
     }
 
     // ==========================================
@@ -377,5 +450,140 @@ class KonomiRepository @Inject constructor(
             }
         }
         return copy(recordedPrograms = updatedPrograms)
+    }
+
+    private fun getJikkyoChannels(): JSONArray {
+        jikkyoChannelsCache?.let { return it }
+        val array = runCatching {
+            val jsonString = context.assets.open("jikkyo_channels.json").bufferedReader().use { it.readText() }
+            JSONArray(jsonString)
+        }.getOrElse {
+            Log.e(TAG, "Failed to load jikkyo_channels.json", it)
+            JSONArray()
+        }
+        jikkyoChannelsCache = array
+        return array
+    }
+
+    private fun getJikkyoId(networkId: Int?, serviceId: Int?): Int? {
+        if (networkId == null || serviceId == null) return null
+        val channels = getJikkyoChannels()
+
+        for (i in 0 until channels.length()) {
+            val channel = channels.optJSONObject(i) ?: continue
+            val mappedNetworkId = channel.optInt("network_id", -1)
+            val mappedServiceIdRaw = channel.opt("service_id")?.toString() ?: "-1"
+            val mappedServiceId = if (mappedServiceIdRaw.startsWith("0x", ignoreCase = true)) {
+                mappedServiceIdRaw.substring(2).toIntOrNull(16) ?: -1
+            } else {
+                mappedServiceIdRaw.toIntOrNull() ?: -1
+            }
+
+            val matched = if (networkId == mappedNetworkId && serviceId == mappedServiceId) {
+                true
+            } else {
+                networkId in 0x7880..0x7FEF &&
+                    mappedNetworkId == 15 &&
+                    (serviceId == mappedServiceId ||
+                        serviceId - 1 == mappedServiceId ||
+                        serviceId - 2 == mappedServiceId)
+            }
+
+            if (matched) {
+                return channel.optInt("jikkyo_id", -1).takeIf { it > 0 }
+            }
+        }
+
+        return null
+    }
+
+    private fun parseNxJikkyoPackets(jsonObject: JSONObject, startUnix: Long): List<ArchivedComment> {
+        val packetArray = jsonObject.optJSONArray("packet") ?: JSONArray()
+        val comments = mutableListOf<ArchivedComment>()
+
+        for (i in 0 until packetArray.length()) {
+            val packet = packetArray.optJSONObject(i) ?: continue
+            val chat = packet.optJSONObject("chat") ?: continue
+            val content = chat.optString("content", "")
+            if (content.isBlank()) continue
+            if (chat.optString("deleted") == "1") continue
+            if (content.startsWith("/") &&
+                content.matches(Regex("^/[a-z][a-z0-9_-]*(?:\\s|$).*")) &&
+                chat.optString("premium") == "3"
+            ) {
+                continue
+            }
+
+            var color = "#FFEAEA"
+            var position = "right"
+            var size = "medium"
+            chat.optString("mail", "")
+                .replace("184", "")
+                .split(" ")
+                .forEach { command ->
+                    getCommentColor(command)?.let { color = it }
+                    getCommentPosition(command)?.let { position = it }
+                    getCommentSize(command)?.let { size = it }
+                }
+
+            val chatDate = chat.optDouble("date", 0.0)
+            val chatDateUsec = chat.optDouble("date_usec", 0.0)
+            val commentTime = (chatDate - startUnix) + (chatDateUsec / 1000000.0)
+
+            comments.add(
+                ArchivedComment(
+                    time = commentTime,
+                    text = content,
+                    color = color,
+                    author = chat.optString("user_id", ""),
+                    type = position,
+                    size = size
+                )
+            )
+        }
+
+        return comments.sortedBy { it.time }
+    }
+
+    private fun getCommentColor(command: String): String? = when (command) {
+        "red" -> "#F02840"
+        "pink" -> "#FF8080"
+        "orange" -> "#FFC000"
+        "yellow" -> "#FFFF00"
+        "green" -> "#00FF00"
+        "cyan" -> "#00FFFF"
+        "blue" -> "#0000FF"
+        "purple" -> "#C000FF"
+        "black" -> "#000000"
+        "white", "" -> null
+        "niconicowhite" -> "#CCCC99"
+        "white2" -> "#CCCC99"
+        "truered" -> "#CC0033"
+        "red2" -> "#CC0033"
+        "passionorange" -> "#FF6600"
+        "orange2" -> "#FF6600"
+        "madyellow" -> "#999900"
+        "yellow2" -> "#999900"
+        "elementalgreen" -> "#00CC66"
+        "green2" -> "#00CC66"
+        "marineblue" -> "#33FFFC"
+        "blue2" -> "#33FFFC"
+        "nobleviolet" -> "#6633CC"
+        "purple2" -> "#6633CC"
+        else -> null
+    }
+
+    private fun getCommentPosition(command: String): String? = when (command) {
+        "ue" -> "top"
+        "naka" -> "right"
+        "shita" -> "bottom"
+        else -> null
+    }
+
+    private fun getCommentSize(command: String): String? = when (command) {
+        "big" -> "big"
+        "medium" -> "medium"
+        "small" -> "small"
+        else -> null
     }
 }

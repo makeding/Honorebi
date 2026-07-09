@@ -41,6 +41,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
@@ -56,11 +57,14 @@ import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.text.Normalizer
+import java.time.OffsetDateTime
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -74,7 +78,7 @@ private const val CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS = 20_000L
 private const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
 private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 45_000L
 private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
-private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 30_000L
+private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 120_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
 private const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
@@ -287,10 +291,18 @@ fun VideoPlayerScreen(
         }
 
         suspend fun reloadArchivedComments(mergeOnly: Boolean) {
-            val fetchedComments = videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
+            val fetchedComments = if (isRecordingChasePlayback) {
+                videoPlayerViewModel.getChaseArchivedComments(currentProgram)
+            } else {
+                videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
+            }
             if (!mergeOnly) {
                 allComments.clear()
                 allComments.addAll(fetchedComments)
+                Log.i(
+                    TAG,
+                    "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
+                )
                 return
             }
 
@@ -316,6 +328,36 @@ fun VideoPlayerScreen(
                 delay(CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS)
                 reloadArchivedComments(mergeOnly = true)
             }
+        }
+    }
+
+    LaunchedEffect(currentProgram.id, smbItem, isRecordingChasePlayback) {
+        if (smbItem != null || !isRecordingChasePlayback) return@LaunchedEffect
+        val programStartUnix = currentProgram.programStartUnixOrNull() ?: return@LaunchedEffect
+        val watchSessionUrl = videoPlayerViewModel.getChaseJikkyoWatchSessionUrl(currentProgram)
+            ?: return@LaunchedEffect
+        val processedCommentKeys = mutableSetOf<String>()
+        val client = JikkyoClient(watchSessionUrl)
+
+        try {
+            client.start { jsonText ->
+                val comment = parseChaseWsArchivedComment(jsonText, programStartUnix) ?: return@start
+                val key = comment.stableCommentKey()
+                if (!processedCommentKeys.add(key)) return@start
+                if (processedCommentKeys.size > 4000) processedCommentKeys.clear()
+
+                scope.launch {
+                    if (allComments.none { it.stableCommentKey() == key }) {
+                        allComments.add(comment)
+                        allComments.sortBy { it.time }
+                    }
+                }
+            }
+            Log.i(TAG, "Started chase jikkyo websocket. [video=${currentProgram.recordedVideo.id}]")
+            awaitCancellation()
+        } finally {
+            client.stop()
+            Log.i(TAG, "Stopped chase jikkyo websocket. [video=${currentProgram.recordedVideo.id}]")
         }
     }
 
@@ -480,6 +522,13 @@ fun VideoPlayerScreen(
     val totalDurationForControls =
         if (smbItem != null) {
             smbDurationMs.coerceAtLeast(0L)
+        } else if (isRecordingChasePlayback) {
+            maxOf(
+                currentProgram.chaseElapsedDurationMs(),
+                playbackDurationMs,
+                playbackPositionMs,
+                bufferedPositionMs
+            ).coerceAtLeast(0L)
         } else {
             maxOf(
                 (currentProgram.recordedVideo.duration * 1000).toLong(),
@@ -1685,6 +1734,92 @@ private fun calculateCommentClimaxCountdownStartMs(
 
 private fun ArchivedComment.stableCommentKey(): String =
     "${time}:${author}:${type}:${size}:${color}:${text}"
+
+private fun RecordedProgram.chaseElapsedDurationMs(nowMillis: Long = System.currentTimeMillis()): Long {
+    return runCatching {
+        val startMs = OffsetDateTime.parse(startTime).toInstant().toEpochMilli()
+        val endMs = OffsetDateTime.parse(endTime).toInstant().toEpochMilli()
+        (nowMillis.coerceAtMost(endMs) - startMs).coerceAtLeast(0L)
+    }.getOrDefault((duration * 1000.0).toLong().coerceAtLeast(0L))
+}
+
+private fun RecordedProgram.programStartUnixOrNull(): Long? =
+    runCatching { OffsetDateTime.parse(startTime).toEpochSecond() }.getOrNull()
+
+private fun parseChaseWsArchivedComment(jsonText: String, programStartUnix: Long): ArchivedComment? {
+    return runCatching {
+        val chat = JSONObject(jsonText).optJSONObject("chat") ?: return null
+        val content = chat.optString("content", "")
+        if (content.isBlank()) return null
+        if (chat.optString("deleted") == "1") return null
+        if (content.startsWith("/") &&
+            content.matches(Regex("^/[a-z][a-z0-9_-]*(?:\\s|$).*")) &&
+            chat.optString("premium") == "3"
+        ) {
+            return null
+        }
+
+        var color = "#FFEAEA"
+        var position = "right"
+        var size = "medium"
+        chat.optString("mail", "")
+            .replace("184", "")
+            .split(" ")
+            .forEach { command ->
+                getCommentColor(command)?.let { color = it }
+                getCommentPosition(command)?.let { position = it }
+                getCommentSize(command)?.let { size = it }
+            }
+
+        val chatDate = chat.optDouble("date", 0.0)
+        val chatDateUsec = chat.optDouble("date_usec", 0.0)
+        val commentTime = (chatDate - programStartUnix) + (chatDateUsec / 1000000.0)
+        if (commentTime < -5.0) return null
+
+        ArchivedComment(
+            time = commentTime.coerceAtLeast(0.0),
+            text = content,
+            color = color,
+            author = chat.optString("user_id", ""),
+            type = position,
+            size = size
+        )
+    }.getOrNull()
+}
+
+private fun getCommentColor(command: String): String? = when (command) {
+    "red" -> "#F02840"
+    "pink" -> "#FF8080"
+    "orange" -> "#FFC000"
+    "yellow" -> "#FFFF00"
+    "green" -> "#00FF00"
+    "cyan" -> "#00FFFF"
+    "blue" -> "#0000FF"
+    "purple" -> "#C000FF"
+    "black" -> "#000000"
+    "niconicowhite", "white2" -> "#CCCC99"
+    "truered", "red2" -> "#CC0033"
+    "passionorange", "orange2" -> "#FF6600"
+    "madyellow", "yellow2" -> "#999900"
+    "elementalgreen", "green2" -> "#00CC66"
+    "marineblue", "blue2" -> "#33FFFC"
+    "nobleviolet", "purple2" -> "#6633CC"
+    else -> null
+}
+
+private fun getCommentPosition(command: String): String? = when (command) {
+    "ue" -> "top"
+    "naka" -> "right"
+    "shita" -> "bottom"
+    else -> null
+}
+
+private fun getCommentSize(command: String): String? = when (command) {
+    "big" -> "big"
+    "medium" -> "medium"
+    "small" -> "small"
+    else -> null
+}
 
 @Composable
 private fun NextEpisodeCountdownOverlay(
