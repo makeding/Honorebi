@@ -489,7 +489,14 @@ class VideoPlayerViewModel @Inject constructor(
 
     suspend fun getChaseArchivedComments(program: RecordedProgram): List<ArchivedComment> {
         return withContext(Dispatchers.IO) {
-            recordProvider.getChaseArchivedJikkyo(program).getOrDefault(emptyList()).sortedBy { it.time }
+            val result = recordProvider.getChaseArchivedJikkyo(program)
+            val comments = result.getOrDefault(emptyList()).sortedBy { it.time }
+            Log.i(
+                TAG,
+                "Chase archived comments result. [video=${program.id}, success=${result.isSuccess}, " +
+                    "count=${comments.size}, error=${result.exceptionOrNull()?.message}]"
+            )
+            comments
         }
     }
 

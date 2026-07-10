@@ -50,39 +50,52 @@ fun ArchivedCommentOverlay(
         }
     }
 
+    val latestIsPlaying by rememberUpdatedState(isPlaying)
+    val latestIsCommentEnabled by rememberUpdatedState(isCommentEnabled)
+
     // コメント同期・描画予約ロジック
-    LaunchedEffect(isPlaying, isCommentEnabled, comments.size) {
-        if (!isCommentEnabled || comments.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(Unit) {
 
         var currentIndex = 0
         var lastPlayerSec = withContext(Dispatchers.Main) { currentPositionProvider() / 1000.0 }
         val lookAheadSec = 2.0 // 2秒先まで先読みして描画予約する
 
         while (isActive) {
-            if (isPlaying) {
+            if (latestIsPlaying && latestIsCommentEnabled) {
                 // ★ 修正1: ExoPlayerへのアクセス(currentPositionProvider)は必ずメインスレッドで行う
                 val currentSec =
                     withContext(Dispatchers.Main) { currentPositionProvider() / 1000.0 }
+                val commentsSnapshot = comments.toList()
 
                 // ★ 修正2: 重い検索処理やインスタンス化はバックグラウンドスレッドで行う
                 withContext(Dispatchers.Default) {
                     // シーク検知: 現在位置と最後に処理した時間が1.5秒以上乖離している場合
                     if (abs(currentSec - lastPlayerSec) > 1.5) {
                         danmakuViewRef.value?.removeAllDanmakus(true)
-                        currentIndex = comments.findFirstIndexAtOrAfter(currentSec)
+                        currentIndex = commentsSnapshot.findFirstIndexAtOrAfter(currentSec)
+                        Log.i(
+                            TAG,
+                            "Comment overlay seek reset. [current_sec=$currentSec, index=$currentIndex, " +
+                                "comments=${commentsSnapshot.size}]"
+                        )
                     }
 
                     danmakuViewRef.value?.let { view ->
                         if (view.isPrepared) {
                             val targetTimeSec = currentSec + lookAheadSec
                             val danmakusToAdd = mutableListOf<BaseDanmaku>()
+                            var eligibleCommentCount = 0
 
-                            while (currentIndex < comments.size) {
-                                val comment = comments[currentIndex]
+                            if (currentIndex > commentsSnapshot.size) {
+                                currentIndex = commentsSnapshot.findFirstIndexAtOrAfter(currentSec)
+                            }
+                            while (currentIndex < commentsSnapshot.size) {
+                                val comment = commentsSnapshot[currentIndex]
                                 if (comment.time > targetTimeSec) break // 2秒以上先ならループを抜ける
 
                                 // シーク直後の過去すぎるコメントを捨てる
                                 if (comment.time >= currentSec - 0.5) {
+                                    eligibleCommentCount++
                                     val d =
                                         createDanmaku(
                                             view,
@@ -103,6 +116,15 @@ fun ArchivedCommentOverlay(
 
                             // コメントの追加(addDanmaku)は内部的にスレッドセーフなのでバックグラウンドから呼んでもOK
                             danmakusToAdd.forEach { view.addDanmaku(it) }
+                            if (eligibleCommentCount > 0) {
+                                Log.i(
+                                    TAG,
+                                    "Comment overlay scheduled. [current_sec=$currentSec, target_sec=$targetTimeSec, " +
+                                        "eligible=$eligibleCommentCount, added=${danmakusToAdd.size}, index=$currentIndex, " +
+                                        "total=${commentsSnapshot.size}, first=${commentsSnapshot.first().time}, " +
+                                        "last=${commentsSnapshot.last().time}]"
+                                )
+                            }
                         }
                     }
                 }

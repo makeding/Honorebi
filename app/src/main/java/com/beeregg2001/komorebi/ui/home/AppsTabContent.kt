@@ -51,6 +51,7 @@ fun AppsTabContent(
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var isHiddenCatalog by remember { mutableStateOf(false) }
+    var hasEnteredCatalog by remember { mutableStateOf(false) }
     var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val catalogApps = if (isHiddenCatalog) hiddenApps else apps
@@ -100,6 +101,10 @@ fun AppsTabContent(
     }
 
     LaunchedEffect(isHiddenCatalog) {
+        if (!hasEnteredCatalog) {
+            hasEnteredCatalog = true
+            return@LaunchedEffect
+        }
         if (isHiddenCatalog && hiddenApps.isEmpty()) {
             isHiddenCatalog = false
             return@LaunchedEffect

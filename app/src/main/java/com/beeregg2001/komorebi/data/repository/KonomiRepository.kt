@@ -196,9 +196,11 @@ class KonomiRepository @Inject constructor(
                 val jikkyoId = getJikkyoId(channel.networkId, channel.serviceId)
                     ?: return@withContext Result.failure(Exception("このチャンネルは実況(過去ログ)に対応していません。"))
 
-                val programStart = OffsetDateTime.parse(program.startTime)
+                val recordingStart = OffsetDateTime.parse(
+                    program.recordedVideo.recordingStartTime ?: program.startTime
+                )
                 val programEnd = OffsetDateTime.parse(program.endTime)
-                val startUnix = programStart.toEpochSecond()
+                val startUnix = recordingStart.toEpochSecond()
                 val endUnix = minOf(
                     System.currentTimeMillis() / 1000L,
                     programEnd.toEpochSecond()
@@ -213,21 +215,38 @@ class KonomiRepository @Inject constructor(
 
                 val request = Request.Builder().url(url).build()
                 val client = okHttpClient.newBuilder()
+                    .apply { interceptors().clear() }
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(30, TimeUnit.SECONDS)
                     .build()
 
                 client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    Log.i(
+                        TAG,
+                        "Chase jikkyo HTTP response. [request_url=${request.url}, actual_url=${response.request.url}, " +
+                            "code=${response.code}, content_type=${response.header("Content-Type")}, bytes=${responseBody.length}]"
+                    )
                     if (!response.isSuccessful) {
+                        Log.w(
+                            TAG,
+                            "Chase jikkyo HTTP failure body=${responseBody.take(240)}"
+                        )
                         return@withContext Result.failure(Exception("NX-Jikkyo APIエラー: HTTP ${response.code}"))
                     }
 
-                    val jsonObject = JSONObject(response.body?.string().orEmpty())
+                    val jsonObject = JSONObject(responseBody)
                     if (jsonObject.has("error")) {
+                        Log.w(TAG, "Chase jikkyo API error payload=${jsonObject.optString("error")}")
                         return@withContext Result.failure(
                             Exception("NX-Jikkyo APIエラー: ${jsonObject.getString("error")}")
                         )
                     }
+
+                    Log.i(
+                        TAG,
+                        "Chase jikkyo JSON payload. [packet_count=${jsonObject.optJSONArray("packet")?.length() ?: 0}]"
+                    )
 
                     val comments = parseNxJikkyoPackets(jsonObject, startUnix)
                     Log.i(
@@ -237,7 +256,11 @@ class KonomiRepository @Inject constructor(
                     Result.success(comments)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch chase archived jikkyo", e)
+                Log.e(
+                    TAG,
+                    "Failed to fetch chase archived jikkyo. [video=${program.id}, jikkyo_id=${program.channel?.let { getJikkyoId(it.networkId, it.serviceId) }}]",
+                    e
+                )
                 Result.failure(e)
             }
         }
@@ -500,6 +523,7 @@ class KonomiRepository @Inject constructor(
     private fun parseNxJikkyoPackets(jsonObject: JSONObject, startUnix: Long): List<ArchivedComment> {
         val packetArray = jsonObject.optJSONArray("packet") ?: JSONArray()
         val comments = mutableListOf<ArchivedComment>()
+        var invalidDateCount = 0
 
         for (i in 0 until packetArray.length()) {
             val packet = packetArray.optJSONObject(i) ?: continue
@@ -526,8 +550,12 @@ class KonomiRepository @Inject constructor(
                     getCommentSize(command)?.let { size = it }
                 }
 
-            val chatDate = chat.optDouble("date", 0.0)
-            val chatDateUsec = chat.optDouble("date_usec", 0.0)
+            val chatDate = chat.optString("date").toDoubleOrNull()
+            val chatDateUsec = chat.optString("date_usec", "0").toDoubleOrNull()
+            if (chatDate == null || chatDateUsec == null) {
+                invalidDateCount++
+                continue
+            }
             val commentTime = (chatDate - startUnix) + (chatDateUsec / 1000000.0)
 
             comments.add(
@@ -542,6 +570,10 @@ class KonomiRepository @Inject constructor(
             )
         }
 
+        Log.i(
+            TAG,
+            "Parsed chase jikkyo packets. [packets=${packetArray.length()}, comments=${comments.size}, invalid_dates=$invalidDateCount, start_unix=$startUnix]"
+        )
         return comments.sortedBy { it.time }
     }
 

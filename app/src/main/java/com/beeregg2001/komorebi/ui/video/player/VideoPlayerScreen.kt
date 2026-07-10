@@ -56,6 +56,7 @@ import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel as CommentChannel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
@@ -78,7 +79,7 @@ private const val CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS = 20_000L
 private const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
 private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 45_000L
 private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
-private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 120_000L
+private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 10_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
 private const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
@@ -220,6 +221,9 @@ fun VideoPlayerScreen(
     LaunchedEffect(Unit) { delay(800); isHeavyUiReady = true }
 
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
+    val pendingWebSocketComments = remember(currentProgram.id, isRecordingChasePlayback) {
+        CommentChannel<ArchivedComment>(CommentChannel.UNLIMITED)
+    }
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
     var currentSessionId by remember(currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback) {
@@ -290,6 +294,14 @@ fun VideoPlayerScreen(
             return@LaunchedEffect
         }
 
+        if (isRecordingChasePlayback) {
+            allComments.clear()
+            Log.i(
+                TAG,
+                "Reset chase comments for new video. [video=${currentProgram.recordedVideo.id}]"
+            )
+        }
+
         suspend fun reloadArchivedComments(mergeOnly: Boolean) {
             val fetchedComments = if (isRecordingChasePlayback) {
                 videoPlayerViewModel.getChaseArchivedComments(currentProgram)
@@ -297,8 +309,20 @@ fun VideoPlayerScreen(
                 videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
             }
             if (!mergeOnly) {
-                allComments.clear()
-                allComments.addAll(fetchedComments)
+                if (isRecordingChasePlayback) {
+                    val existingKeys = allComments
+                        .asSequence()
+                        .map { it.stableCommentKey() }
+                        .toMutableSet()
+                    val mergedComments = (allComments + fetchedComments.filter {
+                        existingKeys.add(it.stableCommentKey())
+                    }).sortedBy { it.time }
+                    allComments.clear()
+                    allComments.addAll(mergedComments)
+                } else {
+                    allComments.clear()
+                    allComments.addAll(fetchedComments)
+                }
                 Log.i(
                     TAG,
                     "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
@@ -331,26 +355,68 @@ fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(pendingWebSocketComments) {
+        try {
+            while (isActive) {
+                val firstComment = pendingWebSocketComments.receiveCatching().getOrNull()
+                    ?: return@LaunchedEffect
+                val batch = ArrayList<ArchivedComment>(32)
+                batch.add(firstComment)
+                delay(250L)
+                while (true) {
+                    val nextComment = pendingWebSocketComments.tryReceive().getOrNull() ?: break
+                    batch.add(nextComment)
+                }
+
+                val existingKeys = allComments
+                    .asSequence()
+                    .map { it.stableCommentKey() }
+                    .toMutableSet()
+                val newComments = batch.filter { existingKeys.add(it.stableCommentKey()) }
+                if (newComments.isNotEmpty()) {
+                    val mergedComments = (allComments + newComments).sortedBy { it.time }
+                    allComments.clear()
+                    allComments.addAll(mergedComments)
+                    Log.i(
+                        TAG,
+                        "Merged chase websocket batch. [video=${currentProgram.recordedVideo.id}, " +
+                            "received=${batch.size}, added=${newComments.size}, total=${allComments.size}]"
+                    )
+                }
+            }
+        } finally {
+            pendingWebSocketComments.close()
+        }
+    }
+
     LaunchedEffect(currentProgram.id, smbItem, isRecordingChasePlayback) {
         if (smbItem != null || !isRecordingChasePlayback) return@LaunchedEffect
-        val programStartUnix = currentProgram.programStartUnixOrNull() ?: return@LaunchedEffect
+        val recordingStartUnix = currentProgram.recordingStartUnixOrNull() ?: return@LaunchedEffect
         val watchSessionUrl = videoPlayerViewModel.getChaseJikkyoWatchSessionUrl(currentProgram)
             ?: return@LaunchedEffect
         val processedCommentKeys = mutableSetOf<String>()
+        var receivedCommentCount = 0
         val client = JikkyoClient(watchSessionUrl)
 
         try {
             client.start { jsonText ->
-                val comment = parseChaseWsArchivedComment(jsonText, programStartUnix) ?: return@start
+                val comment = parseChaseWsArchivedComment(jsonText, recordingStartUnix) ?: return@start
+                receivedCommentCount++
                 val key = comment.stableCommentKey()
                 if (!processedCommentKeys.add(key)) return@start
                 if (processedCommentKeys.size > 4000) processedCommentKeys.clear()
 
-                scope.launch {
-                    if (allComments.none { it.stableCommentKey() == key }) {
-                        allComments.add(comment)
-                        allComments.sortBy { it.time }
-                    }
+                if (pendingWebSocketComments.trySend(comment).isFailure) {
+                    Log.w(
+                        TAG,
+                        "Dropped chase websocket comment because the queue is closed. [video=${currentProgram.recordedVideo.id}]"
+                    )
+                } else if (receivedCommentCount <= 3 || receivedCommentCount % 50 == 0) {
+                    Log.i(
+                        TAG,
+                        "Queued chase websocket comment. [video=${currentProgram.recordedVideo.id}, " +
+                            "received=$receivedCommentCount, time=${comment.time}]"
+                    )
                 }
             }
             Log.i(TAG, "Started chase jikkyo websocket. [video=${currentProgram.recordedVideo.id}]")
@@ -1743,10 +1809,12 @@ private fun RecordedProgram.chaseElapsedDurationMs(nowMillis: Long = System.curr
     }.getOrDefault((duration * 1000.0).toLong().coerceAtLeast(0L))
 }
 
-private fun RecordedProgram.programStartUnixOrNull(): Long? =
-    runCatching { OffsetDateTime.parse(startTime).toEpochSecond() }.getOrNull()
+private fun RecordedProgram.recordingStartUnixOrNull(): Long? =
+    runCatching {
+        OffsetDateTime.parse(recordedVideo.recordingStartTime ?: startTime).toEpochSecond()
+    }.getOrNull()
 
-private fun parseChaseWsArchivedComment(jsonText: String, programStartUnix: Long): ArchivedComment? {
+private fun parseChaseWsArchivedComment(jsonText: String, recordingStartUnix: Long): ArchivedComment? {
     return runCatching {
         val chat = JSONObject(jsonText).optJSONObject("chat") ?: return null
         val content = chat.optString("content", "")
@@ -1771,9 +1839,9 @@ private fun parseChaseWsArchivedComment(jsonText: String, programStartUnix: Long
                 getCommentSize(command)?.let { size = it }
             }
 
-        val chatDate = chat.optDouble("date", 0.0)
-        val chatDateUsec = chat.optDouble("date_usec", 0.0)
-        val commentTime = (chatDate - programStartUnix) + (chatDateUsec / 1000000.0)
+        val chatDate = chat.optString("date").toDoubleOrNull() ?: return null
+        val chatDateUsec = chat.optString("date_usec", "0").toDoubleOrNull() ?: return null
+        val commentTime = (chatDate - recordingStartUnix) + (chatDateUsec / 1000000.0)
         if (commentTime < -5.0) return null
 
         ArchivedComment(
