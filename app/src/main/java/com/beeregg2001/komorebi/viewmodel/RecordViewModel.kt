@@ -215,9 +215,6 @@ class RecordViewModel @Inject constructor(
         partialState.copy(sortType = type, sortOrder = order)
     }.flatMapLatest { state ->
         flow {
-            emit(PagingData.empty())
-            delay(50)
-
             val isDesc = state.sortOrder == RecordSortOrder.DESC
             val order = if (isDesc) "desc" else "asc"
             val pagingConfig = PagingConfig(

@@ -74,14 +74,14 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 private const val TAG = "VideoPlayerManager"
-private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 192 * 1024 * 1024
-private const val RECORDED_PLAYER_MIN_BUFFER_MS = 45_000
-private const val RECORDED_PLAYER_MAX_BUFFER_MS = 150_000
+private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
+private const val RECORDED_PLAYER_MIN_BUFFER_MS = 30_000
+private const val RECORDED_PLAYER_MAX_BUFFER_MS = 90_000
 private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 4_000
 private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
-private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 128 * 1024 * 1024
-private const val CHASE_PLAYER_MIN_BUFFER_MS = 25_000
-private const val CHASE_PLAYER_MAX_BUFFER_MS = 90_000
+private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 48 * 1024 * 1024
+private const val CHASE_PLAYER_MIN_BUFFER_MS = 15_000
+private const val CHASE_PLAYER_MAX_BUFFER_MS = 45_000
 private const val CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS = 8_000
 private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 15_000
 private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
@@ -371,8 +371,8 @@ fun rememberManagedExoPlayer(
         val httpDataSourceFactory = DefaultHttpDataSource.Factory().apply {
             setUserAgent("DTVClient/1.0")
             setAllowCrossProtocolRedirects(true)
-            setConnectTimeoutMs(1_000_000)
-            setReadTimeoutMs(1_000_000)
+            setConnectTimeoutMs(15_000)
+            setReadTimeoutMs(60_000)
         }
 
         val nativeLib = NativeLib()
@@ -382,6 +382,7 @@ fun rememberManagedExoPlayer(
         val segmentPrefetchCache = SegmentPrefetchCache()
         val playerRef = AtomicReference<ExoPlayer?>()
         val isImmediateStreamRecoveryRunning = AtomicBoolean(false)
+        val isPlaybackRecoveryRunning = AtomicBoolean(false)
 
         val dataSourceFactory = DataSource.Factory {
             object : DataSource {
@@ -634,14 +635,21 @@ fun rememberManagedExoPlayer(
 
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e(TAG, "ExoPlayer Source Error: ${error.message}", error)
+                        if (!isPlaybackRecoveryRunning.compareAndSet(false, true)) {
+                            return
+                        }
                         scope.launch {
-                            if (error.hasHttpResponseCode(422) && onStreamSessionExpired(this@apply)) {
-                                return@launch
+                            try {
+                                if (error.hasHttpResponseCode(422) && onStreamSessionExpired(this@apply)) {
+                                    return@launch
+                                }
+                                onBufferingChanged(true)
+                                delay(3000L)
+                                prepare()
+                                playWhenReady = true
+                            } finally {
+                                isPlaybackRecoveryRunning.set(false)
                             }
-                            onBufferingChanged(true)
-                            delay(3000L)
-                            prepare()
-                            playWhenReady = true
                         }
                     }
 
