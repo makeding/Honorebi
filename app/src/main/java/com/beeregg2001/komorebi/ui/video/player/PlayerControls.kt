@@ -304,10 +304,12 @@ fun PlayerControls(
                             // フォーカスが当たっている間に左右キーが押された際、onSeekRequested へ新しい時間を渡してシークさせる
                             .onKeyEvent { event ->
                                 if (isSeekBarFocused && event.type == KeyEventType.KeyDown) {
+                                    val repeatCount = event.nativeKeyEvent.repeatCount
+                                    val seekStepMs = (10_000L * (1 + repeatCount / 5)).coerceAtMost(60_000L)
                                     when (event.key) {
                                         Key.DirectionLeft -> {
                                             val newPos =
-                                                (currentPositionMs - 10_000L).coerceAtLeast(0L)
+                                                (currentPositionMs - seekStepMs).coerceAtLeast(0L)
                                             onSeekRequested(newPos)
                                             return@onKeyEvent true
                                         }
@@ -316,11 +318,10 @@ fun PlayerControls(
                                             val limit =
                                                 if (totalDurationMs > 0) totalDurationMs else Long.MAX_VALUE
                                             val newPos =
-                                                (currentPositionMs + 10_000L).coerceAtMost(limit)
+                                                (currentPositionMs + seekStepMs).coerceAtMost(limit)
                                             onSeekRequested(newPos)
                                             return@onKeyEvent true
                                         }
-
                                     }
                                 }
                                 false

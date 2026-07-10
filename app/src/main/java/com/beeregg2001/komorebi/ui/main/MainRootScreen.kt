@@ -88,14 +88,6 @@ fun MainRootScreen(
                         homeViewModel.refreshLauncherApps()
                         channelViewModel.fetchChannels()
 
-                        // 2. プレイヤー（ライブ・ビデオ・SMB）を開いたまま裏に行っていた場合、強制的にホーム画面に戻す
-                        if (state.selectedChannel != null || state.selectedProgram != null || state.selectedSmbItem != null) {
-                            state.selectedChannel = null
-                            state.selectedProgram = null
-                            state.selectedSmbItem = null
-                            state.isMiniPlayerMode = false
-                            state.isReturningFromPlayer = true // ホーム画面側で適切にフォーカスを復元させる
-                        }
                     }
                 }
 

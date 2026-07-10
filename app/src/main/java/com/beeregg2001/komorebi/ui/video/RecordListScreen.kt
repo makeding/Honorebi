@@ -439,7 +439,14 @@ fun RecordListScreen(
 
     val handleBackPress: () -> Unit = {
         when {
-            menuState.isDetailActive -> menuState.isDetailActive = false
+            menuState.isDetailActive -> {
+                menuState.isDetailActive = false
+                if (lastKnownFocusedId != null) {
+                    ticketManager.issue(FocusTicket.TARGET_ID, lastKnownFocusedId)
+                } else {
+                    ticketManager.issue(FocusTicket.LIST_TOP)
+                }
+            }
             // ★ 追加: ソートメニューを閉じる処理
             menuState.isSortMenuOpen -> {
                 menuState.isSortMenuOpen = false
@@ -477,9 +484,6 @@ fun RecordListScreen(
             }
 
             activeSearchQuery.isNotEmpty() -> {
-                if (isListView) ticketManager.issue(FocusTicket.NAV_PANE) else focuses.contentContainer.safeRequestFocus(
-                    "BackToGrid"
-                )
                 viewModel.clearSearch()
                 ticketManager.issue(if (isListView && selectedCategory != RecordCategory.SERIES) FocusTicket.NAV_PANE else FocusTicket.LIST_TOP)
             }
@@ -490,7 +494,7 @@ fun RecordListScreen(
         }
     }
 
-    BackHandler(enabled = !menuState.isDetailActive) { handleBackPress() }
+    BackHandler(enabled = true) { handleBackPress() }
 
     val contentStartPadding by animateDpAsState(
         targetValue = if (isListView && !menuState.isSearchBarVisible && activeSearchQuery.isEmpty()) 268.dp else 28.dp,
@@ -578,7 +582,16 @@ fun RecordListScreen(
                                     }
                                     },
                                     isDetailVisible = menuState.isDetailActive,
-                                    onDetailStateChange = { menuState.isDetailActive = it },
+                                    onDetailStateChange = {
+                                        menuState.isDetailActive = it
+                                        if (!it) {
+                                            if (lastKnownFocusedId != null) {
+                                                ticketManager.issue(FocusTicket.TARGET_ID, lastKnownFocusedId)
+                                            } else {
+                                                ticketManager.issue(FocusTicket.LIST_TOP)
+                                            }
+                                        }
+                                    },
                                     onBackPress = handleBackPress,
                                     ticketManager = ticketManager,
                                     listState = listState,
@@ -707,6 +720,7 @@ fun RecordListScreen(
                 isOpen = menuState.isSortMenuOpen,
                 currentType = sortType,
                 currentOrder = sortOrder,
+                allowAdvancedSort = selectedCategory == RecordCategory.UNWATCHED,
                 onClose = { handleBackPress() },
                 onSelect = { newType, newOrder ->
                     viewModel.setSort(newType, newOrder)
@@ -771,6 +785,7 @@ fun BoxScope.RecordSortMenuOverlay(
     isOpen: Boolean,
     currentType: RecordSortType,
     currentOrder: RecordSortOrder,
+    allowAdvancedSort: Boolean,
     onClose: () -> Unit,
     onSelect: (RecordSortType, RecordSortOrder) -> Unit
 ) {
@@ -847,14 +862,16 @@ fun BoxScope.RecordSortMenuOverlay(
                         modifier = Modifier.padding(bottom = 16.dp, start = 8.dp)
                     )
 
-                    val options = listOf(
-                        Triple(RecordSortType.DATE, RecordSortOrder.DESC, "録画日時 (新しい順)"),
-                        Triple(RecordSortType.DATE, RecordSortOrder.ASC, "録画日時 (古い順)"),
-                        Triple(RecordSortType.TITLE, RecordSortOrder.ASC, "名前 (A→Z)"),
-                        Triple(RecordSortType.TITLE, RecordSortOrder.DESC, "名前 (Z→A)"),
-                        Triple(RecordSortType.DURATION, RecordSortOrder.DESC, "録画時間 (長い順)"),
-                        Triple(RecordSortType.DURATION, RecordSortOrder.ASC, "録画時間 (短い順)")
-                    )
+                    val options = buildList {
+                        add(Triple(RecordSortType.DATE, RecordSortOrder.DESC, "録画日時 (新しい順)"))
+                        add(Triple(RecordSortType.DATE, RecordSortOrder.ASC, "録画日時 (古い順)"))
+                        if (allowAdvancedSort) {
+                            add(Triple(RecordSortType.TITLE, RecordSortOrder.ASC, "名前 (A→Z)"))
+                            add(Triple(RecordSortType.TITLE, RecordSortOrder.DESC, "名前 (Z→A)"))
+                            add(Triple(RecordSortType.DURATION, RecordSortOrder.DESC, "録画時間 (長い順)"))
+                            add(Triple(RecordSortType.DURATION, RecordSortOrder.ASC, "録画時間 (短い順)"))
+                        }
+                    }
 
                     var isFirstItem = true
                     options.forEach { (type, order, label) ->

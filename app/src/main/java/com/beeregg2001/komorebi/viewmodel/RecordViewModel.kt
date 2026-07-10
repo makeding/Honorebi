@@ -316,6 +316,10 @@ class RecordViewModel @Inject constructor(
             RecordCategory.GENRE, RecordCategory.SERIES -> loadOnlineFilterIndexes()
             else -> Unit
         }
+        if (category != RecordCategory.UNWATCHED) {
+            _sortType.value = RecordSortType.DATE
+            _sortOrder.value = RecordSortOrder.DESC
+        }
         _selectedCategory.value = category
         _selectedGenre.value = null
         _selectedChannelId.value = null
@@ -323,16 +327,22 @@ class RecordViewModel @Inject constructor(
     }
 
     fun updateGenre(genre: String?) {
+        _sortType.value = RecordSortType.DATE
+        _sortOrder.value = RecordSortOrder.DESC
         _selectedGenre.value = genre
         _selectedCategory.value = RecordCategory.GENRE
     }
 
     fun updateDay(day: String?) {
+        _sortType.value = RecordSortType.DATE
+        _sortOrder.value = RecordSortOrder.DESC
         _selectedDay.value = day
         _selectedCategory.value = RecordCategory.TIME
     }
 
     fun updateChannel(channelId: String?) {
+        _sortType.value = RecordSortType.DATE
+        _sortOrder.value = RecordSortOrder.DESC
         _selectedChannelId.value = channelId
         _selectedCategory.value = RecordCategory.CHANNEL
         _selectedGenre.value = null
@@ -349,6 +359,8 @@ class RecordViewModel @Inject constructor(
         currentSearchQuery = query
         if (query.isNotBlank() && !query.startsWith("series:")) addSearchHistory(query)
         _selectedCategory.value = RecordCategory.ALL
+        _sortType.value = RecordSortType.DATE
+        _sortOrder.value = RecordSortOrder.DESC
         _selectedGenre.value = null
         _selectedChannelId.value = null
         _selectedDay.value = null
