@@ -13,7 +13,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material.icons.filled.SettingsInputHdmi
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -36,6 +39,8 @@ import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
+import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
+import com.beeregg2001.komorebi.ui.main.NetworkTransport
 import com.beeregg2001.komorebi.ui.reserve.ReserveListScreen
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -108,6 +113,48 @@ private fun PinnedSystemAppButton(
     }
 }
 
+@Composable
+private fun NetworkStatusButton(
+    status: NetworkConnectionStatus,
+    focusRequester: FocusRequester,
+    leftFocusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester,
+    canTakeFocus: Boolean,
+    onClick: () -> Unit
+) {
+    val colors = KomorebiTheme.colors
+    val (icon, description) = when (status.transport) {
+        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi設定"
+        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "ネットワーク設定"
+        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
+        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "Wi-Fi設定"
+    }
+    val contentColor = if (status.isAvailable) {
+        colors.textPrimary
+    } else {
+        colors.textSecondary.copy(alpha = 0.62f)
+    }
+
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .focusProperties {
+                left = leftFocusRequester
+                right = rightFocusRequester
+                up = FocusRequester.Cancel
+                canFocus = canTakeFocus
+            },
+        colors = IconButtonDefaults.colors(
+            focusedContainerColor = colors.textPrimary,
+            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
+            contentColor = contentColor
+        )
+    ) {
+        Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -152,6 +199,7 @@ fun HomeLauncherScreen(
     isReturningFromPlayer: Boolean = false,
     onReturnFocusConsumed: () -> Unit = {},
     timeFormat: String = "24H",
+    networkConnectionStatus: NetworkConnectionStatus = NetworkConnectionStatus.Disconnected,
     hasActivePlayer: Boolean = false,
     onReturnToPlayerClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
@@ -196,6 +244,7 @@ fun HomeLauncherScreen(
     val returnPlayerFocusRequester = remember { FocusRequester() }
     val inputSourceFocusRequester = remember { FocusRequester() }
     val systemSettingsFocusRequester = remember { FocusRequester() }
+    val wifiSettingsFocusRequester = remember { FocusRequester() }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
@@ -530,8 +579,8 @@ fun HomeLauncherScreen(
                             modifier = Modifier
                                 .focusRequester(returnPlayerFocusRequester)
                                 .focusProperties {
-                                left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
-                                    ?: FocusRequester.Default
+                                    left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
+                                        ?: FocusRequester.Default
                                     right = systemSettingsFocusRequester
                                     canFocus = !isEpgJumping
                                     up = FocusRequester.Cancel
@@ -571,7 +620,7 @@ fun HomeLauncherScreen(
                                     if (hasActivePlayer) returnPlayerFocusRequester else (ui.tabFocusRequesters.getOrNull(
                                         tabs.lastIndex
                                     ) ?: FocusRequester.Default)
-                                right = ui.settingsFocusRequester
+                                right = wifiSettingsFocusRequester
                                 canFocus = !isEpgJumping
                                 up = FocusRequester.Cancel
                             },
@@ -585,6 +634,16 @@ fun HomeLauncherScreen(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
 
+                    NetworkStatusButton(
+                        status = networkConnectionStatus,
+                        focusRequester = wifiSettingsFocusRequester,
+                        leftFocusRequester = systemSettingsFocusRequester,
+                        rightFocusRequester = ui.settingsFocusRequester,
+                        canTakeFocus = !(tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping),
+                        onClick = { homeViewModel.launchWifiSettings() }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     IconButton(
                         onClick = { homeViewModel.launchSystemSettings() },
                         modifier = Modifier
@@ -592,7 +651,7 @@ fun HomeLauncherScreen(
                             .focusProperties {
                                 val isEpgJumping =
                                     tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
-                                left = systemSettingsFocusRequester
+                                left = wifiSettingsFocusRequester
                                 canFocus = !isEpgJumping
                                 up = FocusRequester.Cancel
                                 right = FocusRequester.Cancel

@@ -159,6 +159,7 @@ fun VideoTopSubMenuUI(
                     keyEvent.type == KeyEventType.KeyDown &&
                             keyEvent.key == Key.DirectionUp &&
                             selectedCategory == SubMenuCategory.QUICK_VIDEOS -> {
+                        onCloseMenu()
                         true
                     }
 
@@ -514,7 +515,7 @@ private fun QuickVideoSection(
                         onClick = { onVideoSelect(program) },
                         modifier = requesterModifier
                             .focusProperties {
-                                up = FocusRequester.Cancel
+                                up = upRequester
                                 down = downRequester ?: FocusRequester.Cancel
                             }
                     )

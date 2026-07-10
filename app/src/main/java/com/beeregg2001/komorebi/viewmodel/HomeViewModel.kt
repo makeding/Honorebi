@@ -124,6 +124,8 @@ class HomeViewModel @Inject constructor(
 
     fun launchSystemSettings(): Boolean = launcherAppRepository.launchSystemSettings()
 
+    fun launchWifiSettings(): Boolean = launcherAppRepository.launchWifiSettings()
+
     fun launchAppDetails(app: LauncherApp): Boolean = launcherAppRepository.launchAppDetails(app)
 
     fun isPinnedSystemApp(app: LauncherApp): Boolean =

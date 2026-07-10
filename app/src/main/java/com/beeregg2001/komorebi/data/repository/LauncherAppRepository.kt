@@ -106,6 +106,16 @@ class LauncherAppRepository @Inject constructor(
         return false
     }
 
+    fun launchWifiSettings(): Boolean {
+        val wifiSettingsIntent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        }
+
+        if (tryStartActivity(wifiSettingsIntent)) return true
+
+        return launchSystemSettings()
+    }
+
     fun launchAppDetails(app: LauncherApp): Boolean {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:${app.packageName}")

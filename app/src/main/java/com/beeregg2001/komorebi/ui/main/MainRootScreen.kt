@@ -319,7 +319,8 @@ fun MainRootScreen(
     val isChannelLoading by channelViewModel.isLoading.collectAsState()
     val isHomeLoading by homeViewModel.isLoading.collectAsState()
     val isChannelError by channelViewModel.connectionError.collectAsState()
-    val isNetworkAvailable by rememberNetworkAvailableState()
+    val networkConnectionStatus by rememberNetworkConnectionStatus()
+    val isNetworkAvailable = networkConnectionStatus.isAvailable
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
     val watchHistory by homeViewModel.watchHistory.collectAsState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
@@ -486,9 +487,12 @@ fun MainRootScreen(
 
     LaunchedEffect(isNetworkAvailable, isSettingsInitialized, state.isOfflineMode) {
         if (isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {
-            state.showConnectionErrorDialog = true
-            state.isDataReady = false
+            state.showConnectionErrorDialog = false
+            state.isOfflineMode = true
+            state.isDataReady = true
             state.isSplashFinished = true
+            state.isUiReady = true
+            state.hasAppliedStartupChannel = true
         }
     }
 
@@ -496,7 +500,16 @@ fun MainRootScreen(
         if (!isChannelLoading && !isHomeLoading) {
             delay(300)
             if (isChannelError) {
-                state.showConnectionErrorDialog = true; state.isDataReady = false
+                if (isNetworkAvailable && !state.isOfflineMode) {
+                    state.showConnectionErrorDialog = true; state.isDataReady = false
+                } else {
+                    state.showConnectionErrorDialog = false
+                    state.isOfflineMode = true
+                    state.isDataReady = true
+                    state.isSplashFinished = true
+                    state.isUiReady = true
+                    state.hasAppliedStartupChannel = true
+                }
             } else {
                 state.showConnectionErrorDialog = false; state.isDataReady = true
                 state.isOfflineMode = false
@@ -596,6 +609,7 @@ fun MainRootScreen(
                         konomiIp = konomiIp,
                         konomiPort = konomiPort,
                         timeFormat = timeFormat,
+                        networkConnectionStatus = networkConnectionStatus,
                         safeTabIndex = safeTabIndex,
                         isSyncingInitial = isSyncingInitial,
                         backgroundBrush = backgroundBrush,
