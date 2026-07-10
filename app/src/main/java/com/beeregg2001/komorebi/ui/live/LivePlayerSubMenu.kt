@@ -140,11 +140,12 @@ fun LiveTopSubMenuUI(
                 )
             )
             .padding(top = 24.dp, bottom = 48.dp)
-            .onKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown &&
-                    (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
-                            keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                    keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE
                 ) {
+                    if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
+
                     if (selectedCategory != null) {
                         val targetRequester = when (selectedCategory) {
                             LiveSubMenuCategory.QUICK_CHANNELS -> quickChannelButtonRequester

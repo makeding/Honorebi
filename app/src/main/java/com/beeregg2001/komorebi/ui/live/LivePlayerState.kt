@@ -287,7 +287,15 @@ class LivePlayerState(
             } else if (isActionUp) {
                 val elapsed = System.currentTimeMillis() - backKeyDownTime
                 if (!isBackKeyLongPressed && elapsed < 500) {
-                    onBackPressed()
+                    if (showOverlay || isPinnedOverlay) {
+                        onShowOverlayChange(false)
+                        onManualOverlayChange(false)
+                        onPinnedOverlayChange(false)
+                    } else if (isSignalInfoVisible) {
+                        isSignalInfoVisible = false
+                    } else {
+                        onBackPressed()
+                    }
                 }
                 backKeyDownTime = 0L
                 isBackKeyLongPressed = false

@@ -443,6 +443,18 @@ fun MainRootScreen(
 
             state.isPlayerMiniListOpen -> state.isPlayerMiniListOpen = false
             state.playerIsSubMenuOpen -> state.playerIsSubMenuOpen = false
+            state.selectedChannel != null && state.playerShowOverlay -> {
+                state.playerShowOverlay = false
+                state.playerIsManualOverlay = false
+                state.playerIsPinnedOverlay = false
+            }
+
+            state.selectedChannel != null && state.playerIsPinnedOverlay -> {
+                state.playerShowOverlay = false
+                state.playerIsManualOverlay = false
+                state.playerIsPinnedOverlay = false
+            }
+
             state.isPlayerSubMenuOpen -> state.isPlayerSubMenuOpen = false
             state.isPlayerSceneSearchOpen -> {
                 state.isPlayerSceneSearchOpen = false; state.showPlayerControls = false
