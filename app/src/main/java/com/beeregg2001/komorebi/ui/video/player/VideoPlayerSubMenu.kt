@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -99,6 +100,24 @@ fun VideoTopSubMenuUI(
     val qualityListRequester = remember { FocusRequester() }
     val quickVideoListRequester = remember { FocusRequester() }
 
+    val handleBack = {
+        if (selectedCategory != null) {
+            val targetRequester =
+                if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) quickVideoButtonRequester else qualityButtonRequester
+            selectedCategory = null
+            try {
+                targetRequester.requestFocus()
+            } catch (e: Exception) {
+            }
+        } else {
+            onCloseMenu()
+        }
+    }
+
+    BackHandler(enabled = isVisible) {
+        handleBack()
+    }
+
     LaunchedEffect(isVisible) {
         if (!isVisible) return@LaunchedEffect
         delay(50)
@@ -147,6 +166,18 @@ fun VideoTopSubMenuUI(
                 )
             )
             .padding(top = 24.dp, bottom = 48.dp)
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
+                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
+                ) {
+                    if (keyEvent.type == KeyEventType.KeyDown) {
+                        handleBack()
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
             .onKeyEvent { keyEvent ->
                 when {
                     keyEvent.type == KeyEventType.KeyDown &&
@@ -160,20 +191,6 @@ fun VideoTopSubMenuUI(
                             keyEvent.key == Key.DirectionUp &&
                             selectedCategory == SubMenuCategory.QUICK_VIDEOS -> {
                         onCloseMenu()
-                        true
-                    }
-
-                    keyEvent.type == KeyEventType.KeyDown &&
-                            (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
-                                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE) &&
-                            selectedCategory != null -> {
-                        val targetRequester =
-                            if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) quickVideoButtonRequester else qualityButtonRequester
-                        selectedCategory = null
-                        try {
-                            targetRequester.requestFocus()
-                        } catch (e: Exception) {
-                        }
                         true
                     }
 
