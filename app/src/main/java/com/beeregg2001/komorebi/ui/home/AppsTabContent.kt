@@ -2,6 +2,11 @@
 
 package com.beeregg2001.komorebi.ui.home
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.*
@@ -13,6 +18,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
@@ -43,9 +49,43 @@ fun AppsTabContent(
     }
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
-    var showHiddenAppsDialog by remember { mutableStateOf(false) }
+    var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
+    var isHiddenCatalog by remember { mutableStateOf(false) }
     var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
+    val catalogApps = if (isHiddenCatalog) hiddenApps else apps
+    val context = LocalContext.current.applicationContext
+
+    DisposableEffect(context, homeViewModel) {
+        val packageChangeReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_PACKAGE_ADDED,
+                    Intent.ACTION_PACKAGE_REMOVED,
+                    Intent.ACTION_PACKAGE_CHANGED,
+                    Intent.ACTION_PACKAGE_REPLACED -> homeViewModel.refreshLauncherApps()
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(packageChangeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(packageChangeReceiver, filter)
+        }
+
+        onDispose {
+            runCatching { context.unregisterReceiver(packageChangeReceiver) }
+        }
+    }
 
     LaunchedEffect(apps.map { it.stableId }) {
         val visibleIds = apps.map { it.stableId }.toSet()
@@ -54,9 +94,20 @@ fun AppsTabContent(
             .forEach { appFocusRequesters.remove(it) }
     }
 
-    LaunchedEffect(apps.isNotEmpty()) {
+    LaunchedEffect(apps.isNotEmpty(), hiddenApps.isNotEmpty()) {
         delay(250)
         onUiReady()
+    }
+
+    LaunchedEffect(isHiddenCatalog) {
+        if (isHiddenCatalog && hiddenApps.isEmpty()) {
+            isHiddenCatalog = false
+            return@LaunchedEffect
+        }
+        delay(80)
+        contentFirstItemRequester.safeRequestFocusWithRetry(
+            if (isHiddenCatalog) "AppsHiddenCatalog" else "AppsVisibleCatalog"
+        )
     }
 
     LaunchedEffect(pendingFocusAppId, apps) {
@@ -64,7 +115,8 @@ fun AppsTabContent(
         delay(60)
         val targetIndex = apps.indexOfFirst { it.stableId == targetId }
         if (targetIndex == 0) {
-            contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFirst")
+            appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMovedFirst")
+                ?: contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFirst")
         } else {
             appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMoved")
         }
@@ -84,6 +136,15 @@ fun AppsTabContent(
             .fillMaxSize()
             .padding(start = 48.dp, top = 36.dp, end = 48.dp, bottom = 80.dp)
     ) {
+        if (isHiddenCatalog) {
+            Text(
+                text = "非表示一覧",
+                style = MaterialTheme.typography.titleLarge,
+                color = KomorebiTheme.colors.textPrimary
+            )
+            Spacer(Modifier.height(28.dp))
+        }
+
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val cardWidth = 160.dp
             val cardHeight = 136.dp
@@ -94,7 +155,8 @@ fun AppsTabContent(
             val columnCount = calculateAppGridColumns(maxWidth, cardWidth, horizontalSpacing)
 
             Column(verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
-                apps.chunked(columnCount).forEachIndexed { rowIndex, rowApps ->
+                val appRows = catalogApps.chunked(columnCount)
+                appRows.forEachIndexed { rowIndex, rowApps ->
                     Row(horizontalArrangement = Arrangement.spacedBy(horizontalSpacing)) {
                         rowApps.forEachIndexed { columnIndex, app ->
                             val index = rowIndex * columnCount + columnIndex
@@ -104,13 +166,23 @@ fun AppsTabContent(
                             LauncherAppCard(
                                 app = app,
                                 onClick = {
-                                    if (editingAppId == app.stableId) {
+                                    if (isHiddenCatalog && editingAppId == app.stableId) {
+                                        editingAppId = null
+                                    } else if (isHiddenCatalog) {
+                                        homeViewModel.launchApp(app)
+                                    } else if (editingAppId == app.stableId) {
                                         editingAppId = null
                                     } else if (editingAppId == null) {
                                         homeViewModel.launchApp(app)
                                     }
                                 },
-                                onManage = { editingAppId = app.stableId },
+                                onManage = {
+                                    if (isHiddenCatalog) {
+                                        editingAppId = app.stableId
+                                    } else {
+                                        editingAppId = app.stableId
+                                    }
+                                },
                                 onFocus = {},
                                 cardWidth = cardWidth,
                                 cardHeight = cardHeight,
@@ -121,26 +193,27 @@ fun AppsTabContent(
                                 fullBleedBanner = true,
                                 manualConfirmHandling = true,
                                 isEditing = editingAppId == app.stableId,
-                                onMoveLeft = { moveVisibleApp(index, -1) },
-                                onMoveRight = { moveVisibleApp(index, 1) },
-                                onMoveUp = { moveVisibleApp(index, -columnCount) },
-                                onMoveDown = { moveVisibleApp(index, columnCount) },
+                                onMoveLeft = { if (!isHiddenCatalog) moveVisibleApp(index, -1) },
+                                onMoveRight = { if (!isHiddenCatalog) moveVisibleApp(index, 1) },
+                                onMoveUp = { if (!isHiddenCatalog) moveVisibleApp(index, -columnCount) },
+                                onMoveDown = { if (!isHiddenCatalog) moveVisibleApp(index, columnCount) },
                                 onHide = {
                                     homeViewModel.hideLauncherApp(app)
                                     editingAppId = null
                                 },
                                 onOpenActions = {
                                     editingAppId = null
-                                    actionMenuApp = app
+                                    if (isHiddenCatalog) {
+                                        hiddenActionMenuApp = app
+                                    } else {
+                                        actionMenuApp = app
+                                    }
                                 },
                                 onDoneEditing = { editingAppId = null },
                                 modifier = Modifier
                                     .then(
-                                        if (index == 0) {
-                                            Modifier.focusRequester(contentFirstItemRequester)
-                                        } else {
-                                            Modifier.focusRequester(appFocusRequester)
-                                        }
+                                        if (index == 0) Modifier.focusRequester(contentFirstItemRequester)
+                                        else Modifier.focusRequester(appFocusRequester)
                                     )
                                     .focusProperties {
                                         if (columnIndex == 0) left = FocusRequester.Cancel
@@ -151,7 +224,20 @@ fun AppsTabContent(
                                             rowIndex == 0 &&
                                             editingAppId == null
                                         ) {
-                                            tabFocusRequester.safeRequestFocus(TAG)
+                                            if (isHiddenCatalog) {
+                                                isHiddenCatalog = false
+                                            } else {
+                                                tabFocusRequester.safeRequestFocus(TAG)
+                                            }
+                                            true
+                                        } else if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                            it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN &&
+                                            rowIndex == appRows.lastIndex &&
+                                            hiddenApps.isNotEmpty() &&
+                                            editingAppId == null &&
+                                            !isHiddenCatalog
+                                        ) {
+                                            isHiddenCatalog = true
                                             true
                                         } else {
                                             false
@@ -198,19 +284,23 @@ fun AppsTabContent(
             onShowHiddenList = {
                 editingAppId = null
                 actionMenuApp = null
-                showHiddenAppsDialog = true
+                isHiddenCatalog = true
             }
         )
     }
 
-    if (showHiddenAppsDialog) {
-        HiddenLauncherAppsDialog(
-            apps = hiddenApps,
-            onRestore = { app ->
-                homeViewModel.restoreLauncherApp(app)
-                showHiddenAppsDialog = false
+    hiddenActionMenuApp?.let { app ->
+        HiddenLauncherAppActionDialog(
+            app = app,
+            onAppInfo = {
+                homeViewModel.launchAppDetails(app)
+                hiddenActionMenuApp = null
             },
-            onDismiss = { showHiddenAppsDialog = false }
+            onRestore = {
+                homeViewModel.restoreLauncherApp(app)
+                hiddenActionMenuApp = null
+            },
+            onDismiss = { hiddenActionMenuApp = null }
         )
     }
 }
@@ -311,17 +401,18 @@ private fun LauncherAppActionDialog(
 }
 
 @Composable
-private fun HiddenLauncherAppsDialog(
-    apps: List<LauncherApp>,
-    onRestore: (LauncherApp) -> Unit,
+private fun HiddenLauncherAppActionDialog(
+    app: LauncherApp,
+    onAppInfo: () -> Unit,
+    onRestore: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
     val colors = KomorebiTheme.colors
 
-    LaunchedEffect(apps.firstOrNull()?.stableId) {
+    LaunchedEffect(app.stableId) {
         delay(80)
-        focusRequester.safeRequestFocusWithRetry("HiddenLauncherApps")
+        focusRequester.safeRequestFocusWithRetry("HiddenLauncherAppAction")
     }
 
     AlertDialog(
@@ -330,42 +421,63 @@ private fun HiddenLauncherAppsDialog(
         titleContentColor = colors.textPrimary,
         textContentColor = colors.textSecondary,
         title = {
-            Text(
-                text = "非表示一覧",
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.textPrimary
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                apps.forEachIndexed { index, app ->
-                    Button(
-                        onClick = { onRestore(app) },
-                        modifier = if (index == 0) Modifier.focusRequester(focusRequester) else Modifier,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.surface,
-                            focusedContainerColor = colors.textPrimary,
-                            contentColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                        )
-                    ) {
-                        Text(app.label)
-                    }
-                }
+            Column {
+                Text(
+                    text = app.label,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colors.textPrimary
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = app.packageName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary
+                )
             }
         },
-        confirmButton = {},
-        dismissButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.colors(
-                    containerColor = colors.surface.copy(alpha = 0.7f),
-                    focusedContainerColor = colors.textPrimary,
-                    contentColor = colors.textSecondary,
-                    focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                )
-            ) { Text("閉じる") }
-        }
+        text = {
+            Text(
+                text = "非表示アプリ操作",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary
+            )
+        },
+        confirmButton = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.focusRequester(focusRequester),
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface.copy(alpha = 0.7f),
+                        focusedContainerColor = colors.textPrimary,
+                        contentColor = colors.textSecondary,
+                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                    )
+                ) { Text("閉じる") }
+                Button(
+                    onClick = onAppInfo,
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface,
+                        focusedContainerColor = colors.textPrimary,
+                        contentColor = colors.textPrimary,
+                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                    )
+                ) { Text("アプリ情報") }
+                Button(
+                    onClick = onRestore,
+                    colors = ButtonDefaults.colors(
+                        containerColor = colors.surface,
+                        focusedContainerColor = Color(0xFFFF8AAE),
+                        contentColor = colors.textPrimary,
+                        focusedContentColor = Color.Black
+                    )
+                ) { Text("表示へ戻す") }
+            }
+        },
+        dismissButton = {}
     )
 }
 
