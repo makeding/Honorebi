@@ -238,12 +238,11 @@ fun LiveContent(
                     }
                 }
 
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.45f)
-                        .focusRequester(contentFirstItemRequester),
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.45f),
                     contentPadding = PaddingValues(bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -282,6 +281,8 @@ fun LiveContent(
                                             .then(
                                                 if (isTarget) Modifier.focusRequester(
                                                     targetChannelFocusRequester
+                                                ) else if (row == liveRows.firstOrNull() && index == 0) Modifier.focusRequester(
+                                                    contentFirstItemRequester
                                                 ) else Modifier
                                             )
                                             .focusProperties {

@@ -305,7 +305,7 @@ fun WatchHistorySection(
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp),
+            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(

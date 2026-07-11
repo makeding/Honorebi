@@ -201,8 +201,7 @@ fun HomeContents(
             LazyColumn(
                 state = lazyListState,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .focusRequester(externalFocusRequester),
+                    .fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
@@ -214,6 +213,7 @@ fun HomeContents(
                             getLogoUrl = getLogoUrl,
                             shouldCropLogo = shouldCropLogo,
                             modifier = if (topSection == "lastWatched") upToTabModifier else Modifier,
+                            contentFirstItemRequester = if (availableSections.firstOrNull() == "lastWatched") externalFocusRequester else null,
                             onChannelClick = onChannelClick,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
                             ticketManager = ticketManager,
@@ -229,6 +229,7 @@ fun HomeContents(
                             getLogoUrl = getLogoUrl,
                             shouldCropLogo = shouldCropLogo,
                             modifier = if (topSection == "hot") upToTabModifier else Modifier,
+                            contentFirstItemRequester = if (availableSections.firstOrNull() == "hot") externalFocusRequester else null,
                             onChannelClick = onChannelClick,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
                             ticketManager = ticketManager,
@@ -246,6 +247,7 @@ fun HomeContents(
                             getLogoUrl = getLogoUrl,
                             shouldCropLogo = shouldCropLogo,
                             modifier = if (topSection == "pickup") upToTabModifier else Modifier,
+                            contentFirstItemRequester = if (availableSections.firstOrNull() == "pickup") externalFocusRequester else null,
                             onProgramClick = onProgramClick,
                             onNavigateToTab = onNavigateToTab,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
@@ -264,6 +266,7 @@ fun HomeContents(
                             konomiIp = konomiIp,
                             konomiPort = konomiPort,
                             modifier = if (topSection == "history") upToTabModifier else Modifier,
+                            contentFirstItemRequester = if (availableSections.firstOrNull() == "history") externalFocusRequester else null,
                             onHistoryClick = onHistoryClick,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
                             ticketManager = ticketManager,
@@ -279,6 +282,7 @@ fun HomeContents(
                             getLogoUrl = getLogoUrl,
                             shouldCropLogo = shouldCropLogo,
                             modifier = if (topSection == "upcoming") upToTabModifier else Modifier,
+                            contentFirstItemRequester = if (availableSections.firstOrNull() == "upcoming") externalFocusRequester else null,
                             onReserveClick = onReserveClick,
                             onNavigateToTab = onNavigateToTab,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
