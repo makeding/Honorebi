@@ -196,11 +196,9 @@ class KonomiRepository @Inject constructor(
                 val jikkyoId = getJikkyoId(channel.networkId, channel.serviceId)
                     ?: return@withContext Result.failure(Exception("このチャンネルは実況(過去ログ)に対応していません。"))
 
-                val recordingStart = OffsetDateTime.parse(
-                    program.recordedVideo.recordingStartTime ?: program.startTime
-                )
+                val programStart = OffsetDateTime.parse(program.startTime)
                 val programEnd = OffsetDateTime.parse(program.endTime)
-                val startUnix = recordingStart.toEpochSecond()
+                val startUnix = programStart.toEpochSecond()
                 val endUnix = minOf(
                     System.currentTimeMillis() / 1000L,
                     programEnd.toEpochSecond()

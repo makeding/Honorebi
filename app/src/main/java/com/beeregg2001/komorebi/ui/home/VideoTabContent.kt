@@ -79,6 +79,7 @@ fun VideoTabContent(
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
+    val recentFirstItemRequester = remember { FocusRequester() }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val groupedSeries by recordViewModel.groupedSeries.collectAsState()
@@ -249,6 +250,7 @@ fun VideoTabContent(
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = FocusRequester.Cancel
+                                    down = recentFirstItemRequester
                                 },
                             onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
                             onFocus = {
@@ -269,6 +271,7 @@ fun VideoTabContent(
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     right = FocusRequester.Cancel
+                                    down = recentFirstItemRequester
                                 },
                             onClick = { onShowSmbLibrary() },
                             onFocus = {
@@ -356,11 +359,17 @@ fun VideoTabContent(
                                             )
                                         },
                                         isCurrentlyRecording = isCurrentlyRecording,
-                                        modifier = Modifier.focusProperties {
-                                            if (index == 0) left = FocusRequester.Cancel
-                                            if (index == recentItems.lastIndex) right =
-                                                FocusRequester.Cancel
-                                        },
+                                        modifier = Modifier
+                                            .then(
+                                                if (index == 0) Modifier.focusRequester(
+                                                    recentFirstItemRequester
+                                                ) else Modifier
+                                            )
+                                            .focusProperties {
+                                                if (index == 0) left = FocusRequester.Cancel
+                                                if (index == recentItems.lastIndex) right =
+                                                    FocusRequester.Cancel
+                                            },
                                         timeFormat = timeFormat,
                                         backendType = backendType
                                     )

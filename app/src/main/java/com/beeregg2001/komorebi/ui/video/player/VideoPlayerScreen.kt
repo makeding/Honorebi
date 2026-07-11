@@ -391,7 +391,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(currentProgram.id, smbItem, isRecordingChasePlayback) {
         if (smbItem != null || !isRecordingChasePlayback) return@LaunchedEffect
-        val recordingStartUnix = currentProgram.recordingStartUnixOrNull() ?: return@LaunchedEffect
+        val programStartUnix = currentProgram.programStartUnixOrNull() ?: return@LaunchedEffect
         val watchSessionUrl = videoPlayerViewModel.getChaseJikkyoWatchSessionUrl(currentProgram)
             ?: return@LaunchedEffect
         val processedCommentKeys = mutableSetOf<String>()
@@ -400,7 +400,7 @@ fun VideoPlayerScreen(
 
         try {
             client.start { jsonText ->
-                val comment = parseChaseWsArchivedComment(jsonText, recordingStartUnix) ?: return@start
+                val comment = parseChaseWsArchivedComment(jsonText, programStartUnix) ?: return@start
                 receivedCommentCount++
                 val key = comment.stableCommentKey()
                 if (!processedCommentKeys.add(key)) return@start
@@ -1115,6 +1115,10 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { keyEvent ->
+                if (isSubOverlayOpen) {
+                    return@onPreviewKeyEvent false
+                }
+
                 // ★ UIのボタンにフォーカスがある場合に操作していてもUIが消えてしまう問題の修正
                 // キー操作が行われるたびに最終インタラクション時間を更新し、非表示タイマーをリセットする
                 if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
@@ -1809,12 +1813,10 @@ private fun RecordedProgram.chaseElapsedDurationMs(nowMillis: Long = System.curr
     }.getOrDefault((duration * 1000.0).toLong().coerceAtLeast(0L))
 }
 
-private fun RecordedProgram.recordingStartUnixOrNull(): Long? =
-    runCatching {
-        OffsetDateTime.parse(recordedVideo.recordingStartTime ?: startTime).toEpochSecond()
-    }.getOrNull()
+private fun RecordedProgram.programStartUnixOrNull(): Long? =
+    runCatching { OffsetDateTime.parse(startTime).toEpochSecond() }.getOrNull()
 
-private fun parseChaseWsArchivedComment(jsonText: String, recordingStartUnix: Long): ArchivedComment? {
+private fun parseChaseWsArchivedComment(jsonText: String, programStartUnix: Long): ArchivedComment? {
     return runCatching {
         val chat = JSONObject(jsonText).optJSONObject("chat") ?: return null
         val content = chat.optString("content", "")
@@ -1841,7 +1843,7 @@ private fun parseChaseWsArchivedComment(jsonText: String, recordingStartUnix: Lo
 
         val chatDate = chat.optString("date").toDoubleOrNull() ?: return null
         val chatDateUsec = chat.optString("date_usec", "0").toDoubleOrNull() ?: return null
-        val commentTime = (chatDate - recordingStartUnix) + (chatDateUsec / 1000000.0)
+        val commentTime = (chatDate - programStartUnix) + (chatDateUsec / 1000000.0)
         if (commentTime < -5.0) return null
 
         ArchivedComment(
