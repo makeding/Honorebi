@@ -362,7 +362,7 @@ fun rememberManagedExoPlayer(
         }
     }
 
-    val exoPlayer = remember(smbServerList, program?.id, program?.recordedVideo?.duration) {
+    val exoPlayer = remember(smbServerList, program?.id) {
         val renderersFactory = DefaultRenderersFactory(context).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)

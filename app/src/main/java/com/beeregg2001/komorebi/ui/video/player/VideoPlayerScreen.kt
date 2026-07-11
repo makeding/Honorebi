@@ -79,7 +79,6 @@ private const val CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS = 20_000L
 private const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
 private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 45_000L
 private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
-private const val CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS = 10_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
 private const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
@@ -221,6 +220,9 @@ fun VideoPlayerScreen(
     LaunchedEffect(Unit) { delay(800); isHeavyUiReady = true }
 
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
+    val commentKeys = remember(currentProgram.id, isRecordingChasePlayback) {
+        HashSet<String>()
+    }
     val pendingWebSocketComments = remember(currentProgram.id, isRecordingChasePlayback) {
         CommentChannel<ArchivedComment>(CommentChannel.UNLIMITED)
     }
@@ -296,63 +298,31 @@ fun VideoPlayerScreen(
 
         if (isRecordingChasePlayback) {
             allComments.clear()
+            commentKeys.clear()
             Log.i(
                 TAG,
                 "Reset chase comments for new video. [video=${currentProgram.recordedVideo.id}]"
             )
         }
 
-        suspend fun reloadArchivedComments(mergeOnly: Boolean) {
-            val fetchedComments = if (isRecordingChasePlayback) {
-                videoPlayerViewModel.getChaseArchivedComments(currentProgram)
-            } else {
-                videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
-            }
-            if (!mergeOnly) {
-                if (isRecordingChasePlayback) {
-                    val existingKeys = allComments
-                        .asSequence()
-                        .map { it.stableCommentKey() }
-                        .toMutableSet()
-                    val mergedComments = (allComments + fetchedComments.filter {
-                        existingKeys.add(it.stableCommentKey())
-                    }).sortedBy { it.time }
-                    allComments.clear()
-                    allComments.addAll(mergedComments)
-                } else {
-                    allComments.clear()
-                    allComments.addAll(fetchedComments)
-                }
-                Log.i(
-                    TAG,
-                    "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
-                )
-                return
-            }
-
-            val existingKeys = allComments
-                .asSequence()
-                .map { it.stableCommentKey() }
-                .toMutableSet()
-            val newComments = fetchedComments.filter { existingKeys.add(it.stableCommentKey()) }
-            if (newComments.isNotEmpty()) {
-                val mergedComments = (allComments + newComments).sortedBy { it.time }
-                allComments.clear()
-                allComments.addAll(mergedComments)
-                Log.i(
-                    TAG,
-                    "Reloaded chase playback comments. [video=${currentProgram.recordedVideo.id}, added=${newComments.size}, total=${allComments.size}]"
-                )
-            }
+        val fetchedComments = if (isRecordingChasePlayback) {
+            videoPlayerViewModel.getChaseArchivedComments(currentProgram)
+        } else {
+            videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
         }
-
-        reloadArchivedComments(mergeOnly = false)
-        if (isRecordingChasePlayback) {
-            while (isActive) {
-                delay(CHASE_PLAYBACK_COMMENT_REFRESH_INTERVAL_MS)
-                reloadArchivedComments(mergeOnly = true)
-            }
+        if (!isRecordingChasePlayback) {
+            allComments.clear()
+            commentKeys.clear()
+            allComments.addAll(fetchedComments)
+            commentKeys.addAll(fetchedComments.map { it.stableCommentKey() })
+        } else {
+            // 追いかけ再生はここで A-B の過去ログだけを取得し、B 以降は WebSocket で埋める。
+            appendUniqueArchivedComments(allComments, commentKeys, fetchedComments)
         }
+        Log.i(
+            TAG,
+            "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
+        )
     }
 
     LaunchedEffect(pendingWebSocketComments) {
@@ -368,19 +338,14 @@ fun VideoPlayerScreen(
                     batch.add(nextComment)
                 }
 
-                val existingKeys = allComments
-                    .asSequence()
-                    .map { it.stableCommentKey() }
-                    .toMutableSet()
-                val newComments = batch.filter { existingKeys.add(it.stableCommentKey()) }
-                if (newComments.isNotEmpty()) {
-                    val mergedComments = (allComments + newComments).sortedBy { it.time }
-                    allComments.clear()
-                    allComments.addAll(mergedComments)
+                val oldSize = allComments.size
+                appendUniqueArchivedComments(allComments, commentKeys, batch)
+                val addedCount = allComments.size - oldSize
+                if (addedCount > 0) {
                     Log.i(
                         TAG,
                         "Merged chase websocket batch. [video=${currentProgram.recordedVideo.id}, " +
-                            "received=${batch.size}, added=${newComments.size}, total=${allComments.size}]"
+                            "received=${batch.size}, added=$addedCount, total=${allComments.size}]"
                     )
                 }
             }
@@ -1804,6 +1769,29 @@ private fun calculateCommentClimaxCountdownStartMs(
 
 private fun ArchivedComment.stableCommentKey(): String =
     "${time}:${author}:${type}:${size}:${color}:${text}"
+
+private fun appendUniqueArchivedComments(
+    target: MutableList<ArchivedComment>,
+    knownKeys: MutableSet<String>,
+    candidates: List<ArchivedComment>
+) {
+    if (candidates.isEmpty()) return
+
+    val newComments = candidates
+        .asSequence()
+        .filter { knownKeys.add(it.stableCommentKey()) }
+        .sortedBy { it.time }
+        .toList()
+    if (newComments.isEmpty()) return
+
+    if (target.isEmpty() || target.last().time <= newComments.first().time) {
+        target.addAll(newComments)
+    } else {
+        val mergedComments = (target + newComments).sortedBy { it.time }
+        target.clear()
+        target.addAll(mergedComments)
+    }
+}
 
 private fun RecordedProgram.chaseElapsedDurationMs(nowMillis: Long = System.currentTimeMillis()): Long {
     return runCatching {
