@@ -50,6 +50,7 @@ import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.UiChannelState
 import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
+import com.beeregg2001.komorebi.ui.live.logoUrlFor
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.*
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -101,6 +102,10 @@ fun LiveContent(
 
     // ★ 追加: EDCBメイン判定（勢い表記の非表示制御用）
     val backendType by settingsViewModel.backendType.collectAsState(initial = "KONOMITV")
+
+    LaunchedEffect(liveRows) {
+        channelViewModel.prefetchChannelLogoUrls(liveRows.flatMap { it.channels }.map { it.channel })
+    }
 
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {
@@ -222,27 +227,18 @@ fun LiveContent(
                         right = FocusRequester.Cancel
                     } else Modifier)
             ) {
-                Box(
+                CompactLiveProgramInfo(
+                    uiState = focusedChannel,
+                    channelViewModel = channelViewModel,
+                    modifier = Modifier.padding(horizontal = 48.dp, vertical = 16.dp),
+                    timeFormat = timeFormat
+                )
+
+                LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.55f)
-                        .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 24.dp)
-                ) {
-                    if (focusedChannel != null) {
-                        HeroDashboard(
-                            uiState = focusedChannel!!,
-                            channelViewModel = channelViewModel,
-                            backendType = backendType, // ★ バックエンドタイプを渡す
-                            timeFormat = timeFormat
-                        )
-                    }
-                }
-
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(0.45f),
+                        .weight(1f),
                     contentPadding = PaddingValues(bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -304,7 +300,7 @@ fun LiveContent(
                         }
                     }
                 }
-            }
+                }
         }
 
         if (selectedChannel != null && !isPiPMode) {
@@ -331,6 +327,152 @@ fun LiveContent(
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
+private fun CompactLiveProgramInfo(
+    uiState: UiChannelState?,
+    channelViewModel: ChannelViewModel,
+    modifier: Modifier = Modifier,
+    timeFormat: String = "24H"
+) {
+    val colors = KomorebiTheme.colors
+    val channel = uiState?.channel
+    val present = channel?.programPresent
+    val cachedLogoUrl = channel?.let {
+        channelViewModel.channelLogoUrls.collectAsState().value.logoUrlFor(it)
+    }.orEmpty()
+    var fetchedLogoUrl by remember(channel?.id) { mutableStateOf("") }
+
+    LaunchedEffect(channel?.id, cachedLogoUrl) {
+        if (channel != null && cachedLogoUrl.isBlank()) {
+            fetchedLogoUrl = channelViewModel.getChannelLogoUrl(channel)
+        }
+    }
+    val logoUrl = cachedLogoUrl.ifBlank { fetchedLogoUrl }
+
+    val formatTime = { timeStr: String? ->
+        if (timeStr.isNullOrEmpty()) "" else runCatching {
+            val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
+            OffsetDateTime.parse(timeStr)
+                .format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+        }.getOrDefault("")
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp, max = 88.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.surface.copy(alpha = 0.42f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 56.dp, height = 30.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(colors.textPrimary.copy(alpha = 0.06f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (logoUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = logoUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                if (uiState == null) {
+                    Box(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(colors.textSecondary.copy(alpha = 0.16f))
+                    )
+                } else {
+                    Text(
+                        text = uiState.name,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.height(5.dp))
+            if (uiState == null) {
+                Box(
+                    modifier = Modifier
+                        .width(420.dp)
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(colors.textPrimary.copy(alpha = 0.12f))
+                )
+            } else {
+                Text(
+                    text = uiState.programTitle,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (present != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${formatTime(present.startTime)} - ${formatTime(present.endTime)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(140.dp)
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(colors.textSecondary.copy(alpha = 0.2f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(uiState.progress.coerceIn(0f, 1f))
+                                .fillMaxHeight()
+                                .background(colors.accent)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (uiState == null) {
+            Box(
+                modifier = Modifier
+                    .width(72.dp)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.accent.copy(alpha = 0.1f))
+            )
+        } else {
+            Text(
+                text = "放送中",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = colors.accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.accent.copy(alpha = 0.16f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
 fun HeroDashboard(
     uiState: UiChannelState,
     channelViewModel: ChannelViewModel,
@@ -343,10 +485,14 @@ fun HeroDashboard(
     val isHot = (uiState.jikkyoForce ?: 0) > 500
 
     // ★ 修正: EDCB等で取得を成功させるため displayChannelId を使用する
-    var logoUrl by remember(uiState.channel.id) { mutableStateOf("") }
-    LaunchedEffect(uiState.channel.id) {
-        logoUrl = channelViewModel.getChannelLogoUrl(uiState.channel.displayChannelId)
+    val cachedLogoUrl = channelViewModel.channelLogoUrls.collectAsState().value.logoUrlFor(uiState.channel)
+    var fetchedLogoUrl by remember(uiState.channel.id) { mutableStateOf("") }
+    LaunchedEffect(uiState.channel.id, cachedLogoUrl) {
+        if (cachedLogoUrl.isBlank()) {
+            fetchedLogoUrl = channelViewModel.getChannelLogoUrl(uiState.channel)
+        }
     }
+    val logoUrl = cachedLogoUrl.ifBlank { fetchedLogoUrl }
 
     val formatTime = { timeStr: String? ->
         if (timeStr.isNullOrEmpty()) ""
@@ -579,11 +725,14 @@ fun CompactChannelCard(
         label = "cardScale"
     )
 
-    // ★ 修正: EDCB等で取得を成功させるため displayChannelId を使用する
-    var logoUrl by remember(uiState.channel.id) { mutableStateOf("") }
-    LaunchedEffect(uiState.channel.id) {
-        logoUrl = channelViewModel.getChannelLogoUrl(uiState.channel.displayChannelId)
+    val cachedLogoUrl = channelViewModel.channelLogoUrls.collectAsState().value.logoUrlFor(uiState.channel)
+    var fetchedLogoUrl by remember(uiState.channel.id) { mutableStateOf("") }
+    LaunchedEffect(uiState.channel.id, cachedLogoUrl) {
+        if (cachedLogoUrl.isBlank()) {
+            fetchedLogoUrl = channelViewModel.getChannelLogoUrl(uiState.channel)
+        }
     }
+    val logoUrl = cachedLogoUrl.ifBlank { fetchedLogoUrl }
 
     Surface(
         onClick = onClick,
@@ -620,12 +769,14 @@ fun CompactChannelCard(
                         .background(colors.textPrimary.copy(alpha = 0.05f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = logoUrl,
-                        contentDescription = uiState.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    if (logoUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = logoUrl,
+                            contentDescription = uiState.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(

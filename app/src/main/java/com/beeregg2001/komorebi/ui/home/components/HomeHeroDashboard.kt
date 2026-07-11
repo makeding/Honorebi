@@ -39,6 +39,79 @@ data class HomeHeroInfo(
 )
 
 @Composable
+fun CompactHomeHeroInfo(
+    state: HomeHeroInfo,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp, max = 100.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.surface.copy(alpha = 0.42f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (state.tag.isNotBlank()) {
+                Text(
+                    text = state.tag,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = colors.accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            Text(
+                text = state.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = colors.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (state.subtitle.isNotBlank()) {
+                Text(
+                    text = state.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (state.description.isNotBlank()) {
+                Text(
+                    text = state.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        state.imageUrl?.takeIf { it.isNotBlank() }?.let { imageUrl ->
+            Spacer(Modifier.width(16.dp))
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(120.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .alpha(0.72f)
+            )
+        }
+    }
+}
+
+@Composable
 fun HomeHeroDashboard(
     state: HomeHeroInfo, // ★ 修正: 呼び出し元の引数名に合わせて info -> state に変更
     getLogoUrl: suspend (String) -> String, // ★ 追加: コールバックを受け取る

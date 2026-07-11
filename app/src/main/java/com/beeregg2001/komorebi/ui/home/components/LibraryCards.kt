@@ -249,6 +249,14 @@ fun VideoWatchHistoryCard(
     val duration = matchedProgram?.duration ?: 0.0
     val progress = if (duration > 0) (historyItem.playback_position / duration).toFloat()
         .coerceIn(0f, 1f) else null
+    val broadcastStart = matchedProgram?.startTime ?: historyItem.program.start_time
+    val broadcastEnd = matchedProgram?.endTime ?: historyItem.program.end_time
+    val broadcastTime = runCatching {
+        val formatter = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.JAPANESE)
+        "${OffsetDateTime.parse(broadcastStart).format(formatter)} - ${OffsetDateTime.parse(broadcastEnd).format(DateTimeFormatter.ofPattern("HH:mm"))}"
+    }.getOrDefault("")
+    val watchedPosition = historyItem.playback_position.coerceAtLeast(0.0).toLong()
+    val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)
 
     val specificRequester = remember { FocusRequester() }
     LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
@@ -323,16 +331,9 @@ fun VideoWatchHistoryCard(
                     .align(Alignment.BottomStart)
                     .padding(16.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
+                if (broadcastTime.isNotBlank()) {
                     Text(
-                        text = "続きから再生",
+                        text = broadcastTime,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.8f)
                     )
@@ -340,10 +341,18 @@ fun VideoWatchHistoryCard(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = historyItem.program.title.toString(),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    maxLines = 1,
                     color = Color.White,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "前回視聴: $watchedTime",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.accent,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -489,7 +498,7 @@ fun RecordListBannerButton(
     Surface(
         onClick = onClick,
         modifier = modifier
-            .height(88.dp)
+            .height(64.dp)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
@@ -528,7 +537,7 @@ fun RecordListBannerButton(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(36.dp)
                         .background(
                             color = if (isFocused) Color.Transparent else colors.accent.copy(alpha = 0.2f),
                             shape = CircleShape
@@ -538,16 +547,16 @@ fun RecordListBannerButton(
                         imageVector = Icons.Default.List,
                         contentDescription = null,
                         tint = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.Center) {
                     Text(
                         text = "録画リスト",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
+                        fontSize = 17.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -556,7 +565,7 @@ fun RecordListBannerButton(
                         color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
                             alpha = 0.8f
                         )) else colors.textSecondary,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                 }
             }
@@ -585,7 +594,7 @@ fun SmbLibraryBannerButton(
     Surface(
         onClick = onClick,
         modifier = modifier
-            .height(88.dp)
+            .height(64.dp)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
@@ -624,7 +633,7 @@ fun SmbLibraryBannerButton(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(36.dp)
                         .background(
                             color = if (isFocused) Color.Transparent else colors.accent.copy(alpha = 0.2f),
                             shape = CircleShape
@@ -634,16 +643,16 @@ fun SmbLibraryBannerButton(
                         imageVector = Icons.Default.FolderShared,
                         contentDescription = null,
                         tint = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(verticalArrangement = Arrangement.Center) {
                     Text(
                         text = "ファイルライブラリ",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
+                        fontSize = 17.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -652,7 +661,7 @@ fun SmbLibraryBannerButton(
                         color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
                             alpha = 0.8f
                         )) else colors.textSecondary,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                 }
             }

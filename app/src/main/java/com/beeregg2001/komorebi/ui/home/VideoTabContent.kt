@@ -210,31 +210,19 @@ fun VideoTabContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        CompactHomeHeroInfo(
+            state = currentHeroInfo ?: initialHeroInfo,
+            modifier = Modifier.padding(horizontal = 48.dp, vertical = 12.dp)
+        )
 
-        Box(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.45f)
-                .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 16.dp)
+                .weight(1f),
+            contentPadding = PaddingValues(bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-            HomeHeroDashboard(
-                state = currentHeroInfo ?: initialHeroInfo,
-                getLogoUrl = getLogoUrl,
-                shouldCropLogo = shouldCropLogo
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.55f)
-        ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(32.dp)
-            ) {
                 // ★ 変更点: 録画リストとSMBのボタンを並べて表示する
                 item {
                     Row(
@@ -250,6 +238,7 @@ fun VideoTabContent(
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = FocusRequester.Cancel
+                                    up = tabFocusRequester
                                     down = recentFirstItemRequester
                                 },
                             onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
@@ -271,6 +260,7 @@ fun VideoTabContent(
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     right = FocusRequester.Cancel
+                                    up = FocusRequester.Cancel
                                     down = recentFirstItemRequester
                                 },
                             onClick = { onShowSmbLibrary() },
@@ -568,7 +558,6 @@ fun VideoTabContent(
                         }
                     }
                 }
-            }
         }
     }
 }
