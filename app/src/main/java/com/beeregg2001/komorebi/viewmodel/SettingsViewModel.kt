@@ -291,6 +291,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         false
     )
+    val hideLauncherAppLabels: StateFlow<Boolean> = settingsRepository.hideLauncherAppLabels.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        false
+    )
 
     val geminiApiKey: StateFlow<String> = settingsRepository.geminiApiKey.stateIn(
         viewModelScope,

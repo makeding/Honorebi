@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -20,6 +21,8 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private var homeIntentVersion by mutableIntStateOf(0)
 
     // Hiltが自動的にRepositoryを注入済みのViewModelを作成します
     // これらはlazyプロパティであり、アクセスされる（MainRootScreenに渡される）までインスタンス化されません。
@@ -55,6 +58,7 @@ class MainActivity : ComponentActivity() {
                         epgViewModel = epgViewModel,
                         homeViewModel = homeViewModel,
                         recordViewModel = recordViewModel,
+                        homeIntentVersion = homeIntentVersion,
                         onExitApp = { showExitDialog = true }
                     )
 
@@ -66,6 +70,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
+            homeIntentVersion++
         }
     }
 }

@@ -53,6 +53,7 @@ fun MainRootScreen(
     recordViewModel: RecordViewModel,
     reserveViewModel: ReserveViewModel = hiltViewModel(),
     aiConciergeViewModel: AiConciergeViewModel = hiltViewModel(),
+    homeIntentVersion: Int = 0,
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
@@ -408,6 +409,52 @@ fun MainRootScreen(
         recordViewModel.fetchRecentRecordings(forceRefresh = false); reserveViewModel.fetchReserves()
         state.settingsInitialCategoryIndex = 0
         state.settingsInitialFocusItemIndex = null
+    }
+
+    val returnToLauncherHome = {
+        if (state.isSettingsOpen) {
+            closeSettingsAndRefresh()
+        } else {
+            state.currentTabIndex = 0
+        }
+
+        state.selectedChannel = null
+        state.selectedProgram = null
+        state.selectedSmbItem = null
+        state.epgSelectedProgram = null
+        state.selectedReserve = null
+        state.editingReserveItem = null
+        state.editingNewProgram = null
+        state.reserveToDelete = null
+        state.selectedProgramForAutoReserve = null
+        state.editingCondition = null
+        state.selectedConditionReserveItem = null
+        state.openedSeriesTitle = null
+        state.isRecordListOpen = false
+        state.isSeriesListOpen = false
+        state.isSmbLibraryOpen = false
+        state.isEpgJumpMenuOpen = false
+        state.showDeleteConfirmDialog = false
+        state.isAiConciergeOpen = false
+        state.showAiKeyboardInput = false
+        state.isMiniPlayerMode = false
+        state.isPlayerMiniListOpen = false
+        state.playerShowOverlay = false
+        state.playerIsManualOverlay = false
+        state.playerIsPinnedOverlay = false
+        state.playerIsSubMenuOpen = false
+        state.isPlayerSubMenuOpen = false
+        state.isPlayerSceneSearchOpen = false
+        state.showPlayerControls = true
+        state.isReturningFromPlayer = true
+        state.isBaseballMode = false
+        state.triggerHomeBack = false
+    }
+
+    LaunchedEffect(homeIntentVersion) {
+        if (homeIntentVersion > 0) {
+            returnToLauncherHome()
+        }
     }
 
     LaunchedEffect(state.toastMessage) {

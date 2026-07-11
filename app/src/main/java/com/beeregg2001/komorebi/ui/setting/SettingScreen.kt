@@ -156,6 +156,7 @@ fun SettingsScreen(
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
+                FocusRequester(),
                 FocusRequester()
             ),
             listOf(FocusRequester(), FocusRequester(), FocusRequester(), FocusRequester()),
@@ -896,6 +897,14 @@ fun SettingsScreen(
                                 ) { viewModel.updateTimeFormat(it) }
                             },
                             { viewModel.toggleHideSubChannels() },
+                            {
+                                scope.launch {
+                                    repository.saveBoolean(
+                                        SettingsRepository.HIDE_LAUNCHER_APP_LABELS,
+                                        !prefs.hideLauncherAppLabels
+                                    )
+                                }
+                            },
                             itemFocusRequesters[5].dropLast(1), itemFocusRequesters[5].last()
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
 

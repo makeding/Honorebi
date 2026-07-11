@@ -586,6 +586,7 @@ fun LauncherAppCard(
     iconSize: Dp = 56.dp,
     showBorder: Boolean = true,
     fullBleedBanner: Boolean = false,
+    showLabel: Boolean = true,
     manualConfirmHandling: Boolean = false,
     isEditing: Boolean = false,
     onMoveLeft: () -> Unit = {},
@@ -759,14 +760,18 @@ fun LauncherAppCard(
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(bannerHeight),
+                        .then(if (showLabel) Modifier.height(bannerHeight) else Modifier.fillMaxHeight())
+                        .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Fit
                 )
             } else {
                 Box(
                     modifier = Modifier
                         .width(if (app.banner != null) bannerWidth else iconSize)
-                        .height(if (app.banner != null) bannerHeight else iconSize)
+                        .then(
+                            if (!showLabel) Modifier.fillMaxHeight()
+                            else Modifier.height(if (app.banner != null) bannerHeight else iconSize)
+                        )
                         .clip(RoundedCornerShape(if (app.banner != null) 8.dp else 12.dp))
                         .background(colors.textPrimary.copy(alpha = 0.06f)),
                     contentAlignment = Alignment.Center
@@ -781,16 +786,18 @@ fun LauncherAppCard(
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = app.label,
-                modifier = Modifier.padding(horizontal = 8.dp),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.82f),
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (showLabel) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = app.label,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.82f),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

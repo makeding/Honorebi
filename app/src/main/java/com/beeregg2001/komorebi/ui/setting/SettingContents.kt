@@ -902,6 +902,7 @@ fun DisplaySettingsContent(
     onEditDefaultView: () -> Unit,
     onEditTimeFormat: () -> Unit,
     onToggleHideSubChannels: () -> Unit,
+    onToggleHideLauncherAppLabels: () -> Unit,
     itemRs: List<FocusRequester>,
     hideSubChannelsR: FocusRequester,
     onClick: (FocusRequester) -> Unit
@@ -963,8 +964,22 @@ fun DisplaySettingsContent(
                         left = sidebarR
                         up = itemRs[2]
                         down = hideSubChannelsR
-                    },
+                },
                 onClick = { onClick(itemRs[3]); onEditTimeFormat() })
+
+            SettingItem(
+                title = "アプリ名を非表示にする",
+                value = if (preferences.hideLauncherAppLabels) "ON" else "OFF",
+                icon = Icons.Default.Apps,
+                modifier = Modifier
+                    .focusRequester(itemRs[4])
+                    .focusProperties {
+                        left = sidebarR
+                        up = itemRs[3]
+                        down = hideSubChannelsR
+                    },
+                onClick = { onClick(itemRs[4]); onToggleHideLauncherAppLabels() }
+            )
 
             SettingItem(
                 title = "サブチャンネルを非表示にする",
@@ -973,8 +988,8 @@ fun DisplaySettingsContent(
                 modifier = Modifier
                     .focusRequester(hideSubChannelsR)
                     .focusProperties {
-                        left = sidebarR
-                        up = itemRs[3]
+                    left = sidebarR
+                    up = itemRs[4]
                         down = FocusRequester.Cancel
                     },
                 onClick = { onClick(hideSubChannelsR); onToggleHideSubChannels() }

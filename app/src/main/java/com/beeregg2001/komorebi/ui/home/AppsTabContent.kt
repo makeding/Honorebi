@@ -28,6 +28,8 @@ import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppCard
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
+import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
 
 private const val TAG = "AppsTabContent"
@@ -38,6 +40,7 @@ fun AppsTabContent(
     tabFocusRequester: FocusRequester,
     contentFirstItemRequester: FocusRequester,
     onUiReady: () -> Unit,
+    settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val hiddenLauncherApps by homeViewModel.hiddenLauncherApps.collectAsState()
@@ -47,6 +50,7 @@ fun AppsTabContent(
     val hiddenApps = remember(hiddenLauncherApps) {
         hiddenLauncherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }
     }
+    val hideAppLabels by settingsViewModel.hideLauncherAppLabels.collectAsState()
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
@@ -196,6 +200,7 @@ fun AppsTabContent(
                                 iconSize = iconSize,
                                 showBorder = false,
                                 fullBleedBanner = true,
+                                showLabel = !hideAppLabels,
                                 manualConfirmHandling = true,
                                 isEditing = editingAppId == app.stableId,
                                 onMoveLeft = { if (!isHiddenCatalog) moveVisibleApp(index, -1) },
