@@ -368,9 +368,10 @@ fun LivePlayerScreen(
         onDispose {
             Log.d(
                 TAG,
-                "LivePlayerScreen disposed. Completely releasing players to free hardware decoders."
+                "LivePlayerScreen disposed: channel=${currentChannelItem.displayChannelId}, " +
+                    "releasing players to free hardware decoders."
             )
-            livePlayerViewModel.releasePlayers()
+            livePlayerViewModel.releasePlayers("screen_dispose")
             channelViewModel.setPollingPaused(false)
         }
     }
@@ -516,9 +517,19 @@ fun LivePlayerScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
+                Log.w(
+                    TAG,
+                    "Live screen lifecycle ON_STOP: channel=${currentChannelItem.displayChannelId}, " +
+                        "state=${lifecycleOwner.lifecycle.currentState}"
+                )
                 hasStoppedByLifecycle = true
-                livePlayerViewModel.releasePlayers()
+                livePlayerViewModel.releasePlayers("lifecycle_on_stop")
             } else if (event == Lifecycle.Event.ON_START) {
+                Log.i(
+                    TAG,
+                    "Live screen lifecycle ON_START: channel=${currentChannelItem.displayChannelId}, " +
+                        "wasStopped=$hasStoppedByLifecycle"
+                )
                 if (hasStoppedByLifecycle) {
                     hasStoppedByLifecycle = false
                     ps.retryKey++
@@ -705,7 +716,10 @@ fun LivePlayerScreen(
                         if (view.resizeMode != targetMode) view.resizeMode = targetMode
                     }
                 },
-                onRelease = { view -> view.player = null },
+                onRelease = { view ->
+                    view.player = null
+                    view.keepScreenOn = false
+                },
                 modifier = mainPlayerModifier
                     .graphicsLayer {
                         if (ps.lCropEnabled) {

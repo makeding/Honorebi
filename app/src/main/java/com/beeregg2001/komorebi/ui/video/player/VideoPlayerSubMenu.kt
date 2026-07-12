@@ -531,6 +531,14 @@ private fun QuickVideoSection(
                         konomiPort = konomiPort,
                         onClick = { onVideoSelect(program) },
                         modifier = requesterModifier
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionUp) {
+                                    runCatching { upRequester.requestFocus() }
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                             .focusProperties {
                                 up = upRequester
                                 down = downRequester ?: FocusRequester.Cancel

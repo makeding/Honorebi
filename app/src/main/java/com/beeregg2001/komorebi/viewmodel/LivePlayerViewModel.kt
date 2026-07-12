@@ -321,7 +321,13 @@ class LivePlayerViewModel @Inject constructor(
         return sources.first()
     }
 
-    private fun stopMainPlaybackSafely() {
+    private fun stopMainPlaybackSafely(reason: String = "unspecified") {
+        Log.w(
+            TAG,
+            "Stopping main playback: reason=$reason, " +
+                "player=${_mainPlayer.value != null}, channel=${mainCurrentChannel?.displayChannelId}, " +
+                "source=$mainCurrentSource, quality=${mainCurrentQuality?.value}"
+        )
         mainEventSource?.cancel(); mainEventSource = null
         mainCaptionDecoder.flush()
 
@@ -334,7 +340,13 @@ class LivePlayerViewModel @Inject constructor(
         liveJikkyoManager.stopJikkyo()
     }
 
-    private fun stopDualPlaybackSafely() {
+    private fun stopDualPlaybackSafely(reason: String = "unspecified") {
+        Log.w(
+            TAG,
+            "Stopping dual playback: reason=$reason, " +
+                "player=${_dualPlayer.value != null}, channel=${dualCurrentChannel?.displayChannelId}, " +
+                "source=$dualCurrentSource, quality=${dualCurrentQuality?.value}"
+        )
         dualEventSource?.cancel(); dualEventSource = null
         dualCaptionDecoder.flush()
 
@@ -346,7 +358,13 @@ class LivePlayerViewModel @Inject constructor(
         _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
     }
 
-    fun releasePlayers() {
+    fun releasePlayers(reason: String = "unspecified") {
+        Log.w(
+            TAG,
+            "Releasing live players: reason=$reason, " +
+                "main=${_mainPlayer.value != null}, dual=${_dualPlayer.value != null}, " +
+                "mainChannel=${mainCurrentChannel?.displayChannelId}, dualChannel=${dualCurrentChannel?.displayChannelId}"
+        )
         mainPlaybackJob?.cancel(); dualPlaybackJob?.cancel()
         mainEventSource?.cancel(); dualEventSource?.cancel()
 
@@ -382,7 +400,7 @@ class LivePlayerViewModel @Inject constructor(
             if (mainAutoRetryCount < MAX_AUTO_RETRY) {
                 mainAutoRetryCount++; _mainSseDetail.value =
                     "通信復旧中... ($mainAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopMainPlaybackSafely(); delay(2000)
+                stopMainPlaybackSafely("main_player_error_retry"); delay(2000)
                 if (mainCurrentChannel != null && mainCurrentQuality != null) {
                     playMainChannel(
                         uiContext,
@@ -395,7 +413,7 @@ class LivePlayerViewModel @Inject constructor(
                 }
             } else {
                 _mainPlayerError.value = errorMsg
-                stopMainPlaybackSafely()
+                stopMainPlaybackSafely("main_player_error_exhausted")
             }
         }
     }
@@ -418,7 +436,7 @@ class LivePlayerViewModel @Inject constructor(
             if (dualAutoRetryCount < MAX_AUTO_RETRY) {
                 dualAutoRetryCount++; _dualSseDetail.value =
                     "通信復旧中... ($dualAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopDualPlaybackSafely(); delay(2000)
+                stopDualPlaybackSafely("dual_player_error_retry"); delay(2000)
                 if (dualCurrentChannel != null && dualCurrentQuality != null) {
                     playDualChannel(
                         uiContext,
@@ -431,7 +449,7 @@ class LivePlayerViewModel @Inject constructor(
                 }
             } else {
                 _dualSseStatus.value = "Error"; _dualSseDetail.value = errorMsg
-                stopDualPlaybackSafely()
+                stopDualPlaybackSafely("dual_player_error_exhausted")
             }
         }
     }

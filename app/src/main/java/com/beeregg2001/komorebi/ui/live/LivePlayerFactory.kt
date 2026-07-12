@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -25,6 +26,8 @@ import com.beeregg2001.komorebi.data.model.LivePlayerConstants
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val TAG = "LivePlayerFactory"
 
 /**
  * ライブ視聴用の ExoPlayer インスタンスを生成・設定するファクトリクラスです。
@@ -118,6 +121,14 @@ class LivePlayerFactory @Inject constructor(
 
                 addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
+                        Log.e(
+                            TAG,
+                            "Live player error: code=${error.errorCodeName}, " +
+                                "state=${playbackState}, isPlaying=$isPlaying, " +
+                                "positionMs=$currentPosition, bufferedPositionMs=$bufferedPosition, " +
+                                "message=${error.message}, cause=${error.cause?.javaClass?.name}: ${error.cause?.message}",
+                            error
+                        )
                         onError(error)
                     }
 

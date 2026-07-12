@@ -145,6 +145,7 @@ fun DualDisplayPlayer(
                     // ★ 修正2: 破棄時に参照を外す
                     onRelease = { view ->
                         view.player = null
+                        view.keepScreenOn = false
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -256,6 +257,7 @@ fun DualDisplayPlayer(
                         // ★ 修正2: 破棄時に参照を外す
                         onRelease = { view ->
                             view.player = null
+                            view.keepScreenOn = false
                         },
                         modifier = Modifier.fillMaxSize()
                     )

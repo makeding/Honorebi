@@ -1140,6 +1140,10 @@ fun VideoPlayerScreen(
                     if (view.resizeMode != targetMode) view.resizeMode = targetMode
                 }
             },
+            onRelease = { view ->
+                exoPlayer.clearVideoSurfaceView(view.getChildAt(0) as SurfaceView)
+                view.keepScreenOn = false
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {

@@ -774,7 +774,7 @@ fun CompactChannelCard(
                             model = logoUrl,
                             contentDescription = uiState.name,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
+                            contentScale = ContentScale.Crop
                         )
                     }
                 }
