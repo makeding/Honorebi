@@ -10,6 +10,8 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,6 +100,7 @@ private const val C_PART_SIGNAL_CLUSTER_WINDOW_MS = 30_000L
 private const val LATE_C_PART_WINDOW_START_MS = 28 * 60 * 1000L + 30_000L
 private const val MIN_LATE_C_PART_COMMENTS = 8
 private const val MIN_LATE_C_PART_PEAK_RATIO = 1.6f
+private val PLAYER_CONTROLS_SUBTITLE_OFFSET = 96.dp
 
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
@@ -262,6 +265,21 @@ fun VideoPlayerScreen(
 
     val isSubOverlayOpen =
         isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
+    val isSubtitleBlockingOverlayOpen =
+        isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
+    val subtitleOffset by animateDpAsState(
+        targetValue = if (
+            showControls &&
+            !isSubOverlayOpen &&
+            vs.lCropMode == LCropMode.HIDDEN
+        ) {
+            PLAYER_CONTROLS_SUBTITLE_OFFSET
+        } else {
+            0.dp
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "playerControlsSubtitleOffset"
+    )
 
     val buildVideoMediaItem: (String) -> MediaItem = { url ->
         val mediaItemBuilder = MediaItem.Builder().setUri(url)
@@ -1180,8 +1198,10 @@ fun VideoPlayerScreen(
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(
                         cue = subtitleCue.value,
-                        visible = vs.isSubtitleEnabled && !isSubOverlayOpen,
-                        modifier = Modifier.fillMaxSize()
+                        visible = vs.isSubtitleEnabled && !isSubtitleBlockingOverlayOpen,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset(y = -subtitleOffset)
                     )
                 }
             }
