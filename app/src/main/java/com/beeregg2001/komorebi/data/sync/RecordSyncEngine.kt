@@ -73,7 +73,6 @@ class RecordSyncEngine @Inject constructor(
     }
 
     private val BATCH_SIZE get() = if (isLowRamDevice) 30 else 100
-    private val GC_DELAY_MS get() = if (isLowRamDevice) 2000L else 1200L
 
     private fun hasRecordChanged(
         local: RecordedProgramEntity?,
@@ -254,12 +253,7 @@ class RecordSyncEngine @Inject constructor(
                             isCompleted = true
                         } else {
                             currentPage++
-                            if (isInitial) {
-                                System.gc()
-                                delay(GC_DELAY_MS)
-                            } else {
-                                delay(if (isLowRamDevice) 500L else 300L)
-                            }
+                            delay(if (isLowRamDevice) 500L else 300L)
                         }
                     }
 

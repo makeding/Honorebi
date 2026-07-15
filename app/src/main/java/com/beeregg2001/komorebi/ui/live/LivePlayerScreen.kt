@@ -57,8 +57,8 @@ import master.flame.danmaku.danmaku.model.BaseDanmaku
 
 private const val TAG = "LivePlayerScreen"
 private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
-private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 36
-private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 12
+private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 16
+private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 4
 
 private fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
     if (keyEvent.type != KeyEventType.KeyUp) return false

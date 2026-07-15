@@ -18,6 +18,8 @@ import master.flame.danmaku.danmaku.model.android.Danmakus
 import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.ui.widget.DanmakuView
 
+private const val LIVE_MAX_VISIBLE_DANMAKU = 80
+
 @Composable
 fun LiveCommentOverlay(
     modifier: Modifier = Modifier,
@@ -45,14 +47,13 @@ fun LiveCommentOverlay(
             // ★ パフォーマンス究極チューニング (エラーになる非公開APIを削除)
             setDanmakuSync(null) // デフォルトの時計同期アルゴリズムを使用
 
-            // キャッシュのメモリ管理を最適化（カクツキの原因であるBitmap確保を裏で行う）
+            // Keep text layout simple for live comments; bitmap drawing cache is disabled below.
             setCacheStuffer(
                 master.flame.danmaku.danmaku.model.android.SimpleTextCacheStuffer(),
                 null
             )
 
-            // 最大表示数を制限して極端な負荷スパイクを防ぐ
-            setMaximumVisibleSizeInScreen(200)
+            setMaximumVisibleSizeInScreen(LIVE_MAX_VISIBLE_DANMAKU)
 
             val overlappingEnablePair = mapOf(
                 BaseDanmaku.TYPE_SCROLL_RL to true,
@@ -96,8 +97,9 @@ fun LiveCommentOverlay(
                     if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
                 setLayerType(initialLayerType, null)
 
-                // ★ 描画キャッシュを有効化（これで文字列->画像の変換処理が裏で行われる）
-                enableDanmakuDrawingCache(true)
+                // Live comments are mostly one-off strings; caching them grows the Java heap
+                // without much reuse and can starve the decoder/display pipeline on Android TV.
+                enableDanmakuDrawingCache(false)
 
                 setCallback(object : DrawHandler.Callback {
                     override fun prepared() {
