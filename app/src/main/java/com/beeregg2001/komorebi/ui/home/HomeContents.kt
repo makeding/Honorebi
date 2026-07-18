@@ -19,7 +19,11 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
@@ -158,10 +162,13 @@ fun HomeContents(
         }
     }
 
-    val upToTabModifier = Modifier.onKeyEvent {
-        if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN && it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
-            tabFocusRequester.safeRequestFocus(TAG); true
-        } else false
+    val upToTabModifier = Modifier.onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+            tabFocusRequester.safeRequestFocus(TAG)
+            true
+        } else {
+            false
+        }
     }
 
     val layoutInfo = lazyListState.layoutInfo

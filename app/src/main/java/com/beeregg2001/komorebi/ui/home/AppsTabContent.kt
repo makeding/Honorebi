@@ -17,7 +17,11 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -228,9 +232,9 @@ fun AppsTabContent(
                                     .focusProperties {
                                         if (columnIndex == 0) left = FocusRequester.Cancel
                                     }
-                                    .onKeyEvent {
-                                        if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                            it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP &&
+                                    .onPreviewKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionUp &&
                                             rowIndex == 0 &&
                                             editingAppId == null
                                         ) {
@@ -240,8 +244,8 @@ fun AppsTabContent(
                                                 tabFocusRequester.safeRequestFocus(TAG)
                                             }
                                             true
-                                        } else if (it.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                            it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN &&
+                                        } else if (event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionDown &&
                                             rowIndex == appRows.lastIndex &&
                                             hiddenApps.isNotEmpty() &&
                                             editingAppId == null &&
