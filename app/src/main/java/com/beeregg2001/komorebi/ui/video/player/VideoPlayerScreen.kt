@@ -194,11 +194,12 @@ fun VideoPlayerScreen(
                 "MMT/TLV",
                 ignoreCase = true
             )
-            val matched = if (isMmtsRecording) {
-                availableQualities.firstOrNull { it.isRawMmts }
-            } else {
-                availableQualities.find { it.value == currentVideoQualityStr }
-            }
+            val matched = availableQualities.find { it.value == vs.currentQuality.value }
+                ?: if (isMmtsRecording) {
+                    availableQualities.firstOrNull { it.isRawMmts }
+                } else {
+                    availableQualities.find { it.value == currentVideoQualityStr }
+                }
             if (matched != null) {
                 vs.currentQuality = matched
             } else {
