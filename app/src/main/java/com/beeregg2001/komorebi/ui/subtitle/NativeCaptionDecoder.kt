@@ -52,21 +52,27 @@ class NativeCaptionDecoder(
                 referenceStartPtsMs ?: Long.MIN_VALUE,
                 discontinuity
             ).toList()
-            val cues = if (discontinuity) {
-                listOf(
-                    NativeCaptionCue(
-                        ptsMs = ptsMs,
-                        durationMs = -1L,
-                        clearScreen = true,
-                        planeWidth = 1,
-                        planeHeight = 1,
-                        images = emptyList(),
-                        resetTimeline = true
-                    )
-                ) + decoded
-            } else {
-                decoded
-            }
+            Log.i(
+                TAG,
+                "B62 cues docPts=$ptsMs op=$operationMode tmd=$timingMode ref=$referenceStartPtsMs " +
+                    decoded.take(12).joinToString(prefix = "[", postfix = "]") {
+                        "${it.ptsMs}/${it.durationMs}/clear=${it.clearScreen}"
+                    }
+            )
+            val timelineCommand = NativeCaptionCue(
+                ptsMs = if (discontinuity) ptsMs else decoded.minOfOrNull { it.ptsMs } ?: ptsMs,
+                durationMs = 0L,
+                clearScreen = true,
+                planeWidth = 1,
+                planeHeight = 1,
+                images = emptyList(),
+                timelineCommand = if (discontinuity) {
+                    NativeCaptionCue.TIMELINE_COMMAND_RESET
+                } else {
+                    NativeCaptionCue.TIMELINE_COMMAND_REPLACE_FROM
+                }
+            )
+            val cues = listOf(timelineCommand) + decoded
             cues.also {
                 if (cues.isNotEmpty()) {
                     languages = listOf(NativeCaptionLanguage(id = 1, iso6392Code = "jpn"))

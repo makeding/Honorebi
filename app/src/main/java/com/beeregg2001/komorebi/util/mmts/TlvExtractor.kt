@@ -224,6 +224,12 @@ class TlvExtractor(
 
             CODEC_TTML -> {
                 if (trackId != subtitleTrackId) return
+                Log.i(
+                    TAG,
+                    "B62 sample ptsUs=$timeUs op=$subtitleOperationMode tmd=$subtitleTimingMode " +
+                        "refPts=$subtitleReferenceStartPtsValue/$subtitleReferenceStartPtsTimescale " +
+                        "discontinuity=$discontinuity ttml=${data.toString(Charsets.UTF_8).replace('\n', ' ').take(600)}"
+                )
                 onSubtitleDataReceived(
                     B62SubtitleSample(
                         timeUs = timeUs,

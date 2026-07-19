@@ -76,7 +76,7 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
     }
 
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;Z)V");
+    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;I)V");
     jobject cue = env->NewObject(
         cueClass,
         cueCtor,
@@ -86,7 +86,7 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
         static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
         static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
         images,
-        JNI_FALSE);
+        0);
 
     env->DeleteLocalRef(images);
     env->DeleteLocalRef(imageClass);
@@ -135,7 +135,7 @@ jobject renderResultToCue(JNIEnv* env, aribcaption::RenderResult& result, int64_
     }
 
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;Z)V");
+    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;I)V");
     jobject cue = env->NewObject(
         cueClass,
         cueCtor,
@@ -145,7 +145,7 @@ jobject renderResultToCue(JNIEnv* env, aribcaption::RenderResult& result, int64_
         static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
         static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
         images,
-        JNI_FALSE);
+        0);
 
     env->DeleteLocalRef(images);
     env->DeleteLocalRef(imageClass);

@@ -44,14 +44,20 @@ fun rememberNativeCaptionCue(
             return@LaunchedEffect
         }
         events.collect { cue ->
-            if (cue.resetTimeline) {
-                timeline.clear()
-                cueState.value = null
-            } else {
-                timeline[cue.ptsMs] = cue
-                while (timeline.size > MAX_TIMELINE_CUES) {
-                    timeline.pollFirstEntry()
+            when (cue.timelineCommand) {
+                NativeCaptionCue.TIMELINE_COMMAND_RESET -> {
+                    timeline.clear()
+                    cueState.value = null
+                    return@collect
                 }
+                NativeCaptionCue.TIMELINE_COMMAND_REPLACE_FROM -> {
+                    timeline.tailMap(cue.ptsMs, true).clear()
+                    return@collect
+                }
+            }
+            timeline[cue.ptsMs] = cue
+            while (timeline.size > MAX_TIMELINE_CUES) {
+                timeline.pollFirstEntry()
             }
         }
     }
