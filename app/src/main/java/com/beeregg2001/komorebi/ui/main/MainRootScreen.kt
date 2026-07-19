@@ -409,6 +409,7 @@ fun MainRootScreen(
         recordViewModel.fetchRecentRecordings(forceRefresh = false); reserveViewModel.fetchReserves()
         state.settingsInitialCategoryIndex = 0
         state.settingsInitialFocusItemIndex = null
+        state.settingsOpenDeviceCapabilities = false
     }
 
     val returnToLauncherHome = {
@@ -754,6 +755,15 @@ fun MainRootScreen(
                                     onBackPressed = {
                                         state.selectedChannel = null; state.isReturningFromPlayer =
                                         true; state.isMiniPlayerMode = false
+                                    },
+                                    onCheckDeviceCapabilities = {
+                                        state.selectedChannel = null
+                                        state.isReturningFromPlayer = true
+                                        state.isMiniPlayerMode = false
+                                        state.settingsInitialCategoryIndex = 2
+                                        state.settingsInitialFocusItemIndex = 8
+                                        state.settingsOpenDeviceCapabilities = true
+                                        state.isSettingsOpen = true
                                     },
                                     onShowToast = { state.toastMessage = it },
                                     isPiPMode = state.isMiniPlayerMode,

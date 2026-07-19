@@ -550,6 +550,7 @@ fun PlaybackSettingsContent(
     layerR: FocusRequester,
     uiModeR: FocusRequester,
     autoCmSkipR: FocusRequester,
+    capabilityR: FocusRequester,
     sidebarR: FocusRequester,
     onL: () -> Unit,
     onV: () -> Unit,
@@ -559,6 +560,7 @@ fun PlaybackSettingsContent(
     onLayer: () -> Unit,
     onUiMode: () -> Unit,
     onAutoCmSkip: () -> Unit,
+    onCapabilities: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -673,9 +675,25 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = uiModeR
-                        down = FocusRequester.Cancel
+                        down = capabilityR
                     },
                 onClick = { onClick(autoCmSkipR); onAutoCmSkip() }
+            )
+        }
+
+        SettingsSection("デバイス") {
+            SettingItem(
+                title = "テレビ再生能力",
+                value = "HEVC / 4K / 8K / HDR / 音声を確認",
+                icon = Icons.Default.Memory,
+                modifier = Modifier
+                    .focusRequester(capabilityR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = autoCmSkipR
+                        down = FocusRequester.Cancel
+                    },
+                onClick = { onClick(capabilityR); onCapabilities() }
             )
         }
     }

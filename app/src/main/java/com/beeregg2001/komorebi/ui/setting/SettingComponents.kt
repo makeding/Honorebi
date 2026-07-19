@@ -90,6 +90,7 @@ sealed class SettingDialogState {
 
     object Licenses : SettingDialogState()
     object GeminiSetup : SettingDialogState()
+    object DeviceCapabilities : SettingDialogState()
 
     data class SmbAction(val target: SmbServer) : SettingDialogState()
     data class SmbSetup(val target: SmbServer? = null) : SettingDialogState()

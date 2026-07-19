@@ -399,6 +399,7 @@ fun MainRootDialogs(
             onBack = closeSettingsAndRefresh,
             initialCategoryIndex = state.settingsInitialCategoryIndex,
             initialFocusItemIndex = state.settingsInitialFocusItemIndex,
+            initialOpenDeviceCapabilities = state.settingsOpenDeviceCapabilities,
             onClearLastChannel = {
                 homeViewModel.clearLastChannelHistory(); state.toastMessage =
                 AppStrings.TOAST_CHANNEL_HISTORY_DELETED

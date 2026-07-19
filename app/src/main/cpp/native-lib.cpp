@@ -208,7 +208,7 @@ public:
         onTrackMethod_ = env->GetMethodID(
             callbackClass,
             "onTrack",
-            "(JJIIILjava/lang/String;IJ)V");
+            "(JJIIILjava/lang/String;IJIIZ)V");
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
@@ -259,6 +259,13 @@ public:
     void onTrack(const tlvdemux::TrackInfo& info) override {
         if (!canCallback(onTrackMethod_)) return;
         jstring language = currentEnv_->NewStringUTF(info.language.c_str());
+        const auto audioLayout = info.audio.has_value()
+            ? static_cast<jint>(info.audio->channel_layout)
+            : static_cast<jint>(tlvdemux::AudioChannelLayout::Unknown);
+        const auto audioSampleRate = info.audio.has_value()
+            ? static_cast<jint>(info.audio->sample_rate)
+            : 0;
+        const auto audioMainComponent = info.audio.has_value() && info.audio->main_component;
         currentEnv_->CallVoidMethod(
             callback_,
             onTrackMethod_,
@@ -269,7 +276,10 @@ public:
             static_cast<jint>(info.codec),
             language,
             static_cast<jint>(info.component_tag),
-            static_cast<jlong>(info.timescale));
+            static_cast<jlong>(info.timescale),
+            audioLayout,
+            audioSampleRate,
+            audioMainComponent ? JNI_TRUE : JNI_FALSE);
         currentEnv_->DeleteLocalRef(language);
     }
 

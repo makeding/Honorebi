@@ -469,9 +469,18 @@ fun RecordingIndicator() {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun LiveErrorDialog(errorMessage: String, onRetry: () -> Unit, onBack: () -> Unit) {
+fun LiveErrorDialog(
+    errorMessage: String,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    onCheckCapabilities: (() -> Unit)? = null
+) {
     val retryButtonFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { retryButtonFocusRequester.requestFocus() }
+    val capabilityButtonFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(onCheckCapabilities) {
+        (if (onCheckCapabilities != null) capabilityButtonFocusRequester else retryButtonFocusRequester)
+            .requestFocus()
+    }
 
     Box(
         modifier = Modifier
@@ -510,6 +519,23 @@ fun LiveErrorDialog(errorMessage: String, onRetry: () -> Unit, onBack: () -> Uni
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(32.dp))
+                if (onCheckCapabilities != null) {
+                    Button(
+                        onClick = onCheckCapabilities,
+                        colors = ButtonDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(capabilityButtonFocusRequester)
+                    ) {
+                        Icon(Icons.Default.Memory, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("テレビの再生能力を確認")
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)

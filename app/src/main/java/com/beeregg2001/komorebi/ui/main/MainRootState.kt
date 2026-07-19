@@ -68,6 +68,7 @@ class MainRootState {
     // ★ 追加: 設定画面を開く際のターゲット指定（ディープリンク用）
     var settingsInitialCategoryIndex by mutableIntStateOf(0)
     var settingsInitialFocusItemIndex by mutableStateOf<Int?>(null)
+    var settingsOpenDeviceCapabilities by mutableStateOf(false)
 
     var isRecordListOpen by mutableStateOf(false)
     var isSeriesListOpen by mutableStateOf(false)

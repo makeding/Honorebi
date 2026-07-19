@@ -56,6 +56,7 @@ fun SettingsScreen(
     onClearWatchHistory: () -> Unit = {},
     initialCategoryIndex: Int = 0,
     initialFocusItemIndex: Int? = null,
+    initialOpenDeviceCapabilities: Boolean = false,
     viewModel: SettingsViewModel = hiltViewModel(),
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
@@ -133,6 +134,7 @@ fun SettingsScreen(
                 FocusRequester()
             ),
             listOf(
+                FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
@@ -218,6 +220,14 @@ fun SettingsScreen(
             uiState.restoreFocusRequester?.safeRequestFocus("SettingScreen_Restore")
             delay(100)
             uiState.isRestoringFocus = false
+        }
+    }
+
+    LaunchedEffect(initialOpenDeviceCapabilities) {
+        if (initialOpenDeviceCapabilities) {
+            uiState.restoreFocusRequester = itemFocusRequesters[2][8]
+            uiState.restoreCategoryIndex = 2
+            uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
     }
 
@@ -538,6 +548,7 @@ fun SettingsScreen(
                             itemFocusRequesters[2][5],
                             itemFocusRequesters[2][6],
                             itemFocusRequesters[2][7],
+                            itemFocusRequesters[2][8],
                             categoryFocusRequesters[2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -649,6 +660,9 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.DeviceCapabilities
                             }
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 2 }
 
@@ -1087,6 +1101,7 @@ fun SettingsScreen(
                 { closeDialog() })
 
             is SettingDialogState.Licenses -> OpenSourceLicensesScreen(onBack = { closeDialog() })
+            is SettingDialogState.DeviceCapabilities -> DeviceCapabilitiesScreen(onBack = { closeDialog() })
             is SettingDialogState.GeminiSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
                 GeminiSetupDialog(

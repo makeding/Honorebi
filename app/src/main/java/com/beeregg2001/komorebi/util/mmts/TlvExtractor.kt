@@ -25,7 +25,9 @@ private const val MMTS_CONTAINER_MIME_TYPE = "application/x-arib-mmts"
 class TlvExtractorsFactory(
     private val preferredVideoPacketId: Int?
 ) : ExtractorsFactory {
-    override fun createExtractors(): Array<Extractor> = arrayOf(TlvExtractor(preferredVideoPacketId))
+    override fun createExtractors(): Array<Extractor> = arrayOf(
+        TlvExtractor(preferredVideoPacketId)
+    )
 }
 
 /**
@@ -96,7 +98,10 @@ class TlvExtractor(
         codec: Int,
         language: String,
         componentTag: Int,
-        timescale: Long
+        timescale: Long,
+        audioChannelLayout: Int,
+        audioSampleRate: Int,
+        audioMainComponent: Boolean
     ) {
         if (tracksEnded) return
         val output = extractorOutput ?: return
@@ -111,7 +116,9 @@ class TlvExtractor(
                 Log.i(TAG, "MMTS video track: context=$contextId packetId=0x${packetId.toString(16)}")
             }
 
-            codec == CODEC_AAC_LATM && !audioReaders.containsKey(trackId) -> {
+            codec == CODEC_AAC_LATM &&
+                audioChannelLayout != AUDIO_LAYOUT_22_2 &&
+                !audioReaders.containsKey(trackId) -> {
                 audioReaders[trackId] = LatmReader(
                     language.ifBlank { null },
                     0,
@@ -119,9 +126,17 @@ class TlvExtractor(
                 ).also { it.createTracks(output, trackIdGenerator) }
                 Log.i(
                     TAG,
-                    "MMTS audio track: context=$contextId packetId=0x${packetId.toString(16)} language=$language"
+                    "MMTS audio track: context=$contextId packetId=0x${packetId.toString(16)} " +
+                        "language=$language layout=${audioLayoutName(audioChannelLayout)} " +
+                        "sampleRate=$audioSampleRate main=$audioMainComponent"
                 )
             }
+
+            codec == CODEC_AAC_LATM -> Log.i(
+                TAG,
+                "Ignoring unsupported MMTS audio track: packetId=0x${packetId.toString(16)} " +
+                    "layout=${audioLayoutName(audioChannelLayout)}"
+            )
 
             codec == CODEC_TTML -> Log.d(
                 TAG,
@@ -201,9 +216,19 @@ class TlvExtractor(
 
     private fun ByteArray.toHexString(): String = joinToString(separator = "") { "%02x".format(it) }
 
+    private fun audioLayoutName(layout: Int): String = when (layout) {
+        AUDIO_LAYOUT_STEREO -> "stereo"
+        AUDIO_LAYOUT_5_1 -> "5.1ch"
+        AUDIO_LAYOUT_22_2 -> "22.2ch"
+        else -> "layout-$layout"
+    }
+
     companion object {
         private const val CODEC_HEVC = 0
         private const val CODEC_AAC_LATM = 1
         private const val CODEC_TTML = 2
+        private const val AUDIO_LAYOUT_STEREO = 3
+        private const val AUDIO_LAYOUT_5_1 = 9
+        private const val AUDIO_LAYOUT_22_2 = 14
     }
 }

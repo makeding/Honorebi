@@ -107,6 +107,9 @@ class LivePlayerViewModel @Inject constructor(
 
     private val _mainPlayerError = MutableStateFlow<String?>(null)
     val mainPlayerError: StateFlow<String?> = _mainPlayerError.asStateFlow()
+    private val _mainPlayerErrorIsCapabilityRelated = MutableStateFlow(false)
+    val mainPlayerErrorIsCapabilityRelated: StateFlow<Boolean> =
+        _mainPlayerErrorIsCapabilityRelated.asStateFlow()
 
     private val _mainSseStatus = MutableStateFlow("Standby")
     val mainSseStatus: StateFlow<String> = _mainSseStatus.asStateFlow()
@@ -437,6 +440,7 @@ class LivePlayerViewModel @Inject constructor(
                 }
             } else {
                 _mainPlayerError.value = errorMsg
+                _mainPlayerErrorIsCapabilityRelated.value = isCapabilityRelatedError(error)
                 stopMainPlaybackSafely("main_player_error_exhausted")
             }
         }
@@ -485,7 +489,9 @@ class LivePlayerViewModel @Inject constructor(
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
         if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
         if (!isAutoRetry) {
-            mainAutoRetryCount = 0; _mainPlayerError.value = null
+            mainAutoRetryCount = 0
+            _mainPlayerError.value = null
+            _mainPlayerErrorIsCapabilityRelated.value = false
         }
         mainCurrentChannel = channel
 
@@ -683,7 +689,9 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     fun retry() {
-        mainAutoRetryCount = 0; _mainPlayerError.value = null
+        mainAutoRetryCount = 0
+        _mainPlayerError.value = null
+        _mainPlayerErrorIsCapabilityRelated.value = false
     }
 
     private suspend fun resolvePlaybackRequest(
@@ -915,7 +923,9 @@ class LivePlayerViewModel @Inject constructor(
                                 "Standby", "Restart" -> _mainPlayer.value?.pause()
                                 "ONAir" -> {
                                     if (_mainPlayer.value?.playerError != null || _mainPlayerError.value != null) {
-                                        _mainPlayerError.value = null; _mainPlayer.value?.prepare()
+                                        _mainPlayerError.value = null
+                                        _mainPlayerErrorIsCapabilityRelated.value = false
+                                        _mainPlayer.value?.prepare()
                                     }; _mainPlayer.value?.play()
                                 }
 
@@ -1062,6 +1072,20 @@ class LivePlayerViewModel @Inject constructor(
             cause is IOException -> String.format(AppStrings.ERR_DATA_READ, cause.message)
             else -> "${AppStrings.ERR_UNKNOWN}\n(${error.errorCodeName})"
         }
+    }
+
+    private fun isCapabilityRelatedError(error: PlaybackException): Boolean {
+        val errorName = error.errorCodeName.uppercase()
+        if (errorName.contains("DECOD") || errorName.contains("FORMAT_EXCEEDS_CAPABILITIES")) {
+            return true
+        }
+        return generateSequence(error.cause) { it.cause }
+            .any { cause ->
+                val name = cause.javaClass.name
+                name.contains("MediaCodec", ignoreCase = true) ||
+                    cause.message?.contains("codec capabilities", ignoreCase = true) == true ||
+                    cause.message?.contains("format exceeds", ignoreCase = true) == true
+            }
     }
 
     override fun onCleared() {

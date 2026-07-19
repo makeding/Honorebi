@@ -22,7 +22,10 @@ class NativeTlvDemuxer(
             codec: Int,
             language: String,
             componentTag: Int,
-            timescale: Long
+            timescale: Long,
+            audioChannelLayout: Int,
+            audioSampleRate: Int,
+            audioMainComponent: Boolean
         )
 
         fun onAccessUnit(

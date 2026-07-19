@@ -88,6 +88,7 @@ fun LivePlayerScreen(
     onChannelSelect: (Channel) -> Unit,
     onChasePlaybackSelect: (RecordedProgram) -> Unit = {},
     onBackPressed: () -> Unit,
+    onCheckDeviceCapabilities: () -> Unit = {},
     onShowToast: (String) -> Unit,
     isPiPMode: Boolean = false,
     onPiPRequested: () -> Unit = {},
@@ -214,6 +215,7 @@ fun LivePlayerScreen(
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
 
     val mainError by livePlayerViewModel.mainPlayerError.collectAsState()
+    val mainErrorIsCapabilityRelated by livePlayerViewModel.mainPlayerErrorIsCapabilityRelated.collectAsState()
     val mainStatus by livePlayerViewModel.mainSseStatus.collectAsState()
     val mainDetail by livePlayerViewModel.mainSseDetail.collectAsState()
     val mainSignal by livePlayerViewModel.mainSignalInfo.collectAsState()
@@ -341,6 +343,8 @@ fun LivePlayerScreen(
 
     var isMainBuffering by remember { mutableStateOf(false) }
     var isDualBuffering by remember { mutableStateOf(false) }
+    var mainPlaybackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
+    var hasMainRenderedFirstFrame by remember { mutableStateOf(false) }
 
     DisposableEffect(mainPlayer) {
         val listener = object : Player.Listener {
@@ -355,11 +359,17 @@ fun LivePlayerScreen(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                mainPlaybackState = playbackState
                 isMainBuffering = (playbackState == Player.STATE_BUFFERING)
+            }
+
+            override fun onRenderedFirstFrame() {
+                hasMainRenderedFirstFrame = true
             }
         }
         mainPlayer?.addListener(listener)
         isMainPlaying = mainPlayer?.isPlaying == true
+        mainPlaybackState = mainPlayer?.playbackState ?: Player.STATE_IDLE
         isMainBuffering = mainPlayer?.playbackState == Player.STATE_BUFFERING
         onDispose { mainPlayer?.removeListener(listener) }
     }
@@ -418,6 +428,7 @@ fun LivePlayerScreen(
             return@LaunchedEffect
         }
 
+        hasMainRenderedFirstFrame = false
         livePlayerViewModel.playMainChannel(
             uiContext = uiContext,
             channel = currentChannelItem,
@@ -812,10 +823,13 @@ fun LivePlayerScreen(
             ps.sseStatus,
             ps.sseDetail,
             ps.playerError,
-            isMainBuffering
+            isMainBuffering,
+            hasMainRenderedFirstFrame
         ) {
             if (ps.playerError != null) return@remember false
-            if (ps.currentStreamSource == StreamSource.KONOMITV) {
+            if (!hasMainRenderedFirstFrame) {
+                true
+            } else if (ps.currentStreamSource == StreamSource.KONOMITV) {
                 (ps.sseStatus == "Standby" || ps.sseStatus == "Offline") && ps.sseDetail.isNotEmpty()
             } else if (ps.currentStreamSource == StreamSource.EDCB && !ps.isEdcbDirect) {
                 ps.sseStatus == "Standby" || isMainBuffering
@@ -825,7 +839,9 @@ fun LivePlayerScreen(
         }
 
         val mainLoadingText =
-            if (ps.currentStreamSource == StreamSource.KONOMITV) ps.sseDetail
+            if (!hasMainRenderedFirstFrame && mainPlaybackState == Player.STATE_READY) "映像をデコード中..."
+            else if (!hasMainRenderedFirstFrame && ps.sseDetail.isBlank()) "映像データを待っています..."
+            else if (ps.currentStreamSource == StreamSource.KONOMITV) ps.sseDetail
             else if (ps.currentStreamSource == StreamSource.EDCB && !ps.isEdcbDirect && ps.sseStatus == "Standby") ps.sseDetail
             else AppStrings.STATUS_LOADING
 
@@ -1125,7 +1141,8 @@ fun LivePlayerScreen(
             LiveErrorDialog(
                 ps.playerError!!,
                 { livePlayerViewModel.retry(); ps.retry() },
-                onBackPressed
+                onBackPressed,
+                onCheckCapabilities = if (mainErrorIsCapabilityRelated) onCheckDeviceCapabilities else null
             )
         }
     }
