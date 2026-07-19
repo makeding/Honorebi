@@ -35,7 +35,6 @@ import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.PlayerMessage
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
@@ -68,6 +67,8 @@ import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -438,6 +439,7 @@ fun rememberManagedExoPlayer(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
     val captionDecoder = remember { NativeCaptionDecoder() }
+    val b62DecodeMutex = remember { Mutex() }
     LaunchedEffect(program?.id) {
         captionDecoder.reset(subtitleLanguageId)
         onSubtitleLanguagesChanged(emptyList())
@@ -706,29 +708,23 @@ fun rememberManagedExoPlayer(
                     preferredVideoPacketId = null,
                     enableSeeking = true,
                     durationUs = programDurationUs,
-                    onSubtitleDataReceived = { timeUs, data ->
+                    onSubtitleDataReceived = { sample ->
                         if (vs.isSubtitleEnabled) {
                             scope.launch(Dispatchers.Default) {
-                                val cues = captionDecoder.decodeB62(data, timeUs / 1_000L)
-                                val languages = captionDecoder.availableLanguages()
+                                val (cues, languages) = b62DecodeMutex.withLock {
+                                    val decoded = captionDecoder.decodeB62(
+                                        data = sample.data,
+                                        ptsMs = sample.timeUs / 1_000L,
+                                        operationMode = sample.operationMode,
+                                        timingMode = sample.timingMode,
+                                        referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+                                        discontinuity = sample.discontinuity
+                                    )
+                                    decoded to captionDecoder.availableLanguages()
+                                }
                                 withContext(Dispatchers.Main.immediate) {
                                     onSubtitleLanguagesChanged(languages)
-                                    val player = playerRef.get()
-                                    cues.forEach { cue ->
-                                        if (player == null || cue.ptsMs <= player.currentPosition + 50L) {
-                                            onSubtitleCue(cue)
-                                        } else {
-                                            player.createMessage(PlayerMessage.Target { _, payload ->
-                                                if (vs.isSubtitleEnabled) {
-                                                    (payload as? NativeCaptionCue)?.let(onSubtitleCue)
-                                                }
-                                            })
-                                                .setPosition(cue.ptsMs)
-                                                .setPayload(cue)
-                                                .setDeleteAfterDelivery(true)
-                                                .send()
-                                        }
-                                    }
+                                    if (vs.isSubtitleEnabled) cues.forEach(onSubtitleCue)
                                 }
                             }
                         }

@@ -15,7 +15,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.PlayerMessage
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -37,6 +36,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
 import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
+import com.beeregg2001.komorebi.util.mmts.B62SubtitleSample
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.BufferOverflow
@@ -128,13 +128,13 @@ class LivePlayerViewModel @Inject constructor(
     val dualSseDetail: StateFlow<String> = _dualSseDetail.asStateFlow()
 
     private val _mainSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
-        extraBufferCapacity = 10,
+        extraBufferCapacity = 512,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val mainSubtitleEvents: SharedFlow<NativeCaptionCue> = _mainSubtitleEvents.asSharedFlow()
 
     private val _dualSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
-        extraBufferCapacity = 10,
+        extraBufferCapacity = 512,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val dualSubtitleEvents: SharedFlow<NativeCaptionCue> = _dualSubtitleEvents.asSharedFlow()
@@ -180,6 +180,8 @@ class LivePlayerViewModel @Inject constructor(
 
     private val mainPlaybackMutex = Mutex()
     private val dualPlaybackMutex = Mutex()
+    private val mainSubtitleDecodeMutex = Mutex()
+    private val dualSubtitleDecodeMutex = Mutex()
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -694,57 +696,49 @@ class LivePlayerViewModel @Inject constructor(
         if (cue != null) _dualSubtitleEvents.tryEmit(cue)
     }
 
-    private fun decodeAndEmitMainB62Subtitle(ptsMs: Long, data: ByteArray) {
+    private fun decodeAndEmitMainB62Subtitle(sample: B62SubtitleSample) {
         decodeAndScheduleB62Subtitle(
-            player = _mainPlayer.value,
             decoder = mainCaptionDecoder,
-            ptsMs = ptsMs,
-            data = data,
+            decodeMutex = mainSubtitleDecodeMutex,
+            sample = sample,
             onLanguagesChanged = { _mainSubtitleLanguages.value = it },
             onCue = { _mainSubtitleEvents.tryEmit(it) }
         )
     }
 
-    private fun decodeAndEmitDualB62Subtitle(ptsMs: Long, data: ByteArray) {
+    private fun decodeAndEmitDualB62Subtitle(sample: B62SubtitleSample) {
         decodeAndScheduleB62Subtitle(
-            player = _dualPlayer.value,
             decoder = dualCaptionDecoder,
-            ptsMs = ptsMs,
-            data = data,
+            decodeMutex = dualSubtitleDecodeMutex,
+            sample = sample,
             onLanguagesChanged = { _dualSubtitleLanguages.value = it },
             onCue = { _dualSubtitleEvents.tryEmit(it) }
         )
     }
 
     private fun decodeAndScheduleB62Subtitle(
-        player: ExoPlayer?,
         decoder: NativeCaptionDecoder,
-        ptsMs: Long,
-        data: ByteArray,
+        decodeMutex: Mutex,
+        sample: B62SubtitleSample,
         onLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
         onCue: (NativeCaptionCue) -> Unit
     ) {
         if (!isSubtitleEnabled) return
         viewModelScope.launch(Dispatchers.Default) {
-            val cues = decoder.decodeB62(data, ptsMs)
-            val languages = decoder.availableLanguages()
+            val (cues, languages) = decodeMutex.withLock {
+                val decoded = decoder.decodeB62(
+                    data = sample.data,
+                    ptsMs = sample.timeUs / 1_000L,
+                    operationMode = sample.operationMode,
+                    timingMode = sample.timingMode,
+                    referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+                    discontinuity = sample.discontinuity
+                )
+                decoded to decoder.availableLanguages()
+            }
             withContext(Dispatchers.Main.immediate) {
                 onLanguagesChanged(languages)
-                cues.forEach { cue ->
-                    if (player == null || cue.ptsMs <= player.currentPosition + 50L) {
-                        onCue(cue)
-                    } else {
-                        player.createMessage(PlayerMessage.Target { _, payload ->
-                            if (isSubtitleEnabled) {
-                                (payload as? NativeCaptionCue)?.let(onCue)
-                            }
-                        })
-                            .setPosition(cue.ptsMs)
-                            .setPayload(cue)
-                            .setDeleteAfterDelivery(true)
-                            .send()
-                    }
-                }
+                if (isSubtitleEnabled) cues.forEach(onCue)
             }
         }
     }
@@ -880,7 +874,7 @@ class LivePlayerViewModel @Inject constructor(
         request: LivePlaybackRequest,
         factory: TsReadExDataSourceFactory,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
-        onB62SubtitleDataReceived: (Long, ByteArray) -> Unit
+        onB62SubtitleDataReceived: (B62SubtitleSample) -> Unit
     ) {
         val mediaItem = MediaItem.fromUri(request.url)
         val mediaSource = when {
@@ -896,9 +890,7 @@ class LivePlayerViewModel @Inject constructor(
                     httpDataSourceFactory,
                     TlvExtractorsFactory(
                         preferredVideoPacketId = request.quality.videoPacketId,
-                        onSubtitleDataReceived = { timeUs, data ->
-                            onB62SubtitleDataReceived(timeUs / 1_000L, data)
-                        }
+                        onSubtitleDataReceived = onB62SubtitleDataReceived
                     )
                 ).createMediaSource(mediaItem)
             }

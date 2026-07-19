@@ -32,11 +32,42 @@ class NativeCaptionDecoder(
     }
 
     @Synchronized
-    fun decodeB62(data: ByteArray, ptsMs: Long): List<NativeCaptionCue> {
+    fun decodeB62(
+        data: ByteArray,
+        ptsMs: Long,
+        operationMode: Int = 1,
+        timingMode: Int = 3,
+        referenceStartPtsMs: Long? = null,
+        discontinuity: Boolean = false
+    ): List<NativeCaptionCue> {
         val activeHandle = handle
         if (activeHandle == 0L) return emptyList()
         return try {
-            nativeLib.decodeB62Captions(activeHandle, data, ptsMs).toList().also { cues ->
+            val decoded = nativeLib.decodeB62Captions(
+                activeHandle,
+                data,
+                ptsMs,
+                operationMode,
+                timingMode,
+                referenceStartPtsMs ?: Long.MIN_VALUE,
+                discontinuity
+            ).toList()
+            val cues = if (discontinuity) {
+                listOf(
+                    NativeCaptionCue(
+                        ptsMs = ptsMs,
+                        durationMs = -1L,
+                        clearScreen = true,
+                        planeWidth = 1,
+                        planeHeight = 1,
+                        images = emptyList(),
+                        resetTimeline = true
+                    )
+                ) + decoded
+            } else {
+                decoded
+            }
+            cues.also {
                 if (cues.isNotEmpty()) {
                     languages = listOf(NativeCaptionLanguage(id = 1, iso6392Code = "jpn"))
                 }

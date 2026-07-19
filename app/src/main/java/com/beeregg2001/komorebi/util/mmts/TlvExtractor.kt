@@ -22,11 +22,21 @@ private const val TAG = "TlvExtractor"
 private const val INPUT_BUFFER_SIZE = 512 * 1024
 private const val MMTS_CONTAINER_MIME_TYPE = "application/x-arib-mmts"
 
+data class B62SubtitleSample(
+    val timeUs: Long,
+    val data: ByteArray,
+    val operationMode: Int,
+    val timingMode: Int,
+    val referenceStartTimeUs: Long?,
+    val mpuSequenceNumber: Long?,
+    val discontinuity: Boolean
+)
+
 class TlvExtractorsFactory(
     private val preferredVideoPacketId: Int?,
     private val enableSeeking: Boolean = false,
     private val durationUs: Long = C.TIME_UNSET,
-    private val onSubtitleDataReceived: (timeUs: Long, data: ByteArray) -> Unit = { _, _ -> }
+    private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit = {}
 ) : ExtractorsFactory {
     override fun createExtractors(): Array<Extractor> = arrayOf(
         TlvExtractor(preferredVideoPacketId, enableSeeking, durationUs, onSubtitleDataReceived)
@@ -41,7 +51,7 @@ class TlvExtractor(
     private val preferredVideoPacketId: Int?,
     private val enableSeeking: Boolean,
     private val durationUs: Long,
-    private val onSubtitleDataReceived: (timeUs: Long, data: ByteArray) -> Unit
+    private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit
 ) : Extractor, NativeTlvDemuxer.Callback {
 
     private val inputBuffer = ByteArray(INPUT_BUFFER_SIZE)
@@ -53,6 +63,8 @@ class TlvExtractor(
     private var videoReader: H265Reader? = null
     private var videoTrackId: Long? = null
     private var subtitleTrackId: Long? = null
+    private var subtitleOperationMode: Int = 1
+    private var subtitleTimingMode: Int = 3
     private var tracksEnded = false
     private var fatalError: IOException? = null
     private var seekMapSent = false
@@ -124,7 +136,9 @@ class TlvExtractor(
         timescale: Long,
         audioChannelLayout: Int,
         audioSampleRate: Int,
-        audioMainComponent: Boolean
+        audioMainComponent: Boolean,
+        subtitleOperationMode: Int,
+        subtitleTimingMode: Int
     ) {
         if (tracksEnded && codec != CODEC_TTML) return
         val output = extractorOutput ?: return
@@ -163,6 +177,8 @@ class TlvExtractor(
 
             codec == CODEC_TTML && subtitleTrackId == null -> {
                 subtitleTrackId = trackId
+                this.subtitleOperationMode = subtitleOperationMode.takeIf { it >= 0 } ?: 1
+                this.subtitleTimingMode = subtitleTimingMode.takeIf { it >= 0 } ?: 3
             }
         }
     }
@@ -176,6 +192,9 @@ class TlvExtractor(
         dtsValue: Long,
         dtsTimescale: Long,
         inputOffset: Long,
+        mpuSequenceNumber: Long,
+        subtitleReferenceStartPtsValue: Long,
+        subtitleReferenceStartPtsTimescale: Long,
         randomAccess: Boolean,
         discontinuity: Boolean
     ) {
@@ -205,7 +224,19 @@ class TlvExtractor(
 
             CODEC_TTML -> {
                 if (trackId != subtitleTrackId) return
-                onSubtitleDataReceived(timeUs, data)
+                onSubtitleDataReceived(
+                    B62SubtitleSample(
+                        timeUs = timeUs,
+                        data = data,
+                        operationMode = subtitleOperationMode,
+                        timingMode = subtitleTimingMode,
+                        referenceStartTimeUs = subtitleReferenceStartPtsValue
+                            .takeIf { subtitleReferenceStartPtsTimescale > 0L }
+                            ?.let { scaleToMicroseconds(it, subtitleReferenceStartPtsTimescale) },
+                        mpuSequenceNumber = mpuSequenceNumber.takeIf { it >= 0L },
+                        discontinuity = discontinuity
+                    )
+                )
             }
         }
     }

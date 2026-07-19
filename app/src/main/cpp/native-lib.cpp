@@ -8,6 +8,7 @@
 #include <mutex>
 #include <deque>
 #include <array>
+#include <limits>
 
 #include <aribcaption/aribcaption.h>
 #include <aribcaption/aribcaption.hpp>
@@ -75,7 +76,7 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
     }
 
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;)V");
+    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;Z)V");
     jobject cue = env->NewObject(
         cueClass,
         cueCtor,
@@ -84,7 +85,8 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
         result.image_count == 0 ? JNI_TRUE : JNI_FALSE,
         static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
         static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
-        images);
+        images,
+        JNI_FALSE);
 
     env->DeleteLocalRef(images);
     env->DeleteLocalRef(imageClass);
@@ -133,7 +135,7 @@ jobject renderResultToCue(JNIEnv* env, aribcaption::RenderResult& result, int64_
     }
 
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;)V");
+    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;Z)V");
     jobject cue = env->NewObject(
         cueClass,
         cueCtor,
@@ -142,7 +144,8 @@ jobject renderResultToCue(JNIEnv* env, aribcaption::RenderResult& result, int64_
         result.images.empty() ? JNI_TRUE : JNI_FALSE,
         static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
         static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
-        images);
+        images,
+        JNI_FALSE);
 
     env->DeleteLocalRef(images);
     env->DeleteLocalRef(imageClass);
@@ -276,11 +279,11 @@ public:
         onTrackMethod_ = env->GetMethodID(
             callbackClass,
             "onTrack",
-            "(JJIIILjava/lang/String;IJIIZ)V");
+            "(JJIIILjava/lang/String;IJIIZII)V");
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
-            "(JI[BJJJJJZZ)V");
+            "(JI[BJJJJJJJJZZ)V");
         onErrorMethod_ = env->GetMethodID(
             callbackClass,
             "onError",
@@ -391,6 +394,12 @@ public:
             ? static_cast<jint>(info.audio->sample_rate)
             : 0;
         const auto audioMainComponent = info.audio.has_value() && info.audio->main_component;
+        const auto subtitleOperationMode = info.subtitle.has_value()
+            ? static_cast<jint>(info.subtitle->operation_mode)
+            : -1;
+        const auto subtitleTimingMode = info.subtitle.has_value()
+            ? static_cast<jint>(info.subtitle->timing_mode)
+            : -1;
         currentEnv_->CallVoidMethod(
             callback_,
             onTrackMethod_,
@@ -404,7 +413,9 @@ public:
             static_cast<jlong>(info.timescale),
             audioLayout,
             audioSampleRate,
-            audioMainComponent ? JNI_TRUE : JNI_FALSE);
+            audioMainComponent ? JNI_TRUE : JNI_FALSE,
+            subtitleOperationMode,
+            subtitleTimingMode);
         currentEnv_->DeleteLocalRef(language);
     }
 
@@ -423,6 +434,15 @@ public:
             static_cast<jlong>(unit.dts.value),
             static_cast<jlong>(unit.dts.timescale),
             static_cast<jlong>(unit.input_offset),
+            unit.mpu_sequence_number
+                ? static_cast<jlong>(*unit.mpu_sequence_number)
+                : static_cast<jlong>(-1),
+            static_cast<jlong>(unit.subtitle_reference_start_pts
+                ? unit.subtitle_reference_start_pts->value
+                : 0),
+            static_cast<jlong>(unit.subtitle_reference_start_pts
+                ? unit.subtitle_reference_start_pts->timescale
+                : 0),
             unit.random_access ? JNI_TRUE : JNI_FALSE,
             unit.discontinuity ? JNI_TRUE : JNI_FALSE);
         currentEnv_->DeleteLocalRef(data);
@@ -650,7 +670,11 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     jobject thiz,
     jlong handle,
     jbyteArray data,
-    jlong ptsMs) {
+    jlong ptsMs,
+    jint operationMode,
+    jint timingMode,
+    jlong referenceStartPtsMs,
+    jboolean discontinuity) {
     auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
     if (!ctx || !ctx->b62Decoder || !ctx->b62Renderer || !data) {
@@ -666,14 +690,54 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     {
         std::lock_guard<std::mutex> lock(ctx->mutex);
         aribcaption::B62DecodeResult decoded;
+        aribcaption::B62DecodeOptions options;
+        options.document_pts = static_cast<int64_t>(ptsMs);
+        options.discontinuity = discontinuity == JNI_TRUE;
+        switch (operationMode) {
+        case 0:
+            options.operation_mode = aribcaption::B62OperationMode::kLive;
+            break;
+        case 2:
+            options.operation_mode = aribcaption::B62OperationMode::kProgram;
+            break;
+        default:
+            options.operation_mode = aribcaption::B62OperationMode::kSegment;
+            break;
+        }
+        switch (timingMode) {
+        case 2:
+            if (referenceStartPtsMs != std::numeric_limits<jlong>::min()) {
+                options.time_base_pts = static_cast<int64_t>(referenceStartPtsMs);
+            } else {
+                options.align_earliest_to_document_pts = true;
+            }
+            break;
+        case 3:
+            options.time_base_pts = static_cast<int64_t>(ptsMs);
+            break;
+        case 8:
+        case 15:
+            options.ignore_document_timing = true;
+            break;
+        default:
+            options.align_earliest_to_document_pts = true;
+            break;
+        }
         const auto status = ctx->b62Decoder->Decode(
             reinterpret_cast<const uint8_t*>(bytes),
             static_cast<size_t>(length),
-            static_cast<int64_t>(ptsMs),
+            options,
             decoded);
         if (status == aribcaption::B62DecodeStatus::kGotCaption) {
             ctx->b62Renderer->Flush();
             for (const auto& caption : decoded.captions) {
+                if (caption.regions.empty()) {
+                    aribcaption::RenderResult result;
+                    result.pts = caption.pts;
+                    result.duration = caption.wait_duration;
+                    rendered.push_back(std::move(result));
+                    continue;
+                }
                 if (!ctx->b62Renderer->AppendCaption(caption)) continue;
                 aribcaption::RenderResult result;
                 const int64_t renderPts = caption.pts == aribcaption::PTS_NOPTS
@@ -753,6 +817,7 @@ Java_com_beeregg2001_komorebi_NativeLib_flushCaptionDecoder(JNIEnv *env, jobject
     std::lock_guard<std::mutex> lock(ctx->mutex);
     aribcc_decoder_flush(ctx->decoder);
     if (ctx->renderer) aribcc_renderer_flush(ctx->renderer);
+    if (ctx->b62Decoder) ctx->b62Decoder->Reset();
     if (ctx->b62Renderer) ctx->b62Renderer->Flush();
 }
 

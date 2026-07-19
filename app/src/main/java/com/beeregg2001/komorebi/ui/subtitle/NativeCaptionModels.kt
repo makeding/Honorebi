@@ -6,7 +6,8 @@ data class NativeCaptionCue(
     val clearScreen: Boolean,
     val planeWidth: Int,
     val planeHeight: Int,
-    val images: List<NativeCaptionImage>
+    val images: List<NativeCaptionImage>,
+    val resetTimeline: Boolean = false
 )
 
 data class NativeCaptionImage(

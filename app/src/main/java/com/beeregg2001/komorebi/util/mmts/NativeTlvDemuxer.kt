@@ -27,7 +27,9 @@ class NativeTlvDemuxer(
             timescale: Long,
             audioChannelLayout: Int,
             audioSampleRate: Int,
-            audioMainComponent: Boolean
+            audioMainComponent: Boolean,
+            subtitleOperationMode: Int,
+            subtitleTimingMode: Int
         )
 
         fun onAccessUnit(
@@ -39,6 +41,9 @@ class NativeTlvDemuxer(
             dtsValue: Long,
             dtsTimescale: Long,
             inputOffset: Long,
+            mpuSequenceNumber: Long,
+            subtitleReferenceStartPtsValue: Long,
+            subtitleReferenceStartPtsTimescale: Long,
             randomAccess: Boolean,
             discontinuity: Boolean
         )

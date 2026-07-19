@@ -270,7 +270,7 @@ fun VideoPlayerScreen(
     val currentStreamUrlRef = remember(currentProgram.id) { AtomicReference<String?>(null) }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
-            extraBufferCapacity = 10,
+            extraBufferCapacity = 512,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
     }
@@ -278,13 +278,6 @@ fun VideoPlayerScreen(
         mutableStateOf(emptyList<NativeCaptionLanguage>())
     }
     var currentSubtitleLanguageId by remember(currentProgram.id) { mutableIntStateOf(1) }
-    val subtitleCue = rememberNativeCaptionCue(
-        events = subtitleEvents,
-        enabled = vs.isSubtitleEnabled,
-        resetKey = currentProgram.id to currentSubtitleLanguageId,
-        clockRunning = vs.isPlayerPlaying
-    )
-
     val mainFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }
     val playerControlsFocusRequester = remember { FocusRequester() }
@@ -565,6 +558,14 @@ fun VideoPlayerScreen(
                 videoPlayerViewModel.updateWatchHistory(currentProgram, posMs / 1000.0)
             }
         }
+    )
+
+    val subtitleCue = rememberNativeCaptionCue(
+        events = subtitleEvents,
+        enabled = vs.isSubtitleEnabled,
+        resetKey = currentProgram.id to currentSubtitleLanguageId,
+        clockRunning = vs.isPlayerPlaying,
+        positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
     )
 
     val getCurrentPositionMs: () -> Long = {

@@ -182,6 +182,8 @@ fun LivePlayerScreen(
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
     var isMainPlaying by remember { mutableStateOf(false) }
     var isDualPlaying by remember { mutableStateOf(false) }
+    val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
+    val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
     val mainSubtitleLanguages by livePlayerViewModel.mainSubtitleLanguages.collectAsState()
     val dualSubtitleLanguages by livePlayerViewModel.dualSubtitleLanguages.collectAsState()
     val currentSubtitleLanguageId by livePlayerViewModel.currentSubtitleLanguageId.collectAsState()
@@ -194,13 +196,15 @@ fun LivePlayerScreen(
         events = livePlayerViewModel.mainSubtitleEvents,
         enabled = isSubtitleEnabled,
         resetKey = currentChannelItem.id to currentSubtitleLanguageId,
-        clockRunning = isMainPlaying
+        clockRunning = isMainPlaying,
+        positionMsProvider = { mainPlayer?.currentPosition ?: 0L }
     )
     val dualCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.dualSubtitleEvents,
         enabled = isSubtitleEnabled,
         resetKey = ps.dualRightChannel?.id to currentSubtitleLanguageId,
-        clockRunning = isDualPlaying
+        clockRunning = isDualPlaying,
+        positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
     )
 
     val mainFocusRequester = remember { FocusRequester() }
@@ -210,9 +214,6 @@ fun LivePlayerScreen(
     var localDataBroadcastingMode by rememberSaveable { mutableStateOf(false) }
     var dataBroadcastingRemoteSequence by rememberSaveable { mutableLongStateOf(0L) }
     var dataBroadcastingRemoteCommand by remember { mutableStateOf<DataBroadcastingRemoteCommand?>(null) }
-
-    val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
-    val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
 
     val mainError by livePlayerViewModel.mainPlayerError.collectAsState()
     val mainErrorIsCapabilityRelated by livePlayerViewModel.mainPlayerErrorIsCapabilityRelated.collectAsState()
