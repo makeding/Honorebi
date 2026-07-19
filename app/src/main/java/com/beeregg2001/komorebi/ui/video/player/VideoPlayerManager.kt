@@ -70,6 +70,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -700,7 +701,34 @@ fun rememberManagedExoPlayer(
                 return@ExtractorsFactory TlvExtractorsFactory(
                     preferredVideoPacketId = null,
                     enableSeeking = true,
-                    durationUs = programDurationUs
+                    durationUs = programDurationUs,
+                    onSubtitleDataReceived = { timeUs, data ->
+                        if (vs.isSubtitleEnabled) {
+                            scope.launch(Dispatchers.Default) {
+                                val cues = captionDecoder.decodeB62(data, timeUs / 1_000L)
+                                val languages = captionDecoder.availableLanguages()
+                                withContext(Dispatchers.Main.immediate) {
+                                    onSubtitleLanguagesChanged(languages)
+                                    val player = playerRef.get()
+                                    cues.forEach { cue ->
+                                        if (player == null || cue.ptsMs <= player.currentPosition + 50L) {
+                                            onSubtitleCue(cue)
+                                        } else {
+                                            player.createMessage(PlayerMessage.Target { _, payload ->
+                                                if (vs.isSubtitleEnabled) {
+                                                    (payload as? NativeCaptionCue)?.let(onSubtitleCue)
+                                                }
+                                            })
+                                                .setPosition(cue.ptsMs)
+                                                .setPayload(cue)
+                                                .setDeleteAfterDelivery(true)
+                                                .send()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 ).createExtractors()
             }
             val defaultExtractors: Array<Extractor> = if (isOriginalMpegTsPlayback) {
@@ -899,33 +927,12 @@ fun rememberManagedExoPlayer(
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry !is PrivFrame) continue
-                            when {
-                                entry.owner.contains("aribb62", ignoreCase = true) -> {
-                                    val cues = captionDecoder.decodeB62(entry.privateData, currentPosition)
-                                    onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
-                                    cues.forEach { cue ->
-                                        if (cue.ptsMs <= currentPosition + 50L) {
-                                            onSubtitleCue(cue)
-                                        } else {
-                                            createMessage(PlayerMessage.Target { _, payload ->
-                                                if (vs.isSubtitleEnabled) {
-                                                    (payload as? NativeCaptionCue)?.let(onSubtitleCue)
-                                                }
-                                            })
-                                                .setPosition(cue.ptsMs)
-                                                .setPayload(cue)
-                                                .setDeleteAfterDelivery(true)
-                                                .send()
-                                        }
-                                    }
-                                }
-
-                                entry.owner.contains("aribb24", ignoreCase = true) ||
-                                    entry.owner.contains("B24", ignoreCase = true) -> {
-                                    val cue = captionDecoder.decode(entry.privateData, currentPosition)
-                                    onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
-                                    if (cue != null) onSubtitleCue(cue)
-                                }
+                            if (entry.owner.contains("aribb24", ignoreCase = true) ||
+                                entry.owner.contains("B24", ignoreCase = true)
+                            ) {
+                                val cue = captionDecoder.decode(entry.privateData, currentPosition)
+                                onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
+                                if (cue != null) onSubtitleCue(cue)
                             }
                         }
                     }
