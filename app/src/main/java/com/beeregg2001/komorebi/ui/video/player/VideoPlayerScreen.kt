@@ -523,7 +523,9 @@ fun VideoPlayerScreen(
             true
         },
         onStopOrDispose = { player ->
-            if (smbItem == null) {
+            // 画質の初期化中に作られた空の Player は、Raw MMTS Player への
+            // 再構築時に dispose される。ここで0秒を書くとレジューム位置が消える。
+            if (smbItem == null && player.mediaItemCount > 0) {
                 val rawPosition = player.currentPosition
                 val playerPosition = if (rawPosition == C.TIME_UNSET || rawPosition < 0L) {
                     playbackPositionMs

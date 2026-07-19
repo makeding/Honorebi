@@ -81,6 +81,11 @@ private const val RECORDED_PLAYER_MIN_BUFFER_MS = 30_000
 private const val RECORDED_PLAYER_MAX_BUFFER_MS = 90_000
 private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 4_000
 private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
+private const val RAW_MMTS_PLAYER_TARGET_BUFFER_BYTES = 32 * 1024 * 1024
+private const val RAW_MMTS_PLAYER_MIN_BUFFER_MS = 5_000
+private const val RAW_MMTS_PLAYER_MAX_BUFFER_MS = 10_000
+private const val RAW_MMTS_PLAYER_BUFFER_FOR_PLAYBACK_MS = 1_000
+private const val RAW_MMTS_PLAYER_BUFFER_FOR_REBUFFER_MS = 2_000
 private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 48 * 1024 * 1024
 private const val CHASE_PLAYER_MIN_BUFFER_MS = 15_000
 private const val CHASE_PLAYER_MAX_BUFFER_MS = 45_000
@@ -585,16 +590,31 @@ fun rememberManagedExoPlayer(
             .setLoadErrorHandlingPolicy(HonomiLikeHlsLoadErrorHandlingPolicy())
 
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
-        val targetBufferBytes =
-            if (isRecordingChasePlayback) CHASE_PLAYER_TARGET_BUFFER_BYTES else RECORDED_PLAYER_TARGET_BUFFER_BYTES
-        val minBufferMs =
-            if (isRecordingChasePlayback) CHASE_PLAYER_MIN_BUFFER_MS else RECORDED_PLAYER_MIN_BUFFER_MS
-        val maxBufferMs =
-            if (isRecordingChasePlayback) CHASE_PLAYER_MAX_BUFFER_MS else RECORDED_PLAYER_MAX_BUFFER_MS
-        val bufferForPlaybackMs =
-            if (isRecordingChasePlayback) CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS else RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS
-        val bufferForPlaybackAfterRebufferMs =
-            if (isRecordingChasePlayback) CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS else RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS
+        val targetBufferBytes = when {
+            isRawMmtsPlayback -> RAW_MMTS_PLAYER_TARGET_BUFFER_BYTES
+            isRecordingChasePlayback -> CHASE_PLAYER_TARGET_BUFFER_BYTES
+            else -> RECORDED_PLAYER_TARGET_BUFFER_BYTES
+        }
+        val minBufferMs = when {
+            isRawMmtsPlayback -> RAW_MMTS_PLAYER_MIN_BUFFER_MS
+            isRecordingChasePlayback -> CHASE_PLAYER_MIN_BUFFER_MS
+            else -> RECORDED_PLAYER_MIN_BUFFER_MS
+        }
+        val maxBufferMs = when {
+            isRawMmtsPlayback -> RAW_MMTS_PLAYER_MAX_BUFFER_MS
+            isRecordingChasePlayback -> CHASE_PLAYER_MAX_BUFFER_MS
+            else -> RECORDED_PLAYER_MAX_BUFFER_MS
+        }
+        val bufferForPlaybackMs = when {
+            isRawMmtsPlayback -> RAW_MMTS_PLAYER_BUFFER_FOR_PLAYBACK_MS
+            isRecordingChasePlayback -> CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS
+            else -> RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS
+        }
+        val bufferForPlaybackAfterRebufferMs = when {
+            isRawMmtsPlayback -> RAW_MMTS_PLAYER_BUFFER_FOR_REBUFFER_MS
+            isRecordingChasePlayback -> CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS
+            else -> RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS
+        }
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setTargetBufferBytes(targetBufferBytes)

@@ -248,8 +248,9 @@ public:
         demuxer_.reset();
         if (buildRecordingIndex_) {
             recordingIndex_.begin(false);
-            recordingVideoTrackId_ = 0;
         }
+        selectedVideoTrackId_ = 0;
+        selectedAudioTrackId_ = 0;
     }
 
     void reposition(const std::uint64_t inputOffset) {
@@ -292,11 +293,24 @@ public:
     }
 
     void onTrack(const tlvdemux::TrackInfo& info) override {
-        if (buildRecordingIndex_ && info.kind == tlvdemux::TrackKind::Video &&
-            recordingVideoTrackId_ == 0 &&
-            (preferredVideoPacketId_ < 0 || info.packet_id == preferredVideoPacketId_)) {
-            recordingVideoTrackId_ = info.track_id;
-            recordingIndex_.selectVideoTrack(info.track_id);
+        if (info.kind == tlvdemux::TrackKind::Video) {
+            const bool matchesPreferred = preferredVideoPacketId_ < 0 ||
+                info.packet_id == preferredVideoPacketId_;
+            if (selectedVideoTrackId_ == 0 && matchesPreferred) {
+                selectedVideoTrackId_ = info.track_id;
+                demuxer_.selectTrack(tlvdemux::TrackKind::Video, info.track_id);
+                if (buildRecordingIndex_) recordingIndex_.selectVideoTrack(info.track_id);
+            }
+            if (selectedVideoTrackId_ == 0 || info.track_id != selectedVideoTrackId_) return;
+        }
+        if (info.kind == tlvdemux::TrackKind::Audio) {
+            const bool isUnsupported22_2 = info.audio.has_value() &&
+                info.audio->channel_layout == tlvdemux::AudioChannelLayout::Channels22_2;
+            if (selectedAudioTrackId_ == 0 && !isUnsupported22_2) {
+                selectedAudioTrackId_ = info.track_id;
+                demuxer_.selectTrack(tlvdemux::TrackKind::Audio, info.track_id);
+            }
+            if (selectedAudioTrackId_ == 0 || info.track_id != selectedAudioTrackId_) return;
         }
         if (!canCallback(onTrackMethod_)) return;
         jstring language = currentEnv_->NewStringUTF(info.language.c_str());
@@ -386,7 +400,8 @@ private:
     tlvdemux::RecordingIndex recordingIndex_;
     int preferredVideoPacketId_ = -1;
     bool buildRecordingIndex_ = false;
-    std::uint64_t recordingVideoTrackId_ = 0;
+    std::uint64_t selectedVideoTrackId_ = 0;
+    std::uint64_t selectedAudioTrackId_ = 0;
 };
 
 extern "C" {
