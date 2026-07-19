@@ -144,6 +144,7 @@ fun SettingsScreen(
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
+                FocusRequester(),
                 FocusRequester()
             ),
             listOf(FocusRequester()),
@@ -227,7 +228,7 @@ fun SettingsScreen(
 
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
-            uiState.restoreFocusRequester = itemFocusRequesters[2][9]
+            uiState.restoreFocusRequester = itemFocusRequesters[2][10]
             uiState.restoreCategoryIndex = 2
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
@@ -537,6 +538,7 @@ fun SettingsScreen(
                             prefs.videoQuality,
                             prefs.liveSubtitleDefault,
                             prefs.videoSubtitleDefault,
+                            prefs.b62SubtitleSize,
                             prefs.subtitleCommentLayer,
                             prefs.audioOutputMode,
                             playerUiMode,
@@ -553,6 +555,7 @@ fun SettingsScreen(
                             itemFocusRequesters[2][7],
                             itemFocusRequesters[2][8],
                             itemFocusRequesters[2][9],
+                            itemFocusRequesters[2][10],
                             categoryFocusRequesters[2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -598,6 +601,20 @@ fun SettingsScreen(
                                         SettingsRepository.VIDEO_SUBTITLE_DEFAULT,
                                         if (prefs.videoSubtitleDefault == "ON") "OFF" else "ON"
                                     )
+                                }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.SETTINGS_ITEM_B62_SUBTITLE_SIZE,
+                                    listOf(
+                                        AppStrings.SETTINGS_VALUE_B62_SUBTITLE_STANDARD to "STANDARD",
+                                        AppStrings.SETTINGS_VALUE_B62_SUBTITLE_LARGE to "LARGE"
+                                    ),
+                                    prefs.b62SubtitleSize
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(SettingsRepository.B62_SUBTITLE_SIZE, it)
+                                    }
                                 }
                             },
                             {

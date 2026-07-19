@@ -537,6 +537,7 @@ fun PlaybackSettingsContent(
     videoQ: String,
     liveSub: String,
     videoSub: String,
+    b62SubtitleSize: String,
     layerOrder: String,
     audioMode: String,
     uiMode: String,
@@ -547,6 +548,7 @@ fun PlaybackSettingsContent(
     videoR: FocusRequester,
     liveSubR: FocusRequester,
     videoSubR: FocusRequester,
+    b62SubtitleSizeR: FocusRequester,
     audioR: FocusRequester,
     layerR: FocusRequester,
     uiModeR: FocusRequester,
@@ -558,6 +560,7 @@ fun PlaybackSettingsContent(
     onV: () -> Unit,
     onLiveSub: () -> Unit,
     onVideoSub: () -> Unit,
+    onB62SubtitleSize: () -> Unit,
     onAudioMode: () -> Unit,
     onLayer: () -> Unit,
     onUiMode: () -> Unit,
@@ -639,9 +642,25 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = liveSubR
-                        down = audioR
+                        down = b62SubtitleSizeR
                     },
                 onClick = { onClick(videoSubR); onVideoSub() })
+            SettingItem(
+                AppStrings.SETTINGS_ITEM_B62_SUBTITLE_SIZE,
+                if (b62SubtitleSize == "LARGE") {
+                    AppStrings.SETTINGS_VALUE_B62_SUBTITLE_LARGE
+                } else {
+                    AppStrings.SETTINGS_VALUE_B62_SUBTITLE_STANDARD
+                },
+                Icons.Default.FormatSize,
+                modifier = Modifier
+                    .focusRequester(b62SubtitleSizeR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = videoSubR
+                        down = audioR
+                    },
+                onClick = { onClick(b62SubtitleSizeR); onB62SubtitleSize() })
             SettingItem(
                 AppStrings.SETTINGS_ITEM_AUDIO_OUTPUT_MODE,
                 if (audioMode == "DOWNMIX") AppStrings.SETTINGS_VALUE_AUDIO_DOWNMIX else AppStrings.SETTINGS_VALUE_AUDIO_PASSTHROUGH,
@@ -650,7 +669,7 @@ fun PlaybackSettingsContent(
                     .focusRequester(audioR)
                     .focusProperties {
                         left = sidebarR
-                        up = videoSubR
+                        up = b62SubtitleSizeR
                         down = layerR
                     },
                 onClick = { onClick(audioR); onAudioMode() })

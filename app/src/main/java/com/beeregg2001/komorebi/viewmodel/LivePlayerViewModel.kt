@@ -208,6 +208,13 @@ class LivePlayerViewModel @Inject constructor(
                 _shouldCropLogo.value = type == "KONOMITV"
             }
         }
+        viewModelScope.launch {
+            settingsRepository.b62SubtitleSize.collect { size ->
+                val scale = if (size == "LARGE") 1.15f else 1.0f
+                mainCaptionDecoder.setB62FontScale(scale)
+                dualCaptionDecoder.setB62FontScale(scale)
+            }
+        }
         startSignalPolling()
     }
 

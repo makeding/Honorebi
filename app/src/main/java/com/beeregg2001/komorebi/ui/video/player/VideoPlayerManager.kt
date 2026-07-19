@@ -457,6 +457,10 @@ fun rememberManagedExoPlayer(
 
     val backendType by settingsViewModel.backendType.collectAsState()
     val edcbPlayMethod by settingsViewModel.edcbRecordPlayMethod.collectAsState()
+    val b62SubtitleSize by settingsViewModel.b62SubtitleSize.collectAsState()
+    LaunchedEffect(b62SubtitleSize) {
+        captionDecoder.setB62FontScale(if (b62SubtitleSize == "LARGE") 1.15f else 1.0f)
+    }
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
     val isRecordingChasePlayback =
         program?.isRecording == true || program?.recordedVideo?.status.equals("Recording", ignoreCase = true)

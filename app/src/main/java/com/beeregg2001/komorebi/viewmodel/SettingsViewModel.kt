@@ -215,6 +215,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "OFF"
     )
+    val b62SubtitleSize: StateFlow<String> = settingsRepository.b62SubtitleSize.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "LARGE"
+    )
     val subtitleCommentLayer: StateFlow<String> = settingsRepository.subtitleCommentLayer.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
