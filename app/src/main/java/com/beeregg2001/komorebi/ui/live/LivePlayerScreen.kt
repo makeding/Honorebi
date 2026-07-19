@@ -222,6 +222,13 @@ fun LivePlayerScreen(
 
     val availableQualities by livePlayerViewModel.availableQualities.collectAsState(initial = StreamQuality.DEFAULT_QUALITIES)
     val isQualitiesLoaded by livePlayerViewModel.isQualitiesLoaded.collectAsState()
+    val effectiveAvailableQualities = remember(availableQualities, currentChannelItem) {
+        if (currentChannelItem.type.equals("BS4K", ignoreCase = true)) {
+            StreamQuality.rawMmtsQualities(currentChannelItem)
+        } else {
+            availableQualities
+        }
+    }
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
     val isDataBroadcastingActive = isDataBroadcastingMode || localDataBroadcastingMode
@@ -281,19 +288,26 @@ fun LivePlayerScreen(
         livePlayerViewModel.fetchAvailableQualities(ps.currentStreamSource, ps.isEdcbDirect)
     }
 
-    LaunchedEffect(availableQualities, isQualitiesLoaded, currentLiveQualityStr) {
-        if (isQualitiesLoaded && availableQualities.isNotEmpty()) {
-            val matched = availableQualities.find { it.value == currentLiveQualityStr }
+    LaunchedEffect(
+        effectiveAvailableQualities,
+        isQualitiesLoaded,
+        currentLiveQualityStr,
+        currentChannelItem.id
+    ) {
+        if (isQualitiesLoaded && effectiveAvailableQualities.isNotEmpty()) {
+            val matched = effectiveAvailableQualities.find { it.value == currentLiveQualityStr }
             if (matched != null) {
                 ps.currentQuality = matched
             } else {
-                Log.w(
-                    TAG,
-                    "User's liveQuality ($currentLiveQualityStr) is not in the list. Falling back to default."
-                )
-                val fallback = availableQualities.first()
+                val fallback = effectiveAvailableQualities.first()
                 ps.currentQuality = fallback
-                livePlayerViewModel.saveLiveQuality(fallback.value)
+                if (!fallback.isRawMmts) {
+                    Log.w(
+                        TAG,
+                        "User's liveQuality ($currentLiveQualityStr) is not in the list. Falling back to default."
+                    )
+                    livePlayerViewModel.saveLiveQuality(fallback.value)
+                }
             }
         }
     }
@@ -398,7 +412,9 @@ fun LivePlayerScreen(
 
         if (ps.currentQuality.value.isBlank()) return@LaunchedEffect
 
-        if (availableQualities.isNotEmpty() && availableQualities.none { it.value == ps.currentQuality.value }) {
+        if (effectiveAvailableQualities.isNotEmpty() &&
+            effectiveAvailableQualities.none { it.value == ps.currentQuality.value }
+        ) {
             return@LaunchedEffect
         }
 
@@ -428,10 +444,6 @@ fun LivePlayerScreen(
         if (ps.isDualDisplayMode && rightChannel != null) {
             if (rightChannel.displayChannelId.isBlank() || rightChannel.displayChannelId == "null") return@LaunchedEffect
             if (ps.currentQuality.value.isBlank()) return@LaunchedEffect
-
-            if (availableQualities.isNotEmpty() && availableQualities.none { it.value == ps.currentQuality.value }) {
-                return@LaunchedEffect
-            }
 
             livePlayerViewModel.playDualChannel(
                 uiContext = uiContext,
@@ -1007,7 +1019,7 @@ fun LivePlayerScreen(
                         onShowToast("信号情報を表示します")
                     }
                 },
-                availableQualities = availableQualities,
+                availableQualities = effectiveAvailableQualities,
                 focusRequester = subMenuFocusRequester,
                 logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,
@@ -1058,7 +1070,7 @@ fun LivePlayerScreen(
                 onQualitySelect = {
                     if (ps.currentQuality != it) {
                         ps.currentQuality = it
-                        livePlayerViewModel.saveLiveQuality(it.value)
+                        if (!it.isRawMmts) livePlayerViewModel.saveLiveQuality(it.value)
                         ps.retryKey++
                         onShowToast(String.format(AppStrings.TOAST_QUALITY_CHANGED, it.label))
                     }

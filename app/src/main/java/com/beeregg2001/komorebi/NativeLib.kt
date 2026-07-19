@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi
 
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
+import com.beeregg2001.komorebi.util.mmts.NativeTlvDemuxer
 import java.nio.ByteBuffer
 
 class NativeLib {
@@ -33,4 +34,10 @@ class NativeLib {
     external fun switchCaptionLanguage(handle: Long, languageId: Int)
     external fun flushCaptionDecoder(handle: Long)
     external fun closeCaptionDecoder(handle: Long)
+
+    external fun openTlvDemuxer(callback: NativeTlvDemuxer.Callback): Long
+    external fun pushTlvData(handle: Long, data: ByteArray, length: Int)
+    external fun flushTlvDemuxer(handle: Long)
+    external fun resetTlvDemuxer(handle: Long)
+    external fun closeTlvDemuxer(handle: Long)
 }

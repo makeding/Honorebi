@@ -35,6 +35,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
+import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.BufferOverflow
@@ -65,6 +66,17 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+
+private data class LivePlaybackRequest(
+    val url: String,
+    val source: StreamSource,
+    val isEdcbDirect: Boolean,
+    val quality: StreamQuality,
+    val config: BackendConfig
+) {
+    val apiQuality: String
+        get() = if (quality.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else quality.value
+}
 
 @RequiresApi(Build.VERSION_CODES.O)
 @HiltViewModel
@@ -475,8 +487,7 @@ class LivePlayerViewModel @Inject constructor(
         if (!isAutoRetry) {
             mainAutoRetryCount = 0; _mainPlayerError.value = null
         }
-        mainCurrentChannel = channel; mainCurrentSource = source; mainIsEdcbDirect =
-            isEdcbDirect; mainCurrentQuality = quality
+        mainCurrentChannel = channel
 
         viewModelScope.launch { _currentLogoUrl.value = liveProvider.getChannelLogoUrl(channel.id) }
 
@@ -489,6 +500,18 @@ class LivePlayerViewModel @Inject constructor(
                         "Standby"; _mainSseDetail.value = "ストリームを準備中..."
                     }
                     delay(if (isAutoRetry) 0 else 600)
+
+                    val request = resolvePlaybackRequest(
+                        channel = channel,
+                        requestedSource = source,
+                        requestedIsEdcbDirect = isEdcbDirect,
+                        requestedQuality = quality,
+                        streamNumber = 0,
+                        factory = mainTsDataSourceFactory
+                    )
+                    mainCurrentSource = request.source
+                    mainIsEdcbDirect = request.isEdcbDirect
+                    mainCurrentQuality = request.quality
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val newPlayer = withContext(Dispatchers.Main) {
@@ -504,32 +527,24 @@ class LivePlayerViewModel @Inject constructor(
                     }
                     _mainPlayer.value = newPlayer
 
-                    val config = settingsRepository.getBackendConfig(source)
-                    val streamUrl = if (source == StreamSource.EDCB && !isEdcbDirect) {
-                        withContext(Dispatchers.Main) {
-                            _mainSseDetail.value = "トランスコード開始を待機中..."
-                        }
-                        val hlsUrl = liveProvider.getLiveStreamUrl(channel.id, quality.value, 0)
-                        if (hlsUrl.isBlank()) throw Exception("HLSトランスコードの開始に失敗しました")
-                        hlsUrl
-                    } else buildStreamUrl(channel, source, quality, config, mainTsDataSourceFactory)
-
                     withContext(Dispatchers.Main) {
-                        if (source == StreamSource.MIRAKURUN || (source == StreamSource.EDCB && isEdcbDirect) || (source == StreamSource.EDCB && !isEdcbDirect)) {
+                        if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _mainSseStatus.value = "ONAir"; _mainSseDetail.value = ""
-                        } else if (config is BackendConfig.KonomiTv) {
-                            startMainSse(uiContext, channel.displayChannelId, quality.value, config)
+                        } else if (request.config is BackendConfig.KonomiTv) {
+                            startMainSse(
+                                uiContext,
+                                channel.displayChannelId,
+                                request.apiQuality,
+                                request.config
+                            )
                         }
                         startPlayback(
-                            uiContext,
                             newPlayer,
-                            streamUrl,
-                            source,
-                            isEdcbDirect,
+                            request,
                             mainTsDataSourceFactory,
                             ::decodeAndEmitMainSubtitle
                         )
-                        liveJikkyoManager.startJikkyo(channel, source)
+                        liveJikkyoManager.startJikkyo(channel, request.source)
                     }
                 }
             } catch (e: CancellationException) {
@@ -552,8 +567,7 @@ class LivePlayerViewModel @Inject constructor(
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
         if (!isAutoRetry) dualAutoRetryCount = 0
-        dualCurrentChannel = channel; dualCurrentSource = source; dualIsEdcbDirect =
-            isEdcbDirect; dualCurrentQuality = quality
+        dualCurrentChannel = channel
 
         dualPlaybackJob?.cancel()
         dualPlaybackJob = viewModelScope.launch(Dispatchers.IO) {
@@ -564,6 +578,18 @@ class LivePlayerViewModel @Inject constructor(
                         "Standby"; _dualSseDetail.value = "ストリームを準備中..."
                     }
                     delay(if (isAutoRetry) 0 else 600)
+
+                    val request = resolvePlaybackRequest(
+                        channel = channel,
+                        requestedSource = source,
+                        requestedIsEdcbDirect = isEdcbDirect,
+                        requestedQuality = quality,
+                        streamNumber = 1,
+                        factory = dualTsDataSourceFactory
+                    )
+                    dualCurrentSource = request.source
+                    dualIsEdcbDirect = request.isEdcbDirect
+                    dualCurrentQuality = request.quality
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val newDualPlayer = withContext(Dispatchers.Main) {
@@ -579,28 +605,20 @@ class LivePlayerViewModel @Inject constructor(
                     }
                     _dualPlayer.value = newDualPlayer
 
-                    val config = settingsRepository.getBackendConfig(source)
-                    val streamUrl = if (source == StreamSource.EDCB && !isEdcbDirect) {
-                        withContext(Dispatchers.Main) {
-                            _dualSseDetail.value = "トランスコード開始を待機中..."
-                        }
-                        val hlsUrl = liveProvider.getLiveStreamUrl(channel.id, quality.value, 1)
-                        if (hlsUrl.isBlank()) throw Exception("HLSトランスコードの開始に失敗しました")
-                        hlsUrl
-                    } else buildStreamUrl(channel, source, quality, config, dualTsDataSourceFactory)
-
                     withContext(Dispatchers.Main) {
-                        if (source == StreamSource.MIRAKURUN || (source == StreamSource.EDCB && isEdcbDirect) || (source == StreamSource.EDCB && !isEdcbDirect)) {
+                        if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _dualSseStatus.value = "ONAir"; _dualSseDetail.value = ""
-                        } else if (config is BackendConfig.KonomiTv) {
-                            startDualSse(uiContext, channel.displayChannelId, quality.value, config)
+                        } else if (request.config is BackendConfig.KonomiTv) {
+                            startDualSse(
+                                uiContext,
+                                channel.displayChannelId,
+                                request.apiQuality,
+                                request.config
+                            )
                         }
                         startPlayback(
-                            uiContext,
                             newDualPlayer,
-                            streamUrl,
-                            source,
-                            isEdcbDirect,
+                            request,
                             dualTsDataSourceFactory,
                             ::decodeAndEmitDualSubtitle
                         )
@@ -668,15 +686,39 @@ class LivePlayerViewModel @Inject constructor(
         mainAutoRetryCount = 0; _mainPlayerError.value = null
     }
 
-    private fun buildStreamUrl(
+    private suspend fun resolvePlaybackRequest(
         channel: Channel,
-        source: StreamSource,
-        quality: StreamQuality,
-        config: BackendConfig,
+        requestedSource: StreamSource,
+        requestedIsEdcbDirect: Boolean,
+        requestedQuality: StreamQuality,
+        streamNumber: Int,
         factory: TsReadExDataSourceFactory
-    ): String {
-        return when (source) {
+    ): LivePlaybackRequest {
+        val isRawMmts = channel.type.equals("BS4K", ignoreCase = true)
+        val quality = if (isRawMmts) {
+            StreamQuality.rawMmtsQualities(channel)
+                .firstOrNull { it.value == requestedQuality.value }
+                ?: StreamQuality.rawMmtsQualities(channel).first()
+        } else if (requestedQuality.isRawMmts) {
+            val savedQuality = settingsRepository.liveQuality.first()
+            StreamQuality(
+                label = savedQuality,
+                value = savedQuality
+            )
+        } else {
+            requestedQuality
+        }
+        val source = if (isRawMmts) resolveRawMmtsSource(requestedSource) else requestedSource
+        val isEdcbDirect = source == StreamSource.EDCB && requestedIsEdcbDirect
+        val config = settingsRepository.getBackendConfig(source)
+
+        val url = when (source) {
             StreamSource.EDCB -> {
+                if (!isEdcbDirect) {
+                    val hlsUrl = liveProvider.getLiveStreamUrl(channel.id, quality.value, streamNumber)
+                    if (hlsUrl.isBlank()) throw IOException("HLSトランスコードの開始に失敗しました")
+                    return LivePlaybackRequest(hlsUrl, source, false, quality, config)
+                }
                 val ip = if (config.ip.isNotBlank()) config.ip else "127.0.0.1"
                 val port = if (config.port.isNotBlank()) config.port else "4510"
                 val parts = channel.id.split("_")
@@ -706,28 +748,30 @@ class LivePlayerViewModel @Inject constructor(
 
             StreamSource.MIRAKURUN -> {
                 if (config.isValid) {
-                    factory.tsArgs = arrayOf(
-                        "-x",
-                        "18/38/39",
-                        "-n",
-                        channel.serviceId.toString(),
-                        "-a",
-                        "13",
-                        "-b",
-                        "4",
-                        "-c",
-                        "5",
-                        "-u",
-                        "1",
-                        "-d",
-                        "13"
-                    )
-                    UrlBuilder.getMirakurunStreamUrl(
-                        config.ip,
-                        config.port,
-                        channel.networkId,
-                        channel.serviceId
-                    )
+                    if (quality.isRawMmts) {
+                        UrlBuilder.getMirakurunRawMmtsStreamUrl(
+                            config.ip,
+                            config.port,
+                            channel.networkId,
+                            channel.serviceId
+                        )
+                    } else {
+                        factory.tsArgs = arrayOf(
+                            "-x", "18/38/39",
+                            "-n", channel.serviceId.toString(),
+                            "-a", "13",
+                            "-b", "4",
+                            "-c", "5",
+                            "-u", "1",
+                            "-d", "13"
+                        )
+                        UrlBuilder.getMirakurunStreamUrl(
+                            config.ip,
+                            config.port,
+                            channel.networkId,
+                            channel.serviceId
+                        )
+                    }
                 } else ""
             }
 
@@ -735,25 +779,53 @@ class LivePlayerViewModel @Inject constructor(
                 config.ip,
                 config.port,
                 channel.displayChannelId,
-                quality.value
+                if (quality.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else quality.value
             )
         }
+        if (url.isBlank()) throw IOException("ストリーミングソースの設定が不完全です: $source")
+        return LivePlaybackRequest(url, source, isEdcbDirect, quality, config)
+    }
+
+    private suspend fun resolveRawMmtsSource(requestedSource: StreamSource): StreamSource {
+        if (requestedSource != StreamSource.EDCB &&
+            settingsRepository.getBackendConfig(requestedSource).isValid
+        ) {
+            return requestedSource
+        }
+        if (settingsRepository.getBackendConfig(StreamSource.KONOMITV).isValid) {
+            return StreamSource.KONOMITV
+        }
+        if (settingsRepository.getBackendConfig(StreamSource.MIRAKURUN).isValid) {
+            return StreamSource.MIRAKURUN
+        }
+        throw IOException("BS4K/BS8K Raw MMTS には HonomiTV または Mirakurun の設定が必要です")
     }
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun startPlayback(
-        uiContext: Context,
         player: ExoPlayer?,
-        streamUrl: String,
-        source: StreamSource,
-        isEdcbDirect: Boolean,
+        request: LivePlaybackRequest,
         factory: TsReadExDataSourceFactory,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit
     ) {
-        try {
-            val mediaItem = MediaItem.fromUri(streamUrl)
-            val mediaSource =
-                if (source == StreamSource.MIRAKURUN || (source == StreamSource.EDCB && isEdcbDirect)) {
+        val mediaItem = MediaItem.fromUri(request.url)
+        val mediaSource = when {
+            request.quality.isRawMmts -> {
+                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                    .setAllowCrossProtocolRedirects(true)
+                if (request.source == StreamSource.MIRAKURUN) {
+                    httpDataSourceFactory.setDefaultRequestProperties(
+                        mapOf("X-Mirakurun-Priority" to "0")
+                    )
+                }
+                ProgressiveMediaSource.Factory(
+                    httpDataSourceFactory,
+                    TlvExtractorsFactory(request.quality.videoPacketId)
+                ).createMediaSource(mediaItem)
+            }
+
+            request.source == StreamSource.MIRAKURUN ||
+                (request.source == StreamSource.EDCB && request.isEdcbDirect) -> {
                     val extractorsFactory = ExtractorsFactory {
                         arrayOf(
                             TsExtractor(
@@ -768,24 +840,21 @@ class LivePlayerViewModel @Inject constructor(
                     }
                     ProgressiveMediaSource.Factory(factory, extractorsFactory)
                         .createMediaSource(mediaItem)
-                } else {
-                    if (source == StreamSource.EDCB && !isEdcbDirect) {
-                        val uri = Uri.parse(streamUrl)
+                }
+
+            request.source == StreamSource.EDCB && !request.isEdcbDirect -> {
+                        val uri = Uri.parse(request.url)
                         val ctok = uri.getQueryParameter("ctok") ?: ""
                         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
                             .setDefaultRequestProperties(mapOf("Cookie" to "ctok=$ctok"))
                             .setAllowCrossProtocolRedirects(true)
                         HlsMediaSource.Factory(httpDataSourceFactory)
                             .setAllowChunklessPreparation(false).createMediaSource(mediaItem)
-                    } else DefaultMediaSourceFactory(uiContext).createMediaSource(mediaItem)
-                }
-            player?.setMediaSource(mediaSource); player?.prepare(); player?.play()
-        } catch (e: Exception) {
-            handleMainError(
-                uiContext,
-                PlaybackException(e.message, e, PlaybackException.ERROR_CODE_UNSPECIFIED)
-            )
+                    }
+
+            else -> DefaultMediaSourceFactory(context).createMediaSource(mediaItem)
         }
+        player?.setMediaSource(mediaSource); player?.prepare(); player?.play()
     }
 
     private fun startMainSse(

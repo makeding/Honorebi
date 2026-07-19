@@ -63,6 +63,15 @@ object UrlBuilder {
         return "$baseUrl/api/services/$streamId/stream"
     }
 
+    fun getMirakurunRawMmtsStreamUrl(
+        ip: String,
+        port: String,
+        networkId: Long,
+        serviceId: Long
+    ): String {
+        return "${getMirakurunStreamUrl(ip, port, networkId, serviceId)}?decode=0"
+    }
+
     fun getKonomiTvLiveStreamUrl(
         ip: String,
         port: String,

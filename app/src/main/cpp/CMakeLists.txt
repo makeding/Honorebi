@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.16)
 project(komorebi-native)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(ARIBCC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ARIBCC_SHARED_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -11,6 +12,12 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 
 add_subdirectory(third_party/libaribcaption EXCLUDE_FROM_ALL)
+
+# tlvdemux は Android APK に独立した libtlvdemux.so として同梱する。
+# libaribcaption は静的リンクのまま維持したいため、追加後に BUILD_SHARED_LIBS を切り替える。
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/tlvdemux EXCLUDE_FROM_ALL)
 
 # 1. tsreadex のコアロジック（ソースファイル群）を定義
 set(TSREADEX_CORE_SRC
@@ -37,6 +44,7 @@ target_link_libraries(
     komorebi-native
     ${log-lib}
     aribcaption::aribcaption
+    tlvdemux::tlvdemux
 )
 
 # インクルードディレクトリの設定（カレントディレクトリを参照）

@@ -9,6 +9,7 @@
 #include <deque>
 
 #include <aribcaption/aribcaption.h>
+#include <tlvdemux/demuxer.hpp>
 
 // tsreadex コアヘッダ
 #include "servicefilter.hpp"
@@ -196,6 +197,139 @@ public:
         outputQueue.erase(outputQueue.begin(), outputQueue.begin() + copySize);
         return copySize;
     }
+};
+
+class TlvDemuxContext final : public tlvdemux::Sink {
+public:
+    TlvDemuxContext(JNIEnv* env, jobject callback)
+        : callback_(env->NewGlobalRef(callback)), demuxer_(*this) {
+        jclass callbackClass = env->GetObjectClass(callback);
+        onServiceMethod_ = env->GetMethodID(callbackClass, "onService", "(J[B)V");
+        onTrackMethod_ = env->GetMethodID(
+            callbackClass,
+            "onTrack",
+            "(JJIIILjava/lang/String;IJ)V");
+        onAccessUnitMethod_ = env->GetMethodID(
+            callbackClass,
+            "onAccessUnit",
+            "(JI[BJJJJJZZ)V");
+        onErrorMethod_ = env->GetMethodID(
+            callbackClass,
+            "onError",
+            "(IJZLjava/lang/String;)V");
+        env->DeleteLocalRef(callbackClass);
+    }
+
+    ~TlvDemuxContext() override = default;
+
+    void push(JNIEnv* env, const std::uint8_t* data, std::size_t size) {
+        currentEnv_ = env;
+        demuxer_.push(data, size);
+        currentEnv_ = nullptr;
+    }
+
+    void flush(JNIEnv* env) {
+        currentEnv_ = env;
+        demuxer_.flush();
+        currentEnv_ = nullptr;
+    }
+
+    void reset() {
+        demuxer_.reset();
+    }
+
+    void release(JNIEnv* env) {
+        if (callback_ != nullptr) {
+            env->DeleteGlobalRef(callback_);
+            callback_ = nullptr;
+        }
+    }
+
+    void onService(const tlvdemux::ServiceInfo& info) override {
+        if (!canCallback(onServiceMethod_)) return;
+        jbyteArray packageId = makeByteArray(info.package_id);
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onServiceMethod_,
+            static_cast<jlong>(info.context_id),
+            packageId);
+        currentEnv_->DeleteLocalRef(packageId);
+    }
+
+    void onTrack(const tlvdemux::TrackInfo& info) override {
+        if (!canCallback(onTrackMethod_)) return;
+        jstring language = currentEnv_->NewStringUTF(info.language.c_str());
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onTrackMethod_,
+            static_cast<jlong>(info.track_id),
+            static_cast<jlong>(info.context_id),
+            static_cast<jint>(info.packet_id),
+            static_cast<jint>(info.kind),
+            static_cast<jint>(info.codec),
+            language,
+            static_cast<jint>(info.component_tag),
+            static_cast<jlong>(info.timescale));
+        currentEnv_->DeleteLocalRef(language);
+    }
+
+    void onAccessUnit(tlvdemux::AccessUnit&& unit) override {
+        if (!canCallback(onAccessUnitMethod_)) return;
+        jbyteArray data = makeByteArray(unit.data);
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onAccessUnitMethod_,
+            static_cast<jlong>(unit.track_id),
+            static_cast<jint>(unit.codec),
+            data,
+            static_cast<jlong>(unit.pts.value),
+            static_cast<jlong>(unit.pts.timescale),
+            static_cast<jlong>(unit.dts.value),
+            static_cast<jlong>(unit.dts.timescale),
+            static_cast<jlong>(unit.input_offset),
+            unit.random_access ? JNI_TRUE : JNI_FALSE,
+            unit.discontinuity ? JNI_TRUE : JNI_FALSE);
+        currentEnv_->DeleteLocalRef(data);
+    }
+
+    void onError(const tlvdemux::Error& error) override {
+        if (!canCallback(onErrorMethod_)) return;
+        jstring message = currentEnv_->NewStringUTF(error.message.c_str());
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onErrorMethod_,
+            static_cast<jint>(error.code),
+            static_cast<jlong>(error.input_offset),
+            error.recoverable ? JNI_TRUE : JNI_FALSE,
+            message);
+        currentEnv_->DeleteLocalRef(message);
+    }
+
+private:
+    bool canCallback(jmethodID method) const {
+        return currentEnv_ != nullptr && callback_ != nullptr && method != nullptr &&
+               !currentEnv_->ExceptionCheck();
+    }
+
+    jbyteArray makeByteArray(const std::vector<std::uint8_t>& source) const {
+        jbyteArray result = currentEnv_->NewByteArray(static_cast<jsize>(source.size()));
+        if (result != nullptr && !source.empty()) {
+            currentEnv_->SetByteArrayRegion(
+                result,
+                0,
+                static_cast<jsize>(source.size()),
+                reinterpret_cast<const jbyte*>(source.data()));
+        }
+        return result;
+    }
+
+    JNIEnv* currentEnv_ = nullptr;
+    jobject callback_ = nullptr;
+    jmethodID onServiceMethod_ = nullptr;
+    jmethodID onTrackMethod_ = nullptr;
+    jmethodID onAccessUnitMethod_ = nullptr;
+    jmethodID onErrorMethod_ = nullptr;
+    tlvdemux::Demuxer demuxer_;
 };
 
 extern "C" {
@@ -406,6 +540,65 @@ Java_com_beeregg2001_komorebi_NativeLib_closeCaptionDecoder(JNIEnv *env, jobject
         ctx->decoder = nullptr;
         ctx->context = nullptr;
     }
+    delete ctx;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_openTlvDemuxer(
+    JNIEnv* env,
+    jobject thiz,
+    jobject callback) {
+    if (callback == nullptr) return 0;
+    return reinterpret_cast<jlong>(new TlvDemuxContext(env, callback));
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_pushTlvData(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle,
+    jbyteArray data,
+    jint length) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx == nullptr || data == nullptr || length <= 0) return;
+
+    const jsize arrayLength = env->GetArrayLength(data);
+    const jsize safeLength = std::min(arrayLength, static_cast<jsize>(length));
+    jbyte* bytes = env->GetByteArrayElements(data, nullptr);
+    if (bytes == nullptr) return;
+    ctx->push(
+        env,
+        reinterpret_cast<const std::uint8_t*>(bytes),
+        static_cast<std::size_t>(safeLength));
+    env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_flushTlvDemuxer(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx != nullptr) ctx->flush(env);
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_resetTlvDemuxer(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx != nullptr) ctx->reset();
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_closeTlvDemuxer(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx == nullptr) return;
+    ctx->release(env);
     delete ctx;
 }
 
