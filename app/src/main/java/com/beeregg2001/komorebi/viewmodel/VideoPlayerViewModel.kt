@@ -10,6 +10,7 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.CmSection
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
+import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
@@ -88,7 +89,7 @@ class VideoPlayerViewModel @Inject constructor(
     private var quickVideoFetchJob: Job? = null
     private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
 
-    fun fetchAvailableQualities() {
+    fun fetchAvailableQualities(program: RecordedProgram? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _isQualitiesLoaded.value = false
             try {
@@ -122,7 +123,15 @@ class VideoPlayerViewModel @Inject constructor(
                         }
                     }
                 } else if (backend == "KONOMITV") {
-                    _availableQualities.value = StreamQuality.DEFAULT_QUALITIES
+                    _availableQualities.value = if (
+                        program?.recordedVideo?.containerFormat.equals("MMT/TLV", ignoreCase = true) &&
+                        program?.isRecording != true &&
+                        !program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
+                    ) {
+                        listOf(StreamQuality.recordedRawMmts()) + StreamQuality.DEFAULT_QUALITIES
+                    } else {
+                        StreamQuality.DEFAULT_QUALITIES
+                    }
                 } else {
                     _availableQualities.value = listOf(
                         StreamQuality(
@@ -196,6 +205,12 @@ class VideoPlayerViewModel @Inject constructor(
     ): String {
         return try {
             withContext(Dispatchers.IO) {
+                if (quality == StreamQuality.RAW_MMTS_PRIMARY_VALUE) {
+                    val ip = settingsRepository.konomiIp.first()
+                    val port = settingsRepository.konomiPort.first()
+                    _isLiveStream.value = false
+                    return@withContext UrlBuilder.getVideoRawMmtsUrl(ip, port, videoId)
+                }
                 val url =
                     recordProvider.getRecordStreamUrl(
                         videoId,

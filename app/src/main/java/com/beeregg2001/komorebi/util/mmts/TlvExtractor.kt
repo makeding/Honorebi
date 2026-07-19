@@ -23,10 +23,12 @@ private const val INPUT_BUFFER_SIZE = 512 * 1024
 private const val MMTS_CONTAINER_MIME_TYPE = "application/x-arib-mmts"
 
 class TlvExtractorsFactory(
-    private val preferredVideoPacketId: Int?
+    private val preferredVideoPacketId: Int?,
+    private val enableSeeking: Boolean = false,
+    private val durationUs: Long = C.TIME_UNSET
 ) : ExtractorsFactory {
     override fun createExtractors(): Array<Extractor> = arrayOf(
-        TlvExtractor(preferredVideoPacketId)
+        TlvExtractor(preferredVideoPacketId, enableSeeking, durationUs)
     )
 }
 
@@ -35,7 +37,9 @@ class TlvExtractorsFactory(
  * へ渡すライブ専用 Extractor。TTML/B62 は首版では意図的に公開しない。
  */
 class TlvExtractor(
-    private val preferredVideoPacketId: Int?
+    private val preferredVideoPacketId: Int?,
+    private val enableSeeking: Boolean,
+    private val durationUs: Long
 ) : Extractor, NativeTlvDemuxer.Callback {
 
     private val inputBuffer = ByteArray(INPUT_BUFFER_SIZE)
@@ -48,17 +52,32 @@ class TlvExtractor(
     private var videoTrackId: Long? = null
     private var tracksEnded = false
     private var fatalError: IOException? = null
+    private var seekMapSent = false
 
     override fun sniff(input: ExtractorInput): Boolean = true
 
     override fun init(output: ExtractorOutput) {
         extractorOutput = output
-        output.seekMap(SeekMap.Unseekable(C.TIME_UNSET))
-        nativeDemuxer = NativeTlvDemuxer(this)
+        nativeDemuxer = NativeTlvDemuxer(
+            callback = this,
+            preferredVideoPacketId = preferredVideoPacketId,
+            buildRecordingIndex = enableSeeking
+        )
     }
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
         fatalError?.let { throw it }
+        if (!seekMapSent) {
+            val inputLength = input.length
+            extractorOutput?.seekMap(
+                if (enableSeeking && durationUs > 0L && inputLength > 0L) {
+                    RecordingSeekMap(durationUs, inputLength)
+                } else {
+                    SeekMap.Unseekable(if (durationUs > 0L) durationUs else C.TIME_UNSET)
+                }
+            )
+            seekMapSent = true
+        }
         val read = input.read(inputBuffer, 0, inputBuffer.size)
         if (read == C.RESULT_END_OF_INPUT) {
             nativeDemuxer?.flush()
@@ -75,7 +94,8 @@ class TlvExtractor(
     }
 
     override fun seek(position: Long, timeUs: Long) {
-        nativeDemuxer?.reset()
+        fatalError = null
+        nativeDemuxer?.reposition(position.coerceAtLeast(0L))
         videoReader?.seek()
         audioReaders.values.forEach { it.seek() }
     }
@@ -216,6 +236,45 @@ class TlvExtractor(
 
     private fun ByteArray.toHexString(): String = joinToString(separator = "") { "%02x".format(it) }
 
+    private inner class RecordingSeekMap(
+        private val recordingDurationUs: Long,
+        private val inputLength: Long
+    ) : SeekMap {
+        override fun isSeekable(): Boolean = true
+
+        override fun getDurationUs(): Long = recordingDurationUs
+
+        override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
+            val targetUs = timeUs.coerceIn(0L, recordingDurationUs)
+            val indexed = nativeDemuxer?.getSeekPoints(targetUs) ?: longArrayOf()
+            if (indexed.size >= 4 && indexed[0] >= 0L && indexed[1] >= 0L) {
+                val distanceFromIndexedPoint = targetUs - indexed[0]
+                if (distanceFromIndexedPoint <= MAX_INDEXED_SEEK_DISTANCE_US || indexed[2] >= 0L) {
+                    val first = androidx.media3.extractor.SeekPoint(indexed[0], indexed[1])
+                    if (indexed[2] >= 0L && indexed[3] >= 0L) {
+                        return SeekMap.SeekPoints(
+                            first,
+                            androidx.media3.extractor.SeekPoint(indexed[2], indexed[3])
+                        )
+                    }
+                    return SeekMap.SeekPoints(first)
+                }
+            }
+
+            val estimatedPosition = if (recordingDurationUs <= 0L || inputLength <= 0L) {
+                0L
+            } else {
+                ((targetUs.toDouble() / recordingDurationUs.toDouble()) * inputLength.toDouble())
+                    .toLong()
+                    .minus(SEEK_PROBE_BACKOFF_BYTES)
+                    .coerceIn(0L, (inputLength - 1L).coerceAtLeast(0L))
+            }
+            return SeekMap.SeekPoints(
+                androidx.media3.extractor.SeekPoint(targetUs, estimatedPosition)
+            )
+        }
+    }
+
     private fun audioLayoutName(layout: Int): String = when (layout) {
         AUDIO_LAYOUT_STEREO -> "stereo"
         AUDIO_LAYOUT_5_1 -> "5.1ch"
@@ -230,5 +289,7 @@ class TlvExtractor(
         private const val AUDIO_LAYOUT_STEREO = 3
         private const val AUDIO_LAYOUT_5_1 = 9
         private const val AUDIO_LAYOUT_22_2 = 14
+        private const val MAX_INDEXED_SEEK_DISTANCE_US = 30L * C.MICROS_PER_SECOND
+        private const val SEEK_PROBE_BACKOFF_BYTES = 16L * 1024L * 1024L
     }
 }

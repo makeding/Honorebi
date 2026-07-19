@@ -111,6 +111,11 @@ object UrlBuilder {
         return "$baseUrl/api/streams/video/$videoId/$quality/playlist?session_id=$sessionId$recordingQuery"
     }
 
+    fun getVideoRawMmtsUrl(ip: String, port: String, videoId: Int): String {
+        val baseUrl = formatBaseUrl(ip, port, "https")
+        return "$baseUrl/api/streams/video/$videoId/raw-mmts/mpegts"
+    }
+
     /**
      * シークバー用タイル画像取得 (KonomiTV API)
      * URL: /api/videos/{id}/thumbnail/tiled

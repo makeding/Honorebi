@@ -8,7 +8,9 @@ import java.io.Closeable
  * callback は push()/flush() を呼び出した同じスレッド上で同期的に実行される。
  */
 class NativeTlvDemuxer(
-    callback: Callback
+    callback: Callback,
+    preferredVideoPacketId: Int?,
+    buildRecordingIndex: Boolean
 ) : Closeable {
 
     interface Callback {
@@ -45,7 +47,11 @@ class NativeTlvDemuxer(
     }
 
     private val nativeLib = NativeLib()
-    private var handle = nativeLib.openTlvDemuxer(callback)
+    private var handle = nativeLib.openTlvDemuxer(
+        callback,
+        preferredVideoPacketId ?: -1,
+        buildRecordingIndex
+    )
 
     fun push(data: ByteArray, length: Int) {
         check(handle != 0L) { "Native TLV demuxer is closed" }
@@ -58,6 +64,15 @@ class NativeTlvDemuxer(
 
     fun reset() {
         if (handle != 0L) nativeLib.resetTlvDemuxer(handle)
+    }
+
+    fun reposition(inputOffset: Long) {
+        if (handle != 0L) nativeLib.repositionTlvDemuxer(handle, inputOffset)
+    }
+
+    fun getSeekPoints(targetUs: Long): LongArray {
+        if (handle == 0L) return longArrayOf(-1L, -1L, -1L, -1L)
+        return nativeLib.getTlvSeekPoints(handle, targetUs)
     }
 
     override fun close() {

@@ -14,6 +14,12 @@ data class StreamQuality(
         const val RAW_MMTS_PRIMARY_VALUE = "raw-mmts"
         const val RAW_MMTS_SECONDARY_VALUE = "raw-mmts-secondary"
 
+        fun recordedRawMmts(): StreamQuality = StreamQuality(
+            label = "TLV パススルー",
+            value = RAW_MMTS_PRIMARY_VALUE,
+            isRawMmts = true
+        )
+
         // KonomiTVなどのバックエンド用のデフォルト（固定）リスト
         val DEFAULT_QUALITIES = listOf(
             StreamQuality("1080p (60fps)", "1080p-60fps"),

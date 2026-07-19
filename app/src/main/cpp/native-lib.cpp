@@ -7,9 +7,11 @@
 #include <cstring>
 #include <mutex>
 #include <deque>
+#include <array>
 
 #include <aribcaption/aribcaption.h>
 #include <tlvdemux/demuxer.hpp>
+#include <tlvdemux/recording.hpp>
 
 // tsreadex コアヘッダ
 #include "servicefilter.hpp"
@@ -201,8 +203,12 @@ public:
 
 class TlvDemuxContext final : public tlvdemux::Sink {
 public:
-    TlvDemuxContext(JNIEnv* env, jobject callback)
-        : callback_(env->NewGlobalRef(callback)), demuxer_(*this) {
+    TlvDemuxContext(JNIEnv* env, jobject callback, const int preferredVideoPacketId,
+                    const bool buildRecordingIndex)
+        : callback_(env->NewGlobalRef(callback)), demuxer_(*this),
+          preferredVideoPacketId_(preferredVideoPacketId),
+          buildRecordingIndex_(buildRecordingIndex) {
+        if (buildRecordingIndex_) recordingIndex_.begin(false);
         jclass callbackClass = env->GetObjectClass(callback);
         onServiceMethod_ = env->GetMethodID(callbackClass, "onService", "(J[B)V");
         onTrackMethod_ = env->GetMethodID(
@@ -223,19 +229,48 @@ public:
     ~TlvDemuxContext() override = default;
 
     void push(JNIEnv* env, const std::uint8_t* data, std::size_t size) {
+        std::lock_guard<std::mutex> lock(mutex_);
         currentEnv_ = env;
         demuxer_.push(data, size);
         currentEnv_ = nullptr;
     }
 
     void flush(JNIEnv* env) {
+        std::lock_guard<std::mutex> lock(mutex_);
         currentEnv_ = env;
         demuxer_.flush();
+        if (buildRecordingIndex_) recordingIndex_.finalize();
         currentEnv_ = nullptr;
     }
 
     void reset() {
+        std::lock_guard<std::mutex> lock(mutex_);
         demuxer_.reset();
+        if (buildRecordingIndex_) {
+            recordingIndex_.begin(false);
+            recordingVideoTrackId_ = 0;
+        }
+    }
+
+    void reposition(const std::uint64_t inputOffset) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        demuxer_.reposition(tlvdemux::RepositionOptions{inputOffset, true});
+    }
+
+    std::array<std::int64_t, 4> seekPoints(const std::int64_t targetUs) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::array<std::int64_t, 4> result{-1, -1, -1, -1};
+        if (!buildRecordingIndex_) return result;
+        const auto points = recordingIndex_.seekPointsFor(
+            tlvdemux::Timestamp{targetUs, 1000000});
+        if (!points.has_value()) return result;
+        result[0] = points->first.presentation_time.value;
+        result[1] = static_cast<std::int64_t>(points->first.signalling_offset);
+        if (points->second.has_value()) {
+            result[2] = points->second->presentation_time.value;
+            result[3] = static_cast<std::int64_t>(points->second->signalling_offset);
+        }
+        return result;
     }
 
     void release(JNIEnv* env) {
@@ -257,6 +292,12 @@ public:
     }
 
     void onTrack(const tlvdemux::TrackInfo& info) override {
+        if (buildRecordingIndex_ && info.kind == tlvdemux::TrackKind::Video &&
+            recordingVideoTrackId_ == 0 &&
+            (preferredVideoPacketId_ < 0 || info.packet_id == preferredVideoPacketId_)) {
+            recordingVideoTrackId_ = info.track_id;
+            recordingIndex_.selectVideoTrack(info.track_id);
+        }
         if (!canCallback(onTrackMethod_)) return;
         jstring language = currentEnv_->NewStringUTF(info.language.c_str());
         const auto audioLayout = info.audio.has_value()
@@ -284,6 +325,7 @@ public:
     }
 
     void onAccessUnit(tlvdemux::AccessUnit&& unit) override {
+        if (buildRecordingIndex_) recordingIndex_.observe(unit);
         if (!canCallback(onAccessUnitMethod_)) return;
         jbyteArray data = makeByteArray(unit.data);
         currentEnv_->CallVoidMethod(
@@ -334,12 +376,17 @@ private:
     }
 
     JNIEnv* currentEnv_ = nullptr;
+    std::mutex mutex_;
     jobject callback_ = nullptr;
     jmethodID onServiceMethod_ = nullptr;
     jmethodID onTrackMethod_ = nullptr;
     jmethodID onAccessUnitMethod_ = nullptr;
     jmethodID onErrorMethod_ = nullptr;
     tlvdemux::Demuxer demuxer_;
+    tlvdemux::RecordingIndex recordingIndex_;
+    int preferredVideoPacketId_ = -1;
+    bool buildRecordingIndex_ = false;
+    std::uint64_t recordingVideoTrackId_ = 0;
 };
 
 extern "C" {
@@ -557,9 +604,15 @@ JNIEXPORT jlong JNICALL
 Java_com_beeregg2001_komorebi_NativeLib_openTlvDemuxer(
     JNIEnv* env,
     jobject thiz,
-    jobject callback) {
+    jobject callback,
+    jint preferredVideoPacketId,
+    jboolean buildRecordingIndex) {
     if (callback == nullptr) return 0;
-    return reinterpret_cast<jlong>(new TlvDemuxContext(env, callback));
+    return reinterpret_cast<jlong>(new TlvDemuxContext(
+        env,
+        callback,
+        static_cast<int>(preferredVideoPacketId),
+        buildRecordingIndex == JNI_TRUE));
 }
 
 JNIEXPORT void JNICALL
@@ -599,6 +652,36 @@ Java_com_beeregg2001_komorebi_NativeLib_resetTlvDemuxer(
     jlong handle) {
     auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
     if (ctx != nullptr) ctx->reset();
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_repositionTlvDemuxer(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle,
+    jlong inputOffset) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx != nullptr) ctx->reposition(static_cast<std::uint64_t>(std::max<jlong>(0, inputOffset)));
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_getTlvSeekPoints(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle,
+    jlong targetUs) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    jlongArray result = env->NewLongArray(4);
+    if (result == nullptr) return nullptr;
+    std::array<jlong, 4> values{-1, -1, -1, -1};
+    if (ctx != nullptr) {
+        const auto points = ctx->seekPoints(static_cast<std::int64_t>(targetUs));
+        for (std::size_t index = 0; index < values.size(); ++index) {
+            values[index] = static_cast<jlong>(points[index]);
+        }
+    }
+    env->SetLongArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+    return result;
 }
 
 JNIEXPORT void JNICALL

@@ -60,6 +60,7 @@ import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TsReadExDataSource
+import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -341,6 +342,11 @@ fun rememberManagedExoPlayer(
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
     val isRecordingChasePlayback =
         program?.isRecording == true || program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
+    val isRawMmtsPlayback = program?.recordedVideo?.containerFormat.equals(
+        "MMT/TLV",
+        ignoreCase = true
+    ) && vs.currentQuality.isRawMmts && !isRecordingChasePlayback
+    val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()
     val smbServerList by settingsViewModel.smbServerList.collectAsState()
 
     val applyAudioSelectionAndMatrix = { mode: AudioMode, player: ExoPlayer ->
@@ -372,7 +378,13 @@ fun rememberManagedExoPlayer(
         }
     }
 
-    val exoPlayer = remember(smbServerList, program?.id, isRecordingChasePlayback) {
+    val exoPlayer = remember(
+        smbServerList,
+        program?.id,
+        isRecordingChasePlayback,
+        isRawMmtsPlayback,
+        programDurationUs
+    ) {
         val renderersFactory = DefaultRenderersFactory(context).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
@@ -516,10 +528,16 @@ fun rememberManagedExoPlayer(
         }
 
         // ★ 核心: ExoPlayer の Extractor をラップし、自前の SeekMap を強制注入する
-        val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()
 //        val isDirectPlayback = isEdcbDirect != null
 
         val customExtractorsFactory = ExtractorsFactory {
+            if (isRawMmtsPlayback) {
+                return@ExtractorsFactory TlvExtractorsFactory(
+                    preferredVideoPacketId = null,
+                    enableSeeking = true,
+                    durationUs = programDurationUs
+                ).createExtractors()
+            }
             val defaultExtractors = DefaultExtractorsFactory().apply {
                 setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
                 setTsExtractorMode(TsExtractor.MODE_SINGLE_PMT)

@@ -35,9 +35,15 @@ class NativeLib {
     external fun flushCaptionDecoder(handle: Long)
     external fun closeCaptionDecoder(handle: Long)
 
-    external fun openTlvDemuxer(callback: NativeTlvDemuxer.Callback): Long
+    external fun openTlvDemuxer(
+        callback: NativeTlvDemuxer.Callback,
+        preferredVideoPacketId: Int,
+        buildRecordingIndex: Boolean
+    ): Long
     external fun pushTlvData(handle: Long, data: ByteArray, length: Int)
     external fun flushTlvDemuxer(handle: Long)
     external fun resetTlvDemuxer(handle: Long)
+    external fun repositionTlvDemuxer(handle: Long, inputOffset: Long)
+    external fun getTlvSeekPoints(handle: Long, targetUs: Long): LongArray
     external fun closeTlvDemuxer(handle: Long)
 }
