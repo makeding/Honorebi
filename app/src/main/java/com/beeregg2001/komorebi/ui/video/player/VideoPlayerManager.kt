@@ -35,6 +35,7 @@ import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.PlayerMessage
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
@@ -897,10 +898,34 @@ fun rememberManagedExoPlayer(
                         if (!vs.isSubtitleEnabled) return
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
-                            if (entry is PrivFrame && (entry.owner.contains("aribb24", true) || entry.owner.contains("B24", true))) {
-                                val cue = captionDecoder.decode(entry.privateData, currentPosition)
-                                onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
-                                if (cue != null) onSubtitleCue(cue)
+                            if (entry !is PrivFrame) continue
+                            when {
+                                entry.owner.contains("aribb62", ignoreCase = true) -> {
+                                    val cues = captionDecoder.decodeB62(entry.privateData, currentPosition)
+                                    onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
+                                    cues.forEach { cue ->
+                                        if (cue.ptsMs <= currentPosition + 50L) {
+                                            onSubtitleCue(cue)
+                                        } else {
+                                            createMessage(PlayerMessage.Target { _, payload ->
+                                                if (vs.isSubtitleEnabled) {
+                                                    (payload as? NativeCaptionCue)?.let(onSubtitleCue)
+                                                }
+                                            })
+                                                .setPosition(cue.ptsMs)
+                                                .setPayload(cue)
+                                                .setDeleteAfterDelivery(true)
+                                                .send()
+                                        }
+                                    }
+                                }
+
+                                entry.owner.contains("aribb24", ignoreCase = true) ||
+                                    entry.owner.contains("B24", ignoreCase = true) -> {
+                                    val cue = captionDecoder.decode(entry.privateData, currentPosition)
+                                    onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
+                                    if (cue != null) onSubtitleCue(cue)
+                                }
                             }
                         }
                     }

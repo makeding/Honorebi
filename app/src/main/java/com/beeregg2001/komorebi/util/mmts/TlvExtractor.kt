@@ -4,6 +4,8 @@ package com.beeregg2001.komorebi.util.mmts
 
 import android.util.Log
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.Util
 import androidx.media3.extractor.Extractor
@@ -12,6 +14,7 @@ import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.PositionHolder
 import androidx.media3.extractor.SeekMap
+import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.ts.H265Reader
 import androidx.media3.extractor.ts.LatmReader
 import androidx.media3.extractor.ts.SeiReader
@@ -34,7 +37,7 @@ class TlvExtractorsFactory(
 
 /**
  * Raw ARIB MMT/TLV を libtlvdemux.so で Access Unit に分解し、Media3 の既存 ElementaryStreamReader
- * へ渡すライブ専用 Extractor。TTML/B62 は首版では意図的に公開しない。
+ * へ渡す Extractor。ARIB STD-B62 TTML は timed ID3 として MetadataRenderer に公開する。
  */
 class TlvExtractor(
     private val preferredVideoPacketId: Int?,
@@ -50,6 +53,8 @@ class TlvExtractor(
     private var nativeDemuxer: NativeTlvDemuxer? = null
     private var videoReader: H265Reader? = null
     private var videoTrackId: Long? = null
+    private var subtitleOutput: TrackOutput? = null
+    private var subtitleTrackId: Long? = null
     private var tracksEnded = false
     private var fatalError: IOException? = null
     private var seekMapSent = false
@@ -158,10 +163,19 @@ class TlvExtractor(
                     "layout=${audioLayoutName(audioChannelLayout)}"
             )
 
-            codec == CODEC_TTML -> Log.d(
-                TAG,
-                "Ignoring MMTS TTML track: packetId=0x${packetId.toString(16)} componentTag=$componentTag timescale=$timescale"
-            )
+            codec == CODEC_TTML && subtitleOutput == null -> {
+                subtitleTrackId = trackId
+                trackIdGenerator.generateNewId()
+                subtitleOutput = output.track(trackIdGenerator.trackId, C.TRACK_TYPE_METADATA).apply {
+                    format(
+                        Format.Builder()
+                            .setId(trackIdGenerator.formatId)
+                            .setSampleMimeType(MimeTypes.APPLICATION_ID3)
+                            .setLanguage(language.ifBlank { null })
+                            .build()
+                    )
+                }
+            }
         }
     }
 
@@ -200,6 +214,21 @@ class TlvExtractor(
                 reader.consume(payload)
                 reader.packetFinished(false)
             }
+
+            CODEC_TTML -> {
+                if (trackId != subtitleTrackId) return
+                val id3 = buildPrivateId3("aribb62", data)
+                subtitleOutput?.let { output ->
+                    output.sampleData(ParsableByteArray(id3), id3.size)
+                    output.sampleMetadata(
+                        timeUs,
+                        C.BUFFER_FLAG_KEY_FRAME,
+                        id3.size,
+                        0,
+                        null
+                    )
+                }
+            }
         }
     }
 
@@ -232,6 +261,33 @@ class TlvExtractor(
     private fun scaleToMicroseconds(value: Long, timescale: Long): Long {
         if (timescale <= 0L) return 0L
         return Util.scaleLargeTimestamp(value, C.MICROS_PER_SECOND, timescale)
+    }
+
+    private fun buildPrivateId3(ownerName: String, payload: ByteArray): ByteArray {
+        val owner = ownerName.toByteArray(Charsets.US_ASCII)
+        val framePayloadSize = owner.size + 1 + payload.size
+        val tagPayloadSize = 10 + framePayloadSize
+        return ByteArray(10 + tagPayloadSize).also { id3 ->
+            id3[0] = 'I'.code.toByte()
+            id3[1] = 'D'.code.toByte()
+            id3[2] = '3'.code.toByte()
+            id3[3] = 4
+            writeSynchsafeInt(id3, 6, tagPayloadSize)
+            id3[10] = 'P'.code.toByte()
+            id3[11] = 'R'.code.toByte()
+            id3[12] = 'I'.code.toByte()
+            id3[13] = 'V'.code.toByte()
+            writeSynchsafeInt(id3, 14, framePayloadSize)
+            owner.copyInto(id3, destinationOffset = 20)
+            payload.copyInto(id3, destinationOffset = 20 + owner.size + 1)
+        }
+    }
+
+    private fun writeSynchsafeInt(target: ByteArray, offset: Int, value: Int) {
+        target[offset] = ((value ushr 21) and 0x7f).toByte()
+        target[offset + 1] = ((value ushr 14) and 0x7f).toByte()
+        target[offset + 2] = ((value ushr 7) and 0x7f).toByte()
+        target[offset + 3] = (value and 0x7f).toByte()
     }
 
     private fun ByteArray.toHexString(): String = joinToString(separator = "") { "%02x".format(it) }

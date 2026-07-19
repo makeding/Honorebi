@@ -31,6 +31,22 @@ class NativeCaptionDecoder(
     }
 
     @Synchronized
+    fun decodeB62(data: ByteArray, ptsMs: Long): List<NativeCaptionCue> {
+        val activeHandle = handle
+        if (activeHandle == 0L) return emptyList()
+        return try {
+            nativeLib.decodeB62Captions(activeHandle, data, ptsMs).toList().also { cues ->
+                if (cues.isNotEmpty()) {
+                    languages = listOf(NativeCaptionLanguage(id = 1, iso6392Code = "jpn"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to decode ARIB STD-B62 caption", e)
+            emptyList()
+        }
+    }
+
+    @Synchronized
     fun availableLanguages(): List<NativeCaptionLanguage> = languages
 
     @Synchronized
