@@ -70,6 +70,7 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.OffsetDateTime
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -96,6 +97,113 @@ private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
 private const val HLS_LOAD_MAX_RETRY_DELAY_MS = 8_000L
 private const val RECORDED_SEGMENT_PREFETCH_COUNT = 0
 private const val RECORDED_SEGMENT_RECOVERY_DEBOUNCE_MS = 2_000L
+private const val GROWING_FILE_RETRY_INTERVAL_MS = 3_000L
+private const val GROWING_FILE_MAX_IDLE_RETRIES = 20
+private const val GROWING_FILE_LIVE_EDGE_SAFETY_MS = 2_000L
+
+private fun RecordedProgram.currentChaseDurationMs(nowMs: Long = System.currentTimeMillis()): Long {
+    return runCatching {
+        val startMs = OffsetDateTime.parse(startTime).toInstant().toEpochMilli()
+        val endMs = OffsetDateTime.parse(endTime).toInstant().toEpochMilli()
+        (nowMs.coerceAtMost(endMs) - startMs).coerceAtLeast(0L)
+    }.getOrDefault((recordedVideo.duration * 1000.0).toLong().coerceAtLeast(0L))
+}
+
+private class GrowingHttpDataSource(
+    private val upstreamFactory: DataSource.Factory,
+    private val onKnownFileSize: (Long) -> Unit
+) : DataSource {
+    private val transferListeners = mutableListOf<TransferListener>()
+    private var activeDataSource: DataSource? = null
+    private var baseDataSpec: DataSpec? = null
+    private var readPosition = 0L
+    private var idleRetries = 0
+
+    @Volatile
+    private var isClosed = false
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        transferListeners.add(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        isClosed = false
+        baseDataSpec = dataSpec
+        readPosition = dataSpec.position
+        idleRetries = 0
+        openAtCurrentPosition()
+        // 録画中のファイル長は増え続けるため、Extractor には固定長を知らせない。
+        return C.LENGTH_UNSET.toLong()
+    }
+
+    private fun openAtCurrentPosition(): Long {
+        val originalSpec = checkNotNull(baseDataSpec)
+        val source = upstreamFactory.createDataSource()
+        transferListeners.forEach(source::addTransferListener)
+        activeDataSource = source
+        val headers = originalSpec.httpRequestHeaders.toMutableMap().apply {
+            put("Cache-Control", "no-cache")
+            put("Pragma", "no-cache")
+        }
+        val rangedSpec = originalSpec.buildUpon()
+            .setPosition(readPosition)
+            .setLength(C.LENGTH_UNSET.toLong())
+            .setHttpRequestHeaders(headers)
+            .build()
+        return try {
+            source.open(rangedSpec).also { openedLength ->
+                if (openedLength != C.LENGTH_UNSET.toLong()) {
+                    onKnownFileSize(readPosition + openedLength)
+                }
+            }
+        } catch (error: Throwable) {
+            runCatching { source.close() }
+            activeDataSource = null
+            throw error
+        }
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        while (!isClosed) {
+            val result = activeDataSource?.read(buffer, offset, length) ?: C.RESULT_END_OF_INPUT
+            if (result != C.RESULT_END_OF_INPUT) {
+                if (result > 0) readPosition += result
+                idleRetries = 0
+                return result
+            }
+
+            closeActiveSource()
+            if (idleRetries >= GROWING_FILE_MAX_IDLE_RETRIES) {
+                return C.RESULT_END_OF_INPUT
+            }
+            idleRetries += 1
+            try {
+                Thread.sleep(GROWING_FILE_RETRY_INTERVAL_MS)
+                if (!isClosed) openAtCurrentPosition()
+            } catch (error: HttpDataSource.InvalidResponseCodeException) {
+                if (error.responseCode != 416) {
+                    throw error
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return C.RESULT_END_OF_INPUT
+            }
+        }
+        return C.RESULT_END_OF_INPUT
+    }
+
+    override fun getUri(): Uri? = activeDataSource?.uri ?: baseDataSpec?.uri
+
+    override fun close() {
+        isClosed = true
+        closeActiveSource()
+    }
+
+    private fun closeActiveSource() {
+        runCatching { activeDataSource?.close() }
+        activeDataSource = null
+    }
+}
 
 private fun shouldBypassPlaylistCache(dataSpec: DataSpec): Boolean {
     val path = dataSpec.uri.path.orEmpty()
@@ -358,10 +466,17 @@ fun rememberManagedExoPlayer(
     ) && program?.recordedVideo?.videoCodec.equals(
         "MPEG-2",
         ignoreCase = true
-    ) && vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE &&
-        !isRecordingChasePlayback
+    ) && vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
     val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()
     val smbServerList by settingsViewModel.smbServerList.collectAsState()
+    val fileSizeBytesRef = remember(program?.id, isOriginalMpegTsPlayback) { AtomicLong(0L) }
+    val fileSizeReferenceDurationUsRef = remember(
+        program?.id,
+        isOriginalMpegTsPlayback,
+        isRecordingChasePlayback
+    ) {
+        AtomicLong(if (isRecordingChasePlayback) 0L else programDurationUs)
+    }
 
     val applyAudioSelectionAndMatrix = { mode: AudioMode, player: ExoPlayer ->
         val audioGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -414,8 +529,6 @@ fun rememberManagedExoPlayer(
 
         val nativeLib = NativeLib()
 
-        // ★ 追加: HTTPリクエスト時に取得したファイルサイズを保持する共有変数
-        val fileSizeBytesRef = AtomicLong(0L)
         val segmentPrefetchCache = SegmentPrefetchCache()
         val playerRef = AtomicReference<ExoPlayer?>()
         val isImmediateStreamRecoveryRunning = AtomicBoolean(false)
@@ -455,7 +568,22 @@ fun rememberManagedExoPlayer(
                         TsReadExDataSource(nativeLib, dynamicTsArgs, fileSizeBytesRef)
                     } else {
                         isHttpSource = true
-                        httpDataSourceFactory.createDataSource()
+                        if (isOriginalMpegTsPlayback && isRecordingChasePlayback) {
+                            GrowingHttpDataSource(httpDataSourceFactory) { totalFileSize ->
+                                fileSizeBytesRef.updateAndGet { knownSize ->
+                                    maxOf(knownSize, totalFileSize)
+                                }
+                                val recordedDurationUs = program
+                                    ?.currentChaseDurationMs()
+                                    ?.times(1_000L)
+                                    ?: programDurationUs
+                                fileSizeReferenceDurationUsRef.updateAndGet { knownDurationUs ->
+                                    maxOf(knownDurationUs, recordedDurationUs)
+                                }
+                            }
+                        } else {
+                            httpDataSourceFactory.createDataSource()
+                        }
                     }
 
                     transferListeners.forEach { source.addTransferListener(it) }
@@ -528,6 +656,15 @@ fun rememberManagedExoPlayer(
                         fileSizeBytesRef.updateAndGet { knownSize ->
                             maxOf(knownSize, totalFileSize)
                         }
+                        if (isRecordingChasePlayback) {
+                            val recordedDurationUs = program
+                                ?.currentChaseDurationMs()
+                                ?.times(1_000L)
+                                ?: programDurationUs
+                            fileSizeReferenceDurationUsRef.updateAndGet { knownDurationUs ->
+                                maxOf(knownDurationUs, recordedDurationUs)
+                            }
+                        }
                     }
                     if (isHttpSource && isRecordedSegmentUri(requestSpec.uri)) {
                         segmentPrefetchCache.prefetch(
@@ -582,13 +719,35 @@ fun rememberManagedExoPlayer(
                                         // TsExtractor が算出したエラーの SeekMap を無視し、独自の高精度マップを注入
                                         val customSeekMap = object : SeekMap {
                                             override fun isSeekable() = true
-                                            override fun getDurationUs() = programDurationUs
+                                            override fun getDurationUs(): Long {
+                                                if (!isOriginalMpegTsPlayback || !isRecordingChasePlayback) {
+                                                    return programDurationUs
+                                                }
+                                                val elapsedMs = program
+                                                    ?.currentChaseDurationMs()
+                                                    ?: (programDurationUs / 1_000L)
+                                                return (
+                                                    elapsedMs - GROWING_FILE_LIVE_EDGE_SAFETY_MS
+                                                ).coerceAtLeast(0L) * 1_000L
+                                            }
                                             override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
                                                 val size = fileSizeBytesRef.get()
                                                 if (size <= 0L) return SeekMap.SeekPoints(SeekPoint(timeUs, 0L))
-                                                val safeTime = timeUs.coerceIn(0L, programDurationUs)
-                                                // 時間とファイルサイズから、HTTP Range の要求バイトオフセットを正確に計算する
-                                                val position = (safeTime.toDouble() / programDurationUs * size).toLong()
+                                                val currentDurationUs = getDurationUs().coerceAtLeast(1L)
+                                                val safeTime = timeUs.coerceIn(0L, currentDurationUs)
+                                                val referenceDurationUs = if (
+                                                    isOriginalMpegTsPlayback && isRecordingChasePlayback
+                                                ) {
+                                                    fileSizeReferenceDurationUsRef.get().coerceAtLeast(1L)
+                                                } else {
+                                                    currentDurationUs
+                                                }
+                                                // 既知のファイルサイズと、そのサイズを観測した時点の録画時間から
+                                                // 平均ビットレートを求め、HTTP Range の位置を推定する。
+                                                val calculatedPosition =
+                                                    (safeTime.toDouble() / referenceDurationUs * size).toLong()
+                                                val maxPosition = (size - 188L * 512L).coerceAtLeast(0L)
+                                                val position = calculatedPosition.coerceAtMost(maxPosition)
                                                 return SeekMap.SeekPoints(SeekPoint(safeTime, position))
                                             }
                                         }

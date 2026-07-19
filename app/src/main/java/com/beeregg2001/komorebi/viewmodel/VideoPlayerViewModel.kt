@@ -126,12 +126,7 @@ class VideoPlayerViewModel @Inject constructor(
                     val isFinished = program?.isRecording != true &&
                         !program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
                     _availableQualities.value = when {
-                        isFinished && program?.recordedVideo?.containerFormat.equals(
-                            "MMT/TLV",
-                            ignoreCase = true
-                        ) -> listOf(StreamQuality.recordedRawMmts()) + StreamQuality.DEFAULT_QUALITIES
-
-                        isFinished && program?.recordedVideo?.containerFormat.equals(
+                        program?.recordedVideo?.containerFormat.equals(
                             "MPEG-TS",
                             ignoreCase = true
                         ) && program?.recordedVideo?.videoCodec.equals(
@@ -139,6 +134,11 @@ class VideoPlayerViewModel @Inject constructor(
                             ignoreCase = true
                         ) -> listOf(StreamQuality.originalMpegTsHardwareDi()) +
                             StreamQuality.DEFAULT_QUALITIES
+
+                        isFinished && program?.recordedVideo?.containerFormat.equals(
+                            "MMT/TLV",
+                            ignoreCase = true
+                        ) -> listOf(StreamQuality.recordedRawMmts()) + StreamQuality.DEFAULT_QUALITIES
 
                         else -> StreamQuality.DEFAULT_QUALITIES
                     }

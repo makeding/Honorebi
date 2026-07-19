@@ -848,7 +848,11 @@ fun VideoPlayerScreen(
         currentSessionId,
         isRecordingChasePlayback
     ) {
-        if (smbItem != null || !isRecordingChasePlayback) {
+        if (
+            smbItem != null ||
+            !isRecordingChasePlayback ||
+            vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
+        ) {
             return@LaunchedEffect
         }
         while (isActive) {
