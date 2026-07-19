@@ -53,6 +53,7 @@ import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedChannel
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
@@ -241,9 +242,14 @@ fun VideoPlayerScreen(
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
     }
+    var subtitleLanguages by remember(currentProgram.id) {
+        mutableStateOf(emptyList<NativeCaptionLanguage>())
+    }
+    var currentSubtitleLanguageId by remember(currentProgram.id) { mutableIntStateOf(1) }
     val subtitleCue = rememberNativeCaptionCue(
         events = subtitleEvents,
         enabled = vs.isSubtitleEnabled,
+        resetKey = currentProgram.id to currentSubtitleLanguageId,
         clockRunning = vs.isPlayerPlaying
     )
 
@@ -449,6 +455,8 @@ fun VideoPlayerScreen(
         isLiveStream = isLiveStream,
         scope = scope,
         onSubtitleCue = { subtitleEvents.tryEmit(it) },
+        subtitleLanguageId = currentSubtitleLanguageId,
+        onSubtitleLanguagesChanged = { subtitleLanguages = it },
         onVideoSizeChanged = { w, h, ratio ->
             videoWidth = w
             videoHeight = h
@@ -1435,6 +1443,8 @@ fun VideoPlayerScreen(
                     currentAudioMode = vs.currentAudioMode,
                     currentSpeed = vs.currentSpeed,
                     isSubtitleEnabled = vs.isSubtitleEnabled,
+                    subtitleLanguages = subtitleLanguages,
+                    currentSubtitleLanguageId = currentSubtitleLanguageId,
                     currentQuality = vs.currentQuality,
                     isCommentEnabled = vs.isCommentEnabled,
                     isLCropEnabled = vs.lCropEnabled,
@@ -1456,6 +1466,14 @@ fun VideoPlayerScreen(
                     onSubtitleToggle = {
                         vs.isSubtitleEnabled =
                             !vs.isSubtitleEnabled; onShowToast("字幕: ${if (vs.isSubtitleEnabled) "表示" else "非表示"}")
+                    },
+                    onSubtitleLanguageToggle = {
+                        currentSubtitleLanguageId = if (currentSubtitleLanguageId == 1) 2 else 1
+                        val selectedLanguage = subtitleLanguages.firstOrNull { it.id == currentSubtitleLanguageId }
+                        onShowToast(
+                            "字幕言語: 第${currentSubtitleLanguageId}言語" +
+                                (selectedLanguage?.let { "・${it.displayName}" } ?: "")
+                        )
                     },
                     onQualitySelect = {
                         if (smbItem != null) {

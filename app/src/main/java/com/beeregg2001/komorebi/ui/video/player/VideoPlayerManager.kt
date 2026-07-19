@@ -53,6 +53,7 @@ import androidx.media3.extractor.SeekPoint
 import com.beeregg2001.komorebi.NativeLib
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbContextBuilder
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbDataSourceFactory
 import com.beeregg2001.komorebi.data.model.AudioMode
@@ -307,6 +308,8 @@ fun rememberManagedExoPlayer(
     vs: VideoPlayerState,
     scope: CoroutineScope,
     onSubtitleCue: (NativeCaptionCue) -> Unit,
+    subtitleLanguageId: Int,
+    onSubtitleLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
     onVideoSizeChanged: (Int, Int, Float) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
     onDurationChanged: (Long) -> Unit = {},
@@ -316,6 +319,13 @@ fun rememberManagedExoPlayer(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
     val captionDecoder = remember { NativeCaptionDecoder() }
+    LaunchedEffect(program?.id) {
+        captionDecoder.reset(subtitleLanguageId)
+        onSubtitleLanguagesChanged(emptyList())
+    }
+    LaunchedEffect(subtitleLanguageId) {
+        captionDecoder.switchLanguage(subtitleLanguageId)
+    }
     LaunchedEffect(vs.isSubtitleEnabled) {
         if (!vs.isSubtitleEnabled) captionDecoder.flush()
     }
@@ -658,8 +668,9 @@ fun rememberManagedExoPlayer(
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry is PrivFrame && (entry.owner.contains("aribb24", true) || entry.owner.contains("B24", true))) {
-                                captionDecoder.decode(entry.privateData, currentPosition)
-                                    ?.let(onSubtitleCue)
+                                val cue = captionDecoder.decode(entry.privateData, currentPosition)
+                                onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
+                                if (cue != null) onSubtitleCue(cue)
                             }
                         }
                     }

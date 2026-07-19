@@ -17,3 +17,18 @@ data class NativeCaptionImage(
     val stride: Int,
     val rgba: ByteArray
 )
+
+data class NativeCaptionLanguage(
+    val id: Int,
+    val iso6392Code: String
+) {
+    val displayName: String
+        get() = when (iso6392Code) {
+            "jpn" -> "日本語"
+            "eng" -> "英語"
+            "por" -> "ポルトガル語"
+            "spa" -> "スペイン語"
+            "tgl" -> "タガログ語"
+            else -> iso6392Code.ifBlank { "第${id}言語" }
+        }
+}

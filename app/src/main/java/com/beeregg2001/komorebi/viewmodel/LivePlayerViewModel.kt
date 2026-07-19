@@ -33,6 +33,7 @@ import com.beeregg2001.komorebi.data.repository.LiveProvider
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -121,6 +122,15 @@ class LivePlayerViewModel @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val dualSubtitleEvents: SharedFlow<NativeCaptionCue> = _dualSubtitleEvents.asSharedFlow()
+
+    private val _mainSubtitleLanguages = MutableStateFlow<List<NativeCaptionLanguage>>(emptyList())
+    val mainSubtitleLanguages: StateFlow<List<NativeCaptionLanguage>> = _mainSubtitleLanguages.asStateFlow()
+
+    private val _dualSubtitleLanguages = MutableStateFlow<List<NativeCaptionLanguage>>(emptyList())
+    val dualSubtitleLanguages: StateFlow<List<NativeCaptionLanguage>> = _dualSubtitleLanguages.asStateFlow()
+
+    private val _currentSubtitleLanguageId = MutableStateFlow(1)
+    val currentSubtitleLanguageId: StateFlow<Int> = _currentSubtitleLanguageId.asStateFlow()
 
     private val _availableSources = MutableStateFlow<List<StreamSource>>(emptyList())
     val availableSources: StateFlow<List<StreamSource>> = _availableSources.asStateFlow()
@@ -329,7 +339,8 @@ class LivePlayerViewModel @Inject constructor(
                 "source=$mainCurrentSource, quality=${mainCurrentQuality?.value}"
         )
         mainEventSource?.cancel(); mainEventSource = null
-        mainCaptionDecoder.flush()
+        mainCaptionDecoder.reset(_currentSubtitleLanguageId.value)
+        _mainSubtitleLanguages.value = emptyList()
 
         // ★ 修正: KonomiTV等でセッションが残らないよう、確実にstop()とclearMediaItems()を呼ぶ
         _mainPlayer.value?.stop()
@@ -348,7 +359,8 @@ class LivePlayerViewModel @Inject constructor(
                 "source=$dualCurrentSource, quality=${dualCurrentQuality?.value}"
         )
         dualEventSource?.cancel(); dualEventSource = null
-        dualCaptionDecoder.flush()
+        dualCaptionDecoder.reset(_currentSubtitleLanguageId.value)
+        _dualSubtitleLanguages.value = emptyList()
 
         // ★ 修正: サブプレイヤー側も同様に確実なクリーンアップを行う
         _dualPlayer.value?.stop()
@@ -459,6 +471,7 @@ class LivePlayerViewModel @Inject constructor(
         isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
+        if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
         if (!isAutoRetry) {
             mainAutoRetryCount = 0; _mainPlayerError.value = null
         }
@@ -628,14 +641,23 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    fun setSubtitleLanguage(languageId: Int) {
+        if (languageId !in 1..2) return
+        _currentSubtitleLanguageId.value = languageId
+        mainCaptionDecoder.switchLanguage(languageId)
+        dualCaptionDecoder.switchLanguage(languageId)
+    }
+
     private fun decodeAndEmitMainSubtitle(ptsMs: Long, data: ByteArray) {
-        val cue = mainCaptionDecoder.decode(data, ptsMs) ?: return
-        _mainSubtitleEvents.tryEmit(cue)
+        val cue = mainCaptionDecoder.decode(data, ptsMs)
+        _mainSubtitleLanguages.value = mainCaptionDecoder.availableLanguages()
+        if (cue != null) _mainSubtitleEvents.tryEmit(cue)
     }
 
     private fun decodeAndEmitDualSubtitle(ptsMs: Long, data: ByteArray) {
-        val cue = dualCaptionDecoder.decode(data, ptsMs) ?: return
-        _dualSubtitleEvents.tryEmit(cue)
+        val cue = dualCaptionDecoder.decode(data, ptsMs)
+        _dualSubtitleLanguages.value = dualCaptionDecoder.availableLanguages()
+        if (cue != null) _dualSubtitleEvents.tryEmit(cue)
     }
 
     fun setVolumes(mainVolume: Float, dualVolume: Float) {

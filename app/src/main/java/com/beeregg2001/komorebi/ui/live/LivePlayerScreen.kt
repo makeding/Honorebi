@@ -181,16 +181,24 @@ fun LivePlayerScreen(
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
     var isMainPlaying by remember { mutableStateOf(false) }
     var isDualPlaying by remember { mutableStateOf(false) }
+    val mainSubtitleLanguages by livePlayerViewModel.mainSubtitleLanguages.collectAsState()
+    val dualSubtitleLanguages by livePlayerViewModel.dualSubtitleLanguages.collectAsState()
+    val currentSubtitleLanguageId by livePlayerViewModel.currentSubtitleLanguageId.collectAsState()
+    val activeSubtitleLanguages = if (ps.isDualDisplayMode && ps.activeDualPlayerIndex == 1) {
+        dualSubtitleLanguages
+    } else {
+        mainSubtitleLanguages
+    }
     val mainCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.mainSubtitleEvents,
         enabled = isSubtitleEnabled,
-        resetKey = currentChannelItem.id,
+        resetKey = currentChannelItem.id to currentSubtitleLanguageId,
         clockRunning = isMainPlaying
     )
     val dualCaptionCue = rememberNativeCaptionCue(
         events = livePlayerViewModel.dualSubtitleEvents,
         enabled = isSubtitleEnabled,
-        resetKey = ps.dualRightChannel?.id,
+        resetKey = ps.dualRightChannel?.id to currentSubtitleLanguageId,
         clockRunning = isDualPlaying
     )
 
@@ -914,6 +922,8 @@ fun LivePlayerScreen(
                 availableSources = availableSources,
                 currentAudioMode = ps.currentAudioMode,
                 isSubtitleEnabled = isSubtitleEnabled,
+                subtitleLanguages = activeSubtitleLanguages,
+                currentSubtitleLanguageId = currentSubtitleLanguageId,
                 currentQuality = ps.currentQuality,
                 isCommentEnabled = isCommentEnabled,
                 isLCropEnabled = ps.lCropEnabled,
@@ -1034,6 +1044,15 @@ fun LivePlayerScreen(
                             AppStrings.TOAST_SUBTITLE_CHANGED,
                             if (subtitleEnabledState.value) AppStrings.STATE_SHOW else AppStrings.STATE_HIDE
                         )
+                    )
+                },
+                onSubtitleLanguageToggle = {
+                    val nextLanguageId = if (currentSubtitleLanguageId == 1) 2 else 1
+                    livePlayerViewModel.setSubtitleLanguage(nextLanguageId)
+                    val selectedLanguage = activeSubtitleLanguages.firstOrNull { it.id == nextLanguageId }
+                    onShowToast(
+                        "字幕言語: 第${nextLanguageId}言語" +
+                            (selectedLanguage?.let { "・${it.displayName}" } ?: "")
                     )
                 },
                 onQualitySelect = {

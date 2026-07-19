@@ -50,6 +50,7 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 @Composable
@@ -64,6 +65,8 @@ fun VideoTopSubMenuUI(
     currentAudioMode: AudioMode,
     currentSpeed: Float,
     isSubtitleEnabled: Boolean,
+    subtitleLanguages: List<NativeCaptionLanguage>,
+    currentSubtitleLanguageId: Int,
     currentQuality: StreamQuality,
     isCommentEnabled: Boolean,
     isLCropEnabled: Boolean,
@@ -73,6 +76,7 @@ fun VideoTopSubMenuUI(
     onAudioToggle: () -> Unit,
     onSpeedToggle: () -> Unit,
     onSubtitleToggle: () -> Unit,
+    onSubtitleLanguageToggle: () -> Unit,
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
@@ -99,6 +103,9 @@ fun VideoTopSubMenuUI(
     val qualityButtonRequester = remember { FocusRequester() }
     val qualityListRequester = remember { FocusRequester() }
     val quickVideoListRequester = remember { FocusRequester() }
+    val currentSubtitleLanguage = subtitleLanguages.firstOrNull {
+        it.id == currentSubtitleLanguageId
+    } ?: subtitleLanguages.firstOrNull()
 
     val handleBack = {
         if (selectedCategory != null) {
@@ -264,6 +271,17 @@ fun VideoTopSubMenuUI(
                     contentColor = colors.textPrimary,
                     enabled = isSubtitleSupported // ★ 適用
                 )
+                if (subtitleLanguages.size > 1 && currentSubtitleLanguage != null) {
+                    VideoMenuTileItem(
+                        title = "字幕言語",
+                        icon = Icons.Default.Translate,
+                        subtitle = "第${currentSubtitleLanguage.id}言語・${currentSubtitleLanguage.displayName}",
+                        onClick = onSubtitleLanguageToggle,
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = colors.textPrimary,
+                        enabled = isSubtitleSupported
+                    )
+                }
                 VideoMenuTileItem(
                     title = "L字クロップ",
                     icon = Icons.Default.Crop,

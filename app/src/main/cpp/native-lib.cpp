@@ -350,6 +350,40 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeCaption(JNIEnv *env, jobject thiz,
     return cue;
 }
 
+JNIEXPORT jintArray JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_getCaptionLanguageCodes(JNIEnv *env, jobject thiz, jlong handle) {
+    auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
+    if (!ctx || !ctx->decoder) return env->NewIntArray(0);
+
+    jint codes[ARIBCC_LANGUAGEID_MAX] = {};
+    {
+        std::lock_guard<std::mutex> lock(ctx->mutex);
+        codes[0] = static_cast<jint>(aribcc_decoder_query_iso6392_language_code(
+            ctx->decoder,
+            ARIBCC_LANGUAGEID_FIRST));
+        codes[1] = static_cast<jint>(aribcc_decoder_query_iso6392_language_code(
+            ctx->decoder,
+            ARIBCC_LANGUAGEID_SECOND));
+    }
+
+    jsize count = codes[1] != 0 ? 2 : (codes[0] != 0 ? 1 : 0);
+    jintArray result = env->NewIntArray(count);
+    if (count > 0) env->SetIntArrayRegion(result, 0, count, codes);
+    return result;
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_switchCaptionLanguage(JNIEnv *env, jobject thiz, jlong handle, jint languageId) {
+    auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
+    if (!ctx || !ctx->decoder || languageId < ARIBCC_LANGUAGEID_FIRST || languageId > ARIBCC_LANGUAGEID_MAX) return;
+
+    std::lock_guard<std::mutex> lock(ctx->mutex);
+    aribcc_decoder_switch_language(
+        ctx->decoder,
+        static_cast<aribcc_languageid_t>(languageId));
+    if (ctx->renderer) aribcc_renderer_flush(ctx->renderer);
+}
+
 JNIEXPORT void JNICALL
 Java_com_beeregg2001_komorebi_NativeLib_flushCaptionDecoder(JNIEnv *env, jobject thiz, jlong handle) {
     auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);

@@ -29,6 +29,8 @@ class NativeLib {
 
     external fun openCaptionDecoder(): Long
     external fun decodeCaption(handle: Long, data: ByteArray, ptsMs: Long): NativeCaptionCue?
+    external fun getCaptionLanguageCodes(handle: Long): IntArray
+    external fun switchCaptionLanguage(handle: Long, languageId: Int)
     external fun flushCaptionDecoder(handle: Long)
     external fun closeCaptionDecoder(handle: Long)
 }
