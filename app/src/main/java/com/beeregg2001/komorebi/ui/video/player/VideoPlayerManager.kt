@@ -58,6 +58,7 @@ import com.beeregg2001.komorebi.ui.video.smb.player.SmbContextBuilder
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbDataSourceFactory
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TsReadExDataSource
 import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
@@ -351,6 +352,14 @@ fun rememberManagedExoPlayer(
         "MMT/TLV",
         ignoreCase = true
     ) && vs.currentQuality.isRawMmts && !isRecordingChasePlayback
+    val isOriginalMpegTsPlayback = program?.recordedVideo?.containerFormat.equals(
+        "MPEG-TS",
+        ignoreCase = true
+    ) && program?.recordedVideo?.videoCodec.equals(
+        "MPEG-2",
+        ignoreCase = true
+    ) && vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE &&
+        !isRecordingChasePlayback
     val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()
     val smbServerList by settingsViewModel.smbServerList.collectAsState()
 
@@ -388,6 +397,7 @@ fun rememberManagedExoPlayer(
         program?.id,
         isRecordingChasePlayback,
         isRawMmtsPlayback,
+        isOriginalMpegTsPlayback,
         programDurationUs
     ) {
         val renderersFactory = DefaultRenderersFactory(context).apply {
@@ -509,6 +519,16 @@ fun rememberManagedExoPlayer(
                         }
                         throw e
                     }
+                    if (
+                        isOriginalMpegTsPlayback &&
+                        isHttpSource &&
+                        openedLength != C.LENGTH_UNSET.toLong()
+                    ) {
+                        val totalFileSize = requestSpec.position + openedLength
+                        fileSizeBytesRef.updateAndGet { knownSize ->
+                            maxOf(knownSize, totalFileSize)
+                        }
+                    }
                     if (isHttpSource && isRecordedSegmentUri(requestSpec.uri)) {
                         segmentPrefetchCache.prefetch(
                             scope,
@@ -549,8 +569,8 @@ fun rememberManagedExoPlayer(
                 setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
             }.createExtractors()
 
-            // ダイレクトTS再生時のみ、TsExtractor をラップして SeekMap を上書き
-            if (isEdcbDirect && programDurationUs > 0L) {
+            // ダイレクトTSまたはHonomiTVの原始TS再生時は、HTTP Rangeに対応するSeekMapを注入する
+            if ((isEdcbDirect || isOriginalMpegTsPlayback) && programDurationUs > 0L) {
                 for (i in defaultExtractors.indices) {
                     val extractor = defaultExtractors[i]
                     if (extractor is TsExtractor) {

@@ -45,6 +45,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -142,6 +143,7 @@ fun VideoPlayerScreen(
     val isQualitiesLoaded by videoPlayerViewModel.isQualitiesLoaded.collectAsState()
     val quickVideoCandidates by videoPlayerViewModel.quickVideoCandidates.collectAsState()
     val currentVideoQualityStr by settingsViewModel.videoQuality.collectAsState()
+    val preferOriginalMpegTs by settingsViewModel.preferOriginalMpegTs.collectAsState()
 
     val isModern = false
     var isBuffering by remember { mutableStateOf(true) }
@@ -188,13 +190,26 @@ fun VideoPlayerScreen(
         vs.isAutoCmSkipEnabled = (autoCmSkipStr == "ON")
     }
 
-    LaunchedEffect(availableQualities, isQualitiesLoaded, currentVideoQualityStr) {
+    LaunchedEffect(
+        availableQualities,
+        isQualitiesLoaded,
+        currentVideoQualityStr,
+        preferOriginalMpegTs
+    ) {
         if (isQualitiesLoaded && availableQualities.isNotEmpty()) {
             val isMmtsRecording = currentProgram.recordedVideo.containerFormat.equals(
                 "MMT/TLV",
                 ignoreCase = true
             )
-            val matched = availableQualities.find { it.value == vs.currentQuality.value }
+            val preferredOriginal = if (preferOriginalMpegTs == "ON") {
+                availableQualities.firstOrNull {
+                    it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
+                }
+            } else {
+                null
+            }
+            val matched = preferredOriginal
+                ?: availableQualities.find { it.value == vs.currentQuality.value }
                 ?: if (isMmtsRecording) {
                     availableQualities.firstOrNull { it.isRawMmts }
                 } else {
@@ -203,9 +218,16 @@ fun VideoPlayerScreen(
             if (matched != null) {
                 vs.currentQuality = matched
             } else {
-                val fallback = availableQualities.first()
+                val fallback = availableQualities.firstOrNull {
+                    it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+                } ?: availableQualities.first()
                 vs.currentQuality = fallback
-                if (!fallback.isRawMmts) videoPlayerViewModel.saveVideoQuality(fallback.value)
+                if (
+                    !fallback.isRawMmts &&
+                    fallback.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+                ) {
+                    videoPlayerViewModel.saveVideoQuality(fallback.value)
+                }
             }
         }
     }
@@ -299,7 +321,10 @@ fun VideoPlayerScreen(
 
     val buildVideoMediaItem: (String) -> MediaItem = { url ->
         val mediaItemBuilder = MediaItem.Builder().setUri(url)
-        if (url.contains("/raw-mmts/mpegts")) {
+        if (
+            url.contains("/raw-mmts/mpegts") ||
+            url.substringBefore('?').endsWith("/download")
+        ) {
             mediaItemBuilder.setMimeType(MimeTypes.VIDEO_MP2T)
         } else if (url.contains("/api/streams/") || url.contains("/api/videos/") || url.contains("konomi.tv") || url.contains(
                 "m3u8"
@@ -888,7 +913,11 @@ fun VideoPlayerScreen(
     }
 
     DisposableEffect(currentProgram.recordedVideo.id, vs.currentQuality.value, currentSessionId, smbItem) {
-        if (smbItem == null && !vs.currentQuality.isRawMmts) {
+        if (
+            smbItem == null &&
+            !vs.currentQuality.isRawMmts &&
+            vs.currentQuality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+        ) {
             videoPlayerViewModel.startStreamMaintenance(
                 currentProgram,
                 vs.currentQuality.value,
@@ -1383,7 +1412,12 @@ fun VideoPlayerScreen(
                         if (vs.currentQuality != it) {
                             vs.playbackOffsetMs = getCurrentPositionMs()
                             vs.currentQuality = it
-                            if (!it.isRawMmts) videoPlayerViewModel.saveVideoQuality(it.value)
+                            if (
+                                !it.isRawMmts &&
+                                it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+                            ) {
+                                videoPlayerViewModel.saveVideoQuality(it.value)
+                            }
                             val player = exoPlayer
                             val currentPos = getCurrentPositionMs()
                             if (isEdcbDirect) {
@@ -1412,7 +1446,13 @@ fun VideoPlayerScreen(
                                         offsetSec,
                                         isRecordingChasePlayback
                                     ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
-                                    if (it.isRawMmts || isRecordingChasePlayback) player.seekTo(currentPos)
+                                    if (
+                                        it.isRawMmts ||
+                                        it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
+                                        isRecordingChasePlayback
+                                    ) {
+                                        player.seekTo(currentPos)
+                                    }
                                     player.play()
                                 }
                             }
@@ -1498,7 +1538,12 @@ fun VideoPlayerScreen(
                         if (vs.currentQuality != it) {
                             vs.playbackOffsetMs = getCurrentPositionMs()
                             vs.currentQuality = it
-                            if (!it.isRawMmts) videoPlayerViewModel.saveVideoQuality(it.value)
+                            if (
+                                !it.isRawMmts &&
+                                it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+                            ) {
+                                videoPlayerViewModel.saveVideoQuality(it.value)
+                            }
                             val player = exoPlayer
                             val currentPos = getCurrentPositionMs()
                             if (isEdcbDirect) {
@@ -1527,7 +1572,13 @@ fun VideoPlayerScreen(
                                         offsetSec,
                                         isRecordingChasePlayback
                                     ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
-                                    if (it.isRawMmts || isRecordingChasePlayback) player.seekTo(currentPos)
+                                    if (
+                                        it.isRawMmts ||
+                                        it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
+                                        isRecordingChasePlayback
+                                    ) {
+                                        player.seekTo(currentPos)
+                                    }
                                     player.play()
                                 }
                             }

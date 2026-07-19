@@ -75,6 +75,7 @@ fun SettingsScreen(
     val receiveBetaUpdates by viewModel.receiveBetaUpdates.collectAsState()
     val playerUiMode by viewModel.playerUiMode.collectAsState()
     val autoCmSkip by viewModel.autoCmSkip.collectAsState()
+    val preferOriginalMpegTs by viewModel.preferOriginalMpegTs.collectAsState()
     val availableQualities by viewModel.availableQualities.collectAsState()
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val flatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
@@ -134,6 +135,7 @@ fun SettingsScreen(
                 FocusRequester()
             ),
             listOf(
+                FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
@@ -225,7 +227,7 @@ fun SettingsScreen(
 
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
-            uiState.restoreFocusRequester = itemFocusRequesters[2][8]
+            uiState.restoreFocusRequester = itemFocusRequesters[2][9]
             uiState.restoreCategoryIndex = 2
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
@@ -539,6 +541,7 @@ fun SettingsScreen(
                             prefs.audioOutputMode,
                             playerUiMode,
                             autoCmSkip,
+                            preferOriginalMpegTs,
                             availableQualities,
                             itemFocusRequesters[2][0],
                             itemFocusRequesters[2][1],
@@ -549,6 +552,7 @@ fun SettingsScreen(
                             itemFocusRequesters[2][6],
                             itemFocusRequesters[2][7],
                             itemFocusRequesters[2][8],
+                            itemFocusRequesters[2][9],
                             categoryFocusRequesters[2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -659,6 +663,14 @@ fun SettingsScreen(
                                             it
                                         )
                                     }
+                                }
+                            },
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.PREFER_ORIGINAL_MPEG_TS,
+                                        if (preferOriginalMpegTs == "ON") "OFF" else "ON"
+                                    )
                                 }
                             },
                             {

@@ -123,14 +123,24 @@ class VideoPlayerViewModel @Inject constructor(
                         }
                     }
                 } else if (backend == "KONOMITV") {
-                    _availableQualities.value = if (
-                        program?.recordedVideo?.containerFormat.equals("MMT/TLV", ignoreCase = true) &&
-                        program?.isRecording != true &&
+                    val isFinished = program?.isRecording != true &&
                         !program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
-                    ) {
-                        listOf(StreamQuality.recordedRawMmts()) + StreamQuality.DEFAULT_QUALITIES
-                    } else {
-                        StreamQuality.DEFAULT_QUALITIES
+                    _availableQualities.value = when {
+                        isFinished && program?.recordedVideo?.containerFormat.equals(
+                            "MMT/TLV",
+                            ignoreCase = true
+                        ) -> listOf(StreamQuality.recordedRawMmts()) + StreamQuality.DEFAULT_QUALITIES
+
+                        isFinished && program?.recordedVideo?.containerFormat.equals(
+                            "MPEG-TS",
+                            ignoreCase = true
+                        ) && program?.recordedVideo?.videoCodec.equals(
+                            "MPEG-2",
+                            ignoreCase = true
+                        ) -> listOf(StreamQuality.originalMpegTsHardwareDi()) +
+                            StreamQuality.DEFAULT_QUALITIES
+
+                        else -> StreamQuality.DEFAULT_QUALITIES
                     }
                 } else {
                     _availableQualities.value = listOf(
@@ -210,6 +220,12 @@ class VideoPlayerViewModel @Inject constructor(
                     val port = settingsRepository.konomiPort.first()
                     _isLiveStream.value = false
                     return@withContext UrlBuilder.getVideoRawMmtsUrl(ip, port, videoId)
+                }
+                if (quality == StreamQuality.ORIGINAL_MPEG_TS_VALUE) {
+                    val ip = settingsRepository.konomiIp.first()
+                    val port = settingsRepository.konomiPort.first()
+                    _isLiveStream.value = false
+                    return@withContext UrlBuilder.getVideoOriginalDownloadUrl(ip, port, videoId)
                 }
                 val url =
                     recordProvider.getRecordStreamUrl(

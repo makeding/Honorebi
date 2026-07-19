@@ -116,6 +116,11 @@ object UrlBuilder {
         return "$baseUrl/api/streams/video/$videoId/raw-mmts/mpegts"
     }
 
+    fun getVideoOriginalDownloadUrl(ip: String, port: String, videoId: Int): String {
+        val baseUrl = formatBaseUrl(ip, port, "https")
+        return "$baseUrl/api/videos/$videoId/download"
+    }
+
     /**
      * シークバー用タイル画像取得 (KonomiTV API)
      * URL: /api/videos/{id}/thumbnail/tiled

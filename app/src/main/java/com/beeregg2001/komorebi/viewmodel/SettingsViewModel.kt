@@ -235,6 +235,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "OFF"
     )
+    val preferOriginalMpegTs: StateFlow<String> = settingsRepository.preferOriginalMpegTs.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "OFF"
+    )
     val labAnnictIntegration: StateFlow<String> = settingsRepository.labAnnictIntegration.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

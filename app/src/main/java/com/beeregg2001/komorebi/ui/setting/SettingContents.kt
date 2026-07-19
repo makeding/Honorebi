@@ -541,6 +541,7 @@ fun PlaybackSettingsContent(
     audioMode: String,
     uiMode: String,
     autoCmSkip: String,
+    preferOriginalMpegTs: String,
     availableQualities: List<StreamQuality>,
     liveR: FocusRequester,
     videoR: FocusRequester,
@@ -550,6 +551,7 @@ fun PlaybackSettingsContent(
     layerR: FocusRequester,
     uiModeR: FocusRequester,
     autoCmSkipR: FocusRequester,
+    preferOriginalR: FocusRequester,
     capabilityR: FocusRequester,
     sidebarR: FocusRequester,
     onL: () -> Unit,
@@ -560,6 +562,7 @@ fun PlaybackSettingsContent(
     onLayer: () -> Unit,
     onUiMode: () -> Unit,
     onAutoCmSkip: () -> Unit,
+    onPreferOriginalMpegTs: () -> Unit,
     onCapabilities: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -594,9 +597,25 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = liveR
-                        down = liveSubR
+                        down = preferOriginalR
                     },
                 onClick = { onClick(videoR); onV() })
+            SettingItem(
+                title = "MPEG-2 オリジナル再生",
+                value = if (preferOriginalMpegTs == "ON") "有効" else "無効",
+                icon = Icons.Default.HighQuality,
+                modifier = Modifier
+                    .focusRequester(preferOriginalR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = videoR
+                        down = liveSubR
+                    },
+                onClick = {
+                    onClick(preferOriginalR)
+                    onPreferOriginalMpegTs()
+                }
+            )
         }
         SettingsSection(AppStrings.SETTINGS_SECTION_SUBTITLE_AUDIO) {
             SettingItem(
@@ -607,7 +626,7 @@ fun PlaybackSettingsContent(
                     .focusRequester(liveSubR)
                     .focusProperties {
                         left = sidebarR
-                        up = videoR
+                        up = preferOriginalR
                         down = videoSubR
                     },
                 onClick = { onClick(liveSubR); onLiveSub() })

@@ -13,6 +13,13 @@ data class StreamQuality(
     companion object {
         const val RAW_MMTS_PRIMARY_VALUE = "raw-mmts"
         const val RAW_MMTS_SECONDARY_VALUE = "raw-mmts-secondary"
+        const val ORIGINAL_MPEG_TS_VALUE = "original-mpegts-hwdi"
+
+        fun originalMpegTsHardwareDi(): StreamQuality = StreamQuality(
+            label = "オリジナル（ハードウェア DI）",
+            value = ORIGINAL_MPEG_TS_VALUE,
+            isRawTs = true
+        )
 
         fun recordedRawMmts(): StreamQuality = StreamQuality(
             label = "TLV パススルー",

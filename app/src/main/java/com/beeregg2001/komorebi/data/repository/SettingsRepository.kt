@@ -49,6 +49,7 @@ class SettingsRepository @Inject constructor(
 
         val PLAYER_UI_MODE = stringPreferencesKey("player_ui_mode")
         val AUTO_CM_SKIP = stringPreferencesKey("auto_cm_skip")
+        val PREFER_ORIGINAL_MPEG_TS = stringPreferencesKey("prefer_original_mpeg_ts")
 
         val LAB_ANNICT_INTEGRATION = stringPreferencesKey("lab_annict_integration")
         val LAB_SHOBOCAL_INTEGRATION = stringPreferencesKey("lab_shobocal_integration")
@@ -136,6 +137,8 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[AUDIO_OUTPUT_MODE] ?: "DOWNMIX" }
     val playerUiMode: Flow<String> = context.dataStore.data.map { it[PLAYER_UI_MODE] ?: "CLASSIC" }
     val autoCmSkip: Flow<String> = context.dataStore.data.map { it[AUTO_CM_SKIP] ?: "OFF" }
+    val preferOriginalMpegTs: Flow<String> =
+        context.dataStore.data.map { it[PREFER_ORIGINAL_MPEG_TS] ?: "OFF" }
     val labAnnictIntegration: Flow<String> =
         context.dataStore.data.map { it[LAB_ANNICT_INTEGRATION] ?: "OFF" }
     val labShobocalIntegration: Flow<String> =
