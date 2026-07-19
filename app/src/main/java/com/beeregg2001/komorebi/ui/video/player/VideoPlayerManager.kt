@@ -25,6 +25,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.TimestampAdjuster
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -54,6 +55,7 @@ import com.beeregg2001.komorebi.NativeLib
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
+import com.beeregg2001.komorebi.ui.live.RawAribSubtitlePayloadReaderFactory
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbContextBuilder
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbDataSourceFactory
 import com.beeregg2001.komorebi.data.model.AudioMode
@@ -700,11 +702,22 @@ fun rememberManagedExoPlayer(
                     durationUs = programDurationUs
                 ).createExtractors()
             }
-            val defaultExtractors = DefaultExtractorsFactory().apply {
-                setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
-                setTsExtractorMode(TsExtractor.MODE_SINGLE_PMT)
-                setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
-            }.createExtractors()
+            val defaultExtractors: Array<Extractor> = if (isOriginalMpegTsPlayback) {
+                arrayOf<Extractor>(
+                    TsExtractor(
+                        TsExtractor.MODE_SINGLE_PMT,
+                        TimestampAdjuster(C.TIME_UNSET),
+                        RawAribSubtitlePayloadReaderFactory(),
+                        TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES
+                    )
+                )
+            } else {
+                DefaultExtractorsFactory().apply {
+                    setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
+                    setTsExtractorMode(TsExtractor.MODE_SINGLE_PMT)
+                    setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+                }.createExtractors()
+            }
 
             // ダイレクトTSまたはHonomiTVの原始TS再生時は、HTTP Rangeに対応するSeekMapを注入する
             if ((isEdcbDirect || isOriginalMpegTsPlayback) && programDurationUs > 0L) {
