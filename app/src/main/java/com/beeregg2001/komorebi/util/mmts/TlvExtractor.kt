@@ -63,6 +63,15 @@ class TlvExtractor(
 
     override fun init(output: ExtractorOutput) {
         extractorOutput = output
+        trackIdGenerator.generateNewId()
+        subtitleOutput = output.track(trackIdGenerator.trackId, C.TRACK_TYPE_METADATA).apply {
+            format(
+                Format.Builder()
+                    .setId(trackIdGenerator.formatId)
+                    .setSampleMimeType(MimeTypes.APPLICATION_ID3)
+                    .build()
+            )
+        }
         nativeDemuxer = NativeTlvDemuxer(
             callback = this,
             preferredVideoPacketId = preferredVideoPacketId,
@@ -128,7 +137,7 @@ class TlvExtractor(
         audioSampleRate: Int,
         audioMainComponent: Boolean
     ) {
-        if (tracksEnded) return
+        if (tracksEnded && codec != CODEC_TTML) return
         val output = extractorOutput ?: return
         when {
             codec == CODEC_HEVC && videoReader == null &&
@@ -163,18 +172,8 @@ class TlvExtractor(
                     "layout=${audioLayoutName(audioChannelLayout)}"
             )
 
-            codec == CODEC_TTML && subtitleOutput == null -> {
+            codec == CODEC_TTML && subtitleTrackId == null -> {
                 subtitleTrackId = trackId
-                trackIdGenerator.generateNewId()
-                subtitleOutput = output.track(trackIdGenerator.trackId, C.TRACK_TYPE_METADATA).apply {
-                    format(
-                        Format.Builder()
-                            .setId(trackIdGenerator.formatId)
-                            .setSampleMimeType(MimeTypes.APPLICATION_ID3)
-                            .setLanguage(language.ifBlank { null })
-                            .build()
-                    )
-                }
             }
         }
     }
