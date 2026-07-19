@@ -69,8 +69,8 @@ fun DeviceCapabilitiesScreen(onBack: () -> Unit) {
                                     (detailScrollState.value + 220).coerceAtMost(detailScrollState.maxValue)
                                 )
                             }
-                            true
-                        } else false
+                        }
+                        true
                     }
                     Key.DirectionUp -> {
                         if (detailScrollState.canScrollBackward) {
@@ -79,8 +79,8 @@ fun DeviceCapabilitiesScreen(onBack: () -> Unit) {
                                     (detailScrollState.value - 220).coerceAtLeast(0)
                                 )
                             }
-                            true
-                        } else false
+                        }
+                        true
                     }
                     Key.Back, Key.Escape -> {
                         onBack()
@@ -156,10 +156,16 @@ fun DeviceCapabilitiesScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(22.dp))
-        Button(
-            onClick = onBack,
-            modifier = Modifier.align(Alignment.End).width(180.dp).focusRequester(closeRequester)
-        ) { Text("閉じる") }
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (detailScrollState.maxValue > 0) {
+                Text("↑↓  詳細をスクロール", color = colors.textSecondary)
+            }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = onBack,
+                modifier = Modifier.width(180.dp).focusRequester(closeRequester)
+            ) { Text("閉じる") }
+        }
     }
 }
 
