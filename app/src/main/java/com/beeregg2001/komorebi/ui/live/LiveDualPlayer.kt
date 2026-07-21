@@ -59,7 +59,7 @@ fun DualDisplayPlayer(
     getLogoUrl: suspend (String) -> String,
     shouldCropLogo: Boolean,
     isMiniListOpen: Boolean,
-    isUiVisible: Boolean,
+    isSubtitleBlockingUiVisible: Boolean,
     mainPlayer: ExoPlayer?,
     mainVideoWidth: Int,
     mainVideoHeight: Int,
@@ -208,7 +208,7 @@ fun DualDisplayPlayer(
             if (isSubtitleEnabled) {
                 NativeCaptionOverlay(
                     cue = mainCaptionCue,
-                    visible = !isUiVisible,
+                    visible = !isSubtitleBlockingUiVisible,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -320,7 +320,7 @@ fun DualDisplayPlayer(
                 if (isSubtitleEnabled) {
                     NativeCaptionOverlay(
                         cue = dualCaptionCue,
-                        visible = !isUiVisible,
+                        visible = !isSubtitleBlockingUiVisible,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

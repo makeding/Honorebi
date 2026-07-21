@@ -534,7 +534,6 @@ class LivePlayerViewModel @Inject constructor(
                         livePlayerFactory.createExoPlayer(
                             audioOutputMode = audioOutputMode,
                             isKonomiTvSource = { mainCurrentSource == StreamSource.KONOMITV },
-                            isSubtitleEnabled = { isSubtitleEnabled },
                             onSubtitleDataReceived = { pts, data ->
                                 decodeAndEmitMainSubtitle(pts, data)
                             },
@@ -613,7 +612,6 @@ class LivePlayerViewModel @Inject constructor(
                         livePlayerFactory.createExoPlayer(
                             audioOutputMode = audioOutputMode,
                             isKonomiTvSource = { dualCurrentSource == StreamSource.KONOMITV },
-                            isSubtitleEnabled = { isSubtitleEnabled },
                             onSubtitleDataReceived = { pts, data ->
                                 decodeAndEmitDualSubtitle(pts, data)
                             },
@@ -685,15 +683,15 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     private fun decodeAndEmitMainSubtitle(ptsMs: Long, data: ByteArray) {
-        val cue = mainCaptionDecoder.decode(data, ptsMs)
+        val cue = mainCaptionDecoder.decode(data, ptsMs, renderCaptions = isSubtitleEnabled)
         _mainSubtitleLanguages.value = mainCaptionDecoder.availableLanguages()
-        if (cue != null) _mainSubtitleEvents.tryEmit(cue)
+        if (isSubtitleEnabled && cue != null) _mainSubtitleEvents.tryEmit(cue)
     }
 
     private fun decodeAndEmitDualSubtitle(ptsMs: Long, data: ByteArray) {
-        val cue = dualCaptionDecoder.decode(data, ptsMs)
+        val cue = dualCaptionDecoder.decode(data, ptsMs, renderCaptions = isSubtitleEnabled)
         _dualSubtitleLanguages.value = dualCaptionDecoder.availableLanguages()
-        if (cue != null) _dualSubtitleEvents.tryEmit(cue)
+        if (isSubtitleEnabled && cue != null) _dualSubtitleEvents.tryEmit(cue)
     }
 
     private fun decodeAndEmitMainB62Subtitle(sample: B62SubtitleSample) {
@@ -903,8 +901,8 @@ class LivePlayerViewModel @Inject constructor(
                                 TsExtractor.MODE_SINGLE_PMT,
                                 TimestampAdjuster(C.TIME_UNSET),
                                 DirectSubtitlePayloadReaderFactory(
-                                    onSubtitleDataReceived = onSubtitleDataReceived,
-                                    isSubtitleEnabled = { isSubtitleEnabled }),
+                                    onSubtitleDataReceived = onSubtitleDataReceived
+                                ),
                                 TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES
                             )
                         )

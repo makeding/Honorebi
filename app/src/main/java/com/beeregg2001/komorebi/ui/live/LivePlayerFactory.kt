@@ -42,14 +42,12 @@ class LivePlayerFactory @Inject constructor(
      *
      * @param audioOutputMode "PASSTHROUGH" などの音声出力モード設定
      * @param isKonomiTvSource KonomiTVソースかどうかの判定（字幕メタデータ抽出に使用）
-     * @param isSubtitleEnabled 現在字幕が有効かどうかの判定
      * @param onSubtitleDataReceived 字幕データを受信した際のコールバック (pts, rawData)
      * @param onError プレイヤーエラー発生時のコールバック
      */
     fun createExoPlayer(
         audioOutputMode: String,
         isKonomiTvSource: () -> Boolean,
-        isSubtitleEnabled: () -> Boolean,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
         onError: (PlaybackException) -> Unit
     ): ExoPlayer {
@@ -134,7 +132,7 @@ class LivePlayerFactory @Inject constructor(
 
                     // KonomiTVソースの場合、ID3メタデータからARIB字幕データを抽出
                     override fun onMetadata(metadata: Metadata) {
-                        if (!isKonomiTvSource() || !isSubtitleEnabled()) return
+                        if (!isKonomiTvSource()) return
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry is PrivFrame && (entry.owner.contains(

@@ -606,6 +606,9 @@ fun LivePlayerScreen(
 
     val isUiVisible =
         isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
+    // Keep captions visible in Quick Actions so a language change can be previewed immediately.
+    val isSubtitleBlockingUiVisible =
+        isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
 
     LaunchedEffect(isUiVisible) {
         channelViewModel.setPollingPaused(!isUiVisible)
@@ -686,7 +689,7 @@ fun LivePlayerScreen(
                 getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
                 shouldCropLogo = shouldCropLogo,
                 isMiniListOpen = isMiniListOpen,
-                isUiVisible = isUiVisible,
+                isSubtitleBlockingUiVisible = isSubtitleBlockingUiVisible,
                 mainPlayer = mainPlayer,
                 mainVideoWidth = videoWidth,
                 mainVideoHeight = videoHeight,
@@ -785,7 +788,7 @@ fun LivePlayerScreen(
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(
                         cue = mainCaptionCue.value,
-                        visible = isSubtitleEnabled && !isUiVisible,
+                        visible = isSubtitleEnabled && !isSubtitleBlockingUiVisible,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

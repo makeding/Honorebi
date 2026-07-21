@@ -923,16 +923,19 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onMetadata(metadata: Metadata) {
-                        if (!vs.isSubtitleEnabled) return
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry !is PrivFrame) continue
                             if (entry.owner.contains("aribb24", ignoreCase = true) ||
                                 entry.owner.contains("B24", ignoreCase = true)
                             ) {
-                                val cue = captionDecoder.decode(entry.privateData, currentPosition)
+                                val cue = captionDecoder.decode(
+                                    entry.privateData,
+                                    currentPosition,
+                                    renderCaptions = vs.isSubtitleEnabled
+                                )
                                 onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
-                                if (cue != null) onSubtitleCue(cue)
+                                if (vs.isSubtitleEnabled && cue != null) onSubtitleCue(cue)
                             }
                         }
                     }

@@ -21,8 +21,7 @@ import java.io.ByteArrayOutputStream
  */
 @UnstableApi
 class DirectSubtitlePayloadReader(
-    private val onSubtitleDataReceived: (Long, ByteArray) -> Unit,
-    private val isSubtitleEnabled: () -> Boolean                // ★ 状態確認も関数で受取
+    private val onSubtitleDataReceived: (Long, ByteArray) -> Unit
 ) : TsPayloadReader {
     private var timestampAdjuster: TimestampAdjuster? = null
     private val buffer = ByteArrayOutputStream()
@@ -40,7 +39,6 @@ class DirectSubtitlePayloadReader(
     }
 
     override fun consume(data: ParsableByteArray, flags: Int) {
-        if (!isSubtitleEnabled()) return
         val isStart = (flags and TsPayloadReader.FLAG_PAYLOAD_UNIT_START_INDICATOR) != 0
         if (isStart && buffer.size() > 0) {
             parseAndSendBuffer()
@@ -133,8 +131,7 @@ class DirectSubtitlePayloadReader(
 
 @UnstableApi
 class DirectSubtitlePayloadReaderFactory(
-    private val onSubtitleDataReceived: (Long, ByteArray) -> Unit,
-    private val isSubtitleEnabled: () -> Boolean
+    private val onSubtitleDataReceived: (Long, ByteArray) -> Unit
 ) : TsPayloadReader.Factory {
     private val defaultFactory = DefaultTsPayloadReaderFactory(
         DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
@@ -147,10 +144,9 @@ class DirectSubtitlePayloadReaderFactory(
         streamType: Int,
         esInfo: TsPayloadReader.EsInfo
     ): TsPayloadReader? {
-        if (streamType == 0x06 || streamType == 0x15) return DirectSubtitlePayloadReader(
-            onSubtitleDataReceived,
-            isSubtitleEnabled
-        )
+        if (streamType == 0x06 || streamType == 0x15) {
+            return DirectSubtitlePayloadReader(onSubtitleDataReceived)
+        }
         return defaultFactory.createPayloadReader(streamType, esInfo)
     }
 }
@@ -164,7 +160,6 @@ class RawAribSubtitlePayloadReader : TsPayloadReader {
     private var timestampAdjuster: TimestampAdjuster? = null
     private var trackOutput: TrackOutput? = null
     private val buffer = ByteArrayOutputStream()
-    private var hasLoggedFirstCaption = false
 
     override fun init(
         adjuster: TimestampAdjuster,
@@ -218,13 +213,6 @@ class RawAribSubtitlePayloadReader : TsPayloadReader {
             0,
             null
         )
-        if (!hasLoggedFirstCaption) {
-            hasLoggedFirstCaption = true
-            android.util.Log.i(
-                "RawAribSubtitle",
-                "Emitted first raw ARIB caption as timed ID3. [pts_us=$adjustedTimeUs, size=${parsed.payload.size}]"
-            )
-        }
     }
 
     private data class ParsedAribPes(

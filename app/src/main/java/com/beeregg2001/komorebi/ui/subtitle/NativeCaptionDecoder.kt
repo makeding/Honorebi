@@ -11,9 +11,18 @@ class NativeCaptionDecoder(
     private var b62FontScale: Float = 1.0f
 
     @Synchronized
-    fun decode(data: ByteArray, ptsMs: Long): NativeCaptionCue? {
+    fun decode(
+        data: ByteArray,
+        ptsMs: Long,
+        renderCaptions: Boolean = true
+    ): NativeCaptionCue? {
         val activeHandle = handle
         if (activeHandle == 0L) return null
+        // Keep feeding caption-management data while captions are hidden. It carries the
+        // language table and is required both for showing the language switch and for making
+        // a later SwitchLanguage call work. Caption statements are skipped to avoid rendering
+        // bitmaps in the background.
+        if (!renderCaptions && !AribCaptionData.isManagementPacket(data)) return null
         return try {
             val cue = nativeLib.decodeCaption(activeHandle, data, ptsMs)
             val detectedLanguages = nativeLib.getCaptionLanguageCodes(activeHandle)
@@ -24,7 +33,7 @@ class NativeCaptionDecoder(
                     )
                 }
             if (detectedLanguages.isNotEmpty()) languages = detectedLanguages
-            cue
+            if (renderCaptions) cue else null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to decode ARIB caption", e)
             null
@@ -52,13 +61,6 @@ class NativeCaptionDecoder(
                 referenceStartPtsMs ?: Long.MIN_VALUE,
                 discontinuity
             ).toList()
-            Log.i(
-                TAG,
-                "B62 cues docPts=$ptsMs op=$operationMode tmd=$timingMode ref=$referenceStartPtsMs " +
-                    decoded.take(12).joinToString(prefix = "[", postfix = "]") {
-                        "${it.ptsMs}/${it.durationMs}/clear=${it.clearScreen}"
-                    }
-            )
             val timelineCommand = NativeCaptionCue(
                 ptsMs = if (discontinuity) ptsMs else decoded.minOfOrNull { it.ptsMs } ?: ptsMs,
                 durationMs = 0L,
