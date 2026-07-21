@@ -272,6 +272,7 @@ fun LiveContent(
                                     CompactChannelCard(
                                         uiState = uiState,
                                         channelViewModel = channelViewModel,
+                                        shouldCropLogo = backendType == "KONOMITV",
                                         onClick = { onChannelClick(uiState.channel) },
                                         modifier = Modifier
                                             .then(
@@ -713,6 +714,7 @@ fun HeroDashboard(
 fun CompactChannelCard(
     uiState: UiChannelState,
     channelViewModel: ChannelViewModel,
+    shouldCropLogo: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -764,7 +766,7 @@ fun CompactChannelCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp, 29.dp)
+                        .size(72.dp, 40.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(colors.textPrimary.copy(alpha = 0.05f)),
                     contentAlignment = Alignment.Center
@@ -774,7 +776,7 @@ fun CompactChannelCard(
                             model = logoUrl,
                             contentDescription = uiState.name,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit
                         )
                     }
                 }

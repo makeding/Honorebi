@@ -35,6 +35,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
@@ -172,6 +175,7 @@ fun HomeLauncherScreen(
     selectedChannel: Channel?,
     onTabChange: (Int) -> Unit,
     initialTabIndex: Int = 0,
+    launcherHomeFocusTick: Int = 0,
     selectedProgram: RecordedProgram?,
     onProgramSelected: (RecordedProgram?) -> Unit,
     epgSelectedProgram: EpgProgram?,
@@ -217,6 +221,7 @@ fun HomeLauncherScreen(
 
     val ticketManager = rememberHomeFocusTicketManager()
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     val favoriteBaseballTeams by homeViewModel.favoriteBaseballTeams.collectAsState()
     val favoriteBaseballGames by homeViewModel.favoriteBaseballGames.collectAsState()
@@ -234,12 +239,40 @@ fun HomeLauncherScreen(
         if (favoriteBaseballTeams.isNotEmpty()) base + "プロ野球" else base
     }
 
-    val safeTabIndex = ui.selectedTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+    val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
 
     val isFullScreenMode = ui.isFullScreen(
         selectedChannel, selectedProgram, epgSelectedProgram,
         isSettingsOpen, isRecordListOpen, isReserveOverlayOpen
     ) && !hasActivePlayer
+
+    val shouldRestoreTopNavOnResume = rememberUpdatedState(
+        !isFullScreenMode && !isReturningFromPlayer
+    )
+
+    DisposableEffect(lifecycleOwner) {
+        var wasPaused = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> wasPaused = true
+                Lifecycle.Event.ON_RESUME -> {
+                    if (wasPaused) {
+                        wasPaused = false
+                        scope.launch {
+                            delay(250)
+                            if (shouldRestoreTopNavOnResume.value) {
+                                ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                            }
+                        }
+                    }
+                }
+
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val returnPlayerFocusRequester = remember { FocusRequester() }
     val inputSourceFocusRequester = remember { FocusRequester() }
@@ -265,6 +298,14 @@ fun HomeLauncherScreen(
     LaunchedEffect(lastPlayerChannelId) {
         if (lastPlayerChannelId != null) {
             ui.internalLastPlayerChannelId = lastPlayerChannelId
+        }
+    }
+
+    LaunchedEffect(launcherHomeFocusTick) {
+        if (launcherHomeFocusTick > 0) {
+            delay(150)
+            ui.tabFocusRequesters.getOrNull(safeTabIndex)
+                ?.safeRequestFocusWithRetry("LauncherHome_TAB_BAR")
         }
     }
 
@@ -503,9 +544,6 @@ fun HomeLauncherScreen(
                         selectedTabIndex = safeTabIndex,
                         modifier = Modifier
                             .weight(1f)
-                            .focusProperties {
-                                canFocus = !isReturningFromPlayer
-                            }
                             .onPreviewKeyEvent { event ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
                                     homeViewModel.launchInputSourcePicker(inputSourceApp)
@@ -527,14 +565,12 @@ fun HomeLauncherScreen(
                             Tab(
                                 selected = safeTabIndex == index,
                                 onFocus = {
-                                    if (!isReturningFromPlayer) {
-                                        ui.selectedTabIndex = index
-                                        ui.onTabSelected(
-                                            index,
-                                            onTabChange,
-                                            homeViewModel
-                                        )
-                                    }
+                                    ui.selectedTabIndex = index
+                                    ui.onTabSelected(
+                                        index,
+                                        onTabChange,
+                                        homeViewModel
+                                    )
                                     ui.topNavHasFocus = true
                                 },
                                 modifier = Modifier

@@ -94,6 +94,7 @@ private const val COMMENT_DENSITY_BUCKET_MS = 10_000L
 private const val COMMENT_CLIMAX_LEAD_MS = 10_000L
 private const val MIN_PROGRAM_COMMENTS_FOR_CLIMAX = 80
 private const val MIN_CLIMAX_COMMENTS = 20
+private const val WATCH_HISTORY_CHECKPOINT_INTERVAL_MS = 15_000L
 private const val MIN_DENSE_BUCKET_COMMENTS = 5
 private const val MIN_CLIMAX_WINDOW_COMMENT_RATIO = 0.08f
 private const val MIN_CLIMAX_PEAK_TO_BASELINE_RATIO = 2.0f
@@ -532,11 +533,13 @@ fun VideoPlayerScreen(
                 "Recovered expired stream session for video=${currentProgram.id}, quality=${vs.currentQuality.value}"
             )
             currentStreamUrlRef.set(newUrl)
-            player.setMediaItem(buildVideoMediaItem(newUrl))
-            player.prepare()
+            val mediaItem = buildVideoMediaItem(newUrl)
             if (resumePositionMs > 0L && (!isLiveStream || isRecordingChasePlayback)) {
-                player.seekTo(resumePositionMs)
+                player.setMediaItem(mediaItem, resumePositionMs)
+            } else {
+                player.setMediaItem(mediaItem)
             }
+            player.prepare()
             player.playWhenReady = true
             true
         },
@@ -793,9 +796,13 @@ fun VideoPlayerScreen(
             isBuffering = true
             vs.playbackOffsetMs = 0L
             val mediaItem = MediaItem.fromUri(smbItem.path)
-            exoPlayer.setMediaItem(mediaItem)
-            if (isFirstLoad && effectiveInitialPositionMs > 0) {
-                exoPlayer.seekTo(effectiveInitialPositionMs)
+            val startPositionMs = effectiveInitialPositionMs.takeIf {
+                isFirstLoad && it > 0L
+            }
+            if (startPositionMs != null) {
+                exoPlayer.setMediaItem(mediaItem, startPositionMs)
+            } else {
+                exoPlayer.setMediaItem(mediaItem)
             }
             isFirstLoad = false
             exoPlayer.prepare()
@@ -825,9 +832,14 @@ fun VideoPlayerScreen(
 
         if (url.isNotEmpty()) {
             currentStreamUrlRef.set(url)
-            exoPlayer.setMediaItem(buildVideoMediaItem(url))
-            if (isFirstLoad && effectiveInitialPositionMs > 0 && (!isLiveStream || isRecordingChasePlayback)) {
-                exoPlayer.seekTo(effectiveInitialPositionMs)
+            val mediaItem = buildVideoMediaItem(url)
+            val startPositionMs = effectiveInitialPositionMs.takeIf {
+                isFirstLoad && it > 0L && (!isLiveStream || isRecordingChasePlayback)
+            }
+            if (startPositionMs != null) {
+                exoPlayer.setMediaItem(mediaItem, startPositionMs)
+            } else {
+                exoPlayer.setMediaItem(mediaItem)
             }
             isFirstLoad = false
             if (isRecordingChasePlayback) {
@@ -899,6 +911,25 @@ fun VideoPlayerScreen(
                 exoPlayer.seekTo(currentPos)
                 exoPlayer.playWhenReady = true
             }
+        }
+    }
+
+    LaunchedEffect(exoPlayer, currentProgram.id, smbItem, isLiveStream, isRecordingChasePlayback) {
+        if (smbItem != null || currentProgram.id == 0) return@LaunchedEffect
+        var lastCheckpointPositionMs = -1L
+        while (isActive) {
+            delay(WATCH_HISTORY_CHECKPOINT_INTERVAL_MS)
+            if (!exoPlayer.isPlaying || exoPlayer.mediaItemCount == 0) continue
+            val positionMs = getCurrentPositionMs()
+            if (positionMs < 5_000L) continue
+            if (
+                lastCheckpointPositionMs >= 0L &&
+                kotlin.math.abs(positionMs - lastCheckpointPositionMs) < 5_000L
+            ) {
+                continue
+            }
+            videoPlayerViewModel.updateWatchHistory(currentProgram, positionMs / 1000.0)
+            lastCheckpointPositionMs = positionMs
         }
     }
 

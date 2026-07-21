@@ -60,6 +60,7 @@ class MainRootState {
     val aiTicketManager = AiFocusTicketManager()
 
     var aiFocusReturnTick by mutableIntStateOf(0)
+    var launcherHomeFocusTick by mutableIntStateOf(0)
 
     // 各種オーバーレイの開閉状態
     var isEpgJumpMenuOpen by mutableStateOf(false)

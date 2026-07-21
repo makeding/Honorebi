@@ -327,7 +327,14 @@ fun MainRootScreen(
             history.program.id.toIntOrNull() == program.id ||
                     history.videoId == program.recordedVideo.id
         }
-        val positionSeconds = history?.playback_position ?: program.playbackPosition
+        val duration = program.recordedVideo.duration
+        val historyPosition = history?.playback_position?.takeIf {
+            it > 5.0 && (duration <= 0.0 || it < duration - 10.0)
+        }
+        val programPosition = program.playbackPosition.takeIf {
+            it > 5.0 && (duration <= 0.0 || it < duration - 10.0)
+        }
+        val positionSeconds = historyPosition ?: programPosition ?: 0.0
         return (positionSeconds.coerceAtLeast(0.0) * 1000.0).toLong()
     }
 
@@ -447,7 +454,8 @@ fun MainRootScreen(
         state.isPlayerSubMenuOpen = false
         state.isPlayerSceneSearchOpen = false
         state.showPlayerControls = true
-        state.isReturningFromPlayer = true
+        state.isReturningFromPlayer = false
+        state.launcherHomeFocusTick++
         state.isBaseballMode = false
         state.triggerHomeBack = false
     }
@@ -761,7 +769,7 @@ fun MainRootScreen(
                                         state.isReturningFromPlayer = true
                                         state.isMiniPlayerMode = false
                                         state.settingsInitialCategoryIndex = 2
-                                        state.settingsInitialFocusItemIndex = 8
+                                        state.settingsInitialFocusItemIndex = 9
                                         state.settingsOpenDeviceCapabilities = true
                                         state.isSettingsOpen = true
                                     },

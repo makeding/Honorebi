@@ -85,8 +85,8 @@ fun MainRootBackground(
 
                             val resumePos = when {
                                 forcedPosition != null -> forcedPosition
-                                program.playbackPosition > 5.0 && (duration <= 0 || program.playbackPosition < (duration - 10)) -> program.playbackPosition
                                 history != null && history.playback_position > 5.0 && (duration <= 0 || history.playback_position < (duration - 10)) -> history.playback_position
+                                program.playbackPosition > 5.0 && (duration <= 0 || program.playbackPosition < (duration - 10)) -> program.playbackPosition
                                 else -> 0.0
                             }
                             state.initialPlaybackPositionMs = (resumePos * 1000).toLong()
@@ -213,6 +213,7 @@ fun MainRootBackground(
                         konomiIp = konomiIp,
                         konomiPort = konomiPort,
                         initialTabIndex = safeTabIndex,
+                        launcherHomeFocusTick = state.launcherHomeFocusTick,
                         onTabChange = { state.currentTabIndex = it },
                         selectedChannel = state.selectedChannel,
                         onChannelClick = { channel, isBaseballMode ->

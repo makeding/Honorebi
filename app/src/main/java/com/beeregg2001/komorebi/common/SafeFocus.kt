@@ -10,7 +10,9 @@ import kotlinx.coroutines.delay
  */
 fun FocusRequester.safeRequestFocus(tag: String = "KomorebiFocus") {
     try {
-        this.requestFocus()
+        if (!this.requestFocus()) {
+            Log.w(tag, "Focus request was rejected by the current focus tree.")
+        }
     } catch (e: IllegalStateException) {
         // ノードがアタッチされていない場合は警告をログに出力し、クラッシュを回避します
         Log.w(tag, "FocusRequester is not initialized or not attached to the layout. Ignoring request.")
@@ -29,9 +31,16 @@ suspend fun FocusRequester.safeRequestFocusWithRetry(
 ) {
     for (i in 0 until maxRetries) {
         try {
-            this.requestFocus()
-            if (i > 0) Log.i(tag, "Focus successfully attached after ${i + 1} attempts.")
-            return
+            if (this.requestFocus()) {
+                if (i > 0) Log.i(tag, "Focus successfully attached after ${i + 1} attempts.")
+                return
+            }
+            if (i == maxRetries - 1) {
+                Log.e(tag, "Final attempt failed: focus request was rejected after $maxRetries attempts.")
+            } else {
+                Log.w(tag, "Focus request rejected, retrying... (${i + 1}/$maxRetries)")
+                delay(delayMillis)
+            }
         } catch (e: IllegalStateException) {
             if (i == maxRetries - 1) {
                 Log.e(tag, "Final attempt failed: FocusRequester not attached after $maxRetries attempts.")
