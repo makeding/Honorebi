@@ -87,6 +87,7 @@ fun LivePlayerScreen(
     isSubMenuOpen: Boolean,
     onSubMenuToggle: (Boolean) -> Unit,
     onChannelSelect: (Channel) -> Unit,
+    onChannelPlaybackCommitted: (Channel) -> Unit = {},
     onChasePlaybackSelect: (RecordedProgram) -> Unit = {},
     onBackPressed: () -> Unit,
     onCheckDeviceCapabilities: () -> Unit = {},
@@ -371,6 +372,16 @@ fun LivePlayerScreen(
     var isDualBuffering by remember { mutableStateOf(false) }
     var mainPlaybackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
     var hasMainRenderedFirstFrame by remember { mutableStateOf(false) }
+    var lastChannelIdForSwitchHint by remember { mutableStateOf(currentChannelItem.id) }
+    var isChannelSwitchDebouncing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentChannelItem.id) {
+        if (currentChannelItem.id == lastChannelIdForSwitchHint) return@LaunchedEffect
+        lastChannelIdForSwitchHint = currentChannelItem.id
+        isChannelSwitchDebouncing = true
+        delay(100L)
+        isChannelSwitchDebouncing = false
+    }
 
     DisposableEffect(mainPlayer) {
         val listener = object : Player.Listener {
@@ -460,7 +471,8 @@ fun LivePlayerScreen(
             channel = currentChannelItem,
             source = ps.currentStreamSource,
             isEdcbDirect = ps.isEdcbDirect,
-            quality = ps.currentQuality
+            quality = ps.currentQuality,
+            onPlaybackRequestCommitted = onChannelPlaybackCommitted
         )
         delay(300); mainFocusRequester.safeRequestFocus(TAG)
     }
@@ -876,7 +888,7 @@ fun LivePlayerScreen(
 
         // ★ 修正: バッファリング中の黒画面を回避し、スピナーだけを表示する
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && showMainLoading,
+            visible = !isPiPMode && !ps.isDualDisplayMode && showMainLoading && !isChannelSwitchDebouncing,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
@@ -902,6 +914,26 @@ fun LivePlayerScreen(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            }
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isPiPMode && !ps.isDualDisplayMode && isChannelSwitchDebouncing,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Text(
+                    text = currentChannelItem.name,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(32.dp)
+                        .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                )
             }
         }
 

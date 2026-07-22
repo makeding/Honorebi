@@ -93,6 +93,7 @@ class LivePlayerViewModel @Inject constructor(
     companion object {
         private const val TAG = "LivePlayerViewModel"
         private const val MAX_AUTO_RETRY = 2
+        private const val CHANNEL_SWITCH_STREAM_DEBOUNCE_MS = 100L
     }
 
     private val gson = Gson()
@@ -494,7 +495,8 @@ class LivePlayerViewModel @Inject constructor(
 
     fun playMainChannel(
         uiContext: Context, channel: Channel, source: StreamSource,
-        isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false
+        isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false,
+        onPlaybackRequestCommitted: (Channel) -> Unit = {}
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
         if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
@@ -510,12 +512,19 @@ class LivePlayerViewModel @Inject constructor(
         mainPlaybackJob?.cancel()
         mainPlaybackJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                // チャンネル名は UI 側で即時更新し、ストリームだけを短くデバウンスする。
+                // 連続切替ではこの Job がキャンセルされるため、最後のチャンネルだけを要求する。
+                if (!isAutoRetry) delay(CHANNEL_SWITCH_STREAM_DEBOUNCE_MS)
+                if (!isAutoRetry) {
+                    withContext(Dispatchers.Main.immediate) {
+                        onPlaybackRequestCommitted(channel)
+                    }
+                }
                 mainPlaybackMutex.withLock {
                     withContext(Dispatchers.Main) {
                         stopMainPlaybackSafely(); _mainSseStatus.value =
                         "Standby"; _mainSseDetail.value = "ストリームを準備中..."
                     }
-                    delay(if (isAutoRetry) 0 else 600)
 
                     val request = resolvePlaybackRequest(
                         channel = channel,

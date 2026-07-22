@@ -760,8 +760,11 @@ fun MainRootScreen(
                                         state.selectedChannel =
                                             newChannel; state.lastSelectedChannelId = newChannel.id
                                         state.lastSelectedProgramId =
-                                            null; homeViewModel.saveLastChannel(newChannel)
+                                            null
                                         state.isReturningFromPlayer = false
+                                    },
+                                    onChannelPlaybackCommitted = { committedChannel ->
+                                        homeViewModel.saveLastChannel(committedChannel)
                                     },
                                     onChasePlaybackSelect = { program ->
                                         state.selectedChannel = null

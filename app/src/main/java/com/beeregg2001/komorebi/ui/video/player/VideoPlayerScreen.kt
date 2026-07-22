@@ -640,15 +640,6 @@ fun VideoPlayerScreen(
                 )
             } else null
     }
-    SystemMediaSession(
-        player = exoPlayer,
-        title = smbItem?.name ?: currentProgram.title,
-        subtitle = currentProgram.channel?.name,
-        artworkUrl = systemArtworkUrl,
-        mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW,
-        onStop = onBackPressed
-    )
-
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
     val totalDurationForControls =
@@ -1103,6 +1094,25 @@ fun VideoPlayerScreen(
         val currentIndex = newestFirst.indexOfFirst { it.id == currentProgram.id }
         if (currentIndex > 0) newestFirst[currentIndex - 1] else null
     }
+    val previousSeriesProgram = remember(currentProgram.id, quickMenuSeriesPrograms) {
+        val newestFirst = quickMenuSeriesPrograms
+            .distinctBy { it.id }
+            .sortedByDescending { it.startTime }
+        val currentIndex = newestFirst.indexOfFirst { it.id == currentProgram.id }
+        if (currentIndex >= 0 && currentIndex + 1 < newestFirst.size) {
+            newestFirst[currentIndex + 1]
+        } else null
+    }
+    SystemMediaSession(
+        player = exoPlayer,
+        title = smbItem?.name ?: currentProgram.title,
+        subtitle = currentProgram.channel?.name,
+        artworkUrl = systemArtworkUrl,
+        mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW,
+        onPrevious = previousSeriesProgram?.let { target -> { onProgramSelect(target) } },
+        onNext = nextSeriesProgram?.let { target -> { onProgramSelect(target) } },
+        onStop = onBackPressed
+    )
     LaunchedEffect(nextSeriesProgram?.id) {
         nextEpisodeProgramForEnd = nextSeriesProgram
     }

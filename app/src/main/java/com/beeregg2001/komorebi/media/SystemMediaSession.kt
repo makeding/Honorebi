@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadata as PlatformMediaMetadata
 import android.media.session.MediaSession as PlatformMediaSession
 import android.media.session.PlaybackState
@@ -79,7 +80,46 @@ fun SystemMediaSession(
 
     DisposableEffect(player, metadata, hasPrevious, hasNext) {
         if (player == null) {
-            return@DisposableEffect onDispose { }
+            if (!hasPrevious && !hasNext) {
+                return@DisposableEffect onDispose { }
+            }
+            val transitionSession = PlatformMediaSession(context, "HonorebiSwitching").apply {
+                setCallback(object : PlatformMediaSession.Callback() {
+                    override fun onSkipToPrevious() = currentOnPrevious.value?.invoke() ?: Unit
+
+                    override fun onSkipToNext() = currentOnNext.value?.invoke() ?: Unit
+
+                    override fun onStop() = currentOnStop.value?.invoke() ?: Unit
+                })
+                setPlaybackState(
+                    PlaybackState.Builder()
+                        .setActions(
+                            PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                                PlaybackState.ACTION_SKIP_TO_NEXT or
+                                PlaybackState.ACTION_STOP
+                        )
+                        .setState(PlaybackState.STATE_BUFFERING, 0L, 0f)
+                        .build()
+                )
+                setMetadata(
+                    PlatformMediaMetadata.Builder()
+                        .putString(PlatformMediaMetadata.METADATA_KEY_TITLE, title)
+                        .putString(PlatformMediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+                        .putString(
+                            PlatformMediaMetadata.METADATA_KEY_ARTIST,
+                            subtitle?.takeIf { it.isNotBlank() }
+                        )
+                        .apply {
+                            artworkData?.toBitmapOrNull()?.let { artwork ->
+                                putBitmap(PlatformMediaMetadata.METADATA_KEY_ART, artwork)
+                                putBitmap(PlatformMediaMetadata.METADATA_KEY_ALBUM_ART, artwork)
+                            }
+                        }
+                        .build()
+                )
+                isActive = true
+            }
+            return@DisposableEffect onDispose { transitionSession.release() }
         }
 
         val attachment = SystemMediaSessionRegistry.attach(
@@ -156,6 +196,9 @@ fun IdleSystemMediaSession(
 
 private fun String?.toArtworkUriOrNull(): Uri? =
     this?.trim()?.takeIf { it.isNotEmpty() }?.let(Uri::parse)
+
+private fun ByteArray.toBitmapOrNull(): Bitmap? =
+    BitmapFactory.decodeByteArray(this, 0, size)
 
 private suspend fun loadArtworkData(context: Context, artworkUrl: String?): ByteArray? {
     val url = artworkUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
