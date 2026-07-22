@@ -53,6 +53,8 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedChannel
+import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
@@ -616,6 +618,36 @@ fun VideoPlayerScreen(
     val konomiPort by settingsViewModel.konomiPort.collectAsState(initial = "")
     val edcbPlayMethod by settingsViewModel.edcbRecordPlayMethod.collectAsState()
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
+
+    val systemArtworkUrl = remember(
+        currentProgram.id,
+        currentProgram.directThumbnailUrl,
+        currentProgram.apiThumbnailUrl,
+        smbItem?.thumbnailUrl,
+        backendType,
+        konomiIp,
+        konomiPort
+    ) {
+        smbItem?.thumbnailUrl
+            ?: currentProgram.directThumbnailUrl
+            ?: currentProgram.apiThumbnailUrl
+            ?: if (smbItem == null && currentProgram.id != 0) {
+                UrlBuilder.getThumbnailUrl(
+                    backendType,
+                    konomiIp,
+                    konomiPort,
+                    currentProgram.id.toString()
+                )
+            } else null
+    }
+    SystemMediaSession(
+        player = exoPlayer,
+        title = smbItem?.name ?: currentProgram.title,
+        subtitle = currentProgram.channel?.name,
+        artworkUrl = systemArtworkUrl,
+        mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW,
+        onStop = onBackPressed
+    )
 
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 

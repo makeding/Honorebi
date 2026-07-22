@@ -192,6 +192,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3_version")
     implementation("androidx.media3:media3-common:$media3_version")
     implementation("androidx.media3:media3-exoplayer-hls:$media3_version")
+    implementation("androidx.media3:media3-session:1.7.1")
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.6.1+1")
 
     // --- その他 ---

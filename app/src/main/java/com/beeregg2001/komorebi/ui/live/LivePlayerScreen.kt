@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import com.beeregg2001.komorebi.media.SystemMediaSession
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
@@ -187,6 +188,30 @@ fun LivePlayerScreen(
     val mainSubtitleLanguages by livePlayerViewModel.mainSubtitleLanguages.collectAsState()
     val dualSubtitleLanguages by livePlayerViewModel.dualSubtitleLanguages.collectAsState()
     val currentSubtitleLanguageId by livePlayerViewModel.currentSubtitleLanguageId.collectAsState()
+
+    val currentChannelIndex = remember(displayFlatChannels, currentChannelItem.id) {
+        displayFlatChannels.indexOfFirst { it.id == currentChannelItem.id }
+    }
+    val previousChannel = remember(displayFlatChannels, currentChannelIndex) {
+        if (displayFlatChannels.size <= 1 || currentChannelIndex < 0) null
+        else displayFlatChannels[
+            (currentChannelIndex - 1 + displayFlatChannels.size) % displayFlatChannels.size
+        ]
+    }
+    val nextChannel = remember(displayFlatChannels, currentChannelIndex) {
+        if (displayFlatChannels.size <= 1 || currentChannelIndex < 0) null
+        else displayFlatChannels[(currentChannelIndex + 1) % displayFlatChannels.size]
+    }
+    SystemMediaSession(
+        player = mainPlayer,
+        title = currentChannelItem.programPresent?.title ?: currentChannelItem.name,
+        subtitle = currentChannelItem.name,
+        artworkUrl = sharedCurrentLogoUrl,
+        mediaType = MediaMetadata.MEDIA_TYPE_TV_CHANNEL,
+        onPrevious = previousChannel?.let { target -> { onChannelSelect(target) } },
+        onNext = nextChannel?.let { target -> { onChannelSelect(target) } },
+        onStop = onBackPressed
+    )
     val activeSubtitleLanguages = if (ps.isDualDisplayMode && ps.activeDualPlayerIndex == 1) {
         dualSubtitleLanguages
     } else {

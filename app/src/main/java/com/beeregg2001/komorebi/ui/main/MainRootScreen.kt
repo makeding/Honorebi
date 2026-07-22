@@ -38,6 +38,7 @@ import java.time.LocalTime
 import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -322,6 +323,23 @@ fun MainRootScreen(
     val lastChannels by homeViewModel.lastWatchedChannelFlow.collectAsState(initial = emptyList())
     val conditions by reserveViewModel.conditions.collectAsState()
     val reserves by reserveViewModel.reserves.collectAsState()
+    val defaultSystemChannel = remember(groupedChannels) {
+        val channels = groupedChannels.values.flatten()
+        channels.firstOrNull { it.type == "GR" } ?: channels.firstOrNull()
+    }
+    val isPlaybackScreenOpen =
+        state.selectedChannel != null || state.selectedProgram != null || state.selectedSmbItem != null
+    IdleSystemMediaSession(enabled = !isPlaybackScreenOpen) {
+        val channel = defaultSystemChannel ?: return@IdleSystemMediaSession
+        state.selectedProgram = null
+        state.selectedSmbItem = null
+        state.selectedChannel = channel
+        state.lastSelectedChannelId = channel.id
+        state.lastSelectedProgramId = null
+        state.isMiniPlayerMode = false
+        state.isReturningFromPlayer = false
+        homeViewModel.saveLastChannel(channel)
+    }
     fun resumePositionMsFor(program: RecordedProgram): Long {
         val history = watchHistory.firstOrNull { history ->
             history.program.id.toIntOrNull() == program.id ||
