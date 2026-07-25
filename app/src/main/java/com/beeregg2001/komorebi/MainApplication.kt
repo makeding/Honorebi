@@ -1,7 +1,6 @@
 package com.beeregg2001.komorebi
 
 import android.app.Application
-// import android.content.res.Configuration <- これを削除しました
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import coil.ImageLoader
@@ -28,13 +27,13 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
+                    .maxSizeBytes(IMAGE_MEMORY_CACHE_SIZE_BYTES)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.03)
+                    .directory(cacheDir.resolve(IMAGE_CACHE_DIRECTORY))
+                    .maxSizeBytes(IMAGE_DISK_CACHE_SIZE_BYTES)
                     .build()
             }
             .crossfade(true)
@@ -46,5 +45,11 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
 
         // バックグラウンド同期スケジュールを登録
         RecordSyncWorker.schedule(this)
+    }
+
+    private companion object {
+        const val IMAGE_CACHE_DIRECTORY = "image_cache"
+        const val IMAGE_MEMORY_CACHE_SIZE_BYTES = 24 * 1024 * 1024
+        const val IMAGE_DISK_CACHE_SIZE_BYTES = 32L * 1024 * 1024
     }
 }
