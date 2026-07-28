@@ -62,7 +62,8 @@ fun VideoRecentRecordCard(
     isCurrentlyRecording: Boolean = false,
     ticketManager: FocusTicketManager,
     onReturnFocusConsumed: () -> Unit,
-    timeFormat: String
+    timeFormat: String,
+    allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
@@ -92,7 +93,7 @@ fun VideoRecentRecordCard(
     }
 
     val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl) {
+    val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
         val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
         ImageRequest.Builder(context)
             .data(program.recordedThumbnailModel(currentThumbnailUrl))
@@ -101,6 +102,7 @@ fun VideoRecentRecordCard(
             .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
+            .networkCachePolicy(if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
             .build()
     }
 
@@ -227,7 +229,8 @@ fun VideoWatchHistoryCard(
     onFocus: () -> Unit,
     modifier: Modifier = Modifier,
     ticketManager: FocusTicketManager,
-    onReturnFocusConsumed: () -> Unit
+    onReturnFocusConsumed: () -> Unit,
+    allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
@@ -269,7 +272,7 @@ fun VideoWatchHistoryCard(
     }
 
     val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl) {
+    val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
         val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
             ?: currentThumbnailUrl
         ImageRequest.Builder(context)
@@ -279,6 +282,7 @@ fun VideoWatchHistoryCard(
             .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
+            .networkCachePolicy(if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
             .build()
     }
 
@@ -384,7 +388,8 @@ fun VideoSeriesCard(
     backendType: String,
     onClick: () -> Unit,
     onFocus: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
@@ -400,13 +405,15 @@ fun VideoSeriesCard(
     }
 
     val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl) {
+    val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
         ImageRequest.Builder(context)
             .data(currentThumbnailUrl)
             .crossfade(true)
             .memoryCacheKey(currentThumbnailUrl)
             .diskCacheKey(currentThumbnailUrl)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .networkCachePolicy(if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
             .build()
     }
 

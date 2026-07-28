@@ -73,6 +73,7 @@ fun VideoTabContent(
     lastPlayedProgramId: String? = null,
     onReturnFocusConsumed: () -> Unit = {},
     timeFormat: String = "24H",
+    isNetworkAvailable: Boolean = true,
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
     onShowSmbLibrary: () -> Unit = {} // ★ 追加: SMBライブラリ画面への遷移
@@ -83,7 +84,7 @@ fun VideoTabContent(
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
-    val recentFirstItemRequester = remember { FocusRequester() }
+    val firstLibraryItemRequester = remember { FocusRequester() }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val groupedSeries by recordViewModel.groupedSeries.collectAsState()
@@ -108,6 +109,8 @@ fun VideoTabContent(
             else groupedSeries[selectedGenre].orEmpty().asSequence()
         source.take(20).toList()
     }
+    val hasLibraryFocusTarget = recentItems.isNotEmpty() ||
+            historyItems.isNotEmpty() || groupedSeries.isNotEmpty()
 
     val initialHeroInfo = remember {
         HomeHeroInfo(
@@ -216,6 +219,7 @@ fun VideoTabContent(
     Column(modifier = Modifier.fillMaxSize()) {
         CompactHomeHeroInfo(
             state = currentHeroInfo ?: initialHeroInfo,
+            allowNetworkImages = isNetworkAvailable,
             modifier = Modifier.padding(horizontal = 48.dp, vertical = 12.dp)
         )
 
@@ -243,7 +247,7 @@ fun VideoTabContent(
                                 .focusProperties {
                                     left = FocusRequester.Cancel
                                     up = tabFocusRequester
-                                    down = recentFirstItemRequester
+                                    down = if (hasLibraryFocusTarget) firstLibraryItemRequester else FocusRequester.Cancel
                                 },
                             onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
                             onFocus = {
@@ -265,7 +269,7 @@ fun VideoTabContent(
                                 .focusProperties {
                                     right = FocusRequester.Cancel
                                     up = tabFocusRequester
-                                    down = recentFirstItemRequester
+                                    down = if (hasLibraryFocusTarget) firstLibraryItemRequester else FocusRequester.Cancel
                                 },
                             onClick = { onShowSmbLibrary() },
                             onFocus = {
@@ -311,7 +315,9 @@ fun VideoTabContent(
                                         },
                                         onFocus = {
                                             focusedProgramId = program.id
-                                            recordViewModel.fetchProgramDetail(program.id)
+                                            if (isNetworkAvailable) {
+                                                recordViewModel.fetchProgramDetail(program.id)
+                                            }
 
                                             val startFormat = try {
                                                 val pattern =
@@ -345,7 +351,9 @@ fun VideoTabContent(
                                             pendingHeroInfo = HomeHeroInfo(
                                                 title = program.title,
                                                 subtitle = "$startFormat - ${program.channel?.name ?: "不明"}",
-                                                description = "番組情報を取得中...",
+                                                description = program.description.ifBlank {
+                                                    if (isNetworkAvailable) "番組情報を取得中..." else "キャッシュ済みの番組情報"
+                                                },
                                                 imageUrl = primaryUrl,
                                                 isThumbnail = true,
                                                 tag = "最近の録画",
@@ -353,10 +361,11 @@ fun VideoTabContent(
                                             )
                                         },
                                         isCurrentlyRecording = isCurrentlyRecording,
+                                        allowNetworkImages = isNetworkAvailable,
                                         modifier = Modifier
                                             .then(
                                                 if (index == 0) Modifier.focusRequester(
-                                                    recentFirstItemRequester
+                                                    firstLibraryItemRequester
                                                 ) else Modifier
                                             )
                                             .focusProperties {
@@ -410,7 +419,9 @@ fun VideoTabContent(
                                             }
                                             if (videoId != 0) {
                                                 focusedProgramId = videoId
-                                                recordViewModel.fetchProgramDetail(videoId)
+                                                if (isNetworkAvailable) {
+                                                    recordViewModel.fetchProgramDetail(videoId)
+                                                }
                                             }
 
                                             val fallbackUrl = matchedProgram?.apiThumbnailUrl
@@ -426,7 +437,11 @@ fun VideoTabContent(
                                             pendingHeroInfo = HomeHeroInfo(
                                                 title = historyItem.program.title.toString(),
                                                 subtitle = "続きから再生を再開",
-                                                description = "番組情報を取得中...",
+                                                description = matchedProgram?.description
+                                                    ?.takeIf { it.isNotBlank() }
+                                                    ?: historyItem.program.description.ifBlank {
+                                                        if (isNetworkAvailable) "番組情報を取得中..." else "キャッシュ済みの視聴履歴"
+                                                    },
                                                 imageUrl = primaryUrl,
                                                 isThumbnail = true,
                                                 tag = "視聴履歴",
@@ -436,11 +451,18 @@ fun VideoTabContent(
                                                     .coerceIn(0f, 1f) else null
                                             )
                                         },
-                                        modifier = Modifier.focusProperties {
-                                            if (index == 0) left = FocusRequester.Cancel
-                                            if (index == historyItems.lastIndex) right =
-                                                FocusRequester.Cancel
-                                        },
+                                        modifier = Modifier
+                                            .then(
+                                                if (recentItems.isEmpty() && index == 0) {
+                                                    Modifier.focusRequester(firstLibraryItemRequester)
+                                                } else Modifier
+                                            )
+                                            .focusProperties {
+                                                if (index == 0) left = FocusRequester.Cancel
+                                                if (index == historyItems.lastIndex) right =
+                                                    FocusRequester.Cancel
+                                            },
+                                        allowNetworkImages = isNetworkAvailable,
                                         backendType = backendType
                                     )
                                 }
@@ -470,6 +492,11 @@ fun VideoTabContent(
                                         onClick = { recordViewModel.updateSeriesGenre(genre) },
                                         modifier = Modifier
                                             .height(40.dp)
+                                            .then(
+                                                if (recentItems.isEmpty() && historyItems.isEmpty() && index == 0) {
+                                                    Modifier.focusRequester(firstLibraryItemRequester)
+                                                } else Modifier
+                                            )
                                             .focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
                                                 if (index == genreList.lastIndex) right =
@@ -555,6 +582,7 @@ fun VideoTabContent(
                                                 FocusRequester.Cancel
                                             down = FocusRequester.Cancel
                                         },
+                                        allowNetworkImages = isNetworkAvailable,
                                         backendType = backendType
                                     )
                                 }

@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
@@ -41,9 +44,11 @@ data class HomeHeroInfo(
 @Composable
 fun CompactHomeHeroInfo(
     state: HomeHeroInfo,
+    allowNetworkImages: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
+    val context = LocalContext.current
 
     Row(
         modifier = modifier
@@ -96,9 +101,17 @@ fun CompactHomeHeroInfo(
         }
 
         state.imageUrl?.takeIf { it.isNotBlank() }?.let { imageUrl ->
+            val imageRequest = remember(imageUrl, allowNetworkImages) {
+                ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .networkCachePolicy(if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                    .build()
+            }
             Spacer(Modifier.width(16.dp))
             AsyncImage(
-                model = imageUrl,
+                model = imageRequest,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

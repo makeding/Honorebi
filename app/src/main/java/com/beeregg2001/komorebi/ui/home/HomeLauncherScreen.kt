@@ -135,12 +135,13 @@ private fun NetworkStatusButton(
     val contentColor = if (status.isAvailable) {
         colors.textPrimary
     } else {
-        colors.textSecondary.copy(alpha = 0.62f)
+        colors.accent
     }
 
-    IconButton(
+    Button(
         onClick = onClick,
         modifier = Modifier
+            .height(48.dp)
             .focusRequester(focusRequester)
             .focusProperties {
                 left = leftFocusRequester
@@ -148,13 +149,24 @@ private fun NetworkStatusButton(
                 up = FocusRequester.Cancel
                 canFocus = canTakeFocus
             },
-        colors = IconButtonDefaults.colors(
+        colors = ButtonDefaults.colors(
+            containerColor = if (status.isAvailable) Color.Transparent else colors.accent.copy(alpha = 0.16f),
             focusedContainerColor = colors.textPrimary,
             focusedContentColor = if (colors.isDark) Color.Black else Color.White,
             contentColor = contentColor
-        )
+        ),
+        shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
+        contentPadding = PaddingValues(horizontal = if (status.isAvailable) 12.dp else 14.dp)
     ) {
         Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
+        if (!status.isAvailable) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "オフライン",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
+        }
     }
 }
 
@@ -326,8 +338,16 @@ fun HomeLauncherScreen(
     var lastHomeRefreshTime by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(activeRenderIndex) {
-        val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
         ui.isCurrentTabContentReady = false
+    }
+
+    LaunchedEffect(activeRenderIndex, networkConnectionStatus.isAvailable) {
+        val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
+
+        if (!networkConnectionStatus.isAvailable) {
+            channelViewModel.stopPolling()
+            return@LaunchedEffect
+        }
 
         when (currentLabel) {
             "ホーム" -> {
@@ -406,8 +426,8 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (ui.selectedTabIndex == 0) {
+    LaunchedEffect(networkConnectionStatus.isAvailable) {
+        if (networkConnectionStatus.isAvailable && ui.selectedTabIndex == 0) {
             homeViewModel.refreshHomeData()
             channelViewModel.fetchChannels()
         }
@@ -701,6 +721,32 @@ fun HomeLauncherScreen(
                         Icon(Icons.Default.Settings, contentDescription = "システム設定")
                     }
                 }
+
+                if (!networkConnectionStatus.isAvailable) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 40.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.accent.copy(alpha = 0.14f))
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.WifiOff,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "オフライン — キャッシュ済みの情報を表示しています",
+                            color = colors.textPrimary,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    }
+                }
             }
 
             Box(modifier = Modifier.weight(1f)) {
@@ -817,6 +863,7 @@ fun HomeLauncherScreen(
                                 konomiPort = konomiPort,
                                 timeFormat = timeFormat,
                                 watchHistory = ui.watchHistory,
+                                isNetworkAvailable = networkConnectionStatus.isAvailable,
                                 aiFocusReturnTick = if (currentTabLabel == "ビデオ") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
