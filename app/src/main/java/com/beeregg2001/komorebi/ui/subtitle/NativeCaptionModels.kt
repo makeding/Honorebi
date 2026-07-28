@@ -23,7 +23,15 @@ data class NativeCaptionImage(
     val y: Int,
     val width: Int,
     val height: Int,
-    val bitmap: Bitmap
+    val bitmap: Bitmap,
+    val regions: List<NativeCaptionRegion> = emptyList()
+)
+
+data class NativeCaptionRegion(
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int
 )
 
 data class NativeCaptionLanguage(

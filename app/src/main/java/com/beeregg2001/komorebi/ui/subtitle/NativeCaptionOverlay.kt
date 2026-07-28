@@ -8,7 +8,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -109,6 +112,70 @@ fun NativeCaptionOverlay(
         val scaleX = size.width / cue.planeWidth.coerceAtLeast(1).toFloat()
         val scaleY = size.height / cue.planeHeight.coerceAtLeast(1).toFloat()
         bitmaps.forEach { (image, bitmap) ->
+            val imageDstOffset = IntOffset(
+                x = (image.x * scaleX).toInt(),
+                y = (image.y * scaleY).toInt()
+            )
+            val imageDstSize = IntSize(
+                width = (image.width * scaleX).toInt().coerceAtLeast(1),
+                height = (image.height * scaleY).toInt().coerceAtLeast(1)
+            )
+
+            if (bottomAvoidanceOffsetPx <= 0 || image.regions.isNotEmpty()) {
+                if (bottomAvoidanceOffsetPx <= 0) {
+                    drawImage(
+                        image = bitmap,
+                        dstOffset = imageDstOffset,
+                        dstSize = imageDstSize
+                    )
+                    return@forEach
+                }
+
+                val stationaryRegions = Path()
+                val shiftedRegions = Path()
+                var hasStationaryRegions = false
+                var hasShiftedRegions = false
+                image.regions.forEach { region ->
+                    val shouldAvoid = region.y + region.height > avoidanceStartY
+                    val verticalOffset = if (shouldAvoid) bottomAvoidanceOffsetPx else 0
+                    val regionRect = Rect(
+                        left = region.x * scaleX,
+                        top = region.y * scaleY - verticalOffset,
+                        right = (region.x + region.width) * scaleX,
+                        bottom = (region.y + region.height) * scaleY - verticalOffset
+                    )
+                    if (shouldAvoid) {
+                        shiftedRegions.addRect(regionRect)
+                        hasShiftedRegions = true
+                    } else {
+                        stationaryRegions.addRect(regionRect)
+                        hasStationaryRegions = true
+                    }
+                }
+                if (hasStationaryRegions) {
+                    clipPath(stationaryRegions) {
+                        drawImage(
+                            image = bitmap,
+                            dstOffset = imageDstOffset,
+                            dstSize = imageDstSize
+                        )
+                    }
+                }
+                if (hasShiftedRegions) {
+                    clipPath(shiftedRegions) {
+                        drawImage(
+                            image = bitmap,
+                            dstOffset = IntOffset(
+                                x = imageDstOffset.x,
+                                y = (imageDstOffset.y - bottomAvoidanceOffsetPx).coerceAtLeast(0)
+                            ),
+                            dstSize = imageDstSize
+                        )
+                    }
+                }
+                return@forEach
+            }
+
             val overlapsBottomAvoidanceArea = image.y + image.height > avoidanceStartY
             val avoidanceOffset = if (overlapsBottomAvoidanceArea) {
                 bottomAvoidanceOffsetPx

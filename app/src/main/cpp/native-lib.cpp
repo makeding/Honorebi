@@ -34,6 +34,70 @@ struct AribCaptionDecoderContext {
     std::mutex mutex;
 };
 
+struct CaptionRegionGeometry {
+    int x;
+    int y;
+    int width;
+    int height;
+};
+
+struct RenderedB62Caption {
+    aribcc_render_result_t result{};
+    std::vector<CaptionRegionGeometry> regions;
+};
+
+std::vector<CaptionRegionGeometry> mapCaptionContentBoundsToRenderFrame(
+    aribcc_caption_t& caption
+) {
+    std::vector<CaptionRegionGeometry> regions;
+    if (caption.plane_width <= 0 || caption.plane_height <= 0 ||
+        caption.regions == nullptr || caption.region_count == 0) {
+        return regions;
+    }
+
+    const float magnification = std::min(
+        static_cast<float>(ARIBCC_RENDER_FRAME_WIDTH) / caption.plane_width,
+        static_cast<float>(ARIBCC_RENDER_FRAME_HEIGHT) / caption.plane_height);
+    const int captionAreaWidth = static_cast<int>(caption.plane_width * magnification);
+    const int captionAreaHeight = static_cast<int>(caption.plane_height * magnification);
+    const int captionAreaStartX = (ARIBCC_RENDER_FRAME_WIDTH - captionAreaWidth) / 2;
+    const int captionAreaStartY = (ARIBCC_RENDER_FRAME_HEIGHT - captionAreaHeight) / 2;
+    const float scaleX = static_cast<float>(captionAreaWidth) / caption.plane_width;
+    const float scaleY = static_cast<float>(captionAreaHeight) / caption.plane_height;
+
+    regions.reserve(caption.region_count);
+    for (uint32_t index = 0; index < caption.region_count; ++index) {
+        aribcc_caption_region_t& region = caption.regions[index];
+        if (region.chars == nullptr || region.char_count == 0) continue;
+
+        int contentLeft = std::numeric_limits<int>::max();
+        int contentTop = std::numeric_limits<int>::max();
+        int contentRight = std::numeric_limits<int>::min();
+        int contentBottom = std::numeric_limits<int>::min();
+        for (uint32_t charIndex = 0; charIndex < region.char_count; ++charIndex) {
+            aribcc_caption_char_t& character = region.chars[charIndex];
+            const int sectionWidth = aribcc_caption_char_get_section_width(&character);
+            const int sectionHeight = aribcc_caption_char_get_section_height(&character);
+            if (sectionWidth <= 0 || sectionHeight <= 0) continue;
+            contentLeft = std::min(contentLeft, character.x);
+            contentTop = std::min(contentTop, character.y);
+            contentRight = std::max(contentRight, character.x + sectionWidth);
+            contentBottom = std::max(contentBottom, character.y + sectionHeight);
+        }
+        if (contentRight <= contentLeft || contentBottom <= contentTop) continue;
+
+        const int left = captionAreaStartX + static_cast<int>(contentLeft * scaleX);
+        const int top = captionAreaStartY + static_cast<int>(contentTop * scaleY);
+        const int right = captionAreaStartX +
+            static_cast<int>(contentRight * scaleX);
+        const int bottom = captionAreaStartY +
+            static_cast<int>(contentBottom * scaleY);
+        if (right <= left || bottom <= top) continue;
+        regions.push_back({left, top, right - left, bottom - top});
+    }
+    return regions;
+}
+
 jobject createAndroidBitmapFromRgba(
     JNIEnv* env,
     int width,
@@ -116,7 +180,12 @@ jobject createAndroidBitmapFromRgba(
     return bitmap;
 }
 
-jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t fallbackPtsMs) {
+jobject renderResultToCue(
+    JNIEnv* env,
+    aribcc_render_result_t& result,
+    int64_t fallbackPtsMs,
+    const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr
+) {
     int64_t duration = result.duration == ARIBCC_DURATION_INDEFINITE ? -1 : result.duration;
     int64_t pts = result.pts < 0 ? fallbackPtsMs : result.pts;
 
@@ -129,7 +198,9 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
     jmethodID imageCtor = env->GetMethodID(
         imageClass,
         "<init>",
-        "(IIIILandroid/graphics/Bitmap;)V");
+        "(IIIILandroid/graphics/Bitmap;Ljava/util/List;)V");
+    jclass regionClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionRegion");
+    jmethodID regionCtor = env->GetMethodID(regionClass, "<init>", "(IIII)V");
 
     for (uint32_t i = 0; i < result.image_count; ++i) {
         aribcc_image_t& image = result.images[i];
@@ -141,6 +212,23 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
             image.bitmap,
             image.bitmap_size);
         if (bitmap == nullptr) continue;
+        jobject regions = env->NewObject(
+            arrayListClass,
+            arrayListCtor,
+            static_cast<jint>(regionGeometries == nullptr ? 0 : regionGeometries->size()));
+        if (regionGeometries != nullptr) {
+            for (const CaptionRegionGeometry& region : *regionGeometries) {
+                jobject captionRegion = env->NewObject(
+                    regionClass,
+                    regionCtor,
+                    static_cast<jint>(region.x),
+                    static_cast<jint>(region.y),
+                    static_cast<jint>(region.width),
+                    static_cast<jint>(region.height));
+                env->CallBooleanMethod(regions, arrayListAdd, captionRegion);
+                env->DeleteLocalRef(captionRegion);
+            }
+        }
         jobject captionImage = env->NewObject(
             imageClass,
             imageCtor,
@@ -148,9 +236,11 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
             static_cast<jint>(image.dst_y),
             static_cast<jint>(image.width),
             static_cast<jint>(image.height),
-            bitmap);
+            bitmap,
+            regions);
         env->CallBooleanMethod(images, arrayListAdd, captionImage);
         env->DeleteLocalRef(captionImage);
+        env->DeleteLocalRef(regions);
         env->DeleteLocalRef(bitmap);
     }
 
@@ -168,6 +258,7 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
         0);
 
     env->DeleteLocalRef(images);
+    env->DeleteLocalRef(regionClass);
     env->DeleteLocalRef(imageClass);
     env->DeleteLocalRef(arrayListClass);
     env->DeleteLocalRef(cueClass);
@@ -725,7 +816,7 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     jbyte* bytes = env->GetByteArrayElements(data, nullptr);
     if (!bytes) return env->NewObjectArray(0, cueClass, nullptr);
 
-    std::vector<aribcc_render_result_t> rendered;
+    std::vector<RenderedB62Caption> rendered;
     {
         std::lock_guard<std::mutex> lock(ctx->mutex);
         aribcc_b62_decode_result_t decoded = {};
@@ -777,7 +868,7 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
                     aribcc_render_result_t result = {};
                     result.pts = caption.pts;
                     result.duration = caption.wait_duration;
-                    rendered.push_back(result);
+                    rendered.push_back({result, {}});
                     continue;
                 }
                 if (!aribcc_renderer_append_caption(ctx->b62Renderer, &caption)) continue;
@@ -788,7 +879,7 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
                 const auto renderStatus = aribcc_renderer_render(ctx->b62Renderer, renderPts, &result);
                 if (renderStatus == ARIBCC_RENDER_STATUS_GOT_IMAGE ||
                     renderStatus == ARIBCC_RENDER_STATUS_GOT_IMAGE_UNCHANGED) {
-                    rendered.push_back(result);
+                    rendered.push_back({result, mapCaptionContentBoundsToRenderFrame(caption)});
                 } else {
                     aribcc_render_result_cleanup(&result);
                 }
@@ -800,10 +891,14 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
 
     jobjectArray cues = env->NewObjectArray(static_cast<jsize>(rendered.size()), cueClass, nullptr);
     for (size_t index = 0; index < rendered.size(); ++index) {
-        jobject cue = renderResultToCue(env, rendered[index], ptsMs);
+        jobject cue = renderResultToCue(
+            env,
+            rendered[index].result,
+            ptsMs,
+            &rendered[index].regions);
         env->SetObjectArrayElement(cues, static_cast<jsize>(index), cue);
         env->DeleteLocalRef(cue);
-        aribcc_render_result_cleanup(&rendered[index]);
+        aribcc_render_result_cleanup(&rendered[index].result);
     }
     env->DeleteLocalRef(cueClass);
     return cues;
