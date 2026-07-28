@@ -638,7 +638,7 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject 
     aribcc_renderer_set_storage_policy(ctx->b62Renderer, ARIBCC_CAPTION_STORAGE_POLICY_MINIMUM, 0);
     aribcc_renderer_set_force_stroke_text(ctx->b62Renderer, true);
     aribcc_renderer_set_replace_drcs(ctx->b62Renderer, true);
-    aribcc_renderer_set_merge_region_images(ctx->b62Renderer, false);
+    aribcc_renderer_set_merge_region_images(ctx->b62Renderer, true);
     return reinterpret_cast<jlong>(ctx);
 }
 

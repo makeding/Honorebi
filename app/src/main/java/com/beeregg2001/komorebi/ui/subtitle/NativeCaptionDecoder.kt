@@ -61,8 +61,11 @@ class NativeCaptionDecoder(
                 referenceStartPtsMs ?: Long.MIN_VALUE,
                 discontinuity
             ).toList()
+            if (decoded.isEmpty() && !discontinuity) {
+                return emptyList()
+            }
             val timelineCommand = NativeCaptionCue(
-                ptsMs = if (discontinuity) ptsMs else decoded.minOfOrNull { it.ptsMs } ?: ptsMs,
+                ptsMs = if (discontinuity) ptsMs else decoded.minOf { it.ptsMs },
                 durationMs = 0L,
                 clearScreen = true,
                 planeWidth = 1,
@@ -76,7 +79,7 @@ class NativeCaptionDecoder(
             )
             val cues = listOf(timelineCommand) + decoded
             cues.also {
-                if (cues.isNotEmpty()) {
+                if (decoded.isNotEmpty()) {
                     languages = listOf(NativeCaptionLanguage(id = 1, iso6392Code = "jpn"))
                 }
             }
