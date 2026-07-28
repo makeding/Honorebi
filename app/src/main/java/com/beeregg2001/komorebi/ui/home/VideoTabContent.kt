@@ -84,7 +84,6 @@ fun VideoTabContent(
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
-    val firstLibraryItemRequester = remember { FocusRequester() }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val groupedSeries by recordViewModel.groupedSeries.collectAsState()
@@ -109,8 +108,6 @@ fun VideoTabContent(
             else groupedSeries[selectedGenre].orEmpty().asSequence()
         source.take(20).toList()
     }
-    val hasLibraryFocusTarget = recentItems.isNotEmpty() ||
-            historyItems.isNotEmpty() || groupedSeries.isNotEmpty()
 
     val initialHeroInfo = remember {
         HomeHeroInfo(
@@ -247,7 +244,6 @@ fun VideoTabContent(
                                 .focusProperties {
                                     left = FocusRequester.Cancel
                                     up = tabFocusRequester
-                                    down = if (hasLibraryFocusTarget) firstLibraryItemRequester else FocusRequester.Cancel
                                 },
                             onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
                             onFocus = {
@@ -269,7 +265,6 @@ fun VideoTabContent(
                                 .focusProperties {
                                     right = FocusRequester.Cancel
                                     up = tabFocusRequester
-                                    down = if (hasLibraryFocusTarget) firstLibraryItemRequester else FocusRequester.Cancel
                                 },
                             onClick = { onShowSmbLibrary() },
                             onFocus = {
@@ -362,13 +357,7 @@ fun VideoTabContent(
                                         },
                                         isCurrentlyRecording = isCurrentlyRecording,
                                         allowNetworkImages = isNetworkAvailable,
-                                        modifier = Modifier
-                                            .then(
-                                                if (index == 0) Modifier.focusRequester(
-                                                    firstLibraryItemRequester
-                                                ) else Modifier
-                                            )
-                                            .focusProperties {
+                                        modifier = Modifier.focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
                                                 if (index == recentItems.lastIndex) right =
                                                     FocusRequester.Cancel
@@ -451,13 +440,7 @@ fun VideoTabContent(
                                                     .coerceIn(0f, 1f) else null
                                             )
                                         },
-                                        modifier = Modifier
-                                            .then(
-                                                if (recentItems.isEmpty() && index == 0) {
-                                                    Modifier.focusRequester(firstLibraryItemRequester)
-                                                } else Modifier
-                                            )
-                                            .focusProperties {
+                                        modifier = Modifier.focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
                                                 if (index == historyItems.lastIndex) right =
                                                     FocusRequester.Cancel
@@ -492,11 +475,6 @@ fun VideoTabContent(
                                         onClick = { recordViewModel.updateSeriesGenre(genre) },
                                         modifier = Modifier
                                             .height(40.dp)
-                                            .then(
-                                                if (recentItems.isEmpty() && historyItems.isEmpty() && index == 0) {
-                                                    Modifier.focusRequester(firstLibraryItemRequester)
-                                                } else Modifier
-                                            )
                                             .focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
                                                 if (index == genreList.lastIndex) right =
