@@ -9,8 +9,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import java.util.TreeMap
@@ -85,10 +88,17 @@ fun rememberNativeCaptionCue(
 fun NativeCaptionOverlay(
     cue: NativeCaptionCue?,
     visible: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bottomAvoidanceOffset: Dp = 0.dp,
+    bottomAvoidanceStartFraction: Float = 1f
 ) {
     if (!visible || cue == null) return
 
+    val bottomAvoidanceOffsetPx = with(LocalDensity.current) {
+        bottomAvoidanceOffset.roundToPx()
+    }
+    val avoidanceStartY =
+        cue.planeHeight.coerceAtLeast(1) * bottomAvoidanceStartFraction.coerceIn(0f, 1f)
     val bitmaps = remember(cue) {
         cue.images.map { image ->
             image to image.bitmap.asImageBitmap()
@@ -99,11 +109,17 @@ fun NativeCaptionOverlay(
         val scaleX = size.width / cue.planeWidth.coerceAtLeast(1).toFloat()
         val scaleY = size.height / cue.planeHeight.coerceAtLeast(1).toFloat()
         bitmaps.forEach { (image, bitmap) ->
+            val overlapsBottomAvoidanceArea = image.y + image.height > avoidanceStartY
+            val avoidanceOffset = if (overlapsBottomAvoidanceArea) {
+                bottomAvoidanceOffsetPx
+            } else {
+                0
+            }
             drawImage(
                 image = bitmap,
                 dstOffset = IntOffset(
                     x = (image.x * scaleX).toInt(),
-                    y = (image.y * scaleY).toInt()
+                    y = ((image.y * scaleY).toInt() - avoidanceOffset).coerceAtLeast(0)
                 ),
                 dstSize = IntSize(
                     width = (image.width * scaleX).toInt().coerceAtLeast(1),

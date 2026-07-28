@@ -105,6 +105,7 @@ private const val C_PART_SIGNAL_CLUSTER_WINDOW_MS = 30_000L
 private const val LATE_C_PART_WINDOW_START_MS = 28 * 60 * 1000L + 30_000L
 private const val MIN_LATE_C_PART_COMMENTS = 8
 private const val MIN_LATE_C_PART_PEAK_RATIO = 1.6f
+private const val PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
 private val PLAYER_CONTROLS_SUBTITLE_OFFSET = 96.dp
 
 @UnstableApi
@@ -1328,9 +1329,9 @@ fun VideoPlayerScreen(
                     NativeCaptionOverlay(
                         cue = subtitleCue.value,
                         visible = vs.isSubtitleEnabled && !isSubtitleBlockingOverlayOpen,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .offset(y = -subtitleOffset)
+                        modifier = Modifier.fillMaxSize(),
+                        bottomAvoidanceOffset = subtitleOffset,
+                        bottomAvoidanceStartFraction = PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION
                     )
                 }
             }
