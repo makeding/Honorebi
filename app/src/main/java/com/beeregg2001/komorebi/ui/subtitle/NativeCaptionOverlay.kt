@@ -1,6 +1,5 @@
 package com.beeregg2001.komorebi.ui.subtitle
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +18,7 @@ import java.util.TreeMap
 private const val UNKNOWN_DURATION_MS = 5_000L
 private const val TIMELINE_TICK_MS = 33L
 private const val PAUSED_TIMELINE_TICK_MS = 100L
-private const val MAX_TIMELINE_CUES = 500
+private const val MAX_TIMELINE_CUES = 32
 
 @Composable
 fun rememberNativeCaptionCue(
@@ -64,13 +63,17 @@ fun rememberNativeCaptionCue(
     LaunchedEffect(enabled, resetKey) {
         while (enabled) {
             val positionMs = currentPositionMsProvider.value().coerceAtLeast(0L)
-            val cue = timeline.floorEntry(positionMs)?.value
+            val currentEntry = timeline.floorEntry(positionMs)
+            val cue = currentEntry?.value
             cueState.value = when {
                 cue == null || cue.clearScreen || cue.images.isEmpty() -> null
                 cue.durationMs == -1L -> cue
                 cue.durationMs > 0L && positionMs < cue.ptsMs + cue.durationMs -> cue
                 cue.durationMs <= 0L && positionMs < cue.ptsMs + UNKNOWN_DURATION_MS -> cue
                 else -> null
+            }
+            if (currentEntry != null) {
+                timeline.headMap(currentEntry.key, false).clear()
             }
             delay(if (currentClockRunning.value) TIMELINE_TICK_MS else PAUSED_TIMELINE_TICK_MS)
         }
@@ -87,8 +90,8 @@ fun NativeCaptionOverlay(
     if (!visible || cue == null) return
 
     val bitmaps = remember(cue) {
-        cue.images.mapNotNull { image ->
-            image.toBitmap()?.let { image to it.asImageBitmap() }
+        cue.images.map { image ->
+            image to image.bitmap.asImageBitmap()
         }
     }
 
@@ -109,23 +112,4 @@ fun NativeCaptionOverlay(
             )
         }
     }
-}
-
-private fun NativeCaptionImage.toBitmap(): Bitmap? {
-    if (width <= 0 || height <= 0 || rgba.isEmpty()) return null
-    val pixels = IntArray(width * height)
-    var out = 0
-    for (row in 0 until height) {
-        var offset = row * stride
-        for (col in 0 until width) {
-            if (offset + 3 >= rgba.size) return null
-            val r = rgba[offset].toInt() and 0xff
-            val g = rgba[offset + 1].toInt() and 0xff
-            val b = rgba[offset + 2].toInt() and 0xff
-            val a = rgba[offset + 3].toInt() and 0xff
-            pixels[out++] = (a shl 24) or (r shl 16) or (g shl 8) or b
-            offset += 4
-        }
-    }
-    return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
 }

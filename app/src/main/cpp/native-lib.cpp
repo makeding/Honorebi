@@ -1,8 +1,8 @@
 #include <jni.h>
+#include <android/bitmap.h>
 #include <string>
 #include <vector>
 #include <unordered_set>
-#include <memory>
 #include <algorithm>
 #include <cstring>
 #include <mutex>
@@ -11,7 +11,6 @@
 #include <limits>
 
 #include <aribcaption/aribcaption.h>
-#include <aribcaption/aribcaption.hpp>
 #include <tlvdemux/demuxer.hpp>
 #include <tlvdemux/recording.hpp>
 
@@ -30,11 +29,92 @@ struct AribCaptionDecoderContext {
     aribcc_context_t* context = nullptr;
     aribcc_decoder_t* decoder = nullptr;
     aribcc_renderer_t* renderer = nullptr;
-    std::unique_ptr<aribcaption::Context> b62Context;
-    std::unique_ptr<aribcaption::B62Decoder> b62Decoder;
-    std::unique_ptr<aribcaption::Renderer> b62Renderer;
+    aribcc_b62_decoder_t* b62Decoder = nullptr;
+    aribcc_renderer_t* b62Renderer = nullptr;
     std::mutex mutex;
 };
+
+jobject createAndroidBitmapFromRgba(
+    JNIEnv* env,
+    int width,
+    int height,
+    int sourceStride,
+    const uint8_t* source,
+    size_t sourceSize
+) {
+    if (width <= 0 || height <= 0 || source == nullptr || sourceStride < width * 4) {
+        return nullptr;
+    }
+
+    const size_t rowBytes = static_cast<size_t>(width) * 4;
+    const size_t requiredSize =
+        static_cast<size_t>(height - 1) * static_cast<size_t>(sourceStride) + rowBytes;
+    if (sourceSize < requiredSize) {
+        return nullptr;
+    }
+
+    jclass bitmapClass = env->FindClass("android/graphics/Bitmap");
+    jclass configClass = env->FindClass("android/graphics/Bitmap$Config");
+    if (bitmapClass == nullptr || configClass == nullptr) {
+        if (bitmapClass != nullptr) env->DeleteLocalRef(bitmapClass);
+        if (configClass != nullptr) env->DeleteLocalRef(configClass);
+        return nullptr;
+    }
+
+    jfieldID argb8888Field = env->GetStaticFieldID(
+        configClass,
+        "ARGB_8888",
+        "Landroid/graphics/Bitmap$Config;");
+    jmethodID createBitmapMethod = env->GetStaticMethodID(
+        bitmapClass,
+        "createBitmap",
+        "(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;");
+    jobject config = argb8888Field == nullptr
+        ? nullptr
+        : env->GetStaticObjectField(configClass, argb8888Field);
+    jobject bitmap = createBitmapMethod == nullptr || config == nullptr
+        ? nullptr
+        : env->CallStaticObjectMethod(
+            bitmapClass,
+            createBitmapMethod,
+            static_cast<jint>(width),
+            static_cast<jint>(height),
+            config);
+
+    if (config != nullptr) env->DeleteLocalRef(config);
+    env->DeleteLocalRef(configClass);
+    env->DeleteLocalRef(bitmapClass);
+    if (bitmap == nullptr || env->ExceptionCheck()) {
+        return bitmap;
+    }
+
+    AndroidBitmapInfo info{};
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS ||
+        info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        info.width != static_cast<uint32_t>(width) ||
+        info.height != static_cast<uint32_t>(height) ||
+        info.stride < rowBytes) {
+        env->DeleteLocalRef(bitmap);
+        return nullptr;
+    }
+
+    void* pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS ||
+        pixels == nullptr) {
+        env->DeleteLocalRef(bitmap);
+        return nullptr;
+    }
+
+    auto* destination = static_cast<uint8_t*>(pixels);
+    for (int row = 0; row < height; ++row) {
+        std::memcpy(
+            destination + static_cast<size_t>(row) * info.stride,
+            source + static_cast<size_t>(row) * static_cast<size_t>(sourceStride),
+            rowBytes);
+    }
+    AndroidBitmap_unlockPixels(env, bitmap);
+    return bitmap;
+}
 
 jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t fallbackPtsMs) {
     int64_t duration = result.duration == ARIBCC_DURATION_INDEFINITE ? -1 : result.duration;
@@ -46,21 +126,21 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
     jobject images = env->NewObject(arrayListClass, arrayListCtor, static_cast<jint>(result.image_count));
 
     jclass imageClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionImage");
-    jmethodID imageCtor = env->GetMethodID(imageClass, "<init>", "(IIIII[B)V");
+    jmethodID imageCtor = env->GetMethodID(
+        imageClass,
+        "<init>",
+        "(IIIILandroid/graphics/Bitmap;)V");
 
     for (uint32_t i = 0; i < result.image_count; ++i) {
         aribcc_image_t& image = result.images[i];
-        jsize bitmapSize = image.bitmap && image.bitmap_size > 0
-            ? static_cast<jsize>(image.bitmap_size)
-            : 0;
-        jbyteArray rgba = env->NewByteArray(bitmapSize);
-        if (bitmapSize > 0) {
-            env->SetByteArrayRegion(
-                rgba,
-                0,
-                bitmapSize,
-                reinterpret_cast<const jbyte*>(image.bitmap));
-        }
+        jobject bitmap = createAndroidBitmapFromRgba(
+            env,
+            image.width,
+            image.height,
+            image.stride,
+            image.bitmap,
+            image.bitmap_size);
+        if (bitmap == nullptr) continue;
         jobject captionImage = env->NewObject(
             imageClass,
             imageCtor,
@@ -68,11 +148,10 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
             static_cast<jint>(image.dst_y),
             static_cast<jint>(image.width),
             static_cast<jint>(image.height),
-            static_cast<jint>(image.stride),
-            rgba);
+            bitmap);
         env->CallBooleanMethod(images, arrayListAdd, captionImage);
         env->DeleteLocalRef(captionImage);
-        env->DeleteLocalRef(rgba);
+        env->DeleteLocalRef(bitmap);
     }
 
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
@@ -83,65 +162,6 @@ jobject renderResultToCue(JNIEnv* env, aribcc_render_result_t& result, int64_t f
         static_cast<jlong>(pts),
         static_cast<jlong>(duration),
         result.image_count == 0 ? JNI_TRUE : JNI_FALSE,
-        static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
-        static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
-        images,
-        0);
-
-    env->DeleteLocalRef(images);
-    env->DeleteLocalRef(imageClass);
-    env->DeleteLocalRef(arrayListClass);
-    env->DeleteLocalRef(cueClass);
-    return cue;
-}
-
-jobject renderResultToCue(JNIEnv* env, aribcaption::RenderResult& result, int64_t fallbackPtsMs) {
-    const int64_t duration = result.duration == aribcaption::DURATION_INDEFINITE ? -1 : result.duration;
-    const int64_t pts = result.pts == aribcaption::PTS_NOPTS ? fallbackPtsMs : result.pts;
-
-    jclass arrayListClass = env->FindClass("java/util/ArrayList");
-    jmethodID arrayListCtor = env->GetMethodID(arrayListClass, "<init>", "(I)V");
-    jmethodID arrayListAdd = env->GetMethodID(arrayListClass, "add", "(Ljava/lang/Object;)Z");
-    jobject images = env->NewObject(
-        arrayListClass,
-        arrayListCtor,
-        static_cast<jint>(result.images.size()));
-
-    jclass imageClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionImage");
-    jmethodID imageCtor = env->GetMethodID(imageClass, "<init>", "(IIIII[B)V");
-
-    for (auto& image : result.images) {
-        const jsize bitmapSize = static_cast<jsize>(image.bitmap.size());
-        jbyteArray rgba = env->NewByteArray(bitmapSize);
-        if (bitmapSize > 0) {
-            env->SetByteArrayRegion(
-                rgba,
-                0,
-                bitmapSize,
-                reinterpret_cast<const jbyte*>(image.bitmap.data()));
-        }
-        jobject captionImage = env->NewObject(
-            imageClass,
-            imageCtor,
-            static_cast<jint>(image.dst_x),
-            static_cast<jint>(image.dst_y),
-            static_cast<jint>(image.width),
-            static_cast<jint>(image.height),
-            static_cast<jint>(image.stride),
-            rgba);
-        env->CallBooleanMethod(images, arrayListAdd, captionImage);
-        env->DeleteLocalRef(captionImage);
-        env->DeleteLocalRef(rgba);
-    }
-
-    jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;I)V");
-    jobject cue = env->NewObject(
-        cueClass,
-        cueCtor,
-        static_cast<jlong>(pts),
-        static_cast<jlong>(duration),
-        result.images.empty() ? JNI_TRUE : JNI_FALSE,
         static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
         static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
         images,
@@ -597,22 +617,28 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject 
     aribcc_renderer_set_replace_drcs(ctx->renderer, true);
     aribcc_renderer_set_merge_region_images(ctx->renderer, false);
 
-    ctx->b62Context = std::make_unique<aribcaption::Context>();
-    ctx->b62Decoder = std::make_unique<aribcaption::B62Decoder>(*ctx->b62Context);
-    ctx->b62Renderer = std::make_unique<aribcaption::Renderer>(*ctx->b62Context);
-    if (!ctx->b62Renderer->Initialize()) {
+    ctx->b62Decoder = aribcc_b62_decoder_alloc(ctx->context);
+    ctx->b62Renderer = aribcc_renderer_alloc(ctx->context);
+    if (!ctx->b62Decoder || !ctx->b62Renderer ||
+        !aribcc_renderer_initialize(
+            ctx->b62Renderer,
+            ARIBCC_CAPTIONTYPE_CAPTION,
+            ARIBCC_FONTPROVIDER_TYPE_AUTO,
+            ARIBCC_TEXTRENDERER_TYPE_AUTO)) {
+        if (ctx->b62Renderer) aribcc_renderer_free(ctx->b62Renderer);
+        if (ctx->b62Decoder) aribcc_b62_decoder_free(ctx->b62Decoder);
         aribcc_renderer_free(ctx->renderer);
         aribcc_decoder_free(ctx->decoder);
         aribcc_context_free(ctx->context);
         delete ctx;
         return 0;
     }
-    ctx->b62Renderer->SetFrameSize(ARIBCC_RENDER_FRAME_WIDTH, ARIBCC_RENDER_FRAME_HEIGHT);
-    ctx->b62Renderer->SetMargins(0, 0, 0, 0);
-    ctx->b62Renderer->SetStoragePolicy(aribcaption::CaptionStoragePolicy::kMinimum);
-    ctx->b62Renderer->SetForceStrokeText(true);
-    ctx->b62Renderer->SetReplaceDRCS(true);
-    ctx->b62Renderer->SetMergeRegionImages(false);
+    aribcc_renderer_set_frame_size(ctx->b62Renderer, ARIBCC_RENDER_FRAME_WIDTH, ARIBCC_RENDER_FRAME_HEIGHT);
+    aribcc_renderer_set_margins(ctx->b62Renderer, 0, 0, 0, 0);
+    aribcc_renderer_set_storage_policy(ctx->b62Renderer, ARIBCC_CAPTION_STORAGE_POLICY_MINIMUM, 0);
+    aribcc_renderer_set_force_stroke_text(ctx->b62Renderer, true);
+    aribcc_renderer_set_replace_drcs(ctx->b62Renderer, true);
+    aribcc_renderer_set_merge_region_images(ctx->b62Renderer, false);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -699,22 +725,23 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     jbyte* bytes = env->GetByteArrayElements(data, nullptr);
     if (!bytes) return env->NewObjectArray(0, cueClass, nullptr);
 
-    std::vector<aribcaption::RenderResult> rendered;
+    std::vector<aribcc_render_result_t> rendered;
     {
         std::lock_guard<std::mutex> lock(ctx->mutex);
-        aribcaption::B62DecodeResult decoded;
-        aribcaption::B62DecodeOptions options;
+        aribcc_b62_decode_result_t decoded = {};
+        aribcc_b62_decode_options_t options;
+        aribcc_b62_decode_options_init(&options);
         options.document_pts = static_cast<int64_t>(ptsMs);
         options.discontinuity = discontinuity == JNI_TRUE;
         switch (operationMode) {
         case 0:
-            options.operation_mode = aribcaption::B62OperationMode::kLive;
+            options.operation_mode = ARIBCC_B62_OPERATION_MODE_LIVE;
             break;
         case 2:
-            options.operation_mode = aribcaption::B62OperationMode::kProgram;
+            options.operation_mode = ARIBCC_B62_OPERATION_MODE_PROGRAM;
             break;
         default:
-            options.operation_mode = aribcaption::B62OperationMode::kSegment;
+            options.operation_mode = ARIBCC_B62_OPERATION_MODE_SEGMENT;
             break;
         }
         switch (timingMode) {
@@ -736,33 +763,38 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
             options.align_earliest_to_document_pts = true;
             break;
         }
-        const auto status = ctx->b62Decoder->Decode(
+        const auto status = aribcc_b62_decoder_decode_with_options(
+            ctx->b62Decoder,
             reinterpret_cast<const uint8_t*>(bytes),
             static_cast<size_t>(length),
-            options,
-            decoded);
-        if (status == aribcaption::B62DecodeStatus::kGotCaption) {
-            ctx->b62Renderer->Flush();
-            for (const auto& caption : decoded.captions) {
-                if (caption.regions.empty()) {
-                    aribcaption::RenderResult result;
+            &options,
+            &decoded);
+        if (status == ARIBCC_B62_DECODE_STATUS_GOT_CAPTION) {
+            aribcc_renderer_flush(ctx->b62Renderer);
+            for (uint32_t index = 0; index < decoded.caption_count; ++index) {
+                aribcc_caption_t& caption = decoded.captions[index];
+                if (caption.region_count == 0) {
+                    aribcc_render_result_t result = {};
                     result.pts = caption.pts;
                     result.duration = caption.wait_duration;
-                    rendered.push_back(std::move(result));
+                    rendered.push_back(result);
                     continue;
                 }
-                if (!ctx->b62Renderer->AppendCaption(caption)) continue;
-                aribcaption::RenderResult result;
-                const int64_t renderPts = caption.pts == aribcaption::PTS_NOPTS
+                if (!aribcc_renderer_append_caption(ctx->b62Renderer, &caption)) continue;
+                aribcc_render_result_t result = {};
+                const int64_t renderPts = caption.pts == ARIBCC_PTS_NOPTS
                     ? static_cast<int64_t>(ptsMs)
                     : caption.pts;
-                const auto renderStatus = ctx->b62Renderer->Render(renderPts, result);
-                if (renderStatus == aribcaption::RenderStatus::kGotImage ||
-                    renderStatus == aribcaption::RenderStatus::kGotImageUnchanged) {
-                    rendered.push_back(std::move(result));
+                const auto renderStatus = aribcc_renderer_render(ctx->b62Renderer, renderPts, &result);
+                if (renderStatus == ARIBCC_RENDER_STATUS_GOT_IMAGE ||
+                    renderStatus == ARIBCC_RENDER_STATUS_GOT_IMAGE_UNCHANGED) {
+                    rendered.push_back(result);
+                } else {
+                    aribcc_render_result_cleanup(&result);
                 }
             }
         }
+        aribcc_b62_decode_result_cleanup(&decoded);
     }
     env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
 
@@ -771,6 +803,7 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
         jobject cue = renderResultToCue(env, rendered[index], ptsMs);
         env->SetObjectArrayElement(cues, static_cast<jsize>(index), cue);
         env->DeleteLocalRef(cue);
+        aribcc_render_result_cleanup(&rendered[index]);
     }
     env->DeleteLocalRef(cueClass);
     return cues;
@@ -785,8 +818,8 @@ Java_com_beeregg2001_komorebi_NativeLib_setB62CaptionFontScale(
     auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
     if (!ctx || !ctx->b62Decoder) return;
     std::lock_guard<std::mutex> lock(ctx->mutex);
-    ctx->b62Decoder->SetFontScale(static_cast<float>(scale));
-    if (ctx->b62Renderer) ctx->b62Renderer->Flush();
+    aribcc_b62_decoder_set_font_scale(ctx->b62Decoder, static_cast<float>(scale));
+    if (ctx->b62Renderer) aribcc_renderer_flush(ctx->b62Renderer);
 }
 
 JNIEXPORT jintArray JNICALL
@@ -830,8 +863,8 @@ Java_com_beeregg2001_komorebi_NativeLib_flushCaptionDecoder(JNIEnv *env, jobject
     std::lock_guard<std::mutex> lock(ctx->mutex);
     aribcc_decoder_flush(ctx->decoder);
     if (ctx->renderer) aribcc_renderer_flush(ctx->renderer);
-    if (ctx->b62Decoder) ctx->b62Decoder->Reset();
-    if (ctx->b62Renderer) ctx->b62Renderer->Flush();
+    if (ctx->b62Decoder) aribcc_b62_decoder_reset(ctx->b62Decoder);
+    if (ctx->b62Renderer) aribcc_renderer_flush(ctx->b62Renderer);
 }
 
 JNIEXPORT void JNICALL
@@ -840,15 +873,16 @@ Java_com_beeregg2001_komorebi_NativeLib_closeCaptionDecoder(JNIEnv *env, jobject
     if (!ctx) return;
     {
         std::lock_guard<std::mutex> lock(ctx->mutex);
-        ctx->b62Renderer.reset();
-        ctx->b62Decoder.reset();
-        ctx->b62Context.reset();
+        if (ctx->b62Renderer) aribcc_renderer_free(ctx->b62Renderer);
+        if (ctx->b62Decoder) aribcc_b62_decoder_free(ctx->b62Decoder);
         if (ctx->renderer) aribcc_renderer_free(ctx->renderer);
         if (ctx->decoder) aribcc_decoder_free(ctx->decoder);
         if (ctx->context) aribcc_context_free(ctx->context);
         ctx->renderer = nullptr;
         ctx->decoder = nullptr;
         ctx->context = nullptr;
+        ctx->b62Renderer = nullptr;
+        ctx->b62Decoder = nullptr;
     }
     delete ctx;
 }
