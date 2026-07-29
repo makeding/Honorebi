@@ -707,7 +707,6 @@ fun rememberManagedExoPlayer(
                 return@ExtractorsFactory TlvExtractorsFactory(
                     preferredVideoPacketId = null,
                     enableSeeking = true,
-                    durationUs = programDurationUs,
                     onSubtitleDataReceived = { sample ->
                         if (vs.isSubtitleEnabled) {
                             scope.launch(Dispatchers.Default) {
