@@ -186,6 +186,7 @@ fun VideoPlayerScreen(
     }
     var playbackDurationMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
     var bufferedPositionMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
+    val requiresRawMmtsPlayback = currentProgram.requiresRawMmtsPlayback
 
     val vs = rememberVideoPlayerState()
 
@@ -198,13 +199,10 @@ fun VideoPlayerScreen(
         availableQualities,
         isQualitiesLoaded,
         currentVideoQualityStr,
-        preferOriginalMpegTs
+        preferOriginalMpegTs,
+        requiresRawMmtsPlayback
     ) {
         if (isQualitiesLoaded && availableQualities.isNotEmpty()) {
-            val isMmtsRecording = currentProgram.recordedVideo.containerFormat.equals(
-                "MMT/TLV",
-                ignoreCase = true
-            )
             val preferredOriginal = if (preferOriginalMpegTs == "ON") {
                 availableQualities.firstOrNull {
                     it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
@@ -212,13 +210,13 @@ fun VideoPlayerScreen(
             } else {
                 null
             }
-            val matched = preferredOriginal
+            val matched = if (requiresRawMmtsPlayback) {
+                availableQualities.firstOrNull { it.isRawMmts }
+            } else {
+                preferredOriginal
                 ?: availableQualities.find { it.value == vs.currentQuality.value }
-                ?: if (isMmtsRecording) {
-                    availableQualities.firstOrNull { it.isRawMmts }
-                } else {
-                    availableQualities.find { it.value == currentVideoQualityStr }
-                }
+                ?: availableQualities.find { it.value == currentVideoQualityStr }
+            }
             if (matched != null) {
                 vs.currentQuality = matched
             } else {
@@ -888,6 +886,7 @@ fun VideoPlayerScreen(
         if (
             smbItem != null ||
             !isRecordingChasePlayback ||
+            vs.currentQuality.isRawMmts ||
             vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
         ) {
             return@LaunchedEffect

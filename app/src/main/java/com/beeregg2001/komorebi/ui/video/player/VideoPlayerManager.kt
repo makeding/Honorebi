@@ -466,10 +466,8 @@ fun rememberManagedExoPlayer(
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
     val isRecordingChasePlayback =
         program?.isRecording == true || program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
-    val isRawMmtsPlayback = program?.recordedVideo?.containerFormat.equals(
-        "MMT/TLV",
-        ignoreCase = true
-    ) && vs.currentQuality.isRawMmts && !isRecordingChasePlayback
+    val isRawMmtsPlayback = program?.requiresRawMmtsPlayback == true &&
+        vs.currentQuality.isRawMmts
     val isOriginalMpegTsPlayback = program?.recordedVideo?.containerFormat.equals(
         "MPEG-TS",
         ignoreCase = true

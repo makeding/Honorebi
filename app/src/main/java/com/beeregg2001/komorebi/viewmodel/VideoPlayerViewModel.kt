@@ -123,9 +123,10 @@ class VideoPlayerViewModel @Inject constructor(
                         }
                     }
                 } else if (backend == "KONOMITV") {
-                    val isFinished = program?.isRecording != true &&
-                        !program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
                     _availableQualities.value = when {
+                        program?.requiresRawMmtsPlayback == true ->
+                            listOf(StreamQuality.recordedRawMmts())
+
                         program?.recordedVideo?.containerFormat.equals(
                             "MPEG-TS",
                             ignoreCase = true
@@ -134,11 +135,6 @@ class VideoPlayerViewModel @Inject constructor(
                             ignoreCase = true
                         ) -> listOf(StreamQuality.originalMpegTsHardwareDi()) +
                             StreamQuality.DEFAULT_QUALITIES
-
-                        isFinished && program?.recordedVideo?.containerFormat.equals(
-                            "MMT/TLV",
-                            ignoreCase = true
-                        ) -> listOf(StreamQuality.recordedRawMmts()) + StreamQuality.DEFAULT_QUALITIES
 
                         else -> StreamQuality.DEFAULT_QUALITIES
                     }

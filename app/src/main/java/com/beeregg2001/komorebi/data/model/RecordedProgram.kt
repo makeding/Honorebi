@@ -47,7 +47,15 @@ data class RecordedProgram(
     // ★ ここから下の2行を追加するだけです ★
     val directThumbnailUrl: String? = null,
     val apiThumbnailUrl: String? = null
-)
+) {
+    /**
+     * BS4K/BS8K はライブ・録画ともに変換ストリームへ落とさず、Raw MMT/TLV で再生する。
+     * 録画一覧のチャンネル情報が欠ける場合に備えて、コンテナ形式も判定に使う。
+     */
+    val requiresRawMmtsPlayback: Boolean
+        get() = channel?.type.equals("BS4K", ignoreCase = true) ||
+            recordedVideo.containerFormat.equals("MMT/TLV", ignoreCase = true)
+}
 
 // CM区間（チャプター）のデータモデル
 data class CmSection(
