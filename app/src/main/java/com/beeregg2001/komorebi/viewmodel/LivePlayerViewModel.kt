@@ -37,6 +37,8 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
 import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import com.beeregg2001.komorebi.util.mmts.B62SubtitleSample
+import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
+import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.BufferOverflow
@@ -107,6 +109,8 @@ class LivePlayerViewModel @Inject constructor(
     private val mainTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
     private val dualTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
 
+    val dataBroadcastingStore = B60DataBroadcastingStore()
+
     private val _mainPlayerError = MutableStateFlow<String?>(null)
     val mainPlayerError: StateFlow<String?> = _mainPlayerError.asStateFlow()
     private val _mainPlayerErrorIsCapabilityRelated = MutableStateFlow(false)
@@ -129,13 +133,13 @@ class LivePlayerViewModel @Inject constructor(
     val dualSseDetail: StateFlow<String> = _dualSseDetail.asStateFlow()
 
     private val _mainSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
-        extraBufferCapacity = 512,
+        extraBufferCapacity = 16,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val mainSubtitleEvents: SharedFlow<NativeCaptionCue> = _mainSubtitleEvents.asSharedFlow()
 
     private val _dualSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
-        extraBufferCapacity = 512,
+        extraBufferCapacity = 16,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val dualSubtitleEvents: SharedFlow<NativeCaptionCue> = _dualSubtitleEvents.asSharedFlow()
@@ -506,6 +510,7 @@ class LivePlayerViewModel @Inject constructor(
             _mainPlayerErrorIsCapabilityRelated.value = false
         }
         mainCurrentChannel = channel
+        dataBroadcastingStore.beginSession(channel.id)
 
         viewModelScope.launch { _currentLogoUrl.value = liveProvider.getChannelLogoUrl(channel.id) }
 
@@ -567,7 +572,8 @@ class LivePlayerViewModel @Inject constructor(
                             request,
                             mainTsDataSourceFactory,
                             ::decodeAndEmitMainSubtitle,
-                            ::decodeAndEmitMainB62Subtitle
+                            ::decodeAndEmitMainB62Subtitle,
+                            dataBroadcastingStore
                         )
                         liveJikkyoManager.startJikkyo(channel, request.source)
                     }
@@ -881,7 +887,8 @@ class LivePlayerViewModel @Inject constructor(
         request: LivePlaybackRequest,
         factory: TsReadExDataSourceFactory,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
-        onB62SubtitleDataReceived: (B62SubtitleSample) -> Unit
+        onB62SubtitleDataReceived: (B62SubtitleSample) -> Unit,
+        dataBroadcastingCallback: B60DataBroadcastingCallback? = null
     ) {
         val mediaItem = MediaItem.fromUri(request.url)
         val mediaSource = when {
@@ -897,7 +904,8 @@ class LivePlayerViewModel @Inject constructor(
                     httpDataSourceFactory,
                     TlvExtractorsFactory(
                         preferredVideoPacketId = request.quality.videoPacketId,
-                        onSubtitleDataReceived = onB62SubtitleDataReceived
+                        onSubtitleDataReceived = onB62SubtitleDataReceived,
+                        dataBroadcastingCallback = dataBroadcastingCallback
                     )
                 ).createMediaSource(mediaItem)
             }

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <style>
+    html, body, #viewport { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+    #viewport { position: relative; }
+    #broadcast {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      border: 0;
+      transform-origin: center center;
+      background: transparent;
+    }
+    #status {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      z-index: 10;
+      color: #fff;
+      background: #000;
+      font: 48px sans-serif;
+    }
+    #status.ready { display: none; }
+  </style>
+  <script src="/libaribhtml5/libaribhtml5.js"></script>
+</head>
+<body>
+  <div id="viewport">
+    <iframe id="broadcast"></iframe>
+    <div id="status">データ放送を準備中…</div>
+  </div>
+  <script>
+    (() => {
+      const iframe = document.querySelector('#broadcast');
+      const viewport = document.querySelector('#viewport');
+      const status = document.querySelector('#status');
+      let currentEntry = '';
+      let runtimeInstalled = false;
+      let autoEnterData = false;
+      const pendingKeys = [];
+
+      const reportStatus = value => {
+        status.textContent = value || '';
+        if (window.ARIBNative?.onStatus) window.ARIBNative.onStatus(String(value || ''));
+      };
+      const mediaPlaneAdapter = {
+        renderMode: 'external',
+        mountMediaPlane(_object, plane) { this.updateMediaPlane(_object, plane); },
+        updateMediaPlane(_object, plane) {
+          if (window.ARIBNative?.onMediaPlane) {
+            window.ARIBNative.onMediaPlane(JSON.stringify(plane));
+          }
+        },
+        unmountMediaPlane(reason) {
+          if (window.ARIBNative?.onMediaPlaneUnmounted) {
+            window.ARIBNative.onMediaPlaneUnmounted(String(reason));
+          }
+        },
+      };
+      const host = new window.ARIBHTML5.AribReceiverHost({
+        iframe,
+        viewport,
+        mediaPlaneAdapter,
+        broadcastBaseUrl: '/data-broadcast/',
+        allowExternalNetwork: false,
+        getDeviceIdentifier: async () => null,
+        systemInformation: {
+          makerid: 'Komorebi',
+          modelname: 'Komorebi Android TV',
+          decoder: 'native',
+        },
+        onStatus(value) {
+          reportStatus(value);
+        },
+        onLifecycle(event) {
+          if (event.type === 'installed') {
+            runtimeInstalled = true;
+            status.classList.add('ready');
+            for (const code of pendingKeys.splice(0)) host.dispatchKey(code);
+            if (autoEnterData) {
+              autoEnterData = false;
+              host.dispatchKey(keyCodes.data);
+            }
+          }
+          if (event.type === 'loading' || event.type === 'navigating') {
+            runtimeInstalled = false;
+            status.classList.remove('ready');
+          }
+          if (event.type === 'exited') {
+            runtimeInstalled = false;
+            pendingKeys.splice(0);
+          }
+          if (event.type === 'error' || event.type === 'frame-blocked' ||
+              event.type === 'navigation-blocked') {
+            reportStatus('データ放送エラー: ' + (event.message || event.type));
+          }
+        },
+        onUrlChange(value) {
+          if (window.ARIBNative?.onUrlChanged) window.ARIBNative.onUrlChanged(String(value || ''));
+        },
+        onOpenProgramGuide(request) {
+          if (!window.ARIBNative?.openProgramGuide) return false;
+          return Boolean(window.ARIBNative.openProgramGuide(JSON.stringify(request)));
+        },
+      });
+
+      window.__ARIB_HTML5_INSTALL__ = target => host.installRuntime(target);
+
+      const keyCodes = {
+        left: 37, up: 38, right: 39, down: 40, enter: 13, back: 461, data: 457,
+        red: 403, green: 404, yellow: 405, blue: 406,
+        '0': 48, '1': 49, '2': 50, '3': 51, '4': 52,
+        '5': 53, '6': 54, '7': 55, '8': 56, '9': 57,
+      };
+
+      function applyMetadata(payload) {
+        if (payload.programInfo?.start_time !== undefined) {
+          payload.programInfo.start_time = new Date(payload.programInfo.start_time);
+        }
+        if (payload.programInfo?.f_start_time !== undefined) {
+          payload.programInfo.f_start_time = new Date(payload.programInfo.f_start_time);
+        }
+        if (payload.programInfo) host.setProgramInfo(payload.programInfo);
+        if (payload.broadcastClock) {
+          payload.broadcastClock.currentMediaTimeSeconds = () =>
+            Number(window.ARIBNative?.currentMediaTimeSeconds?.() || 0);
+          host.setBroadcastClock(payload.broadcastClock);
+        }
+      }
+
+      window.KomorebiB60 = {
+        start(json) {
+          const payload = JSON.parse(json);
+          if (!payload.entryPath) return false;
+          host.clearProgramInfo();
+          host.clearBroadcastClock();
+          applyMetadata(payload);
+          currentEntry = String(payload.entryPath).replace(/^\/+/, '');
+          autoEnterData = Boolean(payload.autoEnterData);
+          status.classList.remove('ready');
+          reportStatus('データ放送を起動中…');
+          host.loadApplication('/' + currentEntry);
+          return true;
+        },
+        updateMetadata(json) {
+          applyMetadata(JSON.parse(json));
+          return true;
+        },
+        resourceChanged(path, updated) {
+          if (currentEntry && updated) {
+            host.notifyDataResource('/' + String(path).replace(/^\/+/, ''), 'updated');
+          }
+          return true;
+        },
+        exit() {
+          currentEntry = '';
+          host.exitApplication();
+          host.clearProgramInfo();
+          host.clearBroadcastClock();
+          status.classList.remove('ready');
+          reportStatus('データ放送を終了しました');
+          return true;
+        },
+      };
+
+      window.KomorebiDataBroadcastingRemote = {
+        press(key) {
+          const code = keyCodes[String(key)];
+          if (code === undefined) return false;
+          if (!runtimeInstalled) {
+            pendingKeys.push(code);
+            return true;
+          }
+          host.dispatchKey(code);
+          return true;
+        },
+      };
+
+      window.addEventListener('error', event => reportStatus('データ放送エラー: ' + event.message));
+      window.addEventListener('unhandledrejection', event => {
+        reportStatus('データ放送エラー: ' + String(event.reason?.message || event.reason));
+      });
+      reportStatus('データ放送リソースを待っています…');
+    })();
+  </script>
+</body>
+</html>

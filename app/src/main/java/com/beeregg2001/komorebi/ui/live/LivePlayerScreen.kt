@@ -21,8 +21,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -36,7 +38,6 @@ import com.beeregg2001.komorebi.media.SystemMediaSession
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
-import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -55,11 +56,33 @@ import java.util.Collections
 import android.graphics.Color as AndroidColor
 import master.flame.danmaku.controller.IDanmakuView
 import master.flame.danmaku.danmaku.model.BaseDanmaku
+import kotlin.math.roundToInt
 
 private const val TAG = "LivePlayerScreen"
 private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
 private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 16
 private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 4
+
+private fun Modifier.b60MediaPlane(plane: B60MediaPlane): Modifier = layout { measurable, constraints ->
+    val screenWidth = plane.screenWidth.takeIf { it > 0f } ?: 3840f
+    val screenHeight = plane.screenHeight.takeIf { it > 0f } ?: 2160f
+    val width = (constraints.maxWidth * plane.width / screenWidth)
+        .roundToInt()
+        .coerceIn(1, constraints.maxWidth)
+    val height = (constraints.maxHeight * plane.height / screenHeight)
+        .roundToInt()
+        .coerceIn(1, constraints.maxHeight)
+    val x = (constraints.maxWidth * plane.x / screenWidth)
+        .roundToInt()
+        .coerceIn(0, (constraints.maxWidth - width).coerceAtLeast(0))
+    val y = (constraints.maxHeight * plane.y / screenHeight)
+        .roundToInt()
+        .coerceIn(0, (constraints.maxHeight - height).coerceAtLeast(0))
+    val placeable = measurable.measure(Constraints.fixed(width, height))
+    layout(constraints.maxWidth, constraints.maxHeight) {
+        placeable.placeRelative(x, y)
+    }
+}
 
 private fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
     if (keyEvent.type != KeyEventType.KeyUp) return false
@@ -122,8 +145,6 @@ fun LivePlayerScreen(
         derivedStateOf { displayFlatChannels.find { it.id == channel.id } ?: channel }
     }
 
-    val konomiIp by settingsViewModel.konomiIp.collectAsState()
-    val konomiPort by settingsViewModel.konomiPort.collectAsState()
     val mirakurunIp by settingsViewModel.mirakurunIp.collectAsState()
     val mirakurunPort by settingsViewModel.mirakurunPort.collectAsState()
     val edcbIp by settingsViewModel.edcbIp.collectAsState()
@@ -237,9 +258,14 @@ fun LivePlayerScreen(
     val listFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }
     val scrollState = rememberScrollState()
-    var localDataBroadcastingMode by rememberSaveable { mutableStateOf(false) }
+    var localDataBroadcastingMode by rememberSaveable(currentChannelItem.id) {
+        mutableStateOf(false)
+    }
     var dataBroadcastingRemoteSequence by rememberSaveable { mutableLongStateOf(0L) }
     var dataBroadcastingRemoteCommand by remember { mutableStateOf<DataBroadcastingRemoteCommand?>(null) }
+    var dataBroadcastingMediaPlane by remember(currentChannelItem.id) {
+        mutableStateOf<B60MediaPlane?>(null)
+    }
 
     val mainError by livePlayerViewModel.mainPlayerError.collectAsState()
     val mainErrorIsCapabilityRelated by livePlayerViewModel.mainPlayerErrorIsCapabilityRelated.collectAsState()
@@ -260,14 +286,9 @@ fun LivePlayerScreen(
     }
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
-    val isDataBroadcastingActive = isDataBroadcastingMode || localDataBroadcastingMode
-    val dataBroadcastingWatchUrl = remember(
-        konomiIp,
-        konomiPort,
-        currentChannelItem.displayChannelId
-    ) {
-        UrlBuilder.getKonomiTvWatchUrl(konomiIp, konomiPort, currentChannelItem.displayChannelId)
-    }
+    val isB60Channel = currentChannelItem.type.equals("BS4K", ignoreCase = true)
+    val isDataBroadcastingActive = isB60Channel &&
+        (isDataBroadcastingMode || localDataBroadcastingMode)
     val dispatchDataBroadcastingRemoteKey: (String) -> Unit = { key ->
         dataBroadcastingRemoteSequence += 1L
         dataBroadcastingRemoteCommand = DataBroadcastingRemoteCommand(
@@ -289,6 +310,15 @@ fun LivePlayerScreen(
                 DataBroadcastingColorKey.Yellow -> "yellow"
             }
         )
+    }
+    val openLocalDataBroadcasting: () -> Unit = {
+        if (!isDataBroadcastingActive && !isDataBroadcastingMode &&
+            !ps.isDualDisplayMode && isB60Channel
+        ) {
+            localDataBroadcastingMode = true
+            ps.closeDataBroadcastingColorSelector()
+            onShowToast("データ放送を開きます")
+        }
     }
 
     LaunchedEffect(mainError, mainStatus, mainDetail, mainSignal) {
@@ -680,16 +710,19 @@ fun LivePlayerScreen(
             .onKeyEvent { keyEvent ->
                 if (isPiPMode) return@onKeyEvent false
                 if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
-                    if (!isDataBroadcastingMode && !ps.isDualDisplayMode) {
-                        localDataBroadcastingMode = !localDataBroadcastingMode
-                        ps.closeDataBroadcastingColorSelector()
-                        if (localDataBroadcastingMode) {
-                            dispatchDataBroadcastingRemoteKey("data")
-                            onShowToast("データ放送を表示します")
-                        } else {
-                            onShowToast("データ放送を閉じました")
-                        }
+                    if (!isB60Channel) {
+                        onShowToast("B60 データ放送は BS4K/BS8K で利用できます")
+                        return@onKeyEvent true
                     }
+                    if (!isDataBroadcastingActive &&
+                        !isDataBroadcastingMode &&
+                        !ps.isDualDisplayMode
+                    ) {
+                        openLocalDataBroadcasting()
+                    }
+                    // Data broadcasting is a one-way "open" action. Consuming the key while
+                    // active prevents applications from navigating back to a transparent
+                    // startup page and looking as though the feature was closed.
                     return@onKeyEvent true
                 }
                 ps.handleKeyEvent(
@@ -742,13 +775,19 @@ fun LivePlayerScreen(
         } else {
             if (isDataBroadcastingActive) {
                 DataBroadcastingWebViewOverlay(
-                    url = dataBroadcastingWatchUrl,
+                    store = livePlayerViewModel.dataBroadcastingStore,
+                    channel = currentChannelItem,
+                    currentMediaTimeSeconds = {
+                        (mainPlayer?.currentPosition ?: 0L).coerceAtLeast(0L) / 1000.0
+                    },
                     remoteCommand = dataBroadcastingRemoteCommand,
                     onRemoteCommandConsumed = { consumedId ->
                         if (dataBroadcastingRemoteCommand?.id == consumedId) {
                             dataBroadcastingRemoteCommand = null
                         }
                     },
+                    onStatus = { status -> Log.d(TAG, "B60: $status") },
+                    onMediaPlane = { dataBroadcastingMediaPlane = it },
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f)
@@ -757,13 +796,21 @@ fun LivePlayerScreen(
 
             val mainPlayerModifier =
                 if (isDataBroadcastingActive) {
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(24.dp)
-                        .fillMaxWidth(0.34f)
-                        .aspectRatio(16f / 9f)
-                        .zIndex(2f)
-                        .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                    val plane = dataBroadcastingMediaPlane
+                    if (plane != null && plane.visible && plane.width > 0f && plane.height > 0f) {
+                        Modifier
+                            .fillMaxSize()
+                            .b60MediaPlane(plane)
+                            .zIndex(2f)
+                    } else {
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(24.dp)
+                            .fillMaxWidth(0.34f)
+                            .aspectRatio(16f / 9f)
+                            .zIndex(2f)
+                            .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                    }
                 } else {
                     Modifier.fillMaxSize()
                 }
@@ -1020,6 +1067,7 @@ fun LivePlayerScreen(
                 canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
                 isDualDisplayMode = ps.isDualDisplayMode,
+                isDataBroadcastingAvailable = isB60Channel,
                 groupedChannels = displayGroupedChannels,
                 currentChannelId = currentChannelItem.id,
                 onDualDisplayToggle = {
@@ -1095,6 +1143,10 @@ fun LivePlayerScreen(
                     if (ps.isSignalInfoVisible) {
                         onShowToast("信号情報を表示します")
                     }
+                },
+                onDataBroadcastingToggle = {
+                    openLocalDataBroadcasting()
+                    onSubMenuToggle(false)
                 },
                 availableQualities = effectiveAvailableQualities,
                 focusRequester = subMenuFocusRequester,
@@ -1182,7 +1234,7 @@ fun LivePlayerScreen(
         androidx.compose.animation.AnimatedVisibility(
             visible = !isPiPMode &&
                 !ps.isDualDisplayMode &&
-                isDataBroadcastingMode &&
+                isDataBroadcastingActive &&
                 ps.isDataBroadcastingColorSelectorVisible,
             enter = fadeIn(),
             exit = fadeOut()

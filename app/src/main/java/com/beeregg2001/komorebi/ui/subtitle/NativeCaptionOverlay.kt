@@ -24,7 +24,7 @@ import java.util.TreeMap
 private const val UNKNOWN_DURATION_MS = 5_000L
 private const val TIMELINE_TICK_MS = 33L
 private const val PAUSED_TIMELINE_TICK_MS = 100L
-private const val MAX_TIMELINE_CUES = 32
+private const val MAX_TIMELINE_CUES = 12
 
 @Composable
 fun rememberNativeCaptionCue(

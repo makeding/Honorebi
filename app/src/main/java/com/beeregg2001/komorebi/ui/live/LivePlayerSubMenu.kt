@@ -61,6 +61,7 @@ fun LiveTopSubMenuUI(
     canStartChasePlayback: Boolean,
     isSignalInfoVisible: Boolean,
     isDualDisplayMode: Boolean,
+    isDataBroadcastingAvailable: Boolean,
     groupedChannels: Map<String, List<Channel>>,
     currentChannelId: String,
     onDualDisplayToggle: () -> Unit,
@@ -69,6 +70,7 @@ fun LiveTopSubMenuUI(
     onChasePlayback: () -> Unit,
     onRecordToggle: () -> Unit,
     onSignalInfoToggle: () -> Unit,
+    onDataBroadcastingToggle: () -> Unit,
     focusRequester: FocusRequester,
     logoUrls: Map<String, String>,
     shouldCropLogo: Boolean,
@@ -326,6 +328,17 @@ fun LiveTopSubMenuUI(
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                         contentColor = colors.textPrimary
                     )
+
+                    if (isDataBroadcastingAvailable) {
+                        LiveMenuTileItem(
+                            title = "データ放送",
+                            icon = Icons.Default.Language,
+                            subtitle = "開く",
+                            onClick = onDataBroadcastingToggle,
+                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                            contentColor = colors.textPrimary
+                        )
+                    }
 
                     LiveMenuTileItem(
                         title = "字幕", icon = Icons.Default.Subtitles,

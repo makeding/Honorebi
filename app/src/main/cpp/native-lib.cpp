@@ -12,6 +12,7 @@
 
 #include <aribcaption/aribcaption.h>
 #include <tlvdemux/demuxer.hpp>
+#include <tlvdemux/duration_probe.hpp>
 #include <tlvdemux/recording.hpp>
 
 // tsreadex コアヘッダ
@@ -24,6 +25,12 @@ namespace {
 
 constexpr int ARIBCC_RENDER_FRAME_WIDTH = 1920;
 constexpr int ARIBCC_RENDER_FRAME_HEIGHT = 1080;
+
+int subtitleTrackPriority(const std::uint16_t componentTag) {
+    if (componentTag >= 0x30 && componentTag <= 0x37) return 2;
+    if (componentTag >= 0x38 && componentTag <= 0x3f) return 1;
+    return 0;
+}
 
 struct AribCaptionDecoderContext {
     aribcc_context_t* context = nullptr;
@@ -395,6 +402,26 @@ public:
             callbackClass,
             "onAccessUnit",
             "(JI[BJJJJJJJJZZ)V");
+        onBroadcastClockMethod_ = env->GetMethodID(
+            callbackClass,
+            "onBroadcastClock",
+            "(JJJJJZ)V");
+        onEventInfoMethod_ = env->GetMethodID(
+            callbackClass,
+            "onEventInfo",
+            "(JIZIIIIIJJIZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+        onApplicationStateMethod_ = env->GetMethodID(
+            callbackClass,
+            "onApplicationState",
+            "(JLjava/lang/String;[Ljava/lang/String;IJZ)V");
+        onApplicationResourceMethod_ = env->GetMethodID(
+            callbackClass,
+            "onApplicationResource",
+            "(JLjava/lang/String;Ljava/lang/String;[BI)V");
+        onApplicationResourcesResetMethod_ = env->GetMethodID(
+            callbackClass,
+            "onApplicationResourcesReset",
+            "()V");
         onErrorMethod_ = env->GetMethodID(
             callbackClass,
             "onError",
@@ -419,8 +446,9 @@ public:
         currentEnv_ = nullptr;
     }
 
-    void reset() {
+    void reset(JNIEnv* env) {
         std::lock_guard<std::mutex> lock(mutex_);
+        currentEnv_ = env;
         demuxer_.reset();
         if (buildRecordingIndex_) {
             recordingIndex_.begin(false);
@@ -428,6 +456,8 @@ public:
         selectedVideoTrackId_ = 0;
         selectedAudioTrackId_ = 0;
         selectedSubtitleTrackId_ = 0;
+        selectedSubtitleTrackPriority_ = -1;
+        currentEnv_ = nullptr;
     }
 
     void reposition(const std::uint64_t inputOffset) {
@@ -490,8 +520,10 @@ public:
             if (selectedAudioTrackId_ == 0 || info.track_id != selectedAudioTrackId_) return;
         }
         if (info.kind == tlvdemux::TrackKind::Subtitle) {
-            if (selectedSubtitleTrackId_ == 0) {
+            const int priority = subtitleTrackPriority(info.component_tag);
+            if (selectedSubtitleTrackId_ == 0 || priority > selectedSubtitleTrackPriority_) {
                 selectedSubtitleTrackId_ = info.track_id;
+                selectedSubtitleTrackPriority_ = priority;
                 demuxer_.selectTrack(tlvdemux::TrackKind::Subtitle, info.track_id);
             }
             if (info.track_id != selectedSubtitleTrackId_) return;
@@ -559,6 +591,105 @@ public:
         currentEnv_->DeleteLocalRef(data);
     }
 
+    void onBroadcastClock(const tlvdemux::BroadcastClock& clock) override {
+        if (!canCallback(onBroadcastClockMethod_)) return;
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onBroadcastClockMethod_,
+            static_cast<jlong>(clock.media_time.value),
+            static_cast<jlong>(clock.media_time.timescale),
+            static_cast<jlong>(clock.broadcast_time.value),
+            static_cast<jlong>(clock.broadcast_time.timescale),
+            static_cast<jlong>(clock.input_offset),
+            clock.discontinuity ? JNI_TRUE : JNI_FALSE);
+    }
+
+    void onEventInfo(const tlvdemux::EventInfo& event) override {
+        if (!canCallback(onEventInfoMethod_)) return;
+        jstring language = currentEnv_->NewStringUTF(event.language.c_str());
+        jstring title = currentEnv_->NewStringUTF(event.title.c_str());
+        jstring description = currentEnv_->NewStringUTF(event.description.c_str());
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onEventInfoMethod_,
+            static_cast<jlong>(event.context_id),
+            static_cast<jint>(event.table_id),
+            event.current_next ? JNI_TRUE : JNI_FALSE,
+            static_cast<jint>(event.section_number),
+            static_cast<jint>(event.service_id),
+            static_cast<jint>(event.tlv_stream_id),
+            static_cast<jint>(event.original_network_id),
+            static_cast<jint>(event.event_id),
+            event.start_time_unix_milliseconds
+                ? static_cast<jlong>(*event.start_time_unix_milliseconds)
+                : static_cast<jlong>(-1),
+            event.duration_seconds
+                ? static_cast<jlong>(*event.duration_seconds)
+                : static_cast<jlong>(-1),
+            static_cast<jint>(event.running_status),
+            event.free_ca_mode ? JNI_TRUE : JNI_FALSE,
+            language,
+            title,
+            description);
+        currentEnv_->DeleteLocalRef(language);
+        currentEnv_->DeleteLocalRef(title);
+        currentEnv_->DeleteLocalRef(description);
+    }
+
+    void onApplicationState(const tlvdemux::ApplicationState& state) override {
+        if (!canCallback(onApplicationStateMethod_)) return;
+        jstring entryPath = currentEnv_->NewStringUTF(state.application.entry_path.c_str());
+        jclass stringClass = currentEnv_->FindClass("java/lang/String");
+        jobjectArray transportUrls = currentEnv_->NewObjectArray(
+            static_cast<jsize>(state.application.transport_urls.size()),
+            stringClass,
+            nullptr);
+        for (std::size_t index = 0; index < state.application.transport_urls.size(); ++index) {
+            jstring transportUrl = currentEnv_->NewStringUTF(
+                state.application.transport_urls[index].c_str());
+            currentEnv_->SetObjectArrayElement(
+                transportUrls,
+                static_cast<jsize>(index),
+                transportUrl);
+            currentEnv_->DeleteLocalRef(transportUrl);
+        }
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onApplicationStateMethod_,
+            static_cast<jlong>(state.application.context_id),
+            entryPath,
+            transportUrls,
+            static_cast<jint>(state.state),
+            static_cast<jlong>(state.resource_count),
+            state.entry_ready ? JNI_TRUE : JNI_FALSE);
+        currentEnv_->DeleteLocalRef(entryPath);
+        currentEnv_->DeleteLocalRef(transportUrls);
+        currentEnv_->DeleteLocalRef(stringClass);
+    }
+
+    void onApplicationResource(tlvdemux::ApplicationResource&& resource) override {
+        if (!canCallback(onApplicationResourceMethod_)) return;
+        jstring path = currentEnv_->NewStringUTF(resource.path.c_str());
+        jstring contentType = currentEnv_->NewStringUTF(resource.content_type.c_str());
+        jbyteArray data = makeByteArray(resource.data);
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onApplicationResourceMethod_,
+            static_cast<jlong>(resource.context_id),
+            path,
+            contentType,
+            data,
+            static_cast<jint>(resource.version));
+        currentEnv_->DeleteLocalRef(path);
+        currentEnv_->DeleteLocalRef(contentType);
+        currentEnv_->DeleteLocalRef(data);
+    }
+
+    void onApplicationResourcesReset() override {
+        if (!canCallback(onApplicationResourcesResetMethod_)) return;
+        currentEnv_->CallVoidMethod(callback_, onApplicationResourcesResetMethod_);
+    }
+
     void onError(const tlvdemux::Error& error) override {
         if (!canCallback(onErrorMethod_)) return;
         jstring message = currentEnv_->NewStringUTF(error.message.c_str());
@@ -596,6 +727,11 @@ private:
     jmethodID onServiceMethod_ = nullptr;
     jmethodID onTrackMethod_ = nullptr;
     jmethodID onAccessUnitMethod_ = nullptr;
+    jmethodID onBroadcastClockMethod_ = nullptr;
+    jmethodID onEventInfoMethod_ = nullptr;
+    jmethodID onApplicationStateMethod_ = nullptr;
+    jmethodID onApplicationResourceMethod_ = nullptr;
+    jmethodID onApplicationResourcesResetMethod_ = nullptr;
     jmethodID onErrorMethod_ = nullptr;
     tlvdemux::Demuxer demuxer_;
     tlvdemux::RecordingIndex recordingIndex_;
@@ -604,6 +740,7 @@ private:
     std::uint64_t selectedVideoTrackId_ = 0;
     std::uint64_t selectedAudioTrackId_ = 0;
     std::uint64_t selectedSubtitleTrackId_ = 0;
+    int selectedSubtitleTrackPriority_ = -1;
 };
 
 extern "C" {
@@ -1033,7 +1170,7 @@ Java_com_beeregg2001_komorebi_NativeLib_resetTlvDemuxer(
     jobject thiz,
     jlong handle) {
     auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
-    if (ctx != nullptr) ctx->reset();
+    if (ctx != nullptr) ctx->reset(env);
 }
 
 JNIEXPORT void JNICALL
@@ -1075,6 +1212,109 @@ Java_com_beeregg2001_komorebi_NativeLib_closeTlvDemuxer(
     if (ctx == nullptr) return;
     ctx->release(env);
     delete ctx;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_openTlvDurationProbe(
+    JNIEnv* env,
+    jobject thiz,
+    jlong sourceSize,
+    jint preferredVideoPacketId) {
+    if (sourceSize <= 0) return 0;
+
+    auto* probe = new tlvdemux::DurationProbe();
+    tlvdemux::DurationProbeOptions options;
+    if (preferredVideoPacketId >= 0) {
+        options.video_packet_id = static_cast<std::uint16_t>(preferredVideoPacketId);
+    }
+    if (!probe->begin(static_cast<std::uint64_t>(sourceSize), options)) {
+        delete probe;
+        return 0;
+    }
+    return reinterpret_cast<jlong>(probe);
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_getTlvDurationProbeNextRange(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle) {
+    auto* probe = reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    jlongArray result = env->NewLongArray(3);
+    if (result == nullptr) return nullptr;
+
+    std::array<jlong, 3> values{-1, -1, -1};
+    if (probe != nullptr) {
+        const auto request = probe->nextRange();
+        if (request.has_value()) {
+            values[0] = static_cast<jlong>(request->request_id);
+            values[1] = static_cast<jlong>(request->offset);
+            values[2] = static_cast<jlong>(request->length);
+        }
+    }
+    env->SetLongArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+    return result;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_pushTlvDurationProbeRange(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle,
+    jlong requestId,
+    jlong absoluteOffset,
+    jbyteArray data,
+    jint length,
+    jboolean endOfRange) {
+    auto* probe = reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    if (probe == nullptr || data == nullptr || length < 0) return JNI_FALSE;
+
+    const jsize arrayLength = env->GetArrayLength(data);
+    const jsize safeLength = std::min(arrayLength, static_cast<jsize>(length));
+    jbyte* bytes = env->GetByteArrayElements(data, nullptr);
+    if (bytes == nullptr) return JNI_FALSE;
+    const bool accepted = probe->pushRange(
+        static_cast<std::uint64_t>(requestId),
+        static_cast<std::uint64_t>(std::max<jlong>(0, absoluteOffset)),
+        reinterpret_cast<const std::uint8_t*>(bytes),
+        static_cast<std::size_t>(safeLength),
+        endOfRange == JNI_TRUE);
+    env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
+    return accepted ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_getTlvDurationProbeResult(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle) {
+    auto* probe = reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    jlongArray result = env->NewLongArray(4);
+    if (result == nullptr) return nullptr;
+
+    std::array<jlong, 4> values{-1, -1, -1, 0};
+    if (probe != nullptr) {
+        values[0] = static_cast<jlong>(probe->state());
+        values[1] = static_cast<jlong>(probe->failure());
+        const auto duration = probe->duration();
+        if (duration.status == tlvdemux::DurationStatus::Complete &&
+            duration.value.timescale != 0) {
+            values[2] = static_cast<jlong>(
+                duration.value.value * 1000000LL /
+                static_cast<std::int64_t>(duration.value.timescale));
+        }
+        values[3] = static_cast<jlong>(probe->transferredBytes());
+    }
+    env->SetLongArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+    return result;
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_closeTlvDurationProbe(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle) {
+    delete reinterpret_cast<tlvdemux::DurationProbe*>(handle);
 }
 
 }

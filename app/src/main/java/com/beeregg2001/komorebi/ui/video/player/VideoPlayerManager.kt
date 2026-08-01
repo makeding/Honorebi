@@ -4,6 +4,7 @@ package com.beeregg2001.komorebi.ui.video.player
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -105,6 +106,7 @@ private const val RECORDED_SEGMENT_RECOVERY_DEBOUNCE_MS = 2_000L
 private const val GROWING_FILE_RETRY_INTERVAL_MS = 3_000L
 private const val GROWING_FILE_MAX_IDLE_RETRIES = 20
 private const val GROWING_FILE_LIVE_EDGE_SAFETY_MS = 2_000L
+private const val GROWING_SEEK_MAP_REFRESH_MS = 30_000L
 
 private fun RecordedProgram.currentChaseDurationMs(nowMs: Long = System.currentTimeMillis()): Long {
     return runCatching {
@@ -114,9 +116,18 @@ private fun RecordedProgram.currentChaseDurationMs(nowMs: Long = System.currentT
     }.getOrDefault((recordedVideo.duration * 1000.0).toLong().coerceAtLeast(0L))
 }
 
+private fun RecordedProgram.epgDurationUs(): Long {
+    return runCatching {
+        val startMs = OffsetDateTime.parse(startTime).toInstant().toEpochMilli()
+        val endMs = OffsetDateTime.parse(endTime).toInstant().toEpochMilli()
+        (endMs - startMs).coerceAtLeast(0L) * 1_000L
+    }.getOrDefault(C.TIME_UNSET)
+}
+
 private class GrowingHttpDataSource(
     private val upstreamFactory: DataSource.Factory,
-    private val onKnownFileSize: (Long) -> Unit
+    private val onKnownFileSize: (Long) -> Unit,
+    private val reportSnapshotLength: Boolean = false
 ) : DataSource {
     private val transferListeners = mutableListOf<TransferListener>()
     private var activeDataSource: DataSource? = null
@@ -136,9 +147,9 @@ private class GrowingHttpDataSource(
         baseDataSpec = dataSpec
         readPosition = dataSpec.position
         idleRetries = 0
-        openAtCurrentPosition()
+        val openedLength = openAtCurrentPosition()
         // 録画中のファイル長は増え続けるため、Extractor には固定長を知らせない。
-        return C.LENGTH_UNSET.toLong()
+        return if (reportSnapshotLength) openedLength else C.LENGTH_UNSET.toLong()
     }
 
     private fun openAtCurrentPosition(): Long {
@@ -476,8 +487,11 @@ fun rememberManagedExoPlayer(
         ignoreCase = true
     ) && vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
     val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()
+    val epgDurationUs = program?.epgDurationUs() ?: C.TIME_UNSET
     val smbServerList by settingsViewModel.smbServerList.collectAsState()
-    val fileSizeBytesRef = remember(program?.id, isOriginalMpegTsPlayback) { AtomicLong(0L) }
+    val fileSizeBytesRef = remember(program?.id, isOriginalMpegTsPlayback, isRawMmtsPlayback) {
+        AtomicLong(0L)
+    }
     val fileSizeReferenceDurationUsRef = remember(
         program?.id,
         isOriginalMpegTsPlayback,
@@ -576,19 +590,26 @@ fun rememberManagedExoPlayer(
                         TsReadExDataSource(nativeLib, dynamicTsArgs, fileSizeBytesRef)
                     } else {
                         isHttpSource = true
-                        if (isOriginalMpegTsPlayback && isRecordingChasePlayback) {
-                            GrowingHttpDataSource(httpDataSourceFactory) { totalFileSize ->
-                                fileSizeBytesRef.updateAndGet { knownSize ->
-                                    maxOf(knownSize, totalFileSize)
-                                }
-                                val recordedDurationUs = program
-                                    ?.currentChaseDurationMs()
-                                    ?.times(1_000L)
-                                    ?: programDurationUs
-                                fileSizeReferenceDurationUsRef.updateAndGet { knownDurationUs ->
-                                    maxOf(knownDurationUs, recordedDurationUs)
-                                }
-                            }
+                        if (
+                            (isOriginalMpegTsPlayback || isRawMmtsPlayback) &&
+                            isRecordingChasePlayback
+                        ) {
+                            GrowingHttpDataSource(
+                                upstreamFactory = httpDataSourceFactory,
+                                onKnownFileSize = { totalFileSize ->
+                                    fileSizeBytesRef.updateAndGet { knownSize ->
+                                        maxOf(knownSize, totalFileSize)
+                                    }
+                                    val recordedDurationUs = program
+                                        ?.currentChaseDurationMs()
+                                        ?.times(1_000L)
+                                        ?: programDurationUs
+                                    fileSizeReferenceDurationUsRef.updateAndGet { knownDurationUs ->
+                                        maxOf(knownDurationUs, recordedDurationUs)
+                                    }
+                                },
+                                reportSnapshotLength = isRawMmtsPlayback
+                            )
                         } else {
                             httpDataSourceFactory.createDataSource()
                         }
@@ -656,7 +677,7 @@ fun rememberManagedExoPlayer(
                         throw e
                     }
                     if (
-                        isOriginalMpegTsPlayback &&
+                        (isOriginalMpegTsPlayback || isRawMmtsPlayback) &&
                         isHttpSource &&
                         openedLength != C.LENGTH_UNSET.toLong()
                     ) {
@@ -705,6 +726,18 @@ fun rememberManagedExoPlayer(
                 return@ExtractorsFactory TlvExtractorsFactory(
                     preferredVideoPacketId = null,
                     enableSeeking = true,
+                    enableDurationProbe = true,
+                    growing = isRecordingChasePlayback,
+                    growingDurationLimitUs = epgDurationUs,
+                    growingDurationFallbackUsProvider = {
+                        program
+                            ?.currentChaseDurationMs()
+                            ?.minus(GROWING_FILE_LIVE_EDGE_SAFETY_MS)
+                            ?.coerceAtLeast(0L)
+                            ?.times(1_000L)
+                            ?: C.TIME_UNSET
+                    },
+                    sourceLengthProvider = { fileSizeBytesRef.get() },
                     onSubtitleDataReceived = { sample ->
                         if (vs.isSubtitleEnabled) {
                             scope.launch(Dispatchers.Default) {
@@ -746,13 +779,25 @@ fun rememberManagedExoPlayer(
             }
 
             // ダイレクトTSまたはHonomiTVの原始TS再生時は、HTTP Rangeに対応するSeekMapを注入する
-            if ((isEdcbDirect || isOriginalMpegTsPlayback) && programDurationUs > 0L) {
+            val hasTsSeekDuration = if (
+                isOriginalMpegTsPlayback && isRecordingChasePlayback
+            ) {
+                epgDurationUs > 0L
+            } else {
+                programDurationUs > 0L
+            }
+            if ((isEdcbDirect || isOriginalMpegTsPlayback) && hasTsSeekDuration) {
                 for (i in defaultExtractors.indices) {
                     val extractor = defaultExtractors[i]
                     if (extractor is TsExtractor) {
                         defaultExtractors[i] = object : Extractor {
+                            private var downstreamOutput: ExtractorOutput? = null
+                            private var growingSeekMap: SeekMap? = null
+                            private var lastSeekMapPublishRealtimeMs = C.TIME_UNSET
+
                             override fun sniff(input: ExtractorInput) = extractor.sniff(input)
                             override fun init(output: ExtractorOutput) {
+                                downstreamOutput = output
                                 extractor.init(object : ExtractorOutput by output {
                                     override fun seekMap(seekMap: SeekMap) {
                                         // TsExtractor が算出したエラーの SeekMap を無視し、独自の高精度マップを注入
@@ -790,13 +835,36 @@ fun rememberManagedExoPlayer(
                                                 return SeekMap.SeekPoints(SeekPoint(safeTime, position))
                                             }
                                         }
+                                        growingSeekMap = customSeekMap
+                                        lastSeekMapPublishRealtimeMs = SystemClock.elapsedRealtime()
                                         output.seekMap(customSeekMap)
                                     }
                                 })
                             }
-                            override fun read(input: ExtractorInput, seekPosition: PositionHolder) = extractor.read(input, seekPosition)
+                            override fun read(
+                                input: ExtractorInput,
+                                seekPosition: PositionHolder
+                            ): Int {
+                                val result = extractor.read(input, seekPosition)
+                                if (isOriginalMpegTsPlayback && isRecordingChasePlayback) {
+                                    val nowRealtimeMs = SystemClock.elapsedRealtime()
+                                    if (
+                                        lastSeekMapPublishRealtimeMs == C.TIME_UNSET ||
+                                        nowRealtimeMs - lastSeekMapPublishRealtimeMs >=
+                                            GROWING_SEEK_MAP_REFRESH_MS
+                                    ) {
+                                        growingSeekMap?.let { downstreamOutput?.seekMap(it) }
+                                        lastSeekMapPublishRealtimeMs = nowRealtimeMs
+                                    }
+                                }
+                                return result
+                            }
                             override fun seek(position: Long, timeUs: Long) = extractor.seek(position, timeUs)
-                            override fun release() = extractor.release()
+                            override fun release() {
+                                downstreamOutput = null
+                                growingSeekMap = null
+                                extractor.release()
+                            }
                         }
                     }
                 }

@@ -56,4 +56,17 @@ class NativeLib {
     external fun repositionTlvDemuxer(handle: Long, inputOffset: Long)
     external fun getTlvSeekPoints(handle: Long, targetUs: Long): LongArray
     external fun closeTlvDemuxer(handle: Long)
+
+    external fun openTlvDurationProbe(sourceSize: Long, preferredVideoPacketId: Int): Long
+    external fun getTlvDurationProbeNextRange(handle: Long): LongArray
+    external fun pushTlvDurationProbeRange(
+        handle: Long,
+        requestId: Long,
+        absoluteOffset: Long,
+        data: ByteArray,
+        length: Int,
+        endOfRange: Boolean
+    ): Boolean
+    external fun getTlvDurationProbeResult(handle: Long): LongArray
+    external fun closeTlvDurationProbe(handle: Long)
 }

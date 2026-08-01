@@ -48,6 +48,52 @@ class NativeTlvDemuxer(
             discontinuity: Boolean
         )
 
+        fun onBroadcastClock(
+            mediaTimeValue: Long,
+            mediaTimeTimescale: Long,
+            broadcastTimeValue: Long,
+            broadcastTimeTimescale: Long,
+            inputOffset: Long,
+            discontinuity: Boolean
+        )
+
+        fun onEventInfo(
+            contextId: Long,
+            tableId: Int,
+            currentNext: Boolean,
+            sectionNumber: Int,
+            serviceId: Int,
+            tlvStreamId: Int,
+            originalNetworkId: Int,
+            eventId: Int,
+            startTimeUnixMilliseconds: Long,
+            durationSeconds: Long,
+            runningStatus: Int,
+            freeCaMode: Boolean,
+            language: String,
+            title: String,
+            description: String
+        )
+
+        fun onApplicationState(
+            contextId: Long,
+            entryPath: String,
+            transportUrls: Array<String>,
+            collectionState: Int,
+            resourceCount: Long,
+            entryReady: Boolean
+        )
+
+        fun onApplicationResource(
+            contextId: Long,
+            path: String,
+            contentType: String,
+            data: ByteArray,
+            version: Int
+        )
+
+        fun onApplicationResourcesReset()
+
         fun onError(code: Int, inputOffset: Long, recoverable: Boolean, message: String)
     }
 

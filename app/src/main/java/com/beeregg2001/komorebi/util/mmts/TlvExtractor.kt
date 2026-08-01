@@ -2,6 +2,7 @@
 
 package com.beeregg2001.komorebi.util.mmts
 
+import android.os.SystemClock
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.util.ParsableByteArray
@@ -22,6 +23,12 @@ private const val TAG = "TlvExtractor"
 private const val INPUT_BUFFER_SIZE = 512 * 1024
 private const val MMTS_CONTAINER_MIME_TYPE = "application/x-arib-mmts"
 
+private fun subtitleTrackPriority(componentTag: Int): Int = when (componentTag) {
+    in 0x30..0x37 -> 2 // programme caption
+    in 0x38..0x3f -> 1 // superimpose
+    else -> 0
+}
+
 data class B62SubtitleSample(
     val timeUs: Long,
     val data: ByteArray,
@@ -35,11 +42,28 @@ data class B62SubtitleSample(
 class TlvExtractorsFactory(
     private val preferredVideoPacketId: Int?,
     private val enableSeeking: Boolean = false,
+    private val enableDurationProbe: Boolean = false,
+    private val growing: Boolean = false,
+    private val growingDurationLimitUs: Long = C.TIME_UNSET,
+    private val growingDurationFallbackUsProvider: (() -> Long)? = null,
+    private val sourceLengthProvider: (() -> Long)? = null,
     private val durationUs: Long = C.TIME_UNSET,
-    private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit = {}
+    private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit = {},
+    private val dataBroadcastingCallback: B60DataBroadcastingCallback? = null
 ) : ExtractorsFactory {
     override fun createExtractors(): Array<Extractor> = arrayOf(
-        TlvExtractor(preferredVideoPacketId, enableSeeking, durationUs, onSubtitleDataReceived)
+        TlvExtractor(
+            preferredVideoPacketId,
+            enableSeeking,
+            enableDurationProbe,
+            growing,
+            growingDurationLimitUs,
+            growingDurationFallbackUsProvider,
+            sourceLengthProvider,
+            durationUs,
+            onSubtitleDataReceived,
+            dataBroadcastingCallback
+        )
     )
 }
 
@@ -50,8 +74,14 @@ class TlvExtractorsFactory(
 class TlvExtractor(
     private val preferredVideoPacketId: Int?,
     private val enableSeeking: Boolean,
+    private val enableDurationProbe: Boolean,
+    private val growing: Boolean,
+    private val growingDurationLimitUs: Long,
+    private val growingDurationFallbackUsProvider: (() -> Long)?,
+    private val sourceLengthProvider: (() -> Long)?,
     private val durationUs: Long,
-    private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit
+    private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit,
+    private val dataBroadcastingCallback: B60DataBroadcastingCallback?
 ) : Extractor, NativeTlvDemuxer.Callback {
 
     private val inputBuffer = ByteArray(INPUT_BUFFER_SIZE)
@@ -63,11 +93,22 @@ class TlvExtractor(
     private var videoReader: H265Reader? = null
     private var videoTrackId: Long? = null
     private var subtitleTrackId: Long? = null
+    private var subtitleTrackPriority: Int = -1
     private var subtitleOperationMode: Int = 1
     private var subtitleTimingMode: Int = 3
     private var tracksEnded = false
     private var fatalError: IOException? = null
     private var seekMapSent = false
+    private var resolvedDurationUs = durationUs
+    private var durationProbe: NativeTlvDurationProbe? = null
+    private var durationProbeRange: TlvDurationProbeRange? = null
+    private var durationProbeRangeBytesRead = 0L
+    private var durationProbeFinished = false
+    private var growingDurationBaseUs = C.TIME_UNSET
+    private var growingDurationBaseRealtimeMs = C.TIME_UNSET
+    private var knownInputLength = C.LENGTH_UNSET.toLong()
+    private var recordingSeekMap: RecordingSeekMap? = null
+    private var lastPublishedGrowingDurationUs = C.TIME_UNSET
 
     override fun sniff(input: ExtractorInput): Boolean = true
 
@@ -82,16 +123,22 @@ class TlvExtractor(
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
         fatalError?.let { throw it }
+        updateKnownInputLength(input.length)
         if (!seekMapSent) {
-            val inputLength = input.length
-            extractorOutput?.seekMap(
-                if (enableSeeking && durationUs > 0L && inputLength > 0L) {
-                    RecordingSeekMap(durationUs, inputLength)
+            readDurationProbe(input, seekPosition)?.let { return it }
+            val seekMap =
+                if (enableSeeking && currentDurationUs() > 0L && currentInputLength() > 0L) {
+                    RecordingSeekMap().also { recordingSeekMap = it }
                 } else {
-                    SeekMap.Unseekable(if (durationUs > 0L) durationUs else C.TIME_UNSET)
+                    SeekMap.Unseekable(
+                        currentDurationUs().takeIf { it > 0L } ?: C.TIME_UNSET
+                    )
                 }
-            )
+            extractorOutput?.seekMap(seekMap)
             seekMapSent = true
+            lastPublishedGrowingDurationUs = seekMap.durationUs
+        } else {
+            refreshGrowingSeekMap()
         }
         val read = input.read(inputBuffer, 0, inputBuffer.size)
         if (read == C.RESULT_END_OF_INPUT) {
@@ -116,9 +163,185 @@ class TlvExtractor(
     }
 
     override fun release() {
+        durationProbe?.close()
+        durationProbe = null
         nativeDemuxer?.close()
         nativeDemuxer = null
         extractorOutput = null
+    }
+
+    private fun readDurationProbe(
+        input: ExtractorInput,
+        seekPosition: PositionHolder
+    ): Int? {
+        if (
+            durationProbeFinished ||
+            !enableSeeking ||
+            !enableDurationProbe ||
+            resolvedDurationUs > 0L
+        ) {
+            return null
+        }
+
+        val inputLength = currentInputLength()
+        if (inputLength <= 0L) {
+            durationProbeFinished = true
+            Log.w(TAG, "MMTS duration probe skipped: source length is unknown")
+            return null
+        }
+
+        if (durationProbe == null) {
+            durationProbe = try {
+                NativeTlvDurationProbe(inputLength, preferredVideoPacketId)
+            } catch (error: IllegalStateException) {
+                durationProbeFinished = true
+                Log.w(TAG, "MMTS duration probe could not start", error)
+                return null
+            }
+        }
+
+        val probe = durationProbe ?: return null
+        val result = probe.result()
+        if (result.state != NativeTlvDurationProbe.STATE_NEED_RANGE) {
+            if (
+                result.state == NativeTlvDurationProbe.STATE_COMPLETE &&
+                result.durationUs > 0L
+            ) {
+                resolvedDurationUs = result.durationUs
+                if (growing) {
+                    growingDurationBaseUs = result.durationUs
+                    growingDurationBaseRealtimeMs = SystemClock.elapsedRealtime()
+                }
+                Log.i(
+                    TAG,
+                    "MMTS duration probe complete: duration_us=${result.durationUs}, " +
+                        "transferred_bytes=${result.transferredBytes}"
+                )
+            } else {
+                Log.w(
+                    TAG,
+                    "MMTS duration probe unavailable: state=${result.state}, " +
+                        "failure=${result.failure}, transferred_bytes=${result.transferredBytes}"
+                )
+            }
+            probe.close()
+            durationProbe = null
+            durationProbeRange = null
+            durationProbeRangeBytesRead = 0L
+            durationProbeFinished = true
+            if (input.position != 0L) {
+                seekPosition.position = 0L
+                return Extractor.RESULT_SEEK
+            }
+            return null
+        }
+
+        val range = durationProbeRange ?: probe.nextRange()?.also {
+            durationProbeRange = it
+            durationProbeRangeBytesRead = 0L
+        }
+        if (range == null) {
+            Log.w(TAG, "MMTS duration probe requested data without a range")
+            probe.close()
+            durationProbe = null
+            durationProbeFinished = true
+            if (input.position != 0L) {
+                seekPosition.position = 0L
+                return Extractor.RESULT_SEEK
+            }
+            return null
+        }
+
+        val expectedPosition = range.offset + durationProbeRangeBytesRead
+        if (input.position != expectedPosition) {
+            seekPosition.position = expectedPosition
+            return Extractor.RESULT_SEEK
+        }
+
+        val remaining = range.length - durationProbeRangeBytesRead
+        if (remaining <= 0L) {
+            durationProbeRange = null
+            durationProbeRangeBytesRead = 0L
+            return Extractor.RESULT_CONTINUE
+        }
+        val bytesToRead = minOf(inputBuffer.size.toLong(), remaining).toInt()
+        val read = input.read(inputBuffer, 0, bytesToRead)
+        if (read == C.RESULT_END_OF_INPUT) {
+            probe.pushRange(
+                range.requestId,
+                expectedPosition,
+                inputBuffer,
+                0,
+                endOfRange = true
+            )
+            return Extractor.RESULT_CONTINUE
+        }
+
+        durationProbeRangeBytesRead += read.toLong()
+        val endOfRange = durationProbeRangeBytesRead == range.length
+        val accepted = probe.pushRange(
+            range.requestId,
+            expectedPosition,
+            inputBuffer,
+            read,
+            endOfRange
+        )
+        if (!accepted) {
+            Log.w(TAG, "MMTS duration probe rejected range data at $expectedPosition")
+        }
+        if (endOfRange) {
+            durationProbeRange = null
+            durationProbeRangeBytesRead = 0L
+        }
+        return Extractor.RESULT_CONTINUE
+    }
+
+    private fun updateKnownInputLength(inputLength: Long) {
+        val providedLength = sourceLengthProvider?.invoke() ?: C.LENGTH_UNSET.toLong()
+        knownInputLength = maxOf(knownInputLength, inputLength, providedLength)
+    }
+
+    private fun currentInputLength(): Long {
+        updateKnownInputLength(C.LENGTH_UNSET.toLong())
+        return knownInputLength
+    }
+
+    private fun currentDurationUs(): Long {
+        if (!growing) return resolvedDurationUs
+
+        val probedDurationUs = if (
+            growingDurationBaseUs > 0L &&
+            growingDurationBaseRealtimeMs > 0L
+        ) {
+            growingDurationBaseUs +
+                (SystemClock.elapsedRealtime() - growingDurationBaseRealtimeMs)
+                    .coerceAtLeast(0L) * 1_000L
+        } else {
+            C.TIME_UNSET
+        }
+        val fallbackDurationUs = growingDurationFallbackUsProvider?.invoke() ?: C.TIME_UNSET
+        val durationUs = maxOf(probedDurationUs, fallbackDurationUs)
+        if (durationUs <= 0L) return C.TIME_UNSET
+        return if (growingDurationLimitUs > 0L) {
+            durationUs.coerceAtMost(growingDurationLimitUs)
+        } else {
+            durationUs
+        }
+    }
+
+    private fun refreshGrowingSeekMap() {
+        if (!growing) return
+        val seekMap = recordingSeekMap ?: return
+        val durationUs = currentDurationUs()
+        if (
+            durationUs <= 0L ||
+            lastPublishedGrowingDurationUs > 0L &&
+            durationUs - lastPublishedGrowingDurationUs < GROWING_SEEK_MAP_REFRESH_US
+        ) {
+            return
+        }
+        extractorOutput?.seekMap(seekMap)
+        lastPublishedGrowingDurationUs = durationUs
     }
 
     override fun onService(contextId: Long, packageId: ByteArray) {
@@ -175,10 +398,19 @@ class TlvExtractor(
                     "layout=${audioLayoutName(audioChannelLayout)}"
             )
 
-            codec == CODEC_TTML && subtitleTrackId == null -> {
-                subtitleTrackId = trackId
-                this.subtitleOperationMode = subtitleOperationMode.takeIf { it >= 0 } ?: 1
-                this.subtitleTimingMode = subtitleTimingMode.takeIf { it >= 0 } ?: 3
+            codec == CODEC_TTML -> {
+                val priority = subtitleTrackPriority(componentTag)
+                if (subtitleTrackId == null || priority > subtitleTrackPriority) {
+                    subtitleTrackId = trackId
+                    subtitleTrackPriority = priority
+                    this.subtitleOperationMode = subtitleOperationMode.takeIf { it >= 0 } ?: 1
+                    this.subtitleTimingMode = subtitleTimingMode.takeIf { it >= 0 } ?: 3
+                    Log.i(
+                        TAG,
+                        "MMTS subtitle track: packetId=0x${packetId.toString(16)} " +
+                            "componentTag=0x${componentTag.toString(16)} language=$language"
+                    )
+                }
             }
         }
     }
@@ -247,6 +479,98 @@ class TlvExtractor(
         }
     }
 
+    override fun onBroadcastClock(
+        mediaTimeValue: Long,
+        mediaTimeTimescale: Long,
+        broadcastTimeValue: Long,
+        broadcastTimeTimescale: Long,
+        inputOffset: Long,
+        discontinuity: Boolean
+    ) {
+        dataBroadcastingCallback?.onBroadcastClock(
+            B60BroadcastClock(
+                mediaTimeValue = mediaTimeValue,
+                mediaTimeTimescale = mediaTimeTimescale,
+                broadcastTimeValue = broadcastTimeValue,
+                broadcastTimeTimescale = broadcastTimeTimescale,
+                inputOffset = inputOffset,
+                discontinuity = discontinuity
+            )
+        )
+    }
+
+    override fun onEventInfo(
+        contextId: Long,
+        tableId: Int,
+        currentNext: Boolean,
+        sectionNumber: Int,
+        serviceId: Int,
+        tlvStreamId: Int,
+        originalNetworkId: Int,
+        eventId: Int,
+        startTimeUnixMilliseconds: Long,
+        durationSeconds: Long,
+        runningStatus: Int,
+        freeCaMode: Boolean,
+        language: String,
+        title: String,
+        description: String
+    ) {
+        dataBroadcastingCallback?.onEventInfo(
+            B60EventInfo(
+                contextId = contextId,
+                tableId = tableId,
+                currentNext = currentNext,
+                sectionNumber = sectionNumber,
+                serviceId = serviceId,
+                tlvStreamId = tlvStreamId,
+                originalNetworkId = originalNetworkId,
+                eventId = eventId,
+                startTimeUnixMilliseconds = startTimeUnixMilliseconds.takeIf { it >= 0L },
+                durationSeconds = durationSeconds.takeIf { it >= 0L },
+                runningStatus = runningStatus,
+                freeCaMode = freeCaMode,
+                language = language,
+                title = title,
+                description = description
+            )
+        )
+    }
+
+    override fun onApplicationState(
+        contextId: Long,
+        entryPath: String,
+        transportUrls: Array<String>,
+        collectionState: Int,
+        resourceCount: Long,
+        entryReady: Boolean
+    ) {
+        dataBroadcastingCallback?.onApplicationState(
+            contextId,
+            entryPath,
+            transportUrls.asList(),
+            collectionState,
+            resourceCount,
+            entryReady
+        )
+    }
+
+    override fun onApplicationResource(
+        contextId: Long,
+        path: String,
+        contentType: String,
+        data: ByteArray,
+        version: Int
+    ) {
+        dataBroadcastingCallback?.onApplicationResource(
+            B60ApplicationResource(contextId, path, contentType, data, version)
+        )
+    }
+
+    override fun onApplicationResourcesReset() {
+        dataBroadcastingCallback?.onApplicationResourcesReset()
+    }
+
     override fun onError(code: Int, inputOffset: Long, recoverable: Boolean, message: String) {
         val detail = "code=$code offset=$inputOffset message=$message"
         if (recoverable) {
@@ -280,15 +604,14 @@ class TlvExtractor(
 
     private fun ByteArray.toHexString(): String = joinToString(separator = "") { "%02x".format(it) }
 
-    private inner class RecordingSeekMap(
-        private val recordingDurationUs: Long,
-        private val inputLength: Long
-    ) : SeekMap {
+    private inner class RecordingSeekMap : SeekMap {
         override fun isSeekable(): Boolean = true
 
-        override fun getDurationUs(): Long = recordingDurationUs
+        override fun getDurationUs(): Long = currentDurationUs()
 
         override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
+            val recordingDurationUs = currentDurationUs().coerceAtLeast(1L)
+            val inputLength = currentInputLength()
             val targetUs = timeUs.coerceIn(0L, recordingDurationUs)
             val indexed = nativeDemuxer?.getSeekPoints(targetUs) ?: longArrayOf()
             if (indexed.size >= 4 && indexed[0] >= 0L && indexed[1] >= 0L) {
@@ -335,5 +658,6 @@ class TlvExtractor(
         private const val AUDIO_LAYOUT_22_2 = 14
         private const val MAX_INDEXED_SEEK_DISTANCE_US = 30L * C.MICROS_PER_SECOND
         private const val SEEK_PROBE_BACKOFF_BYTES = 16L * 1024L * 1024L
+        private const val GROWING_SEEK_MAP_REFRESH_US = 30L * C.MICROS_PER_SECOND
     }
 }
