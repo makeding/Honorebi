@@ -36,6 +36,7 @@ class NativeTlvDemuxer(
             trackId: Long,
             codec: Int,
             data: ByteArray,
+            dataLength: Int,
             ptsValue: Long,
             ptsTimescale: Long,
             dtsValue: Long,

@@ -17,6 +17,8 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    private var appImageLoader: ImageLoader? = null
+
     // ★ 最新の WorkManager に合わせてプロパティとしてオーバーライドします
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -24,6 +26,7 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
             .build()
 
     override fun newImageLoader(): ImageLoader {
+        appImageLoader?.let { return it }
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -38,6 +41,15 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
             }
             .crossfade(true)
             .build()
+            .also { appImageLoader = it }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            appImageLoader?.memoryCache?.clear()
+        }
     }
 
     override fun onCreate() {
@@ -49,7 +61,7 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
 
     private companion object {
         const val IMAGE_CACHE_DIRECTORY = "image_cache"
-        const val IMAGE_MEMORY_CACHE_SIZE_BYTES = 24 * 1024 * 1024
+        const val IMAGE_MEMORY_CACHE_SIZE_BYTES = 12 * 1024 * 1024
         const val IMAGE_DISK_CACHE_SIZE_BYTES = 32L * 1024 * 1024
     }
 }

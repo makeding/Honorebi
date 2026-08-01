@@ -88,6 +88,9 @@ private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
 private const val NEXT_EPISODE_COUNTDOWN_WINDOW_MS = 15_000L
 private const val ATX_NEXT_EPISODE_TRIGGER_MS = 26 * 60 * 1000L
 private const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
+private const val CHASE_COMMENT_QUEUE_CAPACITY = 256
+private const val ACTIVE_PLAYBACK_STATE_POLL_MS = 250L
+private const val IDLE_PLAYBACK_STATE_POLL_MS = 1_000L
 private const val THIRTY_MINUTE_RECORDING_MIN_MS = 27 * 60 * 1000L
 private const val THIRTY_MINUTE_RECORDING_MAX_MS = 36 * 60 * 1000L
 private const val COMMENT_CLIMAX_WINDOW_START_MS = 25 * 60 * 1000L
@@ -262,7 +265,10 @@ fun VideoPlayerScreen(
         HashSet<String>()
     }
     val pendingWebSocketComments = remember(currentProgram.id, isRecordingChasePlayback) {
-        CommentChannel<ArchivedComment>(CommentChannel.UNLIMITED)
+        CommentChannel<ArchivedComment>(
+            capacity = CHASE_COMMENT_QUEUE_CAPACITY,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
     }
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
@@ -583,7 +589,18 @@ fun VideoPlayerScreen(
         }.coerceAtLeast(0L)
     }
 
-    LaunchedEffect(exoPlayer, currentProgram.id, isLiveStream, isRecordingChasePlayback) {
+    val playbackStatePollIntervalMs = if (showControls || isSeekingPreviewVisible) {
+        ACTIVE_PLAYBACK_STATE_POLL_MS
+    } else {
+        IDLE_PLAYBACK_STATE_POLL_MS
+    }
+    LaunchedEffect(
+        exoPlayer,
+        currentProgram.id,
+        isLiveStream,
+        isRecordingChasePlayback,
+        playbackStatePollIntervalMs
+    ) {
         while (isActive) {
             val currentPosition = getCurrentPositionMs()
             if (vs.pendingSeekPositionMs == null) {
@@ -608,7 +625,7 @@ fun VideoPlayerScreen(
                 }.coerceAtLeast(playbackDurationMs)
             }
 
-            delay(250L)
+            delay(playbackStatePollIntervalMs)
         }
     }
 

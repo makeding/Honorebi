@@ -35,22 +35,33 @@ class ChannelLogoCache @Inject constructor(
         }
         if (pendingChannels.isEmpty()) return
 
+        val resolvedLogoUrls = LinkedHashMap<String, String>()
         pendingChannels.forEach { channel ->
             try {
-                getChannelLogoUrl(channel)
+                val logoUrl = resolveChannelLogoUrl(channel, publish = false)
+                if (logoUrl.isNotBlank()) {
+                    channel.logoKeys().forEach { resolvedLogoUrls[it] = logoUrl }
+                    channelLogoCandidateIds(channel, backend)
+                        .forEach { resolvedLogoUrls[it] = logoUrl }
+                }
             } finally {
                 channel.logoKeys().forEach { inFlightLogoIds.remove(it) }
             }
         }
+        publishLogoUrls(resolvedLogoUrls)
     }
 
     suspend fun getChannelLogoUrl(channel: Channel): String {
+        return resolveChannelLogoUrl(channel, publish = true)
+    }
+
+    private suspend fun resolveChannelLogoUrl(channel: Channel, publish: Boolean): String {
         val keys = channel.logoKeys()
         val candidateIds = channelLogoCandidateIds(channel, settingsRepository.backendType.first())
         for (candidateId in candidateIds) {
-            val logoUrl = getChannelLogoUrl(candidateId)
+            val logoUrl = resolveChannelLogoUrl(candidateId, publish)
             if (logoUrl.isNotBlank()) {
-                rememberLogoUrl(keys + candidateIds, logoUrl)
+                rememberLogoUrl(keys + candidateIds, logoUrl, publish)
                 return logoUrl
             }
         }
@@ -58,9 +69,13 @@ class ChannelLogoCache @Inject constructor(
     }
 
     suspend fun getChannelLogoUrl(channelId: String): String {
+        return resolveChannelLogoUrl(channelId, publish = true)
+    }
+
+    private suspend fun resolveChannelLogoUrl(channelId: String, publish: Boolean): String {
         logoCache[channelId]?.let { return it }
         val logoUrl = liveProvider.getChannelLogoUrl(channelId)
-        rememberLogoUrl(listOf(channelId), logoUrl)
+        rememberLogoUrl(listOf(channelId), logoUrl, publish)
         return logoUrl
     }
 
@@ -75,14 +90,23 @@ class ChannelLogoCache @Inject constructor(
         return listOf(primary, secondary).filter { it.isNotBlank() }.distinct()
     }
 
-    private fun rememberLogoUrl(keys: Collection<String>, logoUrl: String) {
+    private fun rememberLogoUrl(
+        keys: Collection<String>,
+        logoUrl: String,
+        publish: Boolean
+    ) {
         if (logoUrl.isBlank()) return
         val cleanKeys = keys.filter { it.isNotBlank() }.distinct()
         cleanKeys.forEach { logoCache[it] = logoUrl }
+        if (publish) {
+            publishLogoUrls(cleanKeys.associateWith { logoUrl })
+        }
+    }
+
+    private fun publishLogoUrls(resolvedLogoUrls: Map<String, String>) {
+        if (resolvedLogoUrls.isEmpty()) return
         _channelLogoUrls.update { current ->
-            val additions = cleanKeys
-                .filter { current[it] != logoUrl }
-                .associateWith { logoUrl }
+            val additions = resolvedLogoUrls.filter { (key, value) -> current[key] != value }
             if (additions.isEmpty()) current else current + additions
         }
     }

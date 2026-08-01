@@ -401,7 +401,7 @@ public:
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
-            "(JI[BJJJJJJJJZZ)V");
+            "(JI[BIJJJJJJJJZZ)V");
         onBroadcastClockMethod_ = env->GetMethodID(
             callbackClass,
             "onBroadcastClock",
@@ -482,6 +482,11 @@ public:
     }
 
     void release(JNIEnv* env) {
+        if (reusableAccessUnitBuffer_ != nullptr) {
+            env->DeleteGlobalRef(reusableAccessUnitBuffer_);
+            reusableAccessUnitBuffer_ = nullptr;
+            reusableAccessUnitCapacity_ = 0;
+        }
         if (callback_ != nullptr) {
             env->DeleteGlobalRef(callback_);
             callback_ = nullptr;
@@ -565,13 +570,19 @@ public:
     void onAccessUnit(tlvdemux::AccessUnit&& unit) override {
         if (buildRecordingIndex_) recordingIndex_.observe(unit);
         if (!canCallback(onAccessUnitMethod_)) return;
-        jbyteArray data = makeByteArray(unit.data);
+        const bool mayReuse =
+            unit.codec != tlvdemux::Codec::Ttml &&
+            unit.data.size() <= MAX_RETAINED_ACCESS_UNIT_BYTES;
+        jbyteArray data = mayReuse ? makeReusableAccessUnitByteArray(unit.data) : nullptr;
+        const bool isReusable = data != nullptr;
+        if (data == nullptr) data = makeByteArray(unit.data);
         currentEnv_->CallVoidMethod(
             callback_,
             onAccessUnitMethod_,
             static_cast<jlong>(unit.track_id),
             static_cast<jint>(unit.codec),
             data,
+            static_cast<jint>(unit.data.size()),
             static_cast<jlong>(unit.pts.value),
             static_cast<jlong>(unit.pts.timescale),
             static_cast<jlong>(unit.dts.value),
@@ -588,7 +599,7 @@ public:
                 : 0),
             unit.random_access ? JNI_TRUE : JNI_FALSE,
             unit.discontinuity ? JNI_TRUE : JNI_FALSE);
-        currentEnv_->DeleteLocalRef(data);
+        if (!isReusable) currentEnv_->DeleteLocalRef(data);
     }
 
     void onBroadcastClock(const tlvdemux::BroadcastClock& clock) override {
@@ -721,9 +732,42 @@ private:
         return result;
     }
 
+    jbyteArray makeReusableAccessUnitByteArray(const std::vector<std::uint8_t>& source) {
+        if (source.size() > MAX_RETAINED_ACCESS_UNIT_BYTES) return nullptr;
+        if (reusableAccessUnitCapacity_ < static_cast<jsize>(source.size())) {
+            std::size_t targetCapacity = MIN_RETAINED_ACCESS_UNIT_BYTES;
+            while (targetCapacity < source.size()) targetCapacity *= 2;
+            targetCapacity = std::min(targetCapacity, MAX_RETAINED_ACCESS_UNIT_BYTES);
+
+            jbyteArray localBuffer = currentEnv_->NewByteArray(static_cast<jsize>(targetCapacity));
+            if (localBuffer == nullptr) return nullptr;
+            auto* globalBuffer = static_cast<jbyteArray>(currentEnv_->NewGlobalRef(localBuffer));
+            currentEnv_->DeleteLocalRef(localBuffer);
+            if (globalBuffer == nullptr) return nullptr;
+
+            if (reusableAccessUnitBuffer_ != nullptr) {
+                currentEnv_->DeleteGlobalRef(reusableAccessUnitBuffer_);
+            }
+            reusableAccessUnitBuffer_ = globalBuffer;
+            reusableAccessUnitCapacity_ = static_cast<jsize>(targetCapacity);
+        }
+        if (!source.empty()) {
+            currentEnv_->SetByteArrayRegion(
+                reusableAccessUnitBuffer_,
+                0,
+                static_cast<jsize>(source.size()),
+                reinterpret_cast<const jbyte*>(source.data()));
+        }
+        return reusableAccessUnitBuffer_;
+    }
+
+    static constexpr std::size_t MIN_RETAINED_ACCESS_UNIT_BYTES = 64 * 1024;
+    static constexpr std::size_t MAX_RETAINED_ACCESS_UNIT_BYTES = 4 * 1024 * 1024;
     JNIEnv* currentEnv_ = nullptr;
     std::mutex mutex_;
     jobject callback_ = nullptr;
+    jbyteArray reusableAccessUnitBuffer_ = nullptr;
+    jsize reusableAccessUnitCapacity_ = 0;
     jmethodID onServiceMethod_ = nullptr;
     jmethodID onTrackMethod_ = nullptr;
     jmethodID onAccessUnitMethod_ = nullptr;

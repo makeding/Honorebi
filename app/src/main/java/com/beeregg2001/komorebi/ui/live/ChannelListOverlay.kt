@@ -74,23 +74,17 @@ fun ChannelListOverlay(
         }
     }
 
-    LaunchedEffect(selectedTab, currentChannels) {
+    LaunchedEffect(selectedTab, currentChannels, currentChannelId) {
         if (currentChannels.isEmpty()) return@LaunchedEffect
         val selectedIndex = currentChannels.indexOfFirst { it.id == currentChannelId }
         listState.scrollToItem(selectedIndex.coerceAtLeast(0))
-    }
-
-    LaunchedEffect(currentChannelTab, currentChannelId) {
-        if (currentChannelTab.isBlank()) return@LaunchedEffect
-        val targetChannels = groupedChannels[currentChannelTab].orEmpty()
-        if (targetChannels.isEmpty()) return@LaunchedEffect
-        val selectedIndex = targetChannels.indexOfFirst { it.id == currentChannelId }
-        listState.scrollToItem(selectedIndex.coerceAtLeast(0))
-        focusRequester.safeRequestFocusWithRetry(
-            tag = "ChannelSelectorFocus",
-            maxRetries = 8,
-            delayMillis = 40
-        )
+        if (selectedTab == currentChannelTab) {
+            focusRequester.safeRequestFocusWithRetry(
+                tag = "ChannelSelectorFocus",
+                maxRetries = 8,
+                delayMillis = 40
+            )
+        }
     }
 
     Column(
@@ -217,8 +211,15 @@ fun ChannelCardItem(
     modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
+    val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
+    val imageRequest = remember(context, logoUrl) {
+        ImageRequest.Builder(context)
+            .data(logoUrl)
+            .crossfade(false)
+            .build()
+    }
 
     val backgroundColor = if (isFocused) {
         colors.textPrimary
@@ -263,10 +264,7 @@ fun ChannelCardItem(
                 colors = SurfaceDefaults.colors(containerColor = Color.Transparent)
             ) {
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(logoUrl)
-                        .crossfade(false)
-                        .build(),
+                    model = imageRequest,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     // ★ 修正: フラグに基づいてスケールを変更

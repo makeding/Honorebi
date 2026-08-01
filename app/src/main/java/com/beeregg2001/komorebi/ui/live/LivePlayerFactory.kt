@@ -96,7 +96,7 @@ class LivePlayerFactory @Inject constructor(
 
         // ライブ視聴に最適化したバッファ設定
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(2000, 10000, 1000, 1500)
+            .setBufferDurationsMs(3000, 10000, 1000, 1500)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 

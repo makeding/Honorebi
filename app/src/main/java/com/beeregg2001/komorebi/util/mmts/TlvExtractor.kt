@@ -419,6 +419,7 @@ class TlvExtractor(
         trackId: Long,
         codec: Int,
         data: ByteArray,
+        dataLength: Int,
         ptsValue: Long,
         ptsTimescale: Long,
         dtsValue: Long,
@@ -434,7 +435,9 @@ class TlvExtractor(
         ensureTracksEnded(inputOffset)
         val timeUs = scaleToMicroseconds(ptsValue, ptsTimescale)
         val flags = if (randomAccess) TsPayloadReader.FLAG_RANDOM_ACCESS_INDICATOR else 0
-        val payload = ParsableByteArray(data)
+        // HEVC/AAC callbacks reuse a JNI-owned scratch array. Readers consume it
+        // synchronously, and dataLength keeps the unused capacity out of the sample.
+        val payload = ParsableByteArray(data, dataLength)
 
         when (codec) {
             CODEC_HEVC -> {
@@ -456,16 +459,11 @@ class TlvExtractor(
 
             CODEC_TTML -> {
                 if (trackId != subtitleTrackId) return
-                Log.i(
-                    TAG,
-                    "B62 sample ptsUs=$timeUs op=$subtitleOperationMode tmd=$subtitleTimingMode " +
-                        "refPts=$subtitleReferenceStartPtsValue/$subtitleReferenceStartPtsTimescale " +
-                        "discontinuity=$discontinuity ttml=${data.toString(Charsets.UTF_8).replace('\n', ' ').take(600)}"
-                )
+                val subtitleData = if (dataLength == data.size) data else data.copyOf(dataLength)
                 onSubtitleDataReceived(
                     B62SubtitleSample(
                         timeUs = timeUs,
-                        data = data,
+                        data = subtitleData,
                         operationMode = subtitleOperationMode,
                         timingMode = subtitleTimingMode,
                         referenceStartTimeUs = subtitleReferenceStartPtsValue

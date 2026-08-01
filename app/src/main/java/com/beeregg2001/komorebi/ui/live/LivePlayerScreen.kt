@@ -8,6 +8,8 @@ import android.view.KeyEvent as NativeKeyEvent
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +64,9 @@ private const val TAG = "LivePlayerScreen"
 private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
 private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 16
 private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 4
+private const val LIVE_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
+private val LIVE_PROGRAM_INFO_SUBTITLE_OFFSET = 200.dp
+private val LIVE_CHANNEL_LIST_SUBTITLE_OFFSET = 220.dp
 
 private fun Modifier.b60MediaPlane(plane: B60MediaPlane): Modifier = layout { measurable, constraints ->
     val screenWidth = plane.screenWidth.takeIf { it > 0f } ?: 3840f
@@ -673,9 +678,19 @@ fun LivePlayerScreen(
 
     val isUiVisible =
         isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
-    // Keep captions visible in Quick Actions so a language change can be previewed immediately.
+    // Keep captions visible under lightweight overlays. Bottom overlays move only the caption
+    // regions that would overlap them, matching recorded playback's controls-safe behavior.
     val isSubtitleBlockingUiVisible =
-        isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
+        ps.lCropMode != LCropMode.HIDDEN || (ps.isDualDisplayMode && isMiniListOpen)
+    val subtitleBottomAvoidanceOffset by animateDpAsState(
+        targetValue = when {
+            isMiniListOpen && !ps.isDualDisplayMode -> LIVE_CHANNEL_LIST_SUBTITLE_OFFSET
+            showOverlay -> LIVE_PROGRAM_INFO_SUBTITLE_OFFSET
+            else -> 0.dp
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "liveOverlaySubtitleOffset"
+    )
 
     LaunchedEffect(isUiVisible) {
         channelViewModel.setPollingPaused(!isUiVisible)
@@ -873,7 +888,13 @@ fun LivePlayerScreen(
                     NativeCaptionOverlay(
                         cue = mainCaptionCue.value,
                         visible = isSubtitleEnabled && !isSubtitleBlockingUiVisible,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(
+                                if (showOverlay || isPinnedOverlay || isMiniListOpen) 3f else 0f
+                            ),
+                        bottomAvoidanceOffset = subtitleBottomAvoidanceOffset,
+                        bottomAvoidanceStartFraction = LIVE_SUBTITLE_AVOIDANCE_START_FRACTION
                     )
                 }
 

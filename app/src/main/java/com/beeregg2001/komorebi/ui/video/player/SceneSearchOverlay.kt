@@ -50,13 +50,14 @@ import java.security.MessageDigest
 import kotlin.math.floor
 
 private const val TAG = "SceneSearchOverlay"
+private const val TILE_CACHE_SIZE_BYTES = 6 * 1024 * 1024
 
 class TileSheetLoader(private val context: Context) {
     private var isReleased = false
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val decodeDispatcher = Dispatchers.IO.limitedParallelism(4)
-    private val tileCache = object : LruCache<String, Bitmap>(10 * 1024 * 1024) {
+    private val decodeDispatcher = Dispatchers.IO.limitedParallelism(2)
+    private val tileCache = object : LruCache<String, Bitmap>(TILE_CACHE_SIZE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
     private var fullSheetBitmap: Bitmap? = null
@@ -83,12 +84,6 @@ class TileSheetLoader(private val context: Context) {
         return withContext(decodeDispatcher) {
             if (!isActive || isReleased) return@withContext null
             try {
-                // ★ ログ仕込み: タイルの切り出し要求座標
-                Log.i(
-                    TAG,
-                    "[TileLoader] Requesting tile: url=$url, col=$col, row=$row, w=$tileW, h=$tileH"
-                )
-
                 val sheet = getOrLoadFullSheet(url) ?: run {
                     Log.w(TAG, "[TileLoader] Failed to get or load full sheet!")
                     return@withContext null
@@ -108,8 +103,6 @@ class TileSheetLoader(private val context: Context) {
 
                 val tileBitmap = Bitmap.createBitmap(sheet, x, y, tileW, tileH)
                 synchronized(tileCache) { if (!isReleased) tileCache.put(key, tileBitmap) }
-
-                Log.i(TAG, "[TileLoader] Successfully cropped and cached tile: $key")
                 tileBitmap
             } catch (e: Exception) {
                 Log.e(TAG, "[TileLoader] Error creating tile bitmap: col=$col, row=$row", e)
