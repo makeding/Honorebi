@@ -187,6 +187,10 @@ fun LivePlayerScreen(
     val commentMaxLinesStr by settingsViewModel.commentMaxLines.collectAsState()
     val commentDefaultDisplayStr by settingsViewModel.commentDefaultDisplay.collectAsState()
     val audioOutputMode by settingsViewModel.audioOutputMode.collectAsState()
+    val hdrRenderMode by livePlayerViewModel.hdrRenderMode.collectAsState()
+    val isHdrToSdrToneMappingSupported = remember(livePlayerViewModel) {
+        livePlayerViewModel.isHdrToSdrToneMappingSupported
+    }
     val liveSubtitleDefaultStr by settingsViewModel.liveSubtitleDefault.collectAsState()
     val allowMirakurunDual by settingsViewModel.labAllowMirakurunDual.collectAsState()
 
@@ -1139,6 +1143,8 @@ fun LivePlayerScreen(
                 isRecording = isRecording,
                 canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
+                hdrRenderMode = hdrRenderMode,
+                isHdrToSdrToneMappingSupported = isHdrToSdrToneMappingSupported,
                 isDualDisplayMode = ps.isDualDisplayMode,
                 isDataBroadcastingAvailable = isB60Channel,
                 groupedChannels = displayGroupedChannels,
@@ -1216,6 +1222,17 @@ fun LivePlayerScreen(
                     if (ps.isSignalInfoVisible) {
                         onShowToast("信号情報を表示します")
                     }
+                },
+                onHdrRenderModeToggle = {
+                    val nextMode = if (hdrRenderMode == "SDR_TONE_MAP") "ORIGINAL" else "SDR_TONE_MAP"
+                    livePlayerViewModel.setHdrRenderMode(uiContext, nextMode)
+                    onShowToast(
+                        if (nextMode == "SDR_TONE_MAP") {
+                            "HDR 表示：ハードウェア SDR 変換"
+                        } else {
+                            "HDR 表示：HLG そのまま"
+                        }
+                    )
                 },
                 onDataBroadcastingToggle = {
                     openLocalDataBroadcasting()

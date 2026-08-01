@@ -78,6 +78,11 @@ class NativeTlvDemuxer(
 
         fun onApplicationState(
             contextId: Long,
+            applicationType: Int,
+            organizationId: Int,
+            applicationId: Long,
+            controlCode: Int,
+            applicationPriority: Int,
             entryPath: String,
             transportUrls: Array<String>,
             collectionState: Int,

@@ -3,6 +3,10 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
+import android.media.MediaFormat
+import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -20,6 +24,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.metadata.id3.PrivFrame
 import com.beeregg2001.komorebi.data.model.LivePlayerConstants
@@ -37,6 +42,10 @@ private const val TAG = "LivePlayerFactory"
 class LivePlayerFactory @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    val isHdrToSdrToneMappingSupported: Boolean by lazy {
+        detectHdrToSdrToneMappingSupport()
+    }
+
     /**
      * カスタム設定が適用された ExoPlayer を生成します。
      *
@@ -47,6 +56,7 @@ class LivePlayerFactory @Inject constructor(
      */
     fun createExoPlayer(
         audioOutputMode: String,
+        hdrRenderMode: String,
         isKonomiTvSource: () -> Boolean,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
         onError: (PlaybackException) -> Unit
@@ -74,7 +84,16 @@ class LivePlayerFactory @Inject constructor(
         }
 
         // レンダラーのファクトリ設定（デコーダーのフォールバック等を有効化）
+        val enableHdrToSdrToneMapping =
+            hdrRenderMode == HDR_RENDER_MODE_SDR && isHdrToSdrToneMappingSupported
         val renderersFactory = object : DefaultRenderersFactory(context) {
+            override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
+                return HdrToneMappingCodecAdapterFactory(
+                    delegate = super.getCodecAdapterFactory(),
+                    enabled = enableHdrToSdrToneMapping
+                )
+            }
+
             override fun buildAudioSink(
                 ctx: Context,
                 enableFloat: Boolean,
@@ -148,5 +167,54 @@ class LivePlayerFactory @Inject constructor(
                     }
                 })
             }
+    }
+
+    private fun detectHdrToSdrToneMappingSupport(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        return runCatching {
+            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, 3840, 2160).apply {
+                setFloat(MediaFormat.KEY_FRAME_RATE, 59.94f)
+                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
+                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
+                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_HLG)
+                setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+            }
+            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { codecInfo ->
+                !codecInfo.isEncoder &&
+                    codecInfo.isHardwareAccelerated &&
+                    codecInfo.supportedTypes.any { it.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, true) } &&
+                    codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+                        .isFormatSupported(format)
+            }
+        }.onFailure {
+            Log.w(TAG, "HDR-to-SDR capability detection failed", it)
+        }.getOrDefault(false)
+    }
+
+    private class HdrToneMappingCodecAdapterFactory(
+        private val delegate: MediaCodecAdapter.Factory,
+        private val enabled: Boolean
+    ) : MediaCodecAdapter.Factory {
+        override fun createAdapter(configuration: MediaCodecAdapter.Configuration): MediaCodecAdapter {
+            if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val colorTransfer = configuration.format.colorInfo?.colorTransfer
+                if (colorTransfer == C.COLOR_TRANSFER_HLG || colorTransfer == C.COLOR_TRANSFER_ST2084) {
+                    configuration.mediaFormat.setInteger(
+                        MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
+                        MediaFormat.COLOR_TRANSFER_SDR_VIDEO
+                    )
+                    Log.i(
+                        TAG,
+                        "Requesting hardware HDR-to-SDR tone mapping: codec=${configuration.codecInfo.name}, transfer=$colorTransfer"
+                    )
+                }
+            }
+            return delegate.createAdapter(configuration)
+        }
+    }
+
+    private companion object {
+        const val HDR_RENDER_MODE_SDR = "SDR_TONE_MAP"
     }
 }

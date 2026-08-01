@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -19,12 +20,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationResource
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationStatus
@@ -141,6 +145,7 @@ fun DataBroadcastingWebViewOverlay(
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
     val session by store.status.collectAsState()
     var shellReady by remember { mutableStateOf(false) }
+    var rendererGeneration by remember { mutableIntStateOf(0) }
     val latestCurrentMediaTimeSeconds by rememberUpdatedState(currentMediaTimeSeconds)
     val cachedCurrentMediaTimeMillis = remember { AtomicLong(0L) }
 
@@ -153,9 +158,11 @@ fun DataBroadcastingWebViewOverlay(
         }
     }
 
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
+    key(rendererGeneration) {
+        AndroidView(
+            factory = { context ->
+                if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
+                WebView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -188,11 +195,19 @@ fun DataBroadcastingWebViewOverlay(
                     ),
                     "ARIBNative"
                 )
-                webViewClient = B60WebViewClient(
-                    store = store,
-                    openAsset = { path -> context.assets.open(path) },
-                    onShellReady = { shellReady = true }
-                )
+                    webViewClient = B60WebViewClient(
+                        store = store,
+                        openAsset = { path -> context.assets.open(path) },
+                        onShellReady = { shellReady = true },
+                        onRendererGone = { didCrash ->
+                            Log.e(TAG, "B60 renderer process gone; recreating WebView (crash=$didCrash)")
+                            shellReady = false
+                            webViewRef.value = null
+                            onMediaPlane(null)
+                            onBlankModeChanged(false)
+                            rendererGeneration += 1
+                        }
+                    )
                 webChromeClient = object : WebChromeClient() {
                     override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
                         Log.d(
@@ -204,17 +219,18 @@ fun DataBroadcastingWebViewOverlay(
                 }
                 webViewRef.value = this
                 loadUrl("$WEB_ORIGIN$SHELL_PATH")
-            }
-        },
-        onRelease = { webView ->
-            shellReady = false
-            webViewRef.value = null
-            webView.stopLoading()
-            webView.removeJavascriptInterface("ARIBNative")
-            webView.destroy()
-        },
-        modifier = modifier
-    )
+                }
+            },
+            onRelease = { webView ->
+                shellReady = false
+                if (webViewRef.value === webView) webViewRef.value = null
+                webView.stopLoading()
+                webView.removeJavascriptInterface("ARIBNative")
+                webView.destroy()
+            },
+            modifier = modifier
+        )
+    }
 
     LaunchedEffect(shellReady, session.generation, session.entryReady, session.entryPath) {
         if (!shellReady) return@LaunchedEffect
@@ -280,7 +296,8 @@ fun DataBroadcastingWebViewOverlay(
 private class B60WebViewClient(
     private val store: B60DataBroadcastingStore,
     private val openAsset: (String) -> java.io.InputStream,
-    private val onShellReady: () -> Unit
+    private val onShellReady: () -> Unit,
+    private val onRendererGone: (didCrash: Boolean) -> Unit
 ) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         return request.url.host != Uri.parse(WEB_ORIGIN).host
@@ -299,7 +316,13 @@ private class B60WebViewClient(
             SDK_PATH -> assetResponse("libaribhtml5/libaribhtml5.js", "text/javascript")
             else -> if (url.path?.startsWith(BROADCAST_PREFIX) == true) {
                 val path = Uri.decode(url.encodedPath.orEmpty()).removePrefix(BROADCAST_PREFIX)
-                store.waitForResource(path)?.let(::broadcastResourceResponse) ?: notFoundResponse()
+                val resource = store.waitForResource(path)
+                if (resource == null) {
+                    Log.w(TAG, "B60 resource missing after wait: path=$path, url=$url")
+                    notFoundResponse()
+                } else {
+                    broadcastResourceResponse(resource)
+                }
             } else {
                 forbiddenResponse()
             }
@@ -308,6 +331,11 @@ private class B60WebViewClient(
 
     override fun onPageFinished(view: WebView, url: String) {
         if (url == "$WEB_ORIGIN$SHELL_PATH") onShellReady()
+    }
+
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        onRendererGone(detail.didCrash())
+        return true
     }
 
     private fun assetResponse(path: String, mimeType: String): WebResourceResponse =
@@ -415,7 +443,28 @@ private fun buildStartPayload(status: B60ApplicationStatus, channel: Channel): J
         )
         put("programInfo", buildProgramInfo(status, channel))
         status.broadcastClock?.let(::buildBroadcastClock)?.let { put("broadcastClock", it) }
+        status.application?.let { application ->
+            put(
+                "application",
+                JSONObject().apply {
+                    put("type", "0x${application.applicationType.toString(16).padStart(4, '0')}")
+                    put("organizationId", application.organizationId)
+                    put("applicationId", application.applicationId)
+                    put("controlCode", applicationControlCodeName(application.controlCode))
+                    put("autostartPriority", application.autostartPriority)
+                    put("rawControlCode", application.controlCode)
+                }
+            )
+        }
     }
+
+private fun applicationControlCodeName(controlCode: Int): String = when (controlCode) {
+    0x01 -> "AUTOSTART"
+    0x02 -> "PRESENT"
+    0x04 -> "KILL"
+    0x05 -> "PREFETCH"
+    else -> "0x${controlCode.toString(16).padStart(2, '0')}"
+}
 
 private fun buildBroadcastClock(clock: B60BroadcastClock): JSONObject? {
     if (clock.broadcastTimeTimescale <= 0L || clock.mediaTimeTimescale <= 0L) return null

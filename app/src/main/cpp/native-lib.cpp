@@ -413,7 +413,7 @@ public:
         onApplicationStateMethod_ = env->GetMethodID(
             callbackClass,
             "onApplicationState",
-            "(JLjava/lang/String;[Ljava/lang/String;IJZ)V");
+            "(JIIJIILjava/lang/String;[Ljava/lang/String;IJZ)V");
         onApplicationResourceMethod_ = env->GetMethodID(
             callbackClass,
             "onApplicationResource",
@@ -668,6 +668,11 @@ public:
             callback_,
             onApplicationStateMethod_,
             static_cast<jlong>(state.application.context_id),
+            static_cast<jint>(state.application.application_type),
+            static_cast<jint>(state.application.organization_id),
+            static_cast<jlong>(state.application.application_id),
+            static_cast<jint>(state.application.control_code),
+            static_cast<jint>(state.application.application_priority),
             entryPath,
             transportUrls,
             static_cast<jint>(state.state),

@@ -537,6 +537,11 @@ class TlvExtractor(
 
     override fun onApplicationState(
         contextId: Long,
+        applicationType: Int,
+        organizationId: Int,
+        applicationId: Long,
+        controlCode: Int,
+        applicationPriority: Int,
         entryPath: String,
         transportUrls: Array<String>,
         collectionState: Int,
@@ -545,6 +550,11 @@ class TlvExtractor(
     ) {
         dataBroadcastingCallback?.onApplicationState(
             contextId,
+            applicationType,
+            organizationId,
+            applicationId,
+            controlCode,
+            applicationPriority,
             entryPath,
             transportUrls.asList(),
             collectionState,

@@ -8,17 +8,23 @@
     #viewport { position: relative; }
     #broadcast {
       position: absolute;
-      left: 50%;
-      top: 50%;
+      left: 0;
+      top: 0;
       border: 0;
-      transform-origin: center center;
+      transform-origin: top left;
       background: transparent;
     }
     #status {
       position: absolute;
-      inset: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 120px;
       display: grid;
-      place-items: center;
+      place-items: end center;
+      box-sizing: border-box;
+      padding: 0 24px 28px;
+      text-align: center;
       z-index: 10;
       color: #fff;
       background: #000;
@@ -42,6 +48,11 @@
       let runtimeInstalled = false;
       let autoEnterData = false;
       const pendingKeys = [];
+      const receiverSystemInformation = {
+        makerid: 'Komorebi',
+        modelname: 'Komorebi Android TV',
+        decoder: 'native',
+      };
 
       const reportStatus = value => {
         status.textContent = value || '';
@@ -68,11 +79,7 @@
         broadcastBaseUrl: '/data-broadcast/',
         allowExternalNetwork: false,
         getDeviceIdentifier: async () => null,
-        systemInformation: {
-          makerid: 'Komorebi',
-          modelname: 'Komorebi Android TV',
-          decoder: 'native',
-        },
+        systemInformation: receiverSystemInformation,
         onStatus(value) {
           reportStatus(value);
         },
@@ -149,6 +156,7 @@
           if (!payload.entryPath) return false;
           host.clearProgramInfo();
           host.clearBroadcastClock();
+          host.setApplicationInformation(payload.application ?? null);
           applyMetadata(payload);
           currentEntry = String(payload.entryPath).replace(/^\/+/, '');
           autoEnterData = Boolean(payload.autoEnterData);

@@ -62,6 +62,8 @@ fun LiveTopSubMenuUI(
     isRecording: Boolean,
     canStartChasePlayback: Boolean,
     isSignalInfoVisible: Boolean,
+    hdrRenderMode: String,
+    isHdrToSdrToneMappingSupported: Boolean,
     isDualDisplayMode: Boolean,
     isDataBroadcastingAvailable: Boolean,
     groupedChannels: Map<String, List<Channel>>,
@@ -72,6 +74,7 @@ fun LiveTopSubMenuUI(
     onChasePlayback: () -> Unit,
     onRecordToggle: () -> Unit,
     onSignalInfoToggle: () -> Unit,
+    onHdrRenderModeToggle: () -> Unit,
     onDataBroadcastingToggle: () -> Unit,
     focusRequester: FocusRequester,
     logoUrls: Map<String, String>,
@@ -330,6 +333,17 @@ fun LiveTopSubMenuUI(
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                         contentColor = colors.textPrimary
                     )
+
+                    if (isHdrToSdrToneMappingSupported) {
+                        LiveMenuTileItem(
+                            title = "HDR 表示",
+                            icon = Icons.Default.HighQuality,
+                            subtitle = if (hdrRenderMode == "SDR_TONE_MAP") "SDR 変換" else "HLG そのまま",
+                            onClick = onHdrRenderModeToggle,
+                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                            contentColor = if (hdrRenderMode == "SDR_TONE_MAP") colors.accent else colors.textPrimary
+                        )
+                    }
 
                     if (isDataBroadcastingAvailable) {
                         LiveMenuTileItem(

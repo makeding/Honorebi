@@ -49,10 +49,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -102,6 +104,14 @@ class LivePlayerViewModel @Inject constructor(
 
     private val _mainPlayer = MutableStateFlow<ExoPlayer?>(null)
     val mainPlayer: StateFlow<ExoPlayer?> = _mainPlayer.asStateFlow()
+
+    val hdrRenderMode: StateFlow<String> = settingsRepository.hdrRenderMode.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        "ORIGINAL"
+    )
+    val isHdrToSdrToneMappingSupported: Boolean
+        get() = livePlayerFactory.isHdrToSdrToneMappingSupported
 
     private val _dualPlayer = MutableStateFlow<ExoPlayer?>(null)
     val dualPlayer: StateFlow<ExoPlayer?> = _dualPlayer.asStateFlow()
@@ -544,9 +554,11 @@ class LivePlayerViewModel @Inject constructor(
                     mainCurrentQuality = request.quality
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
+                    val hdrRenderMode = settingsRepository.hdrRenderMode.first()
                     val newPlayer = withContext(Dispatchers.Main) {
                         livePlayerFactory.createExoPlayer(
                             audioOutputMode = audioOutputMode,
+                            hdrRenderMode = hdrRenderMode,
                             isKonomiTvSource = { mainCurrentSource == StreamSource.KONOMITV },
                             onSubtitleDataReceived = { pts, data ->
                                 decodeAndEmitMainSubtitle(pts, data)
@@ -623,9 +635,11 @@ class LivePlayerViewModel @Inject constructor(
                     dualCurrentQuality = request.quality
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
+                    val hdrRenderMode = settingsRepository.hdrRenderMode.first()
                     val newDualPlayer = withContext(Dispatchers.Main) {
                         livePlayerFactory.createExoPlayer(
                             audioOutputMode = audioOutputMode,
+                            hdrRenderMode = hdrRenderMode,
                             isKonomiTvSource = { dualCurrentSource == StreamSource.KONOMITV },
                             onSubtitleDataReceived = { pts, data ->
                                 decodeAndEmitDualSubtitle(pts, data)
@@ -674,6 +688,26 @@ class LivePlayerViewModel @Inject constructor(
         viewModelScope.launch {
             mainPlaybackMutex.withLock { stopMainPlaybackSafely() }
             dualPlaybackMutex.withLock { stopDualPlaybackSafely() }
+        }
+    }
+
+    fun setHdrRenderMode(uiContext: Context, mode: String) {
+        val normalizedMode = if (mode == "SDR_TONE_MAP" && isHdrToSdrToneMappingSupported) {
+            "SDR_TONE_MAP"
+        } else {
+            "ORIGINAL"
+        }
+        viewModelScope.launch {
+            settingsRepository.saveString(SettingsRepository.HDR_RENDER_MODE, normalizedMode)
+            val channel = mainCurrentChannel ?: return@launch
+            val quality = mainCurrentQuality ?: return@launch
+            playMainChannel(
+                uiContext = uiContext,
+                channel = channel,
+                source = mainCurrentSource,
+                isEdcbDirect = mainIsEdcbDirect,
+                quality = quality
+            )
         }
     }
 

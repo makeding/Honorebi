@@ -13,6 +13,7 @@ data class B60ApplicationStatus(
     val generation: Long = 0,
     val channelId: String? = null,
     val contextId: Long? = null,
+    val application: B60ApplicationInformation? = null,
     val declaredEntryPath: String? = null,
     val transportUrls: List<String> = emptyList(),
     val entryPath: String? = null,
@@ -28,6 +29,14 @@ data class B60ApplicationStatus(
         const val APPLICATION_STATE_DISCOVERED = 0
     }
 }
+
+data class B60ApplicationInformation(
+    val applicationType: Int,
+    val organizationId: Int,
+    val applicationId: Long,
+    val controlCode: Int,
+    val autostartPriority: Int
+)
 
 data class B60BroadcastClock(
     val mediaTimeValue: Long,
@@ -75,6 +84,11 @@ interface B60DataBroadcastingCallback {
     fun onEventInfo(event: B60EventInfo) = Unit
     fun onApplicationState(
         contextId: Long,
+        applicationType: Int,
+        organizationId: Int,
+        applicationId: Long,
+        controlCode: Int,
+        applicationPriority: Int,
         entryPath: String,
         transportUrls: List<String>,
         collectionState: Int,
@@ -132,6 +146,11 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
 
     override fun onApplicationState(
         contextId: Long,
+        applicationType: Int,
+        organizationId: Int,
+        applicationId: Long,
+        controlCode: Int,
+        applicationPriority: Int,
         entryPath: String,
         transportUrls: List<String>,
         collectionState: Int,
@@ -150,6 +169,13 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
             }
             _status.value = _status.value.copy(
                 contextId = contextId,
+                application = B60ApplicationInformation(
+                    applicationType = applicationType,
+                    organizationId = organizationId,
+                    applicationId = applicationId,
+                    controlCode = controlCode,
+                    autostartPriority = applicationPriority
+                ),
                 declaredEntryPath = declaredEntryPath,
                 transportUrls = normalizedTransportUrls,
                 entryPath = resolvedEntryPath,
