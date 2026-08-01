@@ -45,6 +45,7 @@ fun KeywordConditionCard(
     getLogoUrl: suspend (String) -> String = { "" } // ★追加: ViewModel等の非同期取得用
 ) {
     val colors = KomorebiTheme.colors
+    val channelLogoImageLoader = rememberChannelLogoImageLoader()
     var isFocused by remember { mutableStateOf(false) }
 
     val searchCondition = condition.programSearchCondition
@@ -204,6 +205,7 @@ fun KeywordConditionCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (logoUrl.isNotEmpty()) {
                         AsyncImage(
+                            imageLoader = channelLogoImageLoader,
                             model = logoUrl,
                             contentDescription = null,
                             modifier = Modifier

@@ -38,6 +38,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -59,6 +60,7 @@ fun LastWatchedChannelCard(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val channelLogoImageLoader = rememberChannelLogoImageLoader()
     val colors = KomorebiTheme.colors
     val typeLabels =
         mapOf("GR" to "地デジ", "BS" to "BS", "CS" to "CS", "BS4K" to "BS4K", "SKY" to "スカパー")
@@ -104,6 +106,7 @@ fun LastWatchedChannelCard(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
+                    imageLoader = channelLogoImageLoader,
                     model = logoUrl,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
@@ -160,6 +163,7 @@ fun HotChannelCard(
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val channelLogoImageLoader = rememberChannelLogoImageLoader()
     val colors = KomorebiTheme.colors
 
     var logoUrl by remember(uiState.channel.id) { mutableStateOf("") }
@@ -203,6 +207,7 @@ fun HotChannelCard(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
+                    imageLoader = channelLogoImageLoader,
                     model = logoUrl,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),

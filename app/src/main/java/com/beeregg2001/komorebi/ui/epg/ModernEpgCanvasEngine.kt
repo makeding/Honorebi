@@ -42,6 +42,7 @@ import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.epg.engine.*
 import com.beeregg2001.komorebi.viewmodel.EpgUiState
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import java.time.Duration
@@ -74,6 +75,7 @@ fun ModernEpgCanvasEngine_Smooth(
 ) {
     val density = LocalDensity.current
     val colors = KomorebiTheme.colors
+    val channelLogoImageLoader = rememberChannelLogoImageLoader()
 
     val hideSubChannels by settingsViewModel.hideSubChannels.collectAsState(initial = false)
     val epgColumnCountStr by settingsViewModel.epgColumnCount.collectAsState()
@@ -101,7 +103,7 @@ fun ModernEpgCanvasEngine_Smooth(
     }
 
     val filteredLogoPainters = filteredLogoUrls.map { url ->
-        rememberAsyncImagePainter(model = url)
+        rememberAsyncImagePainter(model = url, imageLoader = channelLogoImageLoader)
     }
 
     val clockPainter = rememberVectorPainter(Icons.Default.Schedule)

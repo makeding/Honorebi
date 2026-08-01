@@ -49,6 +49,7 @@ import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.UiChannelState
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
 import com.beeregg2001.komorebi.ui.live.logoUrlFor
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -335,6 +336,7 @@ private fun CompactLiveProgramInfo(
     timeFormat: String = "24H"
 ) {
     val colors = KomorebiTheme.colors
+    val imageLoader = rememberChannelLogoImageLoader()
     val channel = uiState?.channel
     val present = channel?.programPresent
     val cachedLogoUrl = channel?.let {
@@ -380,6 +382,7 @@ private fun CompactLiveProgramInfo(
                 ) {
                     if (logoUrl.isNotBlank()) {
                         AsyncImage(
+                            imageLoader = imageLoader,
                             model = logoUrl,
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
@@ -481,6 +484,7 @@ fun HeroDashboard(
     timeFormat: String = "24H"
 ) {
     val colors = KomorebiTheme.colors
+    val imageLoader = rememberChannelLogoImageLoader()
     val present = uiState.channel.programPresent
     val following = uiState.channel.programFollowing
     val isHot = (uiState.jikkyoForce ?: 0) > 500
@@ -514,6 +518,7 @@ fun HeroDashboard(
     ) { state ->
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
+                imageLoader = imageLoader,
                 model = logoUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
@@ -544,6 +549,7 @@ fun HeroDashboard(
                             contentAlignment = Alignment.Center
                         ) {
                             AsyncImage(
+                                imageLoader = imageLoader,
                                 model = logoUrl,
                                 contentDescription = "Channel Logo",
                                 modifier = Modifier.fillMaxSize(),
@@ -719,6 +725,7 @@ fun CompactChannelCard(
     modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
+    val imageLoader = rememberChannelLogoImageLoader()
     var isFocused by remember { mutableStateOf(false) }
 
     val animatedScale by animateFloatAsState(
@@ -773,6 +780,7 @@ fun CompactChannelCard(
                 ) {
                     if (logoUrl.isNotBlank()) {
                         AsyncImage(
+                            imageLoader = imageLoader,
                             model = logoUrl,
                             contentDescription = uiState.name,
                             modifier = Modifier.fillMaxSize(),

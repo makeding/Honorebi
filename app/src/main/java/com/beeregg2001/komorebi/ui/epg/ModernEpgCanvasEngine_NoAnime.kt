@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import coil.compose.rememberAsyncImagePainter
 import com.beeregg2001.komorebi.data.model.EpgProgram
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.viewmodel.EpgUiState
 import com.beeregg2001.komorebi.ui.theme.NotoSansJP
 import java.time.Duration
@@ -60,6 +61,7 @@ fun ModernEpgCanvasEngine_NoAnime(
     restoreChannelId: String? = null,
     restoreProgramStartTime: String? = null
 ) {
+    val channelLogoImageLoader = rememberChannelLogoImageLoader()
     val lastSuccessData = remember { mutableStateOf<EpgUiState.Success?>(null) }
     if (uiState is EpgUiState.Success) { lastSuccessData.value = uiState }
     val displayData = lastSuccessData.value ?: return
@@ -83,7 +85,9 @@ fun ModernEpgCanvasEngine_NoAnime(
     val screenHeightPx = with(density) { config.screenHeightDp.dp.toPx() }
 
     val textMeasurer = rememberTextMeasurer()
-    val logoPainters = logoUrls.map { rememberAsyncImagePainter(model = it) }
+    val logoPainters = logoUrls.map {
+        rememberAsyncImagePainter(model = it, imageLoader = channelLogoImageLoader)
+    }
 
     // --- スタイル定義 ---
     val styles = remember {

@@ -27,6 +27,7 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -224,6 +225,7 @@ fun StatusOverlay(
     timeFormatSetting: String = "24H"
 ) {
     var currentTime by remember { mutableStateOf("") }
+    val imageLoader = rememberChannelLogoImageLoader()
 
     val displaySdf = remember(timeFormatSetting) {
         if (timeFormatSetting == "12H") SimpleDateFormat("a h:mm", Locale.getDefault())
@@ -251,6 +253,7 @@ fun StatusOverlay(
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
+                imageLoader = imageLoader,
                 model = logoUrl,
                 contentDescription = null,
                 modifier = Modifier
@@ -289,6 +292,7 @@ fun LiveOverlayUI(
     timeFormatSetting: String = "24H"
 ) {
     val program = channel.programPresent
+    val imageLoader = rememberChannelLogoImageLoader()
     val sdf = remember { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()) }
     val displaySdf = remember(timeFormatSetting) {
         if (timeFormatSetting == "12H") SimpleDateFormat("a h:mm", Locale.getDefault())
@@ -333,6 +337,7 @@ fun LiveOverlayUI(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 AsyncImage(
+                    imageLoader = imageLoader,
                     model = logoUrl,
                     contentDescription = null,
                     modifier = Modifier

@@ -17,17 +17,8 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
-    private var appImageLoader: ImageLoader? = null
-
-    // ★ 最新の WorkManager に合わせてプロパティとしてオーバーライドします
-    override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .build()
-
-    override fun newImageLoader(): ImageLoader {
-        appImageLoader?.let { return it }
-        return ImageLoader.Builder(this)
+    private val appImageLoader by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizeBytes(IMAGE_MEMORY_CACHE_SIZE_BYTES)
@@ -41,16 +32,32 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
             }
             .crossfade(true)
             .build()
-            .also { appImageLoader = it }
     }
 
-    @Suppress("DEPRECATION")
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_LOW) {
-            appImageLoader?.memoryCache?.clear()
-        }
+    val channelLogoImageLoader: ImageLoader by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        appImageLoader.newBuilder()
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizeBytes(CHANNEL_LOGO_MEMORY_CACHE_SIZE_BYTES)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve(CHANNEL_LOGO_CACHE_DIRECTORY))
+                    .maxSizeBytes(CHANNEL_LOGO_DISK_CACHE_SIZE_BYTES)
+                    .build()
+            }
+            .crossfade(false)
+            .build()
     }
+
+    // ★ 最新の WorkManager に合わせてプロパティとしてオーバーライドします
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
+
+    override fun newImageLoader(): ImageLoader = appImageLoader
 
     override fun onCreate() {
         super.onCreate()
@@ -63,5 +70,8 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
         const val IMAGE_CACHE_DIRECTORY = "image_cache"
         const val IMAGE_MEMORY_CACHE_SIZE_BYTES = 12 * 1024 * 1024
         const val IMAGE_DISK_CACHE_SIZE_BYTES = 32L * 1024 * 1024
+        const val CHANNEL_LOGO_CACHE_DIRECTORY = "channel_logo_cache"
+        const val CHANNEL_LOGO_MEMORY_CACHE_SIZE_BYTES = 4 * 1024 * 1024
+        const val CHANNEL_LOGO_DISK_CACHE_SIZE_BYTES = 24L * 1024 * 1024
     }
 }

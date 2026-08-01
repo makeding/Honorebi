@@ -33,6 +33,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -212,6 +213,7 @@ fun ChannelCardItem(
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
+    val imageLoader = rememberChannelLogoImageLoader()
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val imageRequest = remember(context, logoUrl) {
@@ -264,6 +266,7 @@ fun ChannelCardItem(
                 colors = SurfaceDefaults.colors(containerColor = Color.Transparent)
             ) {
                 AsyncImage(
+                    imageLoader = imageLoader,
                     model = imageRequest,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),

@@ -43,6 +43,7 @@ import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamSource
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -534,6 +535,7 @@ fun DualChannelInfoOverlay(
     modifier: Modifier = Modifier
 ) {
     var logoUrl by remember(channel.id) { mutableStateOf<String>("") }
+    val imageLoader = rememberChannelLogoImageLoader()
 
     LaunchedEffect(channel.id) {
         logoUrl = getLogoUrl(channel.id)
@@ -557,6 +559,7 @@ fun DualChannelInfoOverlay(
         verticalAlignment = Alignment.Bottom
     ) {
         coil.compose.AsyncImage(
+            imageLoader = imageLoader,
             model = logoUrl,
             contentDescription = null,
             modifier = Modifier

@@ -27,6 +27,7 @@ import coil.request.ImageRequest
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.viewmodel.UiSearchResultItem
 import com.beeregg2001.komorebi.data.util.EpgUtils
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -53,6 +54,7 @@ fun EpgSearchListItem(
 
     val inverseColor = if (colors.isDark) Color.Black else Color.White
     val context = LocalContext.current
+    val imageLoader = rememberChannelLogoImageLoader()
 
     val imageRequest = remember(logoUrl) {
         ImageRequest.Builder(context)
@@ -123,6 +125,7 @@ fun EpgSearchListItem(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
+                    imageLoader = imageLoader,
                     model = imageRequest,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),

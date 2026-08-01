@@ -27,6 +27,7 @@ fun ChannelLogo(
     backgroundColor: Color = Color.Transparent
 ) {
     val isKonomiMode = isKonomiTvMode(mirakurunIp)
+    val imageLoader = rememberChannelLogoImageLoader()
     // ★ 修正: 非同期でロゴURLを取得する
     var logoUrl by remember(channel.id) { mutableStateOf<String>("") }
     LaunchedEffect(channel.id) {
@@ -42,6 +43,7 @@ fun ChannelLogo(
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
+            imageLoader = imageLoader,
             model = ImageRequest.Builder(LocalContext.current)
                 .data(logoUrl)
                 // ★最適化: TVデバイスで激しい処理落ちを引き起こすcrossfadeを無効化
