@@ -7,195 +7,208 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.*
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
+import androidx.tv.material3.SurfaceDefaults
+import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.components.RecordedCard
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun ChannelListOverlay(
     groupedChannels: Map<String, List<Channel>>,
+    recentChannels: List<Channel>,
+    recentRecordings: List<RecordedProgram>,
+    backendType: String,
+    konomiIp: String,
+    konomiPort: String,
     currentChannelId: String,
     onChannelSelect: (Channel) -> Unit,
+    onRecordingSelect: (RecordedProgram) -> Unit,
     logoUrls: Map<String, String>,
-    shouldCropLogo: Boolean, // ★ 追加: クロップフラグ
+    shouldCropLogo: Boolean,
     focusRequester: FocusRequester
 ) {
     val colors = KomorebiTheme.colors
-
-    val allTabs = listOf("GR", "BS", "CS", "BS4K", "SKY")
-    val availableTabKeys = remember(groupedChannels) {
-        allTabs.filter { groupedChannels.containsKey(it) }
-    }
-
-    val currentChannelTab = remember(groupedChannels, availableTabKeys, currentChannelId) {
-        groupedChannels.entries.find { entry ->
-            entry.value.any { it.id == currentChannelId }
-        }?.key ?: availableTabKeys.firstOrNull() ?: ""
-    }
-
-    var selectedTab by remember { mutableStateOf(currentChannelTab) }
-    val currentChannels = groupedChannels[selectedTab] ?: emptyList()
-    val listState = rememberLazyListState()
-
-    val tabFocusRequesters = remember(availableTabKeys) {
-        availableTabKeys.associateWith { FocusRequester() }
-    }
-
-    val selectedTabIndex = availableTabKeys.indexOf(selectedTab).coerceAtLeast(0)
-
-    LaunchedEffect(currentChannelTab, currentChannelId) {
-        if (currentChannelTab.isNotBlank()) {
-            selectedTab = currentChannelTab
+    val channelTypeOrder = listOf("GR", "BS", "CS", "BS4K", "SKY")
+    val channelSections = remember(groupedChannels) {
+        channelTypeOrder.mapNotNull { type ->
+            groupedChannels[type]?.takeIf { it.isNotEmpty() }?.let { type to it }
         }
     }
-
-    LaunchedEffect(selectedTab, currentChannels, currentChannelId) {
-        if (currentChannels.isEmpty()) return@LaunchedEffect
-        val selectedIndex = currentChannels.indexOfFirst { it.id == currentChannelId }
-        listState.scrollToItem(selectedIndex.coerceAtLeast(0))
-        if (selectedTab == currentChannelTab) {
-            focusRequester.safeRequestFocusWithRetry(
-                tag = "ChannelSelectorFocus",
-                maxRetries = 8,
-                delayMillis = 40
-            )
+    val firstSection = remember(recentChannels, recentRecordings, channelSections) {
+        when {
+            recentChannels.isNotEmpty() -> "recent-channels"
+            recentRecordings.isNotEmpty() -> "recent-recordings"
+            else -> channelSections.firstOrNull()?.first
         }
     }
+    val columnState = rememberLazyListState()
 
-    Column(
+    LaunchedEffect(firstSection, currentChannelId) {
+        if (firstSection == null) return@LaunchedEffect
+        columnState.scrollToItem(0)
+        focusRequester.safeRequestFocusWithRetry(
+            tag = "ChannelBrowserFocus",
+            maxRetries = 8,
+            delayMillis = 40
+        )
+    }
+
+    LazyColumn(
+        state = columnState,
         modifier = Modifier
-            .fillMaxWidth()
-            .wrapContentHeight()
+            .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        colors.background.copy(alpha = 0.6f),
-                        colors.background.copy(alpha = 0.9f),
+                        Color.Black.copy(alpha = 0.78f),
+                        colors.background.copy(alpha = 0.96f),
                         colors.background
                     ),
                     startY = 0f,
-                    endY = 500f
+                    endY = 700f
                 )
-            )
-            .padding(bottom = 8.dp, top = 16.dp)
+            ),
+        contentPadding = PaddingValues(top = 28.dp, bottom = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            TabRow(
-                selectedTabIndex = selectedTabIndex,
-                modifier = Modifier.widthIn(max = 800.dp),
-                indicator = { tabPositions, doesTabRowHaveFocus ->
-                    TabRowDefaults.UnderlinedIndicator(
-                        currentTabPosition = tabPositions[selectedTabIndex],
-                        doesTabRowHaveFocus = doesTabRowHaveFocus,
-                        activeColor = Color.White
-                    )
-                }
-            ) {
-                availableTabKeys.forEachIndexed { index, tabKey ->
-                    val label = when (tabKey) {
-                        "GR" -> "地デジ"
-                        "BS" -> "BS"
-                        "CS" -> "CS"
-                        "BS4K" -> "BS4K"
-                        "SKY" -> "スカパー"
-                        else -> tabKey
+        if (recentChannels.isNotEmpty()) {
+            item(key = "recent-channels") {
+                ChannelSectionRow(
+                    title = "最近見たチャンネル",
+                    channels = recentChannels,
+                    currentChannelId = currentChannelId,
+                    logoUrls = logoUrls,
+                    shouldCropLogo = shouldCropLogo,
+                    onChannelSelect = onChannelSelect,
+                    initialFocusRequester = focusRequester.takeIf {
+                        firstSection == "recent-channels"
                     }
-
-                    val isSelected = selectedTab == tabKey
-                    val interactionSource = remember { MutableInteractionSource() }
-                    val isFocused by interactionSource.collectIsFocusedAsState()
-
-                    val requester = tabFocusRequesters[tabKey] ?: FocusRequester()
-
-                    Tab(
-                        selected = isSelected,
-                        onFocus = { selectedTab = tabKey },
-                        modifier = Modifier
-                            .focusRequester(requester)
-                            .focusProperties {
-                                down = FocusRequester.Default
-                            },
-                        interactionSource = interactionSource
-                    ) {
-                        Text(
-                            text = label,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSelected || isFocused) Color.White else Color.Gray
-                        )
-                    }
-                }
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        if (recentRecordings.isNotEmpty()) {
+            item(key = "recent-recordings") {
+                RecordingSectionRow(
+                    programs = recentRecordings,
+                    backendType = backendType,
+                    konomiIp = konomiIp,
+                    konomiPort = konomiPort,
+                    onRecordingSelect = onRecordingSelect,
+                    initialFocusRequester = focusRequester.takeIf {
+                        firstSection == "recent-recordings"
+                    }
+                )
+            }
+        }
 
+        items(channelSections, key = { it.first }) { (type, channels) ->
+            val label = when (type) {
+                "GR" -> "地デジ"
+                "SKY" -> "スカパー"
+                else -> type
+            }
+            ChannelSectionRow(
+                title = label,
+                channels = channels,
+                currentChannelId = currentChannelId,
+                logoUrls = logoUrls,
+                shouldCropLogo = shouldCropLogo,
+                onChannelSelect = onChannelSelect,
+                initialFocusRequester = focusRequester.takeIf { firstSection == type }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelSectionRow(
+    title: String,
+    channels: List<Channel>,
+    currentChannelId: String,
+    logoUrls: Map<String, String>,
+    shouldCropLogo: Boolean,
+    onChannelSelect: (Channel) -> Unit,
+    initialFocusRequester: FocusRequester?
+) {
+    val listState = rememberLazyListState()
+    val focusIndex = remember(channels, currentChannelId) {
+        channels.indexOfFirst { it.id == currentChannelId }.coerceAtLeast(0)
+    }
+
+    LaunchedEffect(focusIndex) {
+        if (focusIndex > 0) listState.scrollToItem(focusIndex)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SectionTitle(title)
         LazyRow(
             state = listState,
             contentPadding = PaddingValues(horizontal = 48.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(130.dp)
-                .onKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown && event.key == Key.Back) {
-                        tabFocusRequesters[selectedTab]?.requestFocus()
-                        return@onKeyEvent true
-                    }
-                    false
-                }
+                .height(100.dp)
         ) {
-            items(currentChannels, key = { it.id }) { channel ->
-                val isSelected = channel.id == currentChannelId
-                val shouldAttachMainRequester =
-                    isSelected || (currentChannels.none { it.id == currentChannelId } && channel == currentChannels.first())
-                val itemRequester =
-                    if (shouldAttachMainRequester) focusRequester else remember { FocusRequester() }
-
+            itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
                 ChannelCardItem(
                     channel = channel,
-                    isSelected = isSelected,
+                    isSelected = channel.id == currentChannelId,
                     logoUrl = logoUrls.logoUrlFor(channel),
-                    shouldCropLogo = shouldCropLogo, // ★ 修正: クロップフラグを渡す
+                    shouldCropLogo = shouldCropLogo,
                     onClick = { onChannelSelect(channel) },
-                    modifier = Modifier
-                        .focusRequester(itemRequester)
-                        .focusProperties {
-                            val currentTabRequester = tabFocusRequesters[selectedTab]
-                            if (currentTabRequester != null) {
-                                up = currentTabRequester
-                            }
+                    modifier = Modifier.then(
+                        if (initialFocusRequester != null && index == focusIndex) {
+                            Modifier.focusRequester(initialFocusRequester)
+                        } else {
+                            Modifier
                         }
+                    )
                 )
             }
         }
@@ -203,11 +216,65 @@ fun ChannelListOverlay(
 }
 
 @Composable
+private fun RecordingSectionRow(
+    programs: List<RecordedProgram>,
+    backendType: String,
+    konomiIp: String,
+    konomiPort: String,
+    onRecordingSelect: (RecordedProgram) -> Unit,
+    initialFocusRequester: FocusRequester?
+) {
+    val listState = rememberLazyListState()
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SectionTitle("最新の録画")
+        LazyRow(
+            state = listState,
+            contentPadding = PaddingValues(horizontal = 48.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(114.dp)
+        ) {
+            itemsIndexed(programs, key = { _, program -> program.id }) { index, program ->
+                RecordedCard(
+                    program = program,
+                    backendType = backendType,
+                    konomiIp = konomiIp,
+                    konomiPort = konomiPort,
+                    onClick = { onRecordingSelect(program) },
+                    modifier = Modifier.then(
+                        if (initialFocusRequester != null && index == 0) {
+                            Modifier.focusRequester(initialFocusRequester)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                    isScrolling = { listState.isScrollInProgress }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String) {
+    val colors = KomorebiTheme.colors
+    Text(
+        text = title,
+        modifier = Modifier.padding(start = 48.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = colors.textPrimary
+    )
+}
+
+@Composable
 fun ChannelCardItem(
     channel: Channel,
     isSelected: Boolean,
     logoUrl: String,
-    shouldCropLogo: Boolean, // ★ 追加: クロップフラグ
+    shouldCropLogo: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -270,7 +337,6 @@ fun ChannelCardItem(
                     model = imageRequest,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    // ★ 修正: フラグに基づいてスケールを変更
                     contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit
                 )
             }

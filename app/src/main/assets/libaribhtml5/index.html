@@ -93,6 +93,9 @@
           if (event.type === 'exited') {
             runtimeInstalled = false;
             pendingKeys.splice(0);
+            if (window.ARIBNative?.onApplicationExited) {
+              window.ARIBNative.onApplicationExited();
+            }
           }
           if (event.type === 'error' || event.type === 'frame-blocked' ||
               event.type === 'navigation-blocked') {
@@ -117,19 +120,27 @@
         '5': 53, '6': 54, '7': 55, '8': 56, '9': 57,
       };
 
-      function applyMetadata(payload) {
-        if (payload.programInfo?.start_time !== undefined) {
-          payload.programInfo.start_time = new Date(payload.programInfo.start_time);
+      function applyProgramInfo(programInfo) {
+        if (programInfo?.start_time !== undefined) {
+          programInfo.start_time = new Date(programInfo.start_time);
         }
-        if (payload.programInfo?.f_start_time !== undefined) {
-          payload.programInfo.f_start_time = new Date(payload.programInfo.f_start_time);
+        if (programInfo?.f_start_time !== undefined) {
+          programInfo.f_start_time = new Date(programInfo.f_start_time);
         }
-        if (payload.programInfo) host.setProgramInfo(payload.programInfo);
-        if (payload.broadcastClock) {
-          payload.broadcastClock.currentMediaTimeSeconds = () =>
+        if (programInfo) host.setProgramInfo(programInfo);
+      }
+
+      function applyBroadcastClock(broadcastClock) {
+        if (broadcastClock) {
+          broadcastClock.currentMediaTimeSeconds = () =>
             Number(window.ARIBNative?.currentMediaTimeSeconds?.() || 0);
-          host.setBroadcastClock(payload.broadcastClock);
+          host.setBroadcastClock(broadcastClock);
         }
+      }
+
+      function applyMetadata(payload) {
+        applyProgramInfo(payload.programInfo);
+        applyBroadcastClock(payload.broadcastClock);
       }
 
       window.KomorebiB60 = {
@@ -146,8 +157,12 @@
           host.loadApplication('/' + currentEntry);
           return true;
         },
-        updateMetadata(json) {
-          applyMetadata(JSON.parse(json));
+        updateProgramInfo(json) {
+          applyProgramInfo(JSON.parse(json));
+          return true;
+        },
+        updateBroadcastClock(json) {
+          applyBroadcastClock(JSON.parse(json));
           return true;
         },
         resourceChanged(path, updated) {

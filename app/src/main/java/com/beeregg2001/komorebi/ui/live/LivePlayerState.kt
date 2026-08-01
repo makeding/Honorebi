@@ -143,6 +143,7 @@ class LivePlayerState(
         onBackPressed: () -> Unit,
         isDataBroadcastingMode: Boolean = false,
         onDataBroadcastingBack: () -> Unit = {},
+        onDataBroadcastingBlank: () -> Unit = {},
         onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = {},
         onDataBroadcastingRemoteKey: (String) -> Unit = {}
     ): Boolean {
@@ -195,6 +196,7 @@ class LivePlayerState(
                     keyEvent = keyEvent,
                     scope = scope,
                     onDataBroadcastingBack = onDataBroadcastingBack,
+                    onDataBroadcastingBlank = onDataBroadcastingBlank,
                     onDataBroadcastingColorKey = onDataBroadcastingColorKey,
                     onDataBroadcastingRemoteKey = onDataBroadcastingRemoteKey
                 )
@@ -371,6 +373,13 @@ class LivePlayerState(
         isDataBroadcastingColorSelectorVisible = false
     }
 
+    fun resetDataBroadcastingInput() {
+        closeDataBroadcastingColorSelector()
+        cancelPendingDataBroadcastingBack()
+        backKeyDownTime = 0L
+        isBackKeyLongPressed = false
+    }
+
     fun selectDataBroadcastingColorKey(colorKey: DataBroadcastingColorKey) {
         selectedDataBroadcastingColorKey = colorKey
     }
@@ -387,6 +396,7 @@ class LivePlayerState(
         keyEvent: KeyEvent,
         scope: CoroutineScope,
         onDataBroadcastingBack: () -> Unit,
+        onDataBroadcastingBlank: () -> Unit,
         onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit,
         onDataBroadcastingRemoteKey: (String) -> Unit
     ): Boolean {
@@ -450,6 +460,9 @@ class LivePlayerState(
                     val elapsed = System.currentTimeMillis() - backKeyDownTime
                     if (!isBackKeyLongPressed && elapsed > DATA_BROADCASTING_BACK_LONG_PRESS_MS) {
                         isBackKeyLongPressed = true
+                        cancelPendingDataBroadcastingBack()
+                        isDataBroadcastingColorSelectorVisible = true
+                        selectedDataBroadcastingColorKey = DataBroadcastingColorKey.Blue
                     }
                 }
                 return true
@@ -457,7 +470,11 @@ class LivePlayerState(
             if (isActionUp) {
                 val elapsed = System.currentTimeMillis() - backKeyDownTime
                 if (!isBackKeyLongPressed && elapsed < DATA_BROADCASTING_BACK_LONG_PRESS_MS) {
-                    handleDataBroadcastingBackTap(scope, onDataBroadcastingBack)
+                    handleDataBroadcastingBackTap(
+                        scope,
+                        onDataBroadcastingBack,
+                        onDataBroadcastingBlank
+                    )
                 }
                 backKeyDownTime = 0L
                 isBackKeyLongPressed = false
@@ -508,14 +525,14 @@ class LivePlayerState(
 
     private fun handleDataBroadcastingBackTap(
         scope: CoroutineScope,
-        onDataBroadcastingBack: () -> Unit
+        onDataBroadcastingBack: () -> Unit,
+        onDataBroadcastingBlank: () -> Unit
     ) {
         val pendingJob = pendingDataBroadcastingBackJob
         if (pendingJob != null) {
             pendingJob.cancel()
             pendingDataBroadcastingBackJob = null
-            isDataBroadcastingColorSelectorVisible = true
-            selectedDataBroadcastingColorKey = DataBroadcastingColorKey.Blue
+            onDataBroadcastingBlank()
             return
         }
 

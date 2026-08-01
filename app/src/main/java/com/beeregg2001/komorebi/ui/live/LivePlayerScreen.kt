@@ -66,7 +66,6 @@ private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 16
 private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 4
 private const val LIVE_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
 private val LIVE_PROGRAM_INFO_SUBTITLE_OFFSET = 200.dp
-private val LIVE_CHANNEL_LIST_SUBTITLE_OFFSET = 220.dp
 
 private fun Modifier.b60MediaPlane(plane: B60MediaPlane): Modifier = layout { measurable, constraints ->
     val screenWidth = plane.screenWidth.takeIf { it > 0f } ?: 3840f
@@ -88,6 +87,16 @@ private fun Modifier.b60MediaPlane(plane: B60MediaPlane): Modifier = layout { me
         placeable.placeRelative(x, y)
     }
 }
+
+private val B60_INITIAL_MEDIA_PLANE = B60MediaPlane(
+    visible = true,
+    x = 864f,
+    y = 56f,
+    width = 2880f,
+    height = 1620f,
+    screenWidth = 3840f,
+    screenHeight = 2160f
+)
 
 private fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
     if (keyEvent.type != KeyEventType.KeyUp) return false
@@ -140,12 +149,17 @@ fun LivePlayerScreen(
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val baseballGroupedChannels by channelViewModel.baseballGroupedChannels.collectAsState()
+    val lastWatchedChannels by channelViewModel.lastWatchedChannels.collectAsState()
     val displayGroupedChannels =
         remember(groupedChannels, baseballGroupedChannels, isBaseballMode) {
             if (isBaseballMode) baseballGroupedChannels else groupedChannels
         }
     val displayFlatChannels =
         remember(displayGroupedChannels) { displayGroupedChannels.values.flatten() }
+    val displayLastWatchedChannels = remember(lastWatchedChannels, displayFlatChannels) {
+        val displayChannelsByUniqueId = displayFlatChannels.associateBy { it.uniqueId }
+        lastWatchedChannels.mapNotNull { displayChannelsByUniqueId[it.uniqueId] }
+    }
     val currentChannelItem by remember(channel.id, displayGroupedChannels) {
         derivedStateOf { displayFlatChannels.find { it.id == channel.id } ?: channel }
     }
@@ -154,6 +168,9 @@ fun LivePlayerScreen(
     val mirakurunPort by settingsViewModel.mirakurunPort.collectAsState()
     val edcbIp by settingsViewModel.edcbIp.collectAsState()
     val edcbPort by settingsViewModel.edcbPort.collectAsState()
+    val backendType by settingsViewModel.backendType.collectAsState()
+    val konomiIp by settingsViewModel.konomiIp.collectAsState()
+    val konomiPort by settingsViewModel.konomiPort.collectAsState()
 
     val availableSources by livePlayerViewModel.availableSources.collectAsState()
     val currentLogoUrl by livePlayerViewModel.currentLogoUrl.collectAsState()
@@ -271,6 +288,10 @@ fun LivePlayerScreen(
     var dataBroadcastingMediaPlane by remember(currentChannelItem.id) {
         mutableStateOf<B60MediaPlane?>(null)
     }
+    var isDataBroadcastingBlank by rememberSaveable(currentChannelItem.id) {
+        mutableStateOf(false)
+    }
+    var hasShownDataBroadcastingHint by rememberSaveable { mutableStateOf(false) }
 
     val mainError by livePlayerViewModel.mainPlayerError.collectAsState()
     val mainErrorIsCapabilityRelated by livePlayerViewModel.mainPlayerErrorIsCapabilityRelated.collectAsState()
@@ -305,6 +326,14 @@ fun LivePlayerScreen(
         onDataBroadcastingBack()
         dispatchDataBroadcastingRemoteKey("back")
     }
+    val exitLocalDataBroadcasting: () -> Unit = {
+        localDataBroadcastingMode = false
+        isDataBroadcastingBlank = false
+        dataBroadcastingRemoteCommand = null
+        dataBroadcastingMediaPlane = null
+        ps.resetDataBroadcastingInput()
+        onShowToast("データ放送を終了しました")
+    }
     val dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = { colorKey ->
         onDataBroadcastingColorKey(colorKey)
         dispatchDataBroadcastingRemoteKey(
@@ -321,8 +350,12 @@ fun LivePlayerScreen(
             !ps.isDualDisplayMode && isB60Channel
         ) {
             localDataBroadcastingMode = true
+            isDataBroadcastingBlank = false
             ps.closeDataBroadcastingColorSelector()
-            onShowToast("データ放送を開きます")
+            if (!hasShownDataBroadcastingHint) {
+                hasShownDataBroadcastingHint = true
+                onShowToast("データ放送中は戻るボタンを2回押すとテレビ画面へ戻れます")
+            }
         }
     }
 
@@ -678,13 +711,12 @@ fun LivePlayerScreen(
 
     val isUiVisible =
         isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
-    // Keep captions visible under lightweight overlays. Bottom overlays move only the caption
-    // regions that would overlap them, matching recorded playback's controls-safe behavior.
+    // Keep captions visible under lightweight overlays. The channel browser is a full-screen
+    // surface, so captions must not be drawn over its cards.
     val isSubtitleBlockingUiVisible =
-        ps.lCropMode != LCropMode.HIDDEN || (ps.isDualDisplayMode && isMiniListOpen)
+        ps.lCropMode != LCropMode.HIDDEN || isMiniListOpen
     val subtitleBottomAvoidanceOffset by animateDpAsState(
         targetValue = when {
-            isMiniListOpen && !ps.isDualDisplayMode -> LIVE_CHANNEL_LIST_SUBTITLE_OFFSET
             showOverlay -> LIVE_PROGRAM_INFO_SUBTITLE_OFFSET
             else -> 0.dp
         },
@@ -734,10 +766,9 @@ fun LivePlayerScreen(
                         !ps.isDualDisplayMode
                     ) {
                         openLocalDataBroadcasting()
+                    } else if (isDataBroadcastingActive) {
+                        dispatchDataBroadcastingRemoteKey("data")
                     }
-                    // Data broadcasting is a one-way "open" action. Consuming the key while
-                    // active prevents applications from navigating back to a transparent
-                    // startup page and looking as though the feature was closed.
                     return@onKeyEvent true
                 }
                 ps.handleKeyEvent(
@@ -760,8 +791,9 @@ fun LivePlayerScreen(
                     onShowToast = onShowToast,
                     onPiPRequested = onPiPRequested,
                     onBackPressed = onBackPressed,
-                    isDataBroadcastingMode = isDataBroadcastingActive,
+                    isDataBroadcastingMode = isDataBroadcastingActive && !isDataBroadcastingBlank,
                     onDataBroadcastingBack = dispatchDataBroadcastingBack,
+                    onDataBroadcastingBlank = { dispatchDataBroadcastingRemoteKey("data") },
                     onDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
                     onDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey
                 )
@@ -803,6 +835,8 @@ fun LivePlayerScreen(
                     },
                     onStatus = { status -> Log.d(TAG, "B60: $status") },
                     onMediaPlane = { dataBroadcastingMediaPlane = it },
+                    onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
+                    onApplicationExited = exitLocalDataBroadcasting,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f)
@@ -812,7 +846,16 @@ fun LivePlayerScreen(
             val mainPlayerModifier =
                 if (isDataBroadcastingActive) {
                     val plane = dataBroadcastingMediaPlane
-                    if (plane != null && plane.visible && plane.width > 0f && plane.height > 0f) {
+                    if (isDataBroadcastingBlank) {
+                        Modifier
+                            .fillMaxSize()
+                            .zIndex(2f)
+                    } else if (plane == null) {
+                        Modifier
+                            .fillMaxSize()
+                            .b60MediaPlane(B60_INITIAL_MEDIA_PLANE)
+                            .zIndex(2f)
+                    } else if (plane.visible && plane.width > 0f && plane.height > 0f) {
                         Modifier
                             .fillMaxSize()
                             .b60MediaPlane(plane)
@@ -1046,10 +1089,15 @@ fun LivePlayerScreen(
             exit = ExitTransition.None,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
+                .fillMaxSize()
         ) {
             ChannelListOverlay(
                 groupedChannels = displayGroupedChannels,
+                recentChannels = displayLastWatchedChannels,
+                recentRecordings = recentRecordings.take(10),
+                backendType = backendType,
+                konomiIp = konomiIp,
+                konomiPort = konomiPort,
                 currentChannelId = currentChannelItem.id,
                 onChannelSelect = { selectedChannel ->
                     if (!ps.isDualDisplayMode) onChannelSelect(selectedChannel) else {
@@ -1060,6 +1108,10 @@ fun LivePlayerScreen(
                     TAG
                 )
                 }
+                },
+                onRecordingSelect = { program ->
+                    onMiniListToggle(false)
+                    onChasePlaybackSelect(program)
                 },
                 logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,

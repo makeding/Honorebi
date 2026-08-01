@@ -28,6 +28,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationResource
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationStatus
+import com.beeregg2001.komorebi.util.mmts.B60BroadcastClock
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import com.beeregg2001.komorebi.util.mmts.B60EventInfo
 import kotlinx.coroutines.delay
@@ -64,7 +65,9 @@ data class B60MediaPlane(
 private class B60JavascriptBridge(
     private val currentMediaTimeSeconds: () -> Double,
     private val onStatus: (String) -> Unit,
-    private val onMediaPlane: (B60MediaPlane?) -> Unit
+    private val onMediaPlane: (B60MediaPlane?) -> Unit,
+    private val onBlankModeChanged: (Boolean) -> Unit,
+    private val onApplicationExited: () -> Unit
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -80,6 +83,10 @@ private class B60JavascriptBridge(
     @JavascriptInterface
     fun onUrlChanged(value: String) {
         Log.d(TAG, "B60 URL: $value")
+        val isBlank = runCatching {
+            Uri.parse(value).pathSegments.any { it.equals("startup", ignoreCase = true) }
+        }.getOrDefault(false)
+        mainHandler.post { onBlankModeChanged.invoke(isBlank) }
     }
 
     @JavascriptInterface
@@ -108,6 +115,12 @@ private class B60JavascriptBridge(
     }
 
     @JavascriptInterface
+    fun onApplicationExited() {
+        Log.d(TAG, "B60 application exited")
+        mainHandler.post { onApplicationExited.invoke() }
+    }
+
+    @JavascriptInterface
     fun openProgramGuide(@Suppress("UNUSED_PARAMETER") request: String): Boolean = false
 }
 
@@ -121,6 +134,8 @@ fun DataBroadcastingWebViewOverlay(
     onRemoteCommandConsumed: (Long) -> Unit,
     onStatus: (String) -> Unit,
     onMediaPlane: (B60MediaPlane?) -> Unit,
+    onBlankModeChanged: (Boolean) -> Unit,
+    onApplicationExited: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
@@ -167,7 +182,9 @@ fun DataBroadcastingWebViewOverlay(
                             cachedCurrentMediaTimeMillis.get() / 1000.0
                         },
                         onStatus = onStatus,
-                        onMediaPlane = onMediaPlane
+                        onMediaPlane = onMediaPlane,
+                        onBlankModeChanged = onBlankModeChanged,
+                        onApplicationExited = onApplicationExited
                     ),
                     "ARIBNative"
                 )
@@ -213,12 +230,24 @@ fun DataBroadcastingWebViewOverlay(
         )
     }
 
-    LaunchedEffect(shellReady, session.broadcastClock, session.presentEvent, session.followingEvent) {
+    LaunchedEffect(shellReady, session.presentEvent, session.followingEvent) {
         if (!shellReady || !session.entryReady) return@LaunchedEffect
         val webView = webViewRef.value ?: return@LaunchedEffect
-        val payload = buildStartPayload(session, channel)
+        val programInfo = buildProgramInfo(session, channel)
         webView.evaluateJavascript(
-            "window.KomorebiB60?.updateMetadata?.(${JSONObject.quote(payload.toString())})",
+            "window.KomorebiB60?.updateProgramInfo?.(" +
+                "${JSONObject.quote(programInfo.toString())})",
+            null
+        )
+    }
+
+    LaunchedEffect(shellReady, session.broadcastClock) {
+        if (!shellReady || !session.entryReady) return@LaunchedEffect
+        val webView = webViewRef.value ?: return@LaunchedEffect
+        val clock = session.broadcastClock?.let(::buildBroadcastClock) ?: return@LaunchedEffect
+        webView.evaluateJavascript(
+            "window.KomorebiB60?.updateBroadcastClock?.(" +
+                "${JSONObject.quote(clock.toString())})",
             null
         )
     }
@@ -385,26 +414,24 @@ private fun buildStartPayload(status: B60ApplicationStatus, channel: Channel): J
             status.entryPath.orEmpty().split('/').any { it.equals("startup", ignoreCase = true) }
         )
         put("programInfo", buildProgramInfo(status, channel))
-        status.broadcastClock?.let { clock ->
-            if (clock.broadcastTimeTimescale > 0L && clock.mediaTimeTimescale > 0L) {
-                val ntpMilliseconds = clock.broadcastTimeValue.toDouble() * 1000.0 /
-                    clock.broadcastTimeTimescale.toDouble()
-                put(
-                    "broadcastClock",
-                    JSONObject().apply {
-                        put(
-                            "epochMilliseconds",
-                            (ntpMilliseconds - NTP_UNIX_EPOCH_OFFSET_SECONDS * 1000.0).roundToLong()
-                        )
-                        put(
-                            "mediaTimeSeconds",
-                            clock.mediaTimeValue.toDouble() / clock.mediaTimeTimescale.toDouble()
-                        )
-                    }
-                )
-            }
-        }
+        status.broadcastClock?.let(::buildBroadcastClock)?.let { put("broadcastClock", it) }
     }
+
+private fun buildBroadcastClock(clock: B60BroadcastClock): JSONObject? {
+    if (clock.broadcastTimeTimescale <= 0L || clock.mediaTimeTimescale <= 0L) return null
+    val ntpMilliseconds = clock.broadcastTimeValue.toDouble() * 1000.0 /
+        clock.broadcastTimeTimescale.toDouble()
+    return JSONObject().apply {
+        put(
+            "epochMilliseconds",
+            (ntpMilliseconds - NTP_UNIX_EPOCH_OFFSET_SECONDS * 1000.0).roundToLong()
+        )
+        put(
+            "mediaTimeSeconds",
+            clock.mediaTimeValue.toDouble() / clock.mediaTimeTimescale.toDouble()
+        )
+    }
+}
 
 private fun buildProgramInfo(status: B60ApplicationStatus, channel: Channel): JSONObject {
     val present = status.presentEvent

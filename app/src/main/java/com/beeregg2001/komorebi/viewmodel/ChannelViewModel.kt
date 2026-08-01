@@ -28,6 +28,37 @@ class ChannelViewModel @Inject constructor(
 
     val groupedChannels: StateFlow<Map<String, List<Channel>>> = appContentStore.groupedChannels
 
+    /**
+     * Recently watched stations in history order, enriched with the current EPG data whenever
+     * the station is still present in the live channel catalogue.
+     */
+    val lastWatchedChannels: StateFlow<List<Channel>> =
+        combine(watchHistoryRepository.getLastChannels(), groupedChannels) { history, grouped ->
+            val liveChannels = grouped.values.flatten()
+            history.map { entity ->
+                liveChannels.firstOrNull { channel ->
+                    channel.networkId == entity.networkId && channel.serviceId == entity.serviceId
+                } ?: Channel(
+                    id = entity.channelId,
+                    displayChannelId = entity.channelId,
+                    name = entity.name,
+                    channelNumber = entity.channelNumber.orEmpty(),
+                    networkId = entity.networkId,
+                    serviceId = entity.serviceId,
+                    type = entity.type,
+                    isWatchable = true,
+                    isDisplay = true,
+                    programPresent = null,
+                    programFollowing = null,
+                    remocon_Id = 0
+                )
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     private val baseballKeywords = listOf(
         "阪神", "タイガース", "広島", "カープ", "DeNA", "ベイスターズ",
         "巨人", "ジャイアンツ", "ヤクルト", "スワローズ", "中日", "ドラゴンズ",

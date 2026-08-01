@@ -26,11 +26,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
@@ -332,7 +334,7 @@ fun LiveTopSubMenuUI(
                     if (isDataBroadcastingAvailable) {
                         LiveMenuTileItem(
                             title = "データ放送",
-                            icon = Icons.Default.Language,
+                            icon = ImageVector.vectorResource(R.drawable.ic_data_broadcasting),
                             subtitle = "開く",
                             onClick = onDataBroadcastingToggle,
                             modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
