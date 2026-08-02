@@ -4,12 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
-    <uses-permission android:name="android.permission.MANAGE_DEVICE_POLICY_LOCK_TASK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="com.mediatek.permission.AirPlay.BroadCast" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
@@ -18,8 +14,6 @@
         android:required="false" />
 
     <queries>
-        <package android:name="com.google.android.apps.tv.launcherx" />
-        <package android:name="com.mediatek.airplaydaemon" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
@@ -81,81 +75,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-
-        <!--
-            Android 13+ Device Policy Management role qualification requires
-            handlers for all three provisioning delegation actions. Honorebi
-            does not provision devices, so these protected stubs cancel any
-            unexpected provisioning request.
-        -->
-        <activity
-            android:name=".TrustedSourceProvisioningStubActivity"
-            android:exported="true"
-            android:permission="android.permission.LAUNCH_DEVICE_MANAGER_SETUP"
-            android:theme="@style/Theme_Komorebi_Starting">
-            <intent-filter>
-                <action android:name="android.app.action.ROLE_HOLDER_PROVISION_MANAGED_DEVICE_FROM_TRUSTED_SOURCE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-        <activity
-            android:name=".ManagedProfileProvisioningStubActivity"
-            android:exported="true"
-            android:permission="android.permission.LAUNCH_DEVICE_MANAGER_SETUP"
-            android:theme="@style/Theme_Komorebi_Starting">
-            <intent-filter>
-                <action android:name="android.app.action.ROLE_HOLDER_PROVISION_MANAGED_PROFILE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-        <activity
-            android:name=".ProvisioningFinalizationStubActivity"
-            android:exported="true"
-            android:permission="android.permission.LAUNCH_DEVICE_MANAGER_SETUP"
-            android:theme="@style/Theme_Komorebi_Starting">
-            <intent-filter>
-                <action android:name="android.app.action.ROLE_HOLDER_PROVISION_FINALIZATION" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <receiver
-            android:name=".HonorebiDeviceAdminReceiver"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
-            <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/device_admin_receiver" />
-            <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".AirPlayStartupRepairReceiver"
-            android:directBootAware="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="com.beeregg2001.Honorebi.action.REPAIR_AIRPLAY" />
-            </intent-filter>
-        </receiver>
-
-        <service
-            android:name=".LauncherGuardAccessibilityService"
-            android:description="@string/launcher_guard_description"
-            android:exported="true"
-            android:label="@string/launcher_guard_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/launcher_guard_accessibility_service" />
-        </service>
     </application>
 
 </manifest>
