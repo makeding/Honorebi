@@ -216,16 +216,6 @@ fun LivePlayerScreen(
         if (displayFlatChannels.size <= 1 || currentChannelIndex < 0) null
         else displayFlatChannels[(currentChannelIndex + 1) % displayFlatChannels.size]
     }
-    SystemMediaSession(
-        player = mainPlayer,
-        title = currentChannelItem.programPresent?.title ?: currentChannelItem.name,
-        subtitle = currentChannelItem.name,
-        artworkUrl = sharedCurrentLogoUrl,
-        mediaType = MediaMetadata.MEDIA_TYPE_TV_CHANNEL,
-        onPrevious = previousChannel?.let { target -> { onChannelSelect(target) } },
-        onNext = nextChannel?.let { target -> { onChannelSelect(target) } },
-        onStop = onBackPressed
-    )
     val activeSubtitleLanguages = if (ps.isDualDisplayMode && ps.activeDualPlayerIndex == 1) {
         dualSubtitleLanguages
     } else {
@@ -471,6 +461,20 @@ fun LivePlayerScreen(
         isDualBuffering = dualPlayer?.playbackState == Player.STATE_BUFFERING
         onDispose { dualPlayer?.removeListener(listener) }
     }
+
+    SystemMediaSession(
+        player = mainPlayer,
+        title = currentChannelItem.programPresent?.title ?: currentChannelItem.name,
+        subtitle = currentChannelItem.name,
+        artworkUrl = sharedCurrentLogoUrl,
+        mediaType = MediaMetadata.MEDIA_TYPE_TV_CHANNEL,
+        isLoading = currentChannelItem.id != lastChannelIdForSwitchHint ||
+            !hasMainRenderedFirstFrame ||
+            isMainBuffering,
+        onPrevious = previousChannel?.let { target -> { onChannelSelect(target) } },
+        onNext = nextChannel?.let { target -> { onChannelSelect(target) } },
+        onStop = onBackPressed
+    )
 
     DisposableEffect(Unit) {
         channelViewModel.setPollingPaused(true)

@@ -1281,6 +1281,7 @@ fun VideoPlayerScreen(
         subtitle = currentProgram.channel?.name,
         artworkUrl = systemArtworkUrl,
         mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW,
+        isLoading = isBuffering,
         onPrevious = previousSeriesProgram?.let { target -> { onProgramSelect(target) } },
         onNext = nextSeriesProgram?.let { target -> { onProgramSelect(target) } },
         onStop = onBackPressed

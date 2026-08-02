@@ -43,6 +43,7 @@ fun SystemMediaSession(
     subtitle: String? = null,
     artworkUrl: String? = null,
     mediaType: Int = MediaMetadata.MEDIA_TYPE_VIDEO,
+    isLoading: Boolean = player == null,
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
     onStop: (() -> Unit)? = null
@@ -78,11 +79,12 @@ fun SystemMediaSession(
             .build()
     }
 
-    DisposableEffect(player, metadata, hasPrevious, hasNext) {
-        if (player == null) {
-            if (!hasPrevious && !hasNext) {
-                return@DisposableEffect onDispose { }
-            }
+    DisposableEffect(player, metadata, hasPrevious, hasNext, isLoading) {
+        if (player == null || isLoading) {
+            val transitionActions =
+                PlaybackState.ACTION_STOP or
+                    (if (hasPrevious) PlaybackState.ACTION_SKIP_TO_PREVIOUS else 0L) or
+                    (if (hasNext) PlaybackState.ACTION_SKIP_TO_NEXT else 0L)
             val transitionSession = PlatformMediaSession(context, "HonorebiSwitching").apply {
                 setCallback(object : PlatformMediaSession.Callback() {
                     override fun onSkipToPrevious() = currentOnPrevious.value?.invoke() ?: Unit
@@ -93,11 +95,7 @@ fun SystemMediaSession(
                 })
                 setPlaybackState(
                     PlaybackState.Builder()
-                        .setActions(
-                            PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                                PlaybackState.ACTION_SKIP_TO_NEXT or
-                                PlaybackState.ACTION_STOP
-                        )
+                        .setActions(transitionActions)
                         .setState(PlaybackState.STATE_BUFFERING, 0L, 0f)
                         .build()
                 )
