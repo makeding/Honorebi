@@ -53,10 +53,26 @@ struct CaptionRegionGeometry {
     int height;
 };
 
-struct RenderedB62Caption {
-    aribcaption::RenderResult result;
-    std::vector<CaptionRegionGeometry> regions;
-};
+constexpr size_t MAX_B62_BITMAP_BYTES_PER_CUE =
+    static_cast<size_t>(ARIBCC_RENDER_FRAME_WIDTH) *
+    static_cast<size_t>(ARIBCC_RENDER_FRAME_HEIGHT) * 4;
+
+bool isB62RenderResultWithinBudget(const aribcaption::RenderResult& result) {
+    size_t total = 0;
+    for (const aribcaption::Image& image : result.images) {
+        if (image.width <= 0 || image.height <= 0 ||
+            image.width > ARIBCC_RENDER_FRAME_WIDTH ||
+            image.height > ARIBCC_RENDER_FRAME_HEIGHT ||
+            image.stride < image.width * 4) {
+            return false;
+        }
+        if (image.bitmap.size() > MAX_B62_BITMAP_BYTES_PER_CUE - total) {
+            return false;
+        }
+        total += image.bitmap.size();
+    }
+    return true;
+}
 
 std::vector<CaptionRegionGeometry> mapCaptionContentBoundsToRenderFrame(
     aribcaption::Caption& caption
@@ -1086,7 +1102,7 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     jbyte* bytes = env->GetByteArrayElements(data, nullptr);
     if (!bytes) return env->NewObjectArray(0, cueClass, nullptr);
 
-    std::vector<RenderedB62Caption> rendered;
+    std::vector<jobject> cues;
     try {
         std::lock_guard<std::mutex> lock(ctx->mutex);
         aribcaption::B62DecodeResult decoded;
@@ -1131,49 +1147,53 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
         if (status == aribcaption::B62DecodeStatus::kGotCaption) {
             ctx->b62Renderer->Flush();
             for (aribcaption::Caption& caption : decoded.captions) {
+                aribcaption::RenderResult result;
+                std::vector<CaptionRegionGeometry> regions;
                 if (caption.regions.empty()) {
-                    aribcaption::RenderResult result;
                     result.pts = caption.pts;
                     result.duration = caption.wait_duration;
-                    rendered.push_back({std::move(result), {}});
-                    continue;
+                } else {
+                    regions = mapCaptionContentBoundsToRenderFrame(caption);
+                    const int64_t renderPts = caption.pts == aribcaption::PTS_NOPTS
+                        ? static_cast<int64_t>(ptsMs)
+                        : caption.pts;
+                    if (!ctx->b62Renderer->AppendCaption(std::move(caption))) continue;
+                    const auto renderStatus = ctx->b62Renderer->Render(renderPts, result);
+                    if (renderStatus != aribcaption::RenderStatus::kGotImage &&
+                        renderStatus != aribcaption::RenderStatus::kGotImageUnchanged) {
+                        continue;
+                    }
+                    // The renderer is configured to merge regions, so one cue must never
+                    // retain more RGBA storage than a complete 1080p frame. Reject malformed
+                    // or unexpectedly large results before allocating the Java Bitmap copy.
+                    if (!isB62RenderResultWithinBudget(result)) continue;
                 }
-                auto regions = mapCaptionContentBoundsToRenderFrame(caption);
-                const int64_t renderPts = caption.pts == aribcaption::PTS_NOPTS
-                    ? static_cast<int64_t>(ptsMs)
-                    : caption.pts;
-                if (!ctx->b62Renderer->AppendCaption(std::move(caption))) continue;
-                aribcaption::RenderResult result;
-                const auto renderStatus = ctx->b62Renderer->Render(renderPts, result);
-                if (renderStatus == aribcaption::RenderStatus::kGotImage ||
-                    renderStatus == aribcaption::RenderStatus::kGotImageUnchanged) {
-                    rendered.push_back({std::move(result), std::move(regions)});
-                }
+
+                // Convert one result at a time. Keeping every native RenderResult until the
+                // whole document finished temporarily retained all RGBA buffers alongside
+                // their Java Bitmaps, which amplified memory peaks on low-memory TVs.
+                jobject cue = renderB62ResultToCue(env, result, ptsMs, &regions);
+                if (cue != nullptr) cues.push_back(cue);
             }
         }
     } catch (...) {
-        // Native allocations are allowed to fail on low-memory TVs. Drop this subtitle
-        // document and reset the renderer instead of letting an exception cross JNI.
-        rendered.clear();
+        // Komorebi is built with exceptions enabled, so allocations made by ordinary STL
+        // containers can still fail here. Keep that application-level policy out of
+        // libaribcaption's allocator and drop this expendable subtitle document at JNI.
+        for (jobject cue : cues) env->DeleteLocalRef(cue);
+        cues.clear();
         std::lock_guard<std::mutex> lock(ctx->mutex);
         ctx->b62Renderer->Flush();
     }
     env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
 
-    jobjectArray cues = env->NewObjectArray(static_cast<jsize>(rendered.size()), cueClass, nullptr);
-    for (size_t index = 0; index < rendered.size(); ++index) {
-        jobject cue = renderB62ResultToCue(
-            env,
-            rendered[index].result,
-            ptsMs,
-            &rendered[index].regions);
-        if (cue != nullptr) {
-            env->SetObjectArrayElement(cues, static_cast<jsize>(index), cue);
-            env->DeleteLocalRef(cue);
-        }
+    jobjectArray result = env->NewObjectArray(static_cast<jsize>(cues.size()), cueClass, nullptr);
+    for (size_t index = 0; index < cues.size(); ++index) {
+        env->SetObjectArrayElement(result, static_cast<jsize>(index), cues[index]);
+        env->DeleteLocalRef(cues[index]);
     }
     env->DeleteLocalRef(cueClass);
-    return cues;
+    return result;
 }
 
 JNIEXPORT jintArray JNICALL
