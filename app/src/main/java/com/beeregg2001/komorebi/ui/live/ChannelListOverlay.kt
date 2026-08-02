@@ -29,7 +29,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +39,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +63,7 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.RecordedCard
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import kotlinx.coroutines.delay
 
 @Composable
 fun ChannelListOverlay(
@@ -79,17 +87,22 @@ fun ChannelListOverlay(
             groupedChannels[type]?.takeIf { it.isNotEmpty() }?.let { type to it }
         }
     }
-    val firstSection = remember(recentChannels, recentRecordings, channelSections) {
-        when {
-            recentChannels.isNotEmpty() -> "recent-channels"
-            recentRecordings.isNotEmpty() -> "recent-recordings"
-            else -> channelSections.firstOrNull()?.first
+    val sectionKeys = remember(recentChannels, recentRecordings, channelSections) {
+        buildList {
+            if (recentChannels.isNotEmpty()) add("recent-channels")
+            if (recentRecordings.isNotEmpty()) add("recent-recordings")
+            addAll(channelSections.map { it.first })
         }
     }
+    val firstSection = sectionKeys.firstOrNull()
+    val secondSection = sectionKeys.getOrNull(1)
     val columnState = rememberLazyListState()
+    val secondSectionFocusRequester = remember { FocusRequester() }
+    var isTwoRowsVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(firstSection, currentChannelId) {
         if (firstSection == null) return@LaunchedEffect
+        isTwoRowsVisible = false
         columnState.scrollToItem(0)
         focusRequester.safeRequestFocusWithRetry(
             tag = "ChannelBrowserFocus",
@@ -98,70 +111,109 @@ fun ChannelListOverlay(
         )
     }
 
-    LazyColumn(
-        state = columnState,
+    LaunchedEffect(isTwoRowsVisible, secondSection) {
+        if (isTwoRowsVisible && secondSection != null) {
+            delay(60)
+            secondSectionFocusRequester.safeRequestFocusWithRetry(
+                tag = "ChannelBrowserSecondRowFocus",
+                maxRetries = 5,
+                delayMillis = 40
+            )
+        }
+    }
+
+    Box(
         modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.78f),
-                        colors.background.copy(alpha = 0.96f),
-                        colors.background
-                    ),
-                    startY = 0f,
-                    endY = 700f
-                )
-            ),
-        contentPadding = PaddingValues(top = 28.dp, bottom = 36.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .fillMaxSize(),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        if (recentChannels.isNotEmpty()) {
-            item(key = "recent-channels") {
+        LazyColumn(
+            state = columnState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (isTwoRowsVisible) 336.dp else 180.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.78f),
+                            colors.background.copy(alpha = 0.96f),
+                            colors.background
+                        ),
+                        startY = 0f,
+                        endY = 700f
+                    )
+                )
+                .onPreviewKeyEvent { event ->
+                    if (
+                        event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionDown &&
+                        !isTwoRowsVisible &&
+                        secondSection != null
+                    ) {
+                        isTwoRowsVisible = true
+                        true
+                    } else {
+                        false
+                    }
+                },
+            contentPadding = PaddingValues(top = 28.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (recentChannels.isNotEmpty()) {
+                item(key = "recent-channels") {
+                    ChannelSectionRow(
+                        title = "最近見たチャンネル",
+                        channels = recentChannels,
+                        currentChannelId = currentChannelId,
+                        logoUrls = logoUrls,
+                        shouldCropLogo = shouldCropLogo,
+                        onChannelSelect = onChannelSelect,
+                        initialFocusRequester = when ("recent-channels") {
+                            firstSection -> focusRequester
+                            secondSection -> secondSectionFocusRequester
+                            else -> null
+                        }
+                    )
+                }
+            }
+
+            if (recentRecordings.isNotEmpty()) {
+                item(key = "recent-recordings") {
+                    RecordingSectionRow(
+                        programs = recentRecordings,
+                        backendType = backendType,
+                        konomiIp = konomiIp,
+                        konomiPort = konomiPort,
+                        onRecordingSelect = onRecordingSelect,
+                        initialFocusRequester = when ("recent-recordings") {
+                            firstSection -> focusRequester
+                            secondSection -> secondSectionFocusRequester
+                            else -> null
+                        }
+                    )
+                }
+            }
+
+            items(channelSections, key = { it.first }) { (type, channels) ->
+                val label = when (type) {
+                    "GR" -> "地デジ"
+                    "SKY" -> "スカパー"
+                    else -> type
+                }
                 ChannelSectionRow(
-                    title = "最近見たチャンネル",
-                    channels = recentChannels,
+                    title = label,
+                    channels = channels,
                     currentChannelId = currentChannelId,
                     logoUrls = logoUrls,
                     shouldCropLogo = shouldCropLogo,
                     onChannelSelect = onChannelSelect,
-                    initialFocusRequester = focusRequester.takeIf {
-                        firstSection == "recent-channels"
+                    initialFocusRequester = when (type) {
+                        firstSection -> focusRequester
+                        secondSection -> secondSectionFocusRequester
+                        else -> null
                     }
                 )
             }
-        }
-
-        if (recentRecordings.isNotEmpty()) {
-            item(key = "recent-recordings") {
-                RecordingSectionRow(
-                    programs = recentRecordings,
-                    backendType = backendType,
-                    konomiIp = konomiIp,
-                    konomiPort = konomiPort,
-                    onRecordingSelect = onRecordingSelect,
-                    initialFocusRequester = focusRequester.takeIf {
-                        firstSection == "recent-recordings"
-                    }
-                )
-            }
-        }
-
-        items(channelSections, key = { it.first }) { (type, channels) ->
-            val label = when (type) {
-                "GR" -> "地デジ"
-                "SKY" -> "スカパー"
-                else -> type
-            }
-            ChannelSectionRow(
-                title = label,
-                channels = channels,
-                currentChannelId = currentChannelId,
-                logoUrls = logoUrls,
-                shouldCropLogo = shouldCropLogo,
-                onChannelSelect = onChannelSelect,
-                initialFocusRequester = focusRequester.takeIf { firstSection == type }
-            )
         }
     }
 }

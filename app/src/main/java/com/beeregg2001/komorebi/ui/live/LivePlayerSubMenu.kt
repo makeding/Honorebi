@@ -93,6 +93,7 @@ fun LiveTopSubMenuUI(
     var selectedCategory by remember { mutableStateOf<LiveSubMenuCategory?>(null) }
     val listFocusRequester = remember { FocusRequester() }
     val quickChannelButtonRequester = remember { FocusRequester() }
+    val audioButtonRequester = remember { FocusRequester() }
     val mainQualityButtonRequester = remember { FocusRequester() }
     val mainSourceButtonRequester = remember { FocusRequester() }
 
@@ -119,14 +120,22 @@ fun LiveTopSubMenuUI(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isDualDisplayMode) {
         delay(50)
         try {
-            quickChannelButtonRequester.requestFocus()
+            if (isDualDisplayMode) {
+                quickChannelButtonRequester.requestFocus()
+            } else {
+                audioButtonRequester.requestFocus()
+            }
         } catch (e: Exception) {
             try {
-                focusRequester.requestFocus()
+                quickChannelButtonRequester.requestFocus()
             } catch (e: Exception) {
+                try {
+                    focusRequester.requestFocus()
+                } catch (e: Exception) {
+                }
             }
         }
     }
@@ -322,7 +331,9 @@ fun LiveTopSubMenuUI(
                         title = "音声切替", icon = Icons.Default.Audiotrack,
                         subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
                         onClick = onAudioToggle,
-                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        modifier = Modifier
+                            .focusRequester(audioButtonRequester)
+                            .focusProperties { down = FocusRequester.Cancel },
                         contentColor = colors.textPrimary
                     )
 
