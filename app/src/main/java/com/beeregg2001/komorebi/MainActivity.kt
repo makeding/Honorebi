@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
         setTheme(R.style.Theme_Komorebi)
         super.onCreate(savedInstanceState)
 
+        AirPlayStartupRepairManager.repair(this)
         handleDevicePolicyIntent(intent)
 
         // OS互換性のチェック (Android 8.0 API 26 以上が必要)
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        AirPlayStartupRepairManager.repair(this)
         handleDevicePolicyIntent(intent)
         if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
             homeIntentVersion++
