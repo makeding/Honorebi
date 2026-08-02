@@ -301,8 +301,7 @@ private fun RecordingSectionRow(
                         } else {
                             Modifier
                         }
-                    ),
-                    isScrolling = { listState.isScrollInProgress }
+                    )
                 )
             }
         }
