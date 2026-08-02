@@ -104,6 +104,10 @@ fun SystemMediaSession(
                         .putString(PlatformMediaMetadata.METADATA_KEY_TITLE, title)
                         .putString(PlatformMediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
                         .putString(
+                            PlatformMediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE,
+                            subtitle?.takeIf { it.isNotBlank() }
+                        )
+                        .putString(
                             PlatformMediaMetadata.METADATA_KEY_ARTIST,
                             subtitle?.takeIf { it.isNotBlank() }
                         )
