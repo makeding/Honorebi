@@ -39,7 +39,6 @@ class NativeLib {
         referenceStartPtsMs: Long,
         discontinuity: Boolean
     ): Array<NativeCaptionCue>
-    external fun setB62CaptionFontScale(handle: Long, scale: Float)
     external fun getCaptionLanguageCodes(handle: Long): IntArray
     external fun switchCaptionLanguage(handle: Long, languageId: Int)
     external fun flushCaptionDecoder(handle: Long)

@@ -25,6 +25,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Color
@@ -45,6 +46,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.model.Program
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
@@ -55,12 +57,23 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedChannel
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.media.SystemMediaSession
+import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.live.B60_INITIAL_MEDIA_PLANE
+import com.beeregg2001.komorebi.ui.live.B60MediaPlane
+import com.beeregg2001.komorebi.ui.live.DataBroadcastingColorKey
+import com.beeregg2001.komorebi.ui.live.DataBroadcastingColorSelectorOverlay
+import com.beeregg2001.komorebi.ui.live.DataBroadcastingRemoteCommand
+import com.beeregg2001.komorebi.ui.live.DataBroadcastingWebViewOverlay
+import com.beeregg2001.komorebi.ui.live.b60MediaPlane
+import com.beeregg2001.komorebi.ui.live.isDataBroadcastingToggleKeyEvent
+import com.beeregg2001.komorebi.ui.live.rememberLivePlayerState
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TitleNormalizer
+import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel as CommentChannel
 import kotlinx.coroutines.Job
@@ -149,6 +162,7 @@ fun VideoPlayerScreen(
     val availableQualities by videoPlayerViewModel.availableQualities.collectAsState()
     val isQualitiesLoaded by videoPlayerViewModel.isQualitiesLoaded.collectAsState()
     val quickVideoCandidates by videoPlayerViewModel.quickVideoCandidates.collectAsState()
+    val hdrRenderMode by videoPlayerViewModel.hdrRenderMode.collectAsState()
     val currentVideoQualityStr by settingsViewModel.videoQuality.collectAsState()
     val preferOriginalMpegTs by settingsViewModel.preferOriginalMpegTs.collectAsState()
 
@@ -189,9 +203,80 @@ fun VideoPlayerScreen(
     }
     var playbackDurationMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
     var bufferedPositionMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
+    var hdrModeResumePositionMs by remember(currentProgram.id) {
+        mutableStateOf<Long?>(null)
+    }
     val requiresRawMmtsPlayback = currentProgram.requiresRawMmtsPlayback
+    val isHdrRenderModeSupported =
+        requiresRawMmtsPlayback && videoPlayerViewModel.isHdrToSdrToneMappingSupported
+    val enableHdrToSdrToneMapping =
+        isHdrRenderModeSupported && hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR
 
     val vs = rememberVideoPlayerState()
+    val dataBroadcastingInput = rememberLivePlayerState(LocalContext.current)
+    val dataBroadcastingChannel = remember(currentProgram) {
+        currentProgram.toDataBroadcastingChannel()
+    }
+    val dataBroadcastingStore = remember(currentProgram.id) {
+        B60DataBroadcastingStore().apply {
+            beginSession(dataBroadcastingChannel.id)
+        }
+    }
+    var isDataBroadcastingMode by rememberSaveable(currentProgram.id) {
+        mutableStateOf(false)
+    }
+    var isDataBroadcastingBlank by rememberSaveable(currentProgram.id) {
+        mutableStateOf(false)
+    }
+    var dataBroadcastingMediaPlane by remember(currentProgram.id) {
+        mutableStateOf<B60MediaPlane?>(null)
+    }
+    var dataBroadcastingRemoteSequence by rememberSaveable { mutableLongStateOf(0L) }
+    var dataBroadcastingRemoteCommand by remember(currentProgram.id) {
+        mutableStateOf<DataBroadcastingRemoteCommand?>(null)
+    }
+    var hasShownDataBroadcastingHint by rememberSaveable { mutableStateOf(false) }
+    val isDataBroadcastingAvailable = requiresRawMmtsPlayback && vs.currentQuality.isRawMmts
+    val isDataBroadcastingActive = isDataBroadcastingAvailable && isDataBroadcastingMode
+    val dispatchDataBroadcastingRemoteKey: (String) -> Unit = { key ->
+        dataBroadcastingRemoteSequence += 1L
+        dataBroadcastingRemoteCommand = DataBroadcastingRemoteCommand(
+            id = dataBroadcastingRemoteSequence,
+            key = key
+        )
+    }
+    val dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = { colorKey ->
+        dispatchDataBroadcastingRemoteKey(
+            when (colorKey) {
+                DataBroadcastingColorKey.Blue -> "blue"
+                DataBroadcastingColorKey.Red -> "red"
+                DataBroadcastingColorKey.Green -> "green"
+                DataBroadcastingColorKey.Yellow -> "yellow"
+            }
+        )
+    }
+    val closeDataBroadcasting: () -> Unit = {
+        isDataBroadcastingMode = false
+        isDataBroadcastingBlank = false
+        dataBroadcastingMediaPlane = null
+        dataBroadcastingRemoteCommand = null
+        dataBroadcastingInput.resetDataBroadcastingInput()
+    }
+    val openDataBroadcasting: () -> Unit = {
+        if (isDataBroadcastingAvailable && !isDataBroadcastingMode) {
+            isDataBroadcastingMode = true
+            isDataBroadcastingBlank = false
+            dataBroadcastingInput.resetDataBroadcastingInput()
+            onSubMenuToggle(false)
+            onShowControlsChange(false)
+            if (!hasShownDataBroadcastingHint) {
+                hasShownDataBroadcastingHint = true
+                onShowToast(
+                    "録画データ放送：方向キー2回で色ボタン（↑青 / →赤 / ↓緑 / ←黄）"
+                )
+            }
+        }
+    }
 
     val autoCmSkipStr by settingsViewModel.autoCmSkip.collectAsState()
     LaunchedEffect(autoCmSkipStr) {
@@ -505,6 +590,8 @@ fun VideoPlayerScreen(
         onPlaybackEnded = {
             handlePlaybackEnded()
         },
+        dataBroadcastingCallback = dataBroadcastingStore,
+        enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
         onStreamSessionExpired = { player ->
             if (smbItem != null || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
                 return@rememberManagedExoPlayer false
@@ -809,12 +896,14 @@ fun VideoPlayerScreen(
         currentStreamUrlRef.set(null)
         vs.playbackOffsetMs = 0L
         vs.pendingSeekPositionMs = null
+        hdrModeResumePositionMs = null
         playbackPositionMs = effectiveInitialPositionMs.coerceAtLeast(0L)
         playbackDurationMs = 0L
         bufferedPositionMs = 0L
     }
 
     LaunchedEffect(
+        exoPlayer,
         currentProgram.id,
         smbItem?.path,
         vs.currentQuality.value,
@@ -835,9 +924,8 @@ fun VideoPlayerScreen(
             isBuffering = true
             vs.playbackOffsetMs = 0L
             val mediaItem = MediaItem.fromUri(smbItem.path)
-            val startPositionMs = effectiveInitialPositionMs.takeIf {
-                isFirstLoad && it > 0L
-            }
+            val startPositionMs = hdrModeResumePositionMs
+                ?: effectiveInitialPositionMs.takeIf { isFirstLoad && it > 0L }
             if (startPositionMs != null) {
                 exoPlayer.setMediaItem(mediaItem, startPositionMs)
             } else {
@@ -847,6 +935,7 @@ fun VideoPlayerScreen(
             exoPlayer.prepare()
             preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
+            hdrModeResumePositionMs = null
             return@LaunchedEffect
         }
 
@@ -854,12 +943,14 @@ fun VideoPlayerScreen(
         if (availableQualities.isNotEmpty() && availableQualities.none { it.value == vs.currentQuality.value }) return@LaunchedEffect
 
         isBuffering = true
-        val offsetSec = if (isFirstLoad && effectiveInitialPositionMs > 0) {
-            vs.playbackOffsetMs = effectiveInitialPositionMs; effectiveInitialPositionMs / 1000.0
-        } else {
-            val currentPos = getCurrentPositionMs()
-            vs.playbackOffsetMs = currentPos; currentPos / 1000.0
+        val resumePositionMs = hdrModeResumePositionMs
+        val offsetPositionMs = when {
+            resumePositionMs != null -> resumePositionMs
+            isFirstLoad && effectiveInitialPositionMs > 0 -> effectiveInitialPositionMs
+            else -> getCurrentPositionMs()
         }
+        vs.playbackOffsetMs = offsetPositionMs
+        val offsetSec = offsetPositionMs / 1000.0
 
         val url = videoPlayerViewModel.resolveStreamUrl(
             currentProgram.id,
@@ -872,8 +963,12 @@ fun VideoPlayerScreen(
         if (url.isNotEmpty()) {
             currentStreamUrlRef.set(url)
             val mediaItem = buildVideoMediaItem(url)
-            val startPositionMs = effectiveInitialPositionMs.takeIf {
-                isFirstLoad && it > 0L && (!isLiveStream || isRecordingChasePlayback)
+            val startPositionMs = when {
+                resumePositionMs != null && (!isLiveStream || isRecordingChasePlayback) ->
+                    resumePositionMs
+                isFirstLoad && effectiveInitialPositionMs > 0 &&
+                    (!isLiveStream || isRecordingChasePlayback) -> effectiveInitialPositionMs
+                else -> null
             }
             if (startPositionMs != null) {
                 exoPlayer.setMediaItem(mediaItem, startPositionMs)
@@ -887,6 +982,7 @@ fun VideoPlayerScreen(
             exoPlayer.prepare()
             preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
+            hdrModeResumePositionMs = null
         } else {
             if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
         }
@@ -985,6 +1081,33 @@ fun VideoPlayerScreen(
     LaunchedEffect(vs.indicatorState) {
         if (vs.indicatorState != null) {
             delay(2000); vs.indicatorState = null
+        }
+    }
+
+    LaunchedEffect(
+        isDataBroadcastingAvailable,
+        isDataBroadcastingActive,
+        isDataBroadcastingBlank,
+        isPiPMode
+    ) {
+        if ((!isDataBroadcastingAvailable || isPiPMode) && isDataBroadcastingMode) {
+            closeDataBroadcasting()
+        } else if (!isDataBroadcastingActive || isDataBroadcastingBlank) {
+            dataBroadcastingInput.resetDataBroadcastingInput()
+        }
+    }
+
+    LaunchedEffect(
+        isDataBroadcastingActive,
+        dataBroadcastingInput.isDataBroadcastingColorSelectorVisible,
+        dataBroadcastingInput.selectedDataBroadcastingColorKey
+    ) {
+        if (
+            isDataBroadcastingActive &&
+            dataBroadcastingInput.isDataBroadcastingColorSelectorVisible
+        ) {
+            delay(5_000L)
+            dataBroadcastingInput.closeDataBroadcastingColorSelector()
         }
     }
 
@@ -1244,8 +1367,39 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { keyEvent ->
+                if (isPiPMode) return@onPreviewKeyEvent false
+                if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
+                    dataBroadcastingInput.resetDataBroadcastingInput()
+                    if (!isDataBroadcastingAvailable) {
+                        onShowToast("録画データ放送は Raw MMT/TLV の BS4K/BS8K で利用できます")
+                    } else if (!isDataBroadcastingActive) {
+                        openDataBroadcasting()
+                    } else {
+                        dispatchDataBroadcastingRemoteKey("data")
+                    }
+                    return@onPreviewKeyEvent true
+                }
+
                 if (isSubOverlayOpen) {
                     return@onPreviewKeyEvent false
+                }
+
+                if (isDataBroadcastingActive && !isDataBroadcastingBlank) {
+                    if (dataBroadcastingInput.handleDataBroadcastingRemoteKeyEvent(
+                            keyEvent = keyEvent,
+                            scope = scope,
+                            onDataBroadcastingBack = {
+                                dispatchDataBroadcastingRemoteKey("back")
+                            },
+                            onDataBroadcastingBlank = {
+                                dispatchDataBroadcastingRemoteKey("data")
+                            },
+                            onDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
+                            onDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey
+                        )
+                    ) {
+                        return@onPreviewKeyEvent true
+                    }
                 }
 
                 // ★ UIのボタンにフォーカスがある場合に操作していてもUIが消えてしまう問題の修正
@@ -1283,6 +1437,62 @@ fun VideoPlayerScreen(
                 )
             }
     ) {
+        if (isDataBroadcastingActive) {
+            DataBroadcastingWebViewOverlay(
+                store = dataBroadcastingStore,
+                channel = dataBroadcastingChannel,
+                currentMediaTimeSeconds = {
+                    exoPlayer.currentPosition.coerceAtLeast(0L) / 1_000.0
+                },
+                remoteCommand = dataBroadcastingRemoteCommand,
+                onRemoteCommandConsumed = { consumedId ->
+                    if (dataBroadcastingRemoteCommand?.id == consumedId) {
+                        dataBroadcastingRemoteCommand = null
+                    }
+                },
+                onStatus = { status -> Log.d(TAG, "Recorded B60: $status") },
+                onMediaPlane = { dataBroadcastingMediaPlane = it },
+                onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
+                onApplicationExited = closeDataBroadcasting,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1f)
+            )
+        }
+
+        val videoSurfaceModifier = if (isDataBroadcastingActive) {
+            val plane = dataBroadcastingMediaPlane
+            when {
+                isDataBroadcastingBlank -> Modifier
+                    .fillMaxSize()
+                    .zIndex(2f)
+
+                plane == null -> Modifier
+                    .fillMaxSize()
+                    .b60MediaPlane(B60_INITIAL_MEDIA_PLANE)
+                    .zIndex(2f)
+
+                plane.visible && plane.width > 0f && plane.height > 0f -> Modifier
+                    .fillMaxSize()
+                    .b60MediaPlane(plane)
+                    .zIndex(2f)
+
+                else -> Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(24.dp)
+                    .fillMaxWidth(0.34f)
+                    .aspectRatio(16f / 9f)
+                    .zIndex(2f)
+                    .border(
+                        1.dp,
+                        Color.White.copy(alpha = 0.45f),
+                        RoundedCornerShape(4.dp)
+                    )
+            }
+        } else {
+            Modifier.fillMaxSize()
+        }
+
         AndroidView(
             factory = { ctx ->
                 AspectRatioFrameLayout(ctx).apply {
@@ -1308,8 +1518,7 @@ fun VideoPlayerScreen(
                 exoPlayer.clearVideoSurfaceView(view.getChildAt(0) as SurfaceView)
                 view.keepScreenOn = false
             },
-            modifier = Modifier
-                .fillMaxSize()
+            modifier = videoSurfaceModifier
                 .graphicsLayer {
                     if (vs.lCropEnabled) {
                         scaleX = vs.lCropZoom / 100f; scaleY = vs.lCropZoom / 100f
@@ -1598,6 +1807,10 @@ fun VideoPlayerScreen(
                     isCommentEnabled = vs.isCommentEnabled,
                     isLCropEnabled = vs.lCropEnabled,
                     isAutoCmSkipEnabled = vs.isAutoCmSkipEnabled,
+                    hdrRenderMode = hdrRenderMode,
+                    isHdrRenderModeSupported = isHdrRenderModeSupported,
+                    isDataBroadcastingAvailable = isDataBroadcastingAvailable,
+                    isDataBroadcastingActive = isDataBroadcastingActive,
                     availableQualities = availableQualities,
                     focusRequester = subMenuFocusRequester,
                     onAudioToggle = {
@@ -1701,6 +1914,26 @@ fun VideoPlayerScreen(
                             "自動CMスキップ: ${if (vs.isAutoCmSkipEnabled) "ON" else "OFF"}"
                         )
                     },
+                    onHdrRenderModeToggle = {
+                        val nextMode = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
+                            HdrToneMapping.RENDER_MODE_ORIGINAL
+                        } else {
+                            HdrToneMapping.RENDER_MODE_SDR
+                        }
+                        hdrModeResumePositionMs = getCurrentPositionMs()
+                        playbackPositionMs = hdrModeResumePositionMs ?: playbackPositionMs
+                        videoPlayerViewModel.setHdrRenderMode(nextMode)
+                        onShowToast(
+                            if (nextMode == HdrToneMapping.RENDER_MODE_SDR) {
+                                "HDR 表示：ハードウェア SDR 変換"
+                            } else {
+                                "HDR 表示：HLG そのまま"
+                            }
+                        )
+                    },
+                    onDataBroadcastingToggle = {
+                        openDataBroadcasting()
+                    },
                     onVideoSelect = {
                         if (it.id != currentProgram.id) {
                             onProgramSelect(it)
@@ -1719,7 +1952,56 @@ fun VideoPlayerScreen(
                 PlaybackIndicator(vs.indicatorState)
             }
         }
+
+        AnimatedVisibility(
+            visible = !isPiPMode &&
+                isDataBroadcastingActive &&
+                dataBroadcastingInput.isDataBroadcastingColorSelectorVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.zIndex(10f)
+        ) {
+            DataBroadcastingColorSelectorOverlay(
+                selectedKey = dataBroadcastingInput.selectedDataBroadcastingColorKey,
+                onColorSelected = { colorKey ->
+                    dataBroadcastingInput.dispatchDataBroadcastingColorKey(
+                        colorKey,
+                        dispatchDataBroadcastingColorKey
+                    )
+                },
+                onDismiss = dataBroadcastingInput::closeDataBroadcastingColorSelector
+            )
+        }
     }
+}
+
+private fun RecordedProgram.toDataBroadcastingChannel(): Channel {
+    val recordedChannel = channel
+    return Channel(
+        id = recordedChannel?.id ?: "recorded-$id",
+        displayChannelId = recordedChannel?.displayChannelId.orEmpty(),
+        name = recordedChannel?.name ?: title,
+        channelNumber = recordedChannel?.channelNumber.orEmpty(),
+        networkId = recordedChannel?.networkId?.toLong() ?: 0L,
+        serviceId = recordedChannel?.serviceId?.toLong() ?: 0L,
+        transportStreamId = 0L,
+        type = recordedChannel?.type ?: "BS4K",
+        isWatchable = true,
+        isDisplay = true,
+        programPresent = Program(
+            id = id.toString(),
+            title = title,
+            description = description,
+            detail = detail,
+            startTime = startTime,
+            endTime = endTime,
+            duration = recordedVideo.duration.toInt().coerceAtLeast(0),
+            genres = null,
+            videoResolution = null
+        ),
+        programFollowing = null,
+        remocon_Id = 0
+    )
 }
 
 private fun normalizeQuickSeriesKey(value: String): String =

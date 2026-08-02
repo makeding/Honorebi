@@ -23,10 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,7 +56,6 @@ import java.util.Collections
 import android.graphics.Color as AndroidColor
 import master.flame.danmaku.controller.IDanmakuView
 import master.flame.danmaku.danmaku.model.BaseDanmaku
-import kotlin.math.roundToInt
 
 private const val TAG = "LivePlayerScreen"
 private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
@@ -67,38 +64,7 @@ private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 4
 private const val LIVE_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
 private val LIVE_PROGRAM_INFO_SUBTITLE_OFFSET = 200.dp
 
-private fun Modifier.b60MediaPlane(plane: B60MediaPlane): Modifier = layout { measurable, constraints ->
-    val screenWidth = plane.screenWidth.takeIf { it > 0f } ?: 3840f
-    val screenHeight = plane.screenHeight.takeIf { it > 0f } ?: 2160f
-    val width = (constraints.maxWidth * plane.width / screenWidth)
-        .roundToInt()
-        .coerceIn(1, constraints.maxWidth)
-    val height = (constraints.maxHeight * plane.height / screenHeight)
-        .roundToInt()
-        .coerceIn(1, constraints.maxHeight)
-    val x = (constraints.maxWidth * plane.x / screenWidth)
-        .roundToInt()
-        .coerceIn(0, (constraints.maxWidth - width).coerceAtLeast(0))
-    val y = (constraints.maxHeight * plane.y / screenHeight)
-        .roundToInt()
-        .coerceIn(0, (constraints.maxHeight - height).coerceAtLeast(0))
-    val placeable = measurable.measure(Constraints.fixed(width, height))
-    layout(constraints.maxWidth, constraints.maxHeight) {
-        placeable.placeRelative(x, y)
-    }
-}
-
-private val B60_INITIAL_MEDIA_PLANE = B60MediaPlane(
-    visible = true,
-    x = 864f,
-    y = 56f,
-    width = 2880f,
-    height = 1620f,
-    screenWidth = 3840f,
-    screenHeight = 2160f
-)
-
-private fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
+internal fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
     if (keyEvent.type != KeyEventType.KeyUp) return false
     return when (keyEvent.nativeKeyEvent.keyCode) {
         NativeKeyEvent.KEYCODE_TV_DATA_SERVICE,
@@ -358,7 +324,9 @@ fun LivePlayerScreen(
             ps.closeDataBroadcastingColorSelector()
             if (!hasShownDataBroadcastingHint) {
                 hasShownDataBroadcastingHint = true
-                onShowToast("データ放送中は戻るボタンを2回押すとテレビ画面へ戻れます")
+                onShowToast(
+                    "方向キー2回で色ボタン（↑青 / →赤 / ↓緑 / ←黄）、戻る2回でテレビ画面"
+                )
             }
         }
     }
@@ -707,9 +675,16 @@ fun LivePlayerScreen(
         }
     }
 
-    LaunchedEffect(isDataBroadcastingActive, isPiPMode, ps.isDualDisplayMode) {
-        if (!isDataBroadcastingActive || isPiPMode || ps.isDualDisplayMode) {
-            ps.closeDataBroadcastingColorSelector()
+    LaunchedEffect(
+        isDataBroadcastingActive,
+        isDataBroadcastingBlank,
+        isPiPMode,
+        ps.isDualDisplayMode
+    ) {
+        if (!isDataBroadcastingActive || isDataBroadcastingBlank ||
+            isPiPMode || ps.isDualDisplayMode
+        ) {
+            ps.resetDataBroadcastingInput()
         }
     }
 
@@ -761,6 +736,7 @@ fun LivePlayerScreen(
             .onKeyEvent { keyEvent ->
                 if (isPiPMode) return@onKeyEvent false
                 if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
+                    ps.resetDataBroadcastingInput()
                     if (!isB60Channel) {
                         onShowToast("B60 データ放送は BS4K/BS8K で利用できます")
                         return@onKeyEvent true

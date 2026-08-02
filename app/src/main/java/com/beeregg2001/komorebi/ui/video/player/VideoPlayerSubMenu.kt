@@ -50,6 +50,7 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
+import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
@@ -71,6 +72,10 @@ fun VideoTopSubMenuUI(
     isCommentEnabled: Boolean,
     isLCropEnabled: Boolean,
     isAutoCmSkipEnabled: Boolean,
+    hdrRenderMode: String,
+    isHdrRenderModeSupported: Boolean,
+    isDataBroadcastingAvailable: Boolean,
+    isDataBroadcastingActive: Boolean,
     availableQualities: List<StreamQuality>,
     focusRequester: FocusRequester,
     onAudioToggle: () -> Unit,
@@ -81,6 +86,8 @@ fun VideoTopSubMenuUI(
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
     onAutoCmSkipToggle: () -> Unit,
+    onHdrRenderModeToggle: () -> Unit,
+    onDataBroadcastingToggle: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit,
     onChannelSelect: (Channel) -> Unit = {},
     canOpenKeyframeGrid: Boolean = false,
@@ -311,6 +318,38 @@ fun VideoTopSubMenuUI(
                     contentColor = colors.textPrimary,
                     enabled = isCommentSupported // ★ 適用
                 )
+                if (isHdrRenderModeSupported) {
+                    VideoMenuTileItem(
+                        title = "HDR 表示",
+                        icon = Icons.Default.HighQuality,
+                        subtitle = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
+                            "SDR 変換"
+                        } else {
+                            "HLG そのまま"
+                        },
+                        onClick = onHdrRenderModeToggle,
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
+                            colors.accent
+                        } else {
+                            colors.textPrimary
+                        }
+                    )
+                }
+                if (isDataBroadcastingAvailable) {
+                    VideoMenuTileItem(
+                        title = "データ放送",
+                        icon = Icons.Default.Tv,
+                        subtitle = if (isDataBroadcastingActive) "表示中" else "開く",
+                        onClick = onDataBroadcastingToggle,
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = if (isDataBroadcastingActive) {
+                            colors.accent
+                        } else {
+                            colors.textPrimary
+                        }
+                    )
+                }
                 VideoMenuTileItem(
                     title = "画質",
                     icon = Icons.Default.HighQuality,

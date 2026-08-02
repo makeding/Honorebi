@@ -142,6 +142,8 @@ ksp {
 //}
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+
     // 1. Compose BOM を最新に近いバージョンに更新 (ここが最重要)
     // 2023.10.01 だと Tv-Foundation 1.0.0-alpha11 と互換性がありません
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))

@@ -14,6 +14,7 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
+import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -23,9 +24,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,6 +86,14 @@ class VideoPlayerViewModel @Inject constructor(
     private val _quickVideoCandidates = MutableStateFlow(QuickVideoCandidates())
     val quickVideoCandidates: StateFlow<QuickVideoCandidates> =
         _quickVideoCandidates.asStateFlow()
+
+    val hdrRenderMode: StateFlow<String> = settingsRepository.hdrRenderMode.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        HdrToneMapping.RENDER_MODE_ORIGINAL
+    )
+    val isHdrToSdrToneMappingSupported: Boolean
+        get() = HdrToneMapping.isSupported
 
     private var detailFetchJob: Job? = null
     private var streamMaintenanceJob: Job? = null
@@ -199,6 +210,19 @@ class VideoPlayerViewModel @Inject constructor(
     fun saveVideoQuality(qualityValue: String) {
         viewModelScope.launch {
             settingsRepository.saveString(SettingsRepository.VIDEO_QUALITY, qualityValue)
+        }
+    }
+
+    fun setHdrRenderMode(mode: String) {
+        val normalizedMode = if (
+            mode == HdrToneMapping.RENDER_MODE_SDR && isHdrToSdrToneMappingSupported
+        ) {
+            HdrToneMapping.RENDER_MODE_SDR
+        } else {
+            HdrToneMapping.RENDER_MODE_ORIGINAL
+        }
+        viewModelScope.launch {
+            settingsRepository.saveString(SettingsRepository.HDR_RENDER_MODE, normalizedMode)
         }
     }
 

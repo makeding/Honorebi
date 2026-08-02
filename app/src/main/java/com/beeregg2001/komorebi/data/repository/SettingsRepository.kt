@@ -44,7 +44,6 @@ class SettingsRepository @Inject constructor(
         val VIDEO_QUALITY = stringPreferencesKey("video_quality")
         val LIVE_SUBTITLE_DEFAULT = stringPreferencesKey("live_subtitle_default")
         val VIDEO_SUBTITLE_DEFAULT = stringPreferencesKey("video_subtitle_default")
-        val B62_SUBTITLE_SIZE = stringPreferencesKey("b62_subtitle_size")
         val SUBTITLE_COMMENT_LAYER = stringPreferencesKey("subtitle_comment_layer")
         val AUDIO_OUTPUT_MODE = stringPreferencesKey("audio_output_mode")
         val HDR_RENDER_MODE = stringPreferencesKey("hdr_render_mode")
@@ -133,8 +132,6 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[LIVE_SUBTITLE_DEFAULT] ?: "OFF" }
     val videoSubtitleDefault: Flow<String> =
         context.dataStore.data.map { it[VIDEO_SUBTITLE_DEFAULT] ?: "OFF" }
-    val b62SubtitleSize: Flow<String> =
-        context.dataStore.data.map { it[B62_SUBTITLE_SIZE] ?: "LARGE" }
     val subtitleCommentLayer: Flow<String> =
         context.dataStore.data.map { it[SUBTITLE_COMMENT_LAYER] ?: "CommentOnTop" }
     val audioOutputMode: Flow<String> =

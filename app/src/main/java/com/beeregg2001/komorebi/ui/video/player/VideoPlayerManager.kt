@@ -57,6 +57,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.live.RawAribSubtitlePayloadReaderFactory
+import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbContextBuilder
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbDataSourceFactory
 import com.beeregg2001.komorebi.data.model.AudioMode
@@ -65,6 +66,7 @@ import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TsReadExDataSource
 import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
+import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -445,6 +447,8 @@ fun rememberManagedExoPlayer(
     onBufferingChanged: (Boolean) -> Unit,
     onDurationChanged: (Long) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
+    dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
+    enableHdrToSdrToneMapping: Boolean = false,
     onStreamSessionExpired: suspend (ExoPlayer) -> Boolean = { false },
     onStopOrDispose: (ExoPlayer) -> Unit,
     settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -470,10 +474,6 @@ fun rememberManagedExoPlayer(
 
     val backendType by settingsViewModel.backendType.collectAsState()
     val edcbPlayMethod by settingsViewModel.edcbRecordPlayMethod.collectAsState()
-    val b62SubtitleSize by settingsViewModel.b62SubtitleSize.collectAsState()
-    LaunchedEffect(b62SubtitleSize) {
-        captionDecoder.setB62FontScale(if (b62SubtitleSize == "LARGE") 1.15f else 1.0f)
-    }
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
     val isRecordingChasePlayback =
         program?.isRecording == true || program?.recordedVideo?.status.equals("Recording", ignoreCase = true)
@@ -535,9 +535,16 @@ fun rememberManagedExoPlayer(
         isRecordingChasePlayback,
         isRawMmtsPlayback,
         isOriginalMpegTsPlayback,
-        programDurationUs
+        programDurationUs,
+        dataBroadcastingCallback,
+        enableHdrToSdrToneMapping
     ) {
-        val renderersFactory = DefaultRenderersFactory(context).apply {
+        val renderersFactory = object : DefaultRenderersFactory(context) {
+            override fun getCodecAdapterFactory() = HdrToneMapping.codecAdapterFactory(
+                delegate = super.getCodecAdapterFactory(),
+                enabled = enableHdrToSdrToneMapping
+            )
+        }.apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
         }
@@ -758,7 +765,8 @@ fun rememberManagedExoPlayer(
                                 }
                             }
                         }
-                    }
+                    },
+                    dataBroadcastingCallback = dataBroadcastingCallback
                 ).createExtractors()
             }
             val defaultExtractors: Array<Extractor> = if (isOriginalMpegTsPlayback) {

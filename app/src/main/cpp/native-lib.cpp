@@ -1090,19 +1090,6 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     return cues;
 }
 
-JNIEXPORT void JNICALL
-Java_com_beeregg2001_komorebi_NativeLib_setB62CaptionFontScale(
-    JNIEnv*,
-    jobject,
-    jlong handle,
-    jfloat scale) {
-    auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
-    if (!ctx || !ctx->b62Decoder) return;
-    std::lock_guard<std::mutex> lock(ctx->mutex);
-    aribcc_b62_decoder_set_font_scale(ctx->b62Decoder, static_cast<float>(scale));
-    if (ctx->b62Renderer) aribcc_renderer_flush(ctx->b62Renderer);
-}
-
 JNIEXPORT jintArray JNICALL
 Java_com_beeregg2001_komorebi_NativeLib_getCaptionLanguageCodes(JNIEnv *env, jobject thiz, jlong handle) {
     auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);

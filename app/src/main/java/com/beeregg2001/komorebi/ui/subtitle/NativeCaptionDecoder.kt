@@ -8,7 +8,6 @@ class NativeCaptionDecoder(
 ) : AutoCloseable {
     private var handle: Long = nativeLib.openCaptionDecoder()
     private var languages: List<NativeCaptionLanguage> = emptyList()
-    private var b62FontScale: Float = 1.0f
 
     @Synchronized
     fun decode(
@@ -90,13 +89,6 @@ class NativeCaptionDecoder(
     }
 
     @Synchronized
-    fun setB62FontScale(scale: Float) {
-        b62FontScale = scale
-        val activeHandle = handle
-        if (activeHandle != 0L) nativeLib.setB62CaptionFontScale(activeHandle, scale)
-    }
-
-    @Synchronized
     fun availableLanguages(): List<NativeCaptionLanguage> = languages
 
     @Synchronized
@@ -118,9 +110,6 @@ class NativeCaptionDecoder(
         if (activeHandle != 0L) nativeLib.closeCaptionDecoder(activeHandle)
         handle = nativeLib.openCaptionDecoder()
         languages = emptyList()
-        if (handle != 0L) {
-            nativeLib.setB62CaptionFontScale(handle, b62FontScale)
-        }
         if (handle != 0L && languageId != 1) {
             nativeLib.switchCaptionLanguage(handle, languageId)
         }
