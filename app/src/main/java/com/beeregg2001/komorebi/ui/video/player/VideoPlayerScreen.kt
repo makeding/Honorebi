@@ -113,6 +113,7 @@ private const val COMMENT_CLIMAX_LEAD_MS = 10_000L
 private const val MIN_PROGRAM_COMMENTS_FOR_CLIMAX = 80
 private const val MIN_CLIMAX_COMMENTS = 20
 private const val WATCH_HISTORY_CHECKPOINT_INTERVAL_MS = 15_000L
+private const val RAW_MMTS_SEEK_DEBOUNCE_MS = 300L
 private const val MIN_DENSE_BUCKET_COMMENTS = 5
 private const val MIN_CLIMAX_WINDOW_COMMENT_RATIO = 0.08f
 private const val MIN_CLIMAX_PEAK_TO_BASELINE_RATIO = 2.0f
@@ -745,6 +746,16 @@ fun VideoPlayerScreen(
     }
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
+    var pendingRawMmtsSeekJob by remember(exoPlayer, currentProgram.id) {
+        mutableStateOf<Job?>(null)
+    }
+    DisposableEffect(exoPlayer, currentProgram.id) {
+        onDispose {
+            pendingRawMmtsSeekJob?.cancel()
+            pendingRawMmtsSeekJob = null
+        }
+    }
+
     val totalDurationForControls =
         if (smbItem != null) {
             smbDurationMs.coerceAtLeast(0L)
@@ -797,6 +808,7 @@ fun VideoPlayerScreen(
         )
         // 一瞬だけpendingSeekに記録してUI表示をサクサク進める
         vs.pendingSeekPositionMs = safeTarget
+        playbackPositionMs = safeTarget
         scope.launch {
             delay(800)
             if (vs.pendingSeekPositionMs == safeTarget) {
@@ -826,7 +838,27 @@ fun VideoPlayerScreen(
                 }
             }
         } else {
-            exoPlayer.seekTo(safeTarget)
+            val commitSeek = {
+                exoPlayer.seekTo(safeTarget)
+                if (smbItem == null && currentProgram.id != 0) {
+                    videoPlayerViewModel.updateWatchHistory(
+                        currentProgram,
+                        safeTarget / 1_000.0
+                    )
+                }
+            }
+            if (requiresRawMmtsPlayback && vs.currentQuality.isRawMmts) {
+                pendingRawMmtsSeekJob?.cancel()
+                pendingRawMmtsSeekJob = scope.launch {
+                    delay(RAW_MMTS_SEEK_DEBOUNCE_MS)
+                    if (vs.pendingSeekPositionMs == safeTarget) {
+                        commitSeek()
+                    }
+                    pendingRawMmtsSeekJob = null
+                }
+            } else {
+                commitSeek()
+            }
         }
         Unit
     }
@@ -1055,8 +1087,8 @@ fun VideoPlayerScreen(
         var lastCheckpointPositionMs = -1L
         while (isActive) {
             delay(WATCH_HISTORY_CHECKPOINT_INTERVAL_MS)
-            if (!exoPlayer.isPlaying || exoPlayer.mediaItemCount == 0) continue
-            val positionMs = getCurrentPositionMs()
+            if (exoPlayer.mediaItemCount == 0) continue
+            val positionMs = vs.pendingSeekPositionMs ?: getCurrentPositionMs()
             if (positionMs < 5_000L) continue
             if (
                 lastCheckpointPositionMs >= 0L &&
