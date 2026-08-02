@@ -86,8 +86,10 @@ class MainActivity : ComponentActivity() {
     private fun handleDevicePolicyIntent(intent: Intent?) {
         if (intent?.action == DevicePolicyHomeManager.ACTION_CLEAR_HOME_POLICY) {
             DevicePolicyHomeManager.clearIfAuthorized(this)
+            LauncherComponentPolicyManager.restoreHomeActivitiesIfAuthorized(this)
         } else {
             DevicePolicyHomeManager.applyIfAuthorized(this)
+            LauncherComponentPolicyManager.disableHomeActivitiesIfAuthorized(this)
         }
     }
 }
