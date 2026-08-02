@@ -83,6 +83,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        DevicePolicyHomeManager.applyIfAuthorized(this)
+        LauncherComponentPolicyManager.disableHomeActivitiesIfAuthorized(this)
+    }
+
     private fun handleDevicePolicyIntent(intent: Intent?) {
         if (intent?.action == DevicePolicyHomeManager.ACTION_CLEAR_HOME_POLICY) {
             DevicePolicyHomeManager.clearIfAuthorized(this)

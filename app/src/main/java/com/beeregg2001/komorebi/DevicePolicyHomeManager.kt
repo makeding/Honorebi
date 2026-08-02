@@ -10,7 +10,7 @@ import android.os.Build
 import android.util.Log
 
 /**
- * Owns the Android 14 Device Policy Management role based HOME override.
+ * Owns the Device Owner / Android 14 Device Policy Management role based HOME override.
  *
  * LauncherX must remain enabled because its providers are used by MediaShell.
  * This policy changes only HOME intent resolution; it does not disable, suspend,
@@ -26,8 +26,9 @@ object DevicePolicyHomeManager {
         "android.permission.MANAGE_DEVICE_POLICY_LOCK_TASK"
 
     fun applyIfAuthorized(context: Context): Boolean {
-        if (!isAuthorized(context)) {
-            Log.i(TAG, "Device Policy Management role is not granted; leaving HOME unchanged")
+        val admin = authorizedAdmin(context)
+        if (admin == null && !hasRolePermission(context)) {
+            Log.i(TAG, "Device policy authorization is not granted; leaving HOME unchanged")
             return false
         }
 
@@ -39,7 +40,7 @@ object DevicePolicyHomeManager {
 
         return runCatching {
             devicePolicyManager(context).addPersistentPreferredActivity(
-                null,
+                admin,
                 homeFilter,
                 homeActivity
             )
@@ -51,14 +52,15 @@ object DevicePolicyHomeManager {
     }
 
     fun clearIfAuthorized(context: Context): Boolean {
-        if (!isAuthorized(context)) {
-            Log.e(TAG, "Cannot clear HOME policy without Device Policy Management role")
+        val admin = authorizedAdmin(context)
+        if (admin == null && !hasRolePermission(context)) {
+            Log.e(TAG, "Cannot clear HOME policy without device policy authorization")
             return false
         }
 
         return runCatching {
             devicePolicyManager(context).clearPackagePersistentPreferredActivities(
-                null,
+                admin,
                 context.packageName
             )
         }.onSuccess {
@@ -68,7 +70,12 @@ object DevicePolicyHomeManager {
         }.isSuccess
     }
 
-    private fun isAuthorized(context: Context): Boolean =
+    private fun authorizedAdmin(context: Context): ComponentName? =
+        ComponentName(context, HonorebiDeviceAdminReceiver::class.java).takeIf {
+            devicePolicyManager(context).isDeviceOwnerApp(context.packageName)
+        }
+
+    private fun hasRolePermission(context: Context): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
             context.checkSelfPermission(MANAGE_LOCK_TASK_PERMISSION) ==
             PackageManager.PERMISSION_GRANTED

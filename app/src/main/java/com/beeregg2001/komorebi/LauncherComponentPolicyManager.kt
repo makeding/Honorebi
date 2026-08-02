@@ -7,9 +7,9 @@ import android.os.Build
 import android.util.Log
 
 /**
- * Uses the temporary Device Policy Management role permission to change only
- * LauncherX's HOME components. The package and its Cast-facing providers stay
- * enabled, and component overrides survive after the temporary role is lost.
+ * Uses the Device Policy Management role permission to block LauncherX's HOME
+ * entry points and its account-verification interstitial. The package and its
+ * Cast-facing providers stay enabled.
  */
 object LauncherComponentPolicyManager {
 
@@ -18,9 +18,10 @@ object LauncherComponentPolicyManager {
         "android.permission.CHANGE_COMPONENT_ENABLED_STATE"
     private const val LAUNCHER_PACKAGE = "com.google.android.apps.tv.launcherx"
 
-    private val launcherHomeClasses = listOf(
+    private val blockedLauncherClasses = listOf(
         "com.google.android.apps.tv.launcherx.home.HomeActivity",
-        "com.google.android.apps.tv.launcherx.home.VanillaModeHomeActivity"
+        "com.google.android.apps.tv.launcherx.home.VanillaModeHomeActivity",
+        "com.google.android.apps.tv.launcherx.profile.core.AccountVerificationActivity"
     )
 
     fun disableHomeActivitiesIfAuthorized(context: Context): Boolean =
@@ -50,7 +51,7 @@ object LauncherComponentPolicyManager {
             return false
         }
 
-        val settings = launcherHomeClasses.map { className ->
+        val settings = blockedLauncherClasses.map { className ->
             PackageManager.ComponentEnabledSetting(
                 ComponentName(LAUNCHER_PACKAGE, className),
                 state,
@@ -61,7 +62,7 @@ object LauncherComponentPolicyManager {
         return runCatching {
             context.packageManager.setComponentEnabledSettings(settings)
         }.onSuccess {
-            Log.i(TAG, "LauncherX HOME activities $stateDescription; package remains enabled")
+            Log.i(TAG, "LauncherX UI entry points $stateDescription; package remains enabled")
         }.onFailure { error ->
             Log.e(TAG, "Failed to update LauncherX HOME activity state", error)
         }.isSuccess
