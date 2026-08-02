@@ -38,6 +38,8 @@ class MainActivity : ComponentActivity() {
         setTheme(R.style.Theme_Komorebi)
         super.onCreate(savedInstanceState)
 
+        handleDevicePolicyIntent(intent)
+
         // OS互換性のチェック (Android 8.0 API 26 以上が必要)
         val isOsCompatible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
 
@@ -75,8 +77,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        handleDevicePolicyIntent(intent)
         if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
             homeIntentVersion++
+        }
+    }
+
+    private fun handleDevicePolicyIntent(intent: Intent?) {
+        if (intent?.action == DevicePolicyHomeManager.ACTION_CLEAR_HOME_POLICY) {
+            DevicePolicyHomeManager.clearIfAuthorized(this)
+        } else {
+            DevicePolicyHomeManager.applyIfAuthorized(this)
         }
     }
 }

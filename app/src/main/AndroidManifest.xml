@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.MANAGE_DEVICE_POLICY_LOCK_TASK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature
@@ -72,6 +73,43 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            Android 13+ Device Policy Management role qualification requires
+            handlers for all three provisioning delegation actions. Honorebi
+            does not provision devices, so these protected stubs cancel any
+            unexpected provisioning request.
+        -->
+        <activity
+            android:name=".TrustedSourceProvisioningStubActivity"
+            android:exported="true"
+            android:permission="android.permission.LAUNCH_DEVICE_MANAGER_SETUP"
+            android:theme="@style/Theme_Komorebi_Starting">
+            <intent-filter>
+                <action android:name="android.app.action.ROLE_HOLDER_PROVISION_MANAGED_DEVICE_FROM_TRUSTED_SOURCE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ManagedProfileProvisioningStubActivity"
+            android:exported="true"
+            android:permission="android.permission.LAUNCH_DEVICE_MANAGER_SETUP"
+            android:theme="@style/Theme_Komorebi_Starting">
+            <intent-filter>
+                <action android:name="android.app.action.ROLE_HOLDER_PROVISION_MANAGED_PROFILE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ProvisioningFinalizationStubActivity"
+            android:exported="true"
+            android:permission="android.permission.LAUNCH_DEVICE_MANAGER_SETUP"
+            android:theme="@style/Theme_Komorebi_Starting">
+            <intent-filter>
+                <action android:name="android.app.action.ROLE_HOLDER_PROVISION_FINALIZATION" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
