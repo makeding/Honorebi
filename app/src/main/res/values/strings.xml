@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Honorebi</string>
+    <string name="launcher_guard_label">Honorebi launcher guard</string>
+    <string name="launcher_guard_description">Keeps Honorebi on the Home button while Google TV system services remain available.</string>
 </resources>

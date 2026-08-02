@@ -75,6 +75,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".LauncherGuardAccessibilityService"
+            android:description="@string/launcher_guard_description"
+            android:exported="true"
+            android:label="@string/launcher_guard_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/launcher_guard_accessibility_service" />
+        </service>
     </application>
 
 </manifest>
