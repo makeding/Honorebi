@@ -42,6 +42,7 @@ import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel as CoroutineChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -143,13 +144,13 @@ class LivePlayerViewModel @Inject constructor(
     val dualSseDetail: StateFlow<String> = _dualSseDetail.asStateFlow()
 
     private val _mainSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
-        extraBufferCapacity = 16,
+        extraBufferCapacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val mainSubtitleEvents: SharedFlow<NativeCaptionCue> = _mainSubtitleEvents.asSharedFlow()
 
     private val _dualSubtitleEvents = MutableSharedFlow<NativeCaptionCue>(
-        extraBufferCapacity = 16,
+        extraBufferCapacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val dualSubtitleEvents: SharedFlow<NativeCaptionCue> = _dualSubtitleEvents.asSharedFlow()
@@ -188,6 +189,14 @@ class LivePlayerViewModel @Inject constructor(
     private var isSubtitleEnabled = false
     private val mainCaptionDecoder = NativeCaptionDecoder()
     private val dualCaptionDecoder = NativeCaptionDecoder()
+    private val mainB62SubtitleSamples = CoroutineChannel<B62SubtitleSample>(
+        capacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    private val dualB62SubtitleSamples = CoroutineChannel<B62SubtitleSample>(
+        capacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     private var signalPollJob: Job? = null
 
     private var mainPlaybackJob: Job? = null
@@ -195,9 +204,6 @@ class LivePlayerViewModel @Inject constructor(
 
     private val mainPlaybackMutex = Mutex()
     private val dualPlaybackMutex = Mutex()
-    private val mainSubtitleDecodeMutex = Mutex()
-    private val dualSubtitleDecodeMutex = Mutex()
-
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -223,6 +229,26 @@ class LivePlayerViewModel @Inject constructor(
             settingsRepository.backendType.collect { type ->
                 _mainBackendType.value = type
                 _shouldCropLogo.value = type == "KONOMITV"
+            }
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            for (sample in mainB62SubtitleSamples) {
+                decodeB62Subtitle(
+                    decoder = mainCaptionDecoder,
+                    sample = sample,
+                    onLanguagesChanged = { _mainSubtitleLanguages.value = it },
+                    onCue = { _mainSubtitleEvents.tryEmit(it) }
+                )
+            }
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            for (sample in dualB62SubtitleSamples) {
+                decodeB62Subtitle(
+                    decoder = dualCaptionDecoder,
+                    sample = sample,
+                    onLanguagesChanged = { _dualSubtitleLanguages.value = it },
+                    onCue = { _dualSubtitleEvents.tryEmit(it) }
+                )
             }
         }
         startSignalPolling()
@@ -372,6 +398,7 @@ class LivePlayerViewModel @Inject constructor(
                 "source=$mainCurrentSource, quality=${mainCurrentQuality?.value}"
         )
         mainEventSource?.cancel(); mainEventSource = null
+        mainB62SubtitleSamples.clearPending()
         mainCaptionDecoder.reset(_currentSubtitleLanguageId.value)
         _mainSubtitleLanguages.value = emptyList()
 
@@ -392,6 +419,7 @@ class LivePlayerViewModel @Inject constructor(
                 "source=$dualCurrentSource, quality=${dualCurrentQuality?.value}"
         )
         dualEventSource?.cancel(); dualEventSource = null
+        dualB62SubtitleSamples.clearPending()
         dualCaptionDecoder.reset(_currentSubtitleLanguageId.value)
         _dualSubtitleLanguages.value = emptyList()
 
@@ -712,6 +740,8 @@ class LivePlayerViewModel @Inject constructor(
     fun setSubtitlesEnabled(enabled: Boolean) {
         this.isSubtitleEnabled = enabled
         if (!enabled) {
+            mainB62SubtitleSamples.clearPending()
+            dualB62SubtitleSamples.clearPending()
             mainCaptionDecoder.flush()
             dualCaptionDecoder.flush()
         }
@@ -737,50 +767,37 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     private fun decodeAndEmitMainB62Subtitle(sample: B62SubtitleSample) {
-        decodeAndScheduleB62Subtitle(
-            decoder = mainCaptionDecoder,
-            decodeMutex = mainSubtitleDecodeMutex,
-            sample = sample,
-            onLanguagesChanged = { _mainSubtitleLanguages.value = it },
-            onCue = { _mainSubtitleEvents.tryEmit(it) }
-        )
+        if (isSubtitleEnabled) mainB62SubtitleSamples.trySend(sample)
     }
 
     private fun decodeAndEmitDualB62Subtitle(sample: B62SubtitleSample) {
-        decodeAndScheduleB62Subtitle(
-            decoder = dualCaptionDecoder,
-            decodeMutex = dualSubtitleDecodeMutex,
-            sample = sample,
-            onLanguagesChanged = { _dualSubtitleLanguages.value = it },
-            onCue = { _dualSubtitleEvents.tryEmit(it) }
-        )
+        if (isSubtitleEnabled) dualB62SubtitleSamples.trySend(sample)
     }
 
-    private fun decodeAndScheduleB62Subtitle(
+    private suspend fun decodeB62Subtitle(
         decoder: NativeCaptionDecoder,
-        decodeMutex: Mutex,
         sample: B62SubtitleSample,
         onLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
         onCue: (NativeCaptionCue) -> Unit
     ) {
         if (!isSubtitleEnabled) return
-        viewModelScope.launch(Dispatchers.Default) {
-            val (cues, languages) = decodeMutex.withLock {
-                val decoded = decoder.decodeB62(
-                    data = sample.data,
-                    ptsMs = sample.timeUs / 1_000L,
-                    operationMode = sample.operationMode,
-                    timingMode = sample.timingMode,
-                    referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
-                    discontinuity = sample.discontinuity
-                )
-                decoded to decoder.availableLanguages()
-            }
-            withContext(Dispatchers.Main.immediate) {
-                onLanguagesChanged(languages)
-                if (isSubtitleEnabled) cues.forEach(onCue)
-            }
+        val decoded = decoder.decodeB62(
+            data = sample.data,
+            ptsMs = sample.timeUs / 1_000L,
+            operationMode = sample.operationMode,
+            timingMode = sample.timingMode,
+            referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+            discontinuity = sample.discontinuity
+        )
+        val languages = decoder.availableLanguages()
+        withContext(Dispatchers.Main.immediate) {
+            onLanguagesChanged(languages)
+            if (isSubtitleEnabled) decoded.forEach(onCue)
         }
+    }
+
+    private fun CoroutineChannel<B62SubtitleSample>.clearPending() {
+        while (tryReceive().isSuccess) Unit
     }
 
     fun setVolumes(mainVolume: Float, dualVolume: Float) {

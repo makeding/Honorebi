@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -67,11 +68,12 @@ import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.util.TsReadExDataSource
 import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
+import com.beeregg2001.komorebi.util.mmts.B62SubtitleSample
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -454,8 +456,33 @@ fun rememberManagedExoPlayer(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
     val captionDecoder = remember { NativeCaptionDecoder() }
-    val b62DecodeMutex = remember { Mutex() }
+    val b62SubtitleSamples = remember {
+        Channel<B62SubtitleSample>(
+            capacity = 4,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
+    }
+    val currentOnSubtitleCue = rememberUpdatedState(onSubtitleCue)
+    val currentOnSubtitleLanguagesChanged = rememberUpdatedState(onSubtitleLanguagesChanged)
+    LaunchedEffect(captionDecoder, b62SubtitleSamples) {
+        for (sample in b62SubtitleSamples) {
+            if (!vs.isSubtitleEnabled) continue
+            val (decoded, languages) = withContext(Dispatchers.Default) {
+                captionDecoder.decodeB62(
+                    data = sample.data,
+                    ptsMs = sample.timeUs / 1_000L,
+                    operationMode = sample.operationMode,
+                    timingMode = sample.timingMode,
+                    referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+                    discontinuity = sample.discontinuity
+                ) to captionDecoder.availableLanguages()
+            }
+            currentOnSubtitleLanguagesChanged.value(languages)
+            if (vs.isSubtitleEnabled) decoded.forEach(currentOnSubtitleCue.value)
+        }
+    }
     LaunchedEffect(program?.id) {
+        while (b62SubtitleSamples.tryReceive().isSuccess) Unit
         captionDecoder.reset(subtitleLanguageId)
         onSubtitleLanguagesChanged(emptyList())
     }
@@ -463,10 +490,16 @@ fun rememberManagedExoPlayer(
         captionDecoder.switchLanguage(subtitleLanguageId)
     }
     LaunchedEffect(vs.isSubtitleEnabled) {
-        if (!vs.isSubtitleEnabled) captionDecoder.flush()
+        if (!vs.isSubtitleEnabled) {
+            while (b62SubtitleSamples.tryReceive().isSuccess) Unit
+            captionDecoder.flush()
+        }
     }
     DisposableEffect(Unit) {
-        onDispose { captionDecoder.close() }
+        onDispose {
+            b62SubtitleSamples.close()
+            captionDecoder.close()
+        }
     }
 
     val context = LocalContext.current
@@ -747,23 +780,7 @@ fun rememberManagedExoPlayer(
                     sourceLengthProvider = { fileSizeBytesRef.get() },
                     onSubtitleDataReceived = { sample ->
                         if (vs.isSubtitleEnabled) {
-                            scope.launch(Dispatchers.Default) {
-                                val (cues, languages) = b62DecodeMutex.withLock {
-                                    val decoded = captionDecoder.decodeB62(
-                                        data = sample.data,
-                                        ptsMs = sample.timeUs / 1_000L,
-                                        operationMode = sample.operationMode,
-                                        timingMode = sample.timingMode,
-                                        referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
-                                        discontinuity = sample.discontinuity
-                                    )
-                                    decoded to captionDecoder.availableLanguages()
-                                }
-                                withContext(Dispatchers.Main.immediate) {
-                                    onSubtitleLanguagesChanged(languages)
-                                    if (vs.isSubtitleEnabled) cues.forEach(onSubtitleCue)
-                                }
-                            }
+                            b62SubtitleSamples.trySend(sample)
                         }
                     },
                     dataBroadcastingCallback = dataBroadcastingCallback

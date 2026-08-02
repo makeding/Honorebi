@@ -364,7 +364,7 @@ fun VideoPlayerScreen(
     val currentStreamUrlRef = remember(currentProgram.id) { AtomicReference<String?>(null) }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
-            extraBufferCapacity = 16,
+            extraBufferCapacity = 4,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
     }
