@@ -21,6 +21,7 @@ data class B60ApplicationStatus(
     val resourceCount: Long = 0,
     val declaredEntryReady: Boolean = false,
     val entryReady: Boolean = false,
+    val lctBackgroundColorRgb: Int? = null,
     val broadcastClock: B60BroadcastClock? = null,
     val presentEvent: B60EventInfo? = null,
     val followingEvent: B60EventInfo? = null
@@ -82,6 +83,7 @@ data class B60ResourceChange(
 interface B60DataBroadcastingCallback {
     fun onBroadcastClock(clock: B60BroadcastClock) = Unit
     fun onEventInfo(event: B60EventInfo) = Unit
+    fun onLayoutConfiguration(contextId: Long, backgroundColorRgb: Int?) = Unit
     fun onApplicationState(
         contextId: Long,
         applicationType: Int,
@@ -110,6 +112,7 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
     private val monitor = Object()
     private val generationCounter = AtomicLong(0)
     private val resources = linkedMapOf<ResourceKey, B60ApplicationResource>()
+    private var layoutContextId: Long? = null
 
     private val _status = MutableStateFlow(B60ApplicationStatus())
     val status: StateFlow<B60ApplicationStatus> = _status.asStateFlow()
@@ -123,6 +126,7 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
     fun beginSession(channelId: String) {
         synchronized(monitor) {
             resources.clear()
+            layoutContextId = null
             _status.value = B60ApplicationStatus(
                 generation = generationCounter.incrementAndGet(),
                 channelId = channelId
@@ -141,6 +145,15 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
             0 -> _status.value.copy(presentEvent = event)
             1 -> _status.value.copy(followingEvent = event)
             else -> _status.value
+        }
+    }
+
+    override fun onLayoutConfiguration(contextId: Long, backgroundColorRgb: Int?) {
+        synchronized(monitor) {
+            val current = _status.value
+            if (current.contextId != null && current.contextId != contextId) return
+            layoutContextId = contextId
+            _status.value = current.copy(lctBackgroundColorRgb = backgroundColorRgb)
         }
     }
 
@@ -182,7 +195,9 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
                 collectionState = collectionState,
                 resourceCount = resourceCount,
                 declaredEntryReady = entryReady,
-                entryReady = resolvedEntryPath != null
+                entryReady = resolvedEntryPath != null,
+                lctBackgroundColorRgb = _status.value.lctBackgroundColorRgb
+                    .takeIf { layoutContextId == contextId }
             )
             monitor.notifyAll()
         }
@@ -212,6 +227,7 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
         val channelId = _status.value.channelId
         synchronized(monitor) {
             resources.clear()
+            layoutContextId = null
             _status.value = B60ApplicationStatus(
                 generation = generationCounter.incrementAndGet(),
                 channelId = channelId

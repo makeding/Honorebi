@@ -161,7 +161,7 @@ fun DataBroadcastingWebViewOverlay(
     key(rendererGeneration) {
         AndroidView(
             factory = { context ->
-                if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
+                WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
                 WebView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -264,6 +264,15 @@ fun DataBroadcastingWebViewOverlay(
         webView.evaluateJavascript(
             "window.KomorebiB60?.updateBroadcastClock?.(" +
                 "${JSONObject.quote(clock.toString())})",
+            null
+        )
+    }
+
+    LaunchedEffect(shellReady, session.generation, session.lctBackgroundColorRgb) {
+        if (!shellReady) return@LaunchedEffect
+        val value = session.lctBackgroundColorRgb?.toString() ?: "null"
+        webViewRef.value?.evaluateJavascript(
+            "window.KomorebiB60?.updateLctBackgroundColor?.($value)",
             null
         )
     }
@@ -442,6 +451,7 @@ private fun buildStartPayload(status: B60ApplicationStatus, channel: Channel): J
             status.entryPath.orEmpty().split('/').any { it.equals("startup", ignoreCase = true) }
         )
         put("programInfo", buildProgramInfo(status, channel))
+        put("lctBackgroundColorRgb", status.lctBackgroundColorRgb ?: JSONObject.NULL)
         status.broadcastClock?.let(::buildBroadcastClock)?.let { put("broadcastClock", it) }
         status.application?.let { application ->
             put(
@@ -531,7 +541,9 @@ private fun response(
     mapOf(
         "Cache-Control" to "no-store",
         "Content-Security-Policy" to
-            "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; " +
+            // Broadcast applications use dynamic JavaScript compilation for
+            // receiver capability checks and generated application code.
+            "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
             "style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-src 'self'",
         "X-Content-Type-Options" to "nosniff"
     ),

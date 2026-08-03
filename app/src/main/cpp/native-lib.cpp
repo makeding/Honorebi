@@ -520,6 +520,10 @@ public:
             callbackClass,
             "onEventInfo",
             "(JIZIIIIIJJIZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+        onLayoutConfigurationMethod_ = env->GetMethodID(
+            callbackClass,
+            "onLayoutConfiguration",
+            "(JI)V");
         onApplicationStateMethod_ = env->GetMethodID(
             callbackClass,
             "onApplicationState",
@@ -786,6 +790,17 @@ public:
         currentEnv_->DeleteLocalRef(description);
     }
 
+    void onLayoutConfiguration(const tlvdemux::LayoutConfiguration& layout) override {
+        if (!canCallback(onLayoutConfigurationMethod_)) return;
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onLayoutConfigurationMethod_,
+            static_cast<jlong>(layout.context_id),
+            layout.background_color_rgb
+                ? static_cast<jint>(*layout.background_color_rgb)
+                : static_cast<jint>(-1));
+    }
+
     void onApplicationState(const tlvdemux::ApplicationState& state) override {
         if (!canCallback(onApplicationStateMethod_)) return;
         jstring entryPath = currentEnv_->NewStringUTF(state.application.entry_path.c_str());
@@ -917,6 +932,7 @@ private:
     jmethodID onAccessUnitMethod_ = nullptr;
     jmethodID onBroadcastClockMethod_ = nullptr;
     jmethodID onEventInfoMethod_ = nullptr;
+    jmethodID onLayoutConfigurationMethod_ = nullptr;
     jmethodID onApplicationStateMethod_ = nullptr;
     jmethodID onApplicationResourceMethod_ = nullptr;
     jmethodID onApplicationResourcesResetMethod_ = nullptr;

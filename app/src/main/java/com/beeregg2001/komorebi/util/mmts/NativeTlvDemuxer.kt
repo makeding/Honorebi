@@ -79,6 +79,8 @@ class NativeTlvDemuxer(
             description: String
         )
 
+        fun onLayoutConfiguration(contextId: Long, backgroundColorRgb: Int)
+
         fun onApplicationState(
             contextId: Long,
             applicationType: Int,

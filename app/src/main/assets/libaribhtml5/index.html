@@ -45,6 +45,8 @@
       const viewport = document.querySelector('#viewport');
       const status = document.querySelector('#status');
       let currentEntry = '';
+      let currentUrlIsBlank = false;
+      let lastVisibleUrl = '';
       let runtimeInstalled = false;
       let autoEnterData = false;
       const pendingKeys = [];
@@ -87,6 +89,10 @@
           if (event.type === 'installed') {
             runtimeInstalled = true;
             status.classList.add('ready');
+            // The browser host no longer claims keyboard input globally. The
+            // native TV overlay owns remote input while it is visible, so opt
+            // the receiver application into input before flushing queued keys.
+            host.setApplicationInputActive(true);
             for (const code of pendingKeys.splice(0)) host.dispatchKey(code);
             if (autoEnterData) {
               autoEnterData = false;
@@ -110,7 +116,13 @@
           }
         },
         onUrlChange(value) {
-          if (window.ARIBNative?.onUrlChanged) window.ARIBNative.onUrlChanged(String(value || ''));
+          const url = String(value || '');
+          const pathSegments = new URL(url || '/', window.location.origin).pathname.split('/');
+          currentUrlIsBlank = pathSegments.some(
+            segment => segment.toLowerCase() === 'startup'
+          );
+          if (url && !currentUrlIsBlank) lastVisibleUrl = url;
+          if (window.ARIBNative?.onUrlChanged) window.ARIBNative.onUrlChanged(url);
         },
         onOpenProgramGuide(request) {
           if (!window.ARIBNative?.openProgramGuide) return false;
@@ -156,9 +168,12 @@
           if (!payload.entryPath) return false;
           host.clearProgramInfo();
           host.clearBroadcastClock();
+          host.setLctBackgroundColor(payload.lctBackgroundColorRgb ?? null);
           host.setApplicationInformation(payload.application ?? null);
           applyMetadata(payload);
           currentEntry = String(payload.entryPath).replace(/^\/+/, '');
+          currentUrlIsBlank = false;
+          lastVisibleUrl = '';
           autoEnterData = Boolean(payload.autoEnterData);
           status.classList.remove('ready');
           reportStatus('データ放送を起動中…');
@@ -171,6 +186,10 @@
         },
         updateBroadcastClock(json) {
           applyBroadcastClock(JSON.parse(json));
+          return true;
+        },
+        updateLctBackgroundColor(value) {
+          host.setLctBackgroundColor(value ?? null);
           return true;
         },
         resourceChanged(path, updated) {
@@ -192,12 +211,21 @@
 
       window.KomorebiDataBroadcastingRemote = {
         press(key) {
-          const code = keyCodes[String(key)];
+          const name = String(key);
+          const code = keyCodes[name];
           if (code === undefined) return false;
+          if (name === 'data' && currentUrlIsBlank && lastVisibleUrl) {
+            runtimeInstalled = false;
+            status.classList.remove('ready');
+            reportStatus('データ放送を再表示中…');
+            host.loadApplication(lastVisibleUrl);
+            return true;
+          }
           if (!runtimeInstalled) {
             pendingKeys.push(code);
             return true;
           }
+          host.setApplicationInputActive(true);
           host.dispatchKey(code);
           return true;
         },

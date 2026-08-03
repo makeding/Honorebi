@@ -82,8 +82,6 @@ class LivePlayerState(
 
     var isDataBroadcastingColorSelectorVisible by mutableStateOf(false)
     var selectedDataBroadcastingColorKey by mutableStateOf(DataBroadcastingColorKey.Blue)
-    private val dataBroadcastingDirectionShortcut = DataBroadcastingDirectionShortcut()
-    private var pendingDataBroadcastingDirectionJob: Job? = null
 
     var lCropEnabled by mutableStateOf(false)
     var lCropMode by mutableStateOf(LCropMode.HIDDEN)
@@ -378,7 +376,6 @@ class LivePlayerState(
     fun resetDataBroadcastingInput() {
         closeDataBroadcastingColorSelector()
         cancelPendingDataBroadcastingBack()
-        cancelPendingDataBroadcastingDirection()
         backKeyDownTime = 0L
         isBackKeyLongPressed = false
     }
@@ -418,7 +415,6 @@ class LivePlayerState(
         if (hardwareColorKey != null) {
             if (isActionDown) {
                 cancelPendingDataBroadcastingBack()
-                flushPendingDataBroadcastingDirection(onDataBroadcastingRemoteKey)
             } else if (isActionUp) {
                 dispatchDataBroadcastingColorKey(hardwareColorKey, onDataBroadcastingColorKey)
             }
@@ -458,7 +454,6 @@ class LivePlayerState(
 
         if (keyCode == android.view.KeyEvent.KEYCODE_BACK || keyCode == android.view.KeyEvent.KEYCODE_ESCAPE) {
             if (isActionDown) {
-                flushPendingDataBroadcastingDirection(onDataBroadcastingRemoteKey)
                 if (repeatCount == 0) {
                     backKeyDownTime = System.currentTimeMillis()
                     isBackKeyLongPressed = false
@@ -490,27 +485,16 @@ class LivePlayerState(
         }
 
         val direction = when (keyCode) {
-            android.view.KeyEvent.KEYCODE_DPAD_UP -> DataBroadcastingDirection.Up
-            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> DataBroadcastingDirection.Right
-            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> DataBroadcastingDirection.Down
-            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> DataBroadcastingDirection.Left
+            android.view.KeyEvent.KEYCODE_DPAD_UP -> "up"
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "down"
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "left"
             else -> null
         }
         if (direction != null) {
-            if (isActionUp) {
+            if (isActionDown) {
                 cancelPendingDataBroadcastingBack()
-                if (repeatCount > 0) {
-                    // A held D-pad key must remain navigation, never become a color shortcut.
-                    flushPendingDataBroadcastingDirection(onDataBroadcastingRemoteKey)
-                    onDataBroadcastingRemoteKey(direction.remoteKey)
-                } else {
-                    handleDataBroadcastingDirectionTap(
-                        direction = direction,
-                        scope = scope,
-                        onDataBroadcastingColorKey = onDataBroadcastingColorKey,
-                        onDataBroadcastingRemoteKey = onDataBroadcastingRemoteKey
-                    )
-                }
+                onDataBroadcastingRemoteKey(direction)
             }
             return true
         }
@@ -543,7 +527,6 @@ class LivePlayerState(
         if (remoteKey != null) {
             if (isActionDown) {
                 cancelPendingDataBroadcastingBack()
-                flushPendingDataBroadcastingDirection(onDataBroadcastingRemoteKey)
             } else if (isActionUp) {
                 onDataBroadcastingRemoteKey(remoteKey)
             }
@@ -551,46 +534,6 @@ class LivePlayerState(
         }
 
         return false
-    }
-
-    private fun handleDataBroadcastingDirectionTap(
-        direction: DataBroadcastingDirection,
-        scope: CoroutineScope,
-        onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit,
-        onDataBroadcastingRemoteKey: (String) -> Unit
-    ) {
-        pendingDataBroadcastingDirectionJob?.cancel()
-        pendingDataBroadcastingDirectionJob = null
-
-        val result = dataBroadcastingDirectionShortcut.onTap(direction)
-        result.immediateRemoteKey?.let(onDataBroadcastingRemoteKey)
-        result.colorKey?.let { colorKey ->
-            dispatchDataBroadcastingColorKey(colorKey, onDataBroadcastingColorKey)
-            return
-        }
-
-        val pendingToken = result.pendingToken ?: return
-        pendingDataBroadcastingDirectionJob = scope.launch {
-            delay(DATA_BROADCASTING_DIRECTION_DOUBLE_TAP_MS)
-            dataBroadcastingDirectionShortcut.onTimeout(pendingToken)?.let { remoteKey ->
-                pendingDataBroadcastingDirectionJob = null
-                onDataBroadcastingRemoteKey(remoteKey)
-            }
-        }
-    }
-
-    private fun flushPendingDataBroadcastingDirection(
-        onDataBroadcastingRemoteKey: (String) -> Unit
-    ) {
-        pendingDataBroadcastingDirectionJob?.cancel()
-        pendingDataBroadcastingDirectionJob = null
-        dataBroadcastingDirectionShortcut.flush()?.let(onDataBroadcastingRemoteKey)
-    }
-
-    private fun cancelPendingDataBroadcastingDirection() {
-        pendingDataBroadcastingDirectionJob?.cancel()
-        pendingDataBroadcastingDirectionJob = null
-        dataBroadcastingDirectionShortcut.reset()
     }
 
     private fun handleDataBroadcastingBackTap(

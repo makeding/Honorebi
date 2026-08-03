@@ -584,6 +584,13 @@ class TlvExtractor(
         )
     }
 
+    override fun onLayoutConfiguration(contextId: Long, backgroundColorRgb: Int) {
+        dataBroadcastingCallback?.onLayoutConfiguration(
+            contextId = contextId,
+            backgroundColorRgb = backgroundColorRgb.takeIf { it >= 0 }
+        )
+    }
+
     override fun onApplicationResource(
         contextId: Long,
         path: String,

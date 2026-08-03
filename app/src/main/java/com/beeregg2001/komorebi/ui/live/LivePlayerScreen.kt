@@ -315,7 +315,7 @@ fun LivePlayerScreen(
             if (!hasShownDataBroadcastingHint) {
                 hasShownDataBroadcastingHint = true
                 onShowToast(
-                    "方向キー2回で色ボタン（↑青 / →赤 / ↓緑 / ←黄）、戻る2回でテレビ画面"
+                    "戻るを長押しで色ボタン（↑青 / ←赤 / →緑 / ↓黄）、戻る2回でテレビ画面"
                 )
             }
         }
@@ -823,6 +823,7 @@ fun LivePlayerScreen(
                     onApplicationExited = exitLocalDataBroadcasting,
                     modifier = Modifier
                         .fillMaxSize()
+                        .alpha(if (isDataBroadcastingBlank) 0f else 1f)
                         .zIndex(1f)
                 )
             }
@@ -831,9 +832,7 @@ fun LivePlayerScreen(
                 if (isDataBroadcastingActive) {
                     val plane = dataBroadcastingMediaPlane
                     if (isDataBroadcastingBlank) {
-                        Modifier
-                            .fillMaxSize()
-                            .zIndex(2f)
+                        Modifier.fillMaxSize()
                     } else if (plane == null) {
                         Modifier
                             .fillMaxSize()

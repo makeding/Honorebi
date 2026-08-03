@@ -132,34 +132,48 @@ private fun NetworkStatusButton(
         NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
         NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "Wi-Fi設定"
     }
-    val contentColor = if (status.isAvailable) {
-        colors.textPrimary
+    if (status.isAvailable) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(48.dp)
+                .focusRequester(focusRequester)
+                .focusProperties {
+                    left = leftFocusRequester
+                    right = rightFocusRequester
+                    up = FocusRequester.Cancel
+                    canFocus = canTakeFocus
+                },
+            colors = IconButtonDefaults.colors(
+                focusedContainerColor = colors.textPrimary,
+                focusedContentColor = if (colors.isDark) Color.Black else Color.White,
+                contentColor = colors.textSecondary
+            )
+        ) {
+            Icon(icon, contentDescription = description)
+        }
     } else {
-        colors.accent
-    }
-
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .height(48.dp)
-            .focusRequester(focusRequester)
-            .focusProperties {
-                left = leftFocusRequester
-                right = rightFocusRequester
-                up = FocusRequester.Cancel
-                canFocus = canTakeFocus
-            },
-        colors = ButtonDefaults.colors(
-            containerColor = if (status.isAvailable) Color.Transparent else colors.accent.copy(alpha = 0.16f),
-            focusedContainerColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
-            contentColor = contentColor
-        ),
-        shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
-        contentPadding = PaddingValues(horizontal = if (status.isAvailable) 12.dp else 14.dp)
-    ) {
-        Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
-        if (!status.isAvailable) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .height(48.dp)
+                .focusRequester(focusRequester)
+                .focusProperties {
+                    left = leftFocusRequester
+                    right = rightFocusRequester
+                    up = FocusRequester.Cancel
+                    canFocus = canTakeFocus
+                },
+            colors = ButtonDefaults.colors(
+                containerColor = colors.accent.copy(alpha = 0.16f),
+                focusedContainerColor = colors.textPrimary,
+                focusedContentColor = if (colors.isDark) Color.Black else Color.White,
+                contentColor = colors.accent
+            ),
+            shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
+            contentPadding = PaddingValues(horizontal = 14.dp)
+        ) {
+            Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "オフライン",
