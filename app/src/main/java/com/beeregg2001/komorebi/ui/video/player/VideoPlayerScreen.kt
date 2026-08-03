@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import android.view.SurfaceView
 import android.view.ViewGroup
@@ -114,6 +115,8 @@ private const val MIN_PROGRAM_COMMENTS_FOR_CLIMAX = 80
 private const val MIN_CLIMAX_COMMENTS = 20
 private const val WATCH_HISTORY_CHECKPOINT_INTERVAL_MS = 15_000L
 private const val RAW_MMTS_SEEK_DEBOUNCE_MS = 300L
+private const val RAW_MMTS_SEEK_MIN_SETTLE_MS = 150L
+private const val RAW_MMTS_SEEK_SETTLE_TIMEOUT_MS = 15_000L
 private const val MIN_DENSE_BUCKET_COMMENTS = 5
 private const val MIN_CLIMAX_WINDOW_COMMENT_RATIO = 0.08f
 private const val MIN_CLIMAX_PEAK_TO_BASELINE_RATIO = 2.0f
@@ -639,20 +642,21 @@ fun VideoPlayerScreen(
             true
         },
         onStopOrDispose = { player ->
+            val pendingPositionMs = vs.pendingSeekPositionMs
             // 画質の初期化中に作られた空の Player は、Raw MMTS Player への
-            // 再構築時に dispose される。ここで0秒を書くとレジューム位置が消える。
-            if (smbItem == null && player.mediaItemCount > 0) {
+            // 再構築時に dispose される。未準備の0秒でレジューム位置を消さず、
+            // シーク中なら底層 Player の旧位置より UI の最終目標を優先する。
+            if (smbItem == null && (player.mediaItemCount > 0 || pendingPositionMs != null)) {
                 val rawPosition = player.currentPosition
-                val playerPosition = if (rawPosition == C.TIME_UNSET || rawPosition < 0L) {
-                    playbackPositionMs
-                } else {
-                    rawPosition
-                }
-                val posMs = if (isLiveStream && !isRecordingChasePlayback) {
-                    vs.playbackOffsetMs + playerPosition
-                } else {
-                    playerPosition
-                }.coerceAtLeast(0L)
+                val posMs = resolvePersistablePlaybackPositionMs(
+                    pendingSeekPositionMs = pendingPositionMs,
+                    rawPlayerPositionMs = rawPosition.takeUnless { it == C.TIME_UNSET },
+                    fallbackPositionMs = playbackPositionMs,
+                    isPlayerReady = player.playbackState == Player.STATE_READY,
+                    isLiveStream = isLiveStream,
+                    isRecordingChasePlayback = isRecordingChasePlayback,
+                    playbackOffsetMs = vs.playbackOffsetMs
+                )
                 videoPlayerViewModel.updateWatchHistory(currentProgram, posMs / 1000.0)
             }
         }
@@ -668,7 +672,12 @@ fun VideoPlayerScreen(
 
     val getCurrentPositionMs: () -> Long = {
         val rawPosition = exoPlayer.currentPosition
-        if (rawPosition == C.TIME_UNSET) {
+        if (
+            rawPosition == C.TIME_UNSET ||
+            rawPosition < 0L ||
+            rawPosition == 0L && playbackPositionMs > 0L &&
+            exoPlayer.playbackState != Player.STATE_READY
+        ) {
             playbackPositionMs
         } else if (isLiveStream && !isRecordingChasePlayback) {
             vs.playbackOffsetMs + rawPosition
@@ -746,13 +755,59 @@ fun VideoPlayerScreen(
     }
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
+    val usesSerializedRawMmtsSeek = requiresRawMmtsPlayback && vs.currentQuality.isRawMmts
+    val rawMmtsSeekCoordinator = remember(exoPlayer, currentProgram.id) {
+        RawMmtsSeekCoordinator()
+    }
     var pendingRawMmtsSeekJob by remember(exoPlayer, currentProgram.id) {
         mutableStateOf<Job?>(null)
     }
+    var activeRawMmtsSeekPositionMs by remember(exoPlayer, currentProgram.id) {
+        mutableStateOf<Long?>(null)
+    }
+
+    fun scheduleRawMmtsSeekCommit() {
+        pendingRawMmtsSeekJob?.cancel()
+        pendingRawMmtsSeekJob = scope.launch {
+            delay(RAW_MMTS_SEEK_DEBOUNCE_MS)
+            rawMmtsSeekCoordinator.beginNext()?.let { targetMs ->
+                activeRawMmtsSeekPositionMs = targetMs
+                exoPlayer.seekTo(targetMs)
+            }
+            pendingRawMmtsSeekJob = null
+        }
+    }
+
+    LaunchedEffect(exoPlayer, activeRawMmtsSeekPositionMs) {
+        val activeTargetMs = activeRawMmtsSeekPositionMs ?: return@LaunchedEffect
+        val startedAt = SystemClock.elapsedRealtime()
+        delay(RAW_MMTS_SEEK_MIN_SETTLE_MS)
+        while (isActive) {
+            val playbackSettled =
+                (exoPlayer.playbackState == Player.STATE_READY ||
+                    exoPlayer.playbackState == Player.STATE_ENDED)
+            if (playbackSettled) break
+            if (SystemClock.elapsedRealtime() - startedAt >= RAW_MMTS_SEEK_SETTLE_TIMEOUT_MS) {
+                Log.w(TAG, "Raw MMTS seek settle timed out at position_ms=$activeTargetMs")
+                break
+            }
+            delay(50L)
+        }
+
+        val hasQueuedTarget = rawMmtsSeekCoordinator.finish(activeTargetMs)
+        activeRawMmtsSeekPositionMs = null
+        if (hasQueuedTarget) {
+            scheduleRawMmtsSeekCommit()
+        } else if (vs.pendingSeekPositionMs == activeTargetMs) {
+            vs.pendingSeekPositionMs = null
+        }
+    }
+
     DisposableEffect(exoPlayer, currentProgram.id) {
         onDispose {
             pendingRawMmtsSeekJob?.cancel()
             pendingRawMmtsSeekJob = null
+            rawMmtsSeekCoordinator.reset()
         }
     }
 
@@ -809,10 +864,12 @@ fun VideoPlayerScreen(
         // 一瞬だけpendingSeekに記録してUI表示をサクサク進める
         vs.pendingSeekPositionMs = safeTarget
         playbackPositionMs = safeTarget
-        scope.launch {
-            delay(800)
-            if (vs.pendingSeekPositionMs == safeTarget) {
-                vs.pendingSeekPositionMs = null
+        if (!usesSerializedRawMmtsSeek) {
+            scope.launch {
+                delay(800)
+                if (vs.pendingSeekPositionMs == safeTarget) {
+                    vs.pendingSeekPositionMs = null
+                }
             }
         }
 
@@ -847,15 +904,17 @@ fun VideoPlayerScreen(
                     )
                 }
             }
-            if (requiresRawMmtsPlayback && vs.currentQuality.isRawMmts) {
-                pendingRawMmtsSeekJob?.cancel()
-                pendingRawMmtsSeekJob = scope.launch {
-                    delay(RAW_MMTS_SEEK_DEBOUNCE_MS)
-                    if (vs.pendingSeekPositionMs == safeTarget) {
-                        commitSeek()
-                    }
-                    pendingRawMmtsSeekJob = null
+            if (usesSerializedRawMmtsSeek) {
+                rawMmtsSeekCoordinator.request(safeTarget)
+                if (smbItem == null && currentProgram.id != 0) {
+                    // Player がまだ旧位置で BUFFERING 中でも、退出時に失わないよう
+                    // 最終 UI 目標を先にチェックポイントする。
+                    videoPlayerViewModel.updateWatchHistory(
+                        currentProgram,
+                        safeTarget / 1_000.0
+                    )
                 }
+                scheduleRawMmtsSeekCommit()
             } else {
                 commitSeek()
             }

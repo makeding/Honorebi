@@ -59,8 +59,6 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
     private val gson = Gson()
-    private var watchHistoryUpdateJob: Job? = null
-
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
 
@@ -559,10 +557,7 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
     fun updateWatchHistory(program: RecordedProgram, positionSeconds: Double) {
-        watchHistoryUpdateJob?.cancel()
-        watchHistoryUpdateJob = viewModelScope.launch(Dispatchers.IO) {
-            historyRepository.saveWatchHistory(program, positionSeconds)
-        }
+        historyRepository.enqueueWatchHistorySave(program, positionSeconds)
     }
 
     @UnstableApi

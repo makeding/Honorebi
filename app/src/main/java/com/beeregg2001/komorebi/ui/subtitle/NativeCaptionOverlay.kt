@@ -26,6 +26,52 @@ private const val TIMELINE_TICK_MS = 33L
 private const val PAUSED_TIMELINE_TICK_MS = 100L
 private const val MAX_TIMELINE_CUES = 12
 
+private fun regionsOverlap(
+    first: NativeCaptionRegion,
+    second: NativeCaptionRegion,
+    firstTop: Float = first.y.toFloat(),
+    firstBottom: Float = (first.y + first.height).toFloat()
+): Boolean =
+    first.x < second.x + second.width &&
+        first.x + first.width > second.x &&
+        firstTop < second.y + second.height &&
+        firstBottom > second.y
+
+internal fun calculateBottomAvoidanceMask(
+    regions: List<NativeCaptionRegion>,
+    avoidanceStartY: Float,
+    avoidanceOffset: Float
+): BooleanArray {
+    val shouldAvoid = BooleanArray(regions.size) { index ->
+        val region = regions[index]
+        region.y + region.height > avoidanceStartY
+    }
+    if (avoidanceOffset <= 0f) return shouldAvoid
+
+    var changed: Boolean
+    do {
+        changed = false
+        regions.indices.filter { shouldAvoid[it] }.forEach { movingIndex ->
+            val moving = regions[movingIndex]
+            val sweptTop = moving.y - avoidanceOffset
+            val sweptBottom = (moving.y + moving.height).toFloat()
+            regions.indices.filter { !shouldAvoid[it] }.forEach { stationaryIndex ->
+                if (regionsOverlap(
+                        first = moving,
+                        second = regions[stationaryIndex],
+                        firstTop = sweptTop,
+                        firstBottom = sweptBottom
+                    )
+                ) {
+                    shouldAvoid[stationaryIndex] = true
+                    changed = true
+                }
+            }
+        }
+    } while (changed)
+    return shouldAvoid
+}
+
 @Composable
 fun rememberNativeCaptionCue(
     events: Flow<NativeCaptionCue>,
@@ -135,8 +181,13 @@ fun NativeCaptionOverlay(
                 val shiftedRegions = Path()
                 var hasStationaryRegions = false
                 var hasShiftedRegions = false
-                image.regions.forEach { region ->
-                    val shouldAvoid = region.y + region.height > avoidanceStartY
+                val avoidanceMask = calculateBottomAvoidanceMask(
+                    image.regions,
+                    avoidanceStartY,
+                    avoidanceOffset = bottomAvoidanceOffsetPx / scaleY
+                )
+                image.regions.forEachIndexed { index, region ->
+                    val shouldAvoid = avoidanceMask[index]
                     val verticalOffset = if (shouldAvoid) bottomAvoidanceOffsetPx else 0
                     val regionRect = Rect(
                         left = region.x * scaleX,

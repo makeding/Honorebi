@@ -9,8 +9,15 @@ import com.beeregg2001.komorebi.data.local.entity.WatchHistoryEntity
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,6 +28,9 @@ class WatchHistoryRepository @Inject constructor(
     private val lastChannelDao: LastChannelDao,
     private val konomiRepository: KonomiRepository
 ) {
+    private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pendingSaveJobs = ConcurrentHashMap<Int, Job>()
+
     @RequiresApi(Build.VERSION_CODES.O)
     fun getWatchHistoryFlow(): Flow<List<KonomiHistoryProgram>> {
         return watchHistoryDao.getAllHistory().map { entities ->
@@ -46,6 +56,21 @@ class WatchHistoryRepository @Inject constructor(
         runCatching {
             konomiRepository.syncPlaybackPosition(program.id.toString(), positionSeconds)
         }
+    }
+
+    /**
+     * Persists the latest position independently from a player/ViewModel lifecycle.
+     * Jobs are conflated per programme so switching programmes cannot cancel the
+     * final checkpoint of the programme being left.
+     */
+    fun enqueueWatchHistorySave(program: RecordedProgram, positionSeconds: Double) {
+        val programId = program.id
+        val job = saveScope.launch(start = CoroutineStart.LAZY) {
+            saveWatchHistory(program, positionSeconds)
+        }
+        pendingSaveJobs.put(programId, job)?.cancel()
+        job.invokeOnCompletion { pendingSaveJobs.remove(programId, job) }
+        job.start()
     }
 
     // ==========================================
