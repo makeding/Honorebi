@@ -568,7 +568,8 @@ public:
             recordingIndex_.begin(false);
         }
         selectedVideoTrackId_ = 0;
-        selectedAudioTrackId_ = 0;
+        audioTrackIds_.clear();
+        playableAudioTrackIds_.clear();
         selectedSubtitleTrackId_ = 0;
         selectedSubtitleTrackPriority_ = -1;
         currentEnv_ = nullptr;
@@ -630,13 +631,15 @@ public:
             if (selectedVideoTrackId_ == 0 || info.track_id != selectedVideoTrackId_) return;
         }
         if (info.kind == tlvdemux::TrackKind::Audio) {
+            audioTrackIds_.insert(info.track_id);
             const bool isUnsupported22_2 = info.audio.has_value() &&
                 info.audio->channel_layout == tlvdemux::AudioChannelLayout::Channels22_2;
-            if (selectedAudioTrackId_ == 0 && !isUnsupported22_2) {
-                selectedAudioTrackId_ = info.track_id;
-                demuxer_.selectTrack(tlvdemux::TrackKind::Audio, info.track_id);
-            }
-            if (selectedAudioTrackId_ == 0 || info.track_id != selectedAudioTrackId_) return;
+            if (isUnsupported22_2) return;
+
+            // Keep audio unselected in tlvdemux so every playable MMT audio asset is
+            // emitted. Media3 needs all of them as separate TrackGroups in order to
+            // switch audio without recreating the raw-MMTS demuxer.
+            playableAudioTrackIds_.insert(info.track_id);
         }
         if (info.kind == tlvdemux::TrackKind::Subtitle) {
             const int priority = subtitleTrackPriority(info.component_tag);
@@ -683,6 +686,10 @@ public:
 
     void onAccessUnit(tlvdemux::AccessUnit&& unit) override {
         if (buildRecordingIndex_) recordingIndex_.observe(unit);
+        if (audioTrackIds_.find(unit.track_id) != audioTrackIds_.end() &&
+            playableAudioTrackIds_.find(unit.track_id) == playableAudioTrackIds_.end()) {
+            return;
+        }
         if (!canCallback(onAccessUnitMethod_)) return;
         const bool mayReuse =
             unit.codec != tlvdemux::Codec::Ttml &&
@@ -942,7 +949,8 @@ private:
     int preferredVideoPacketId_ = -1;
     bool buildRecordingIndex_ = false;
     std::uint64_t selectedVideoTrackId_ = 0;
-    std::uint64_t selectedAudioTrackId_ = 0;
+    std::unordered_set<std::uint64_t> audioTrackIds_;
+    std::unordered_set<std::uint64_t> playableAudioTrackIds_;
     std::uint64_t selectedSubtitleTrackId_ = 0;
     int selectedSubtitleTrackPriority_ = -1;
 };
