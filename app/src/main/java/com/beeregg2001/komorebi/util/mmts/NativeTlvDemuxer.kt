@@ -45,6 +45,9 @@ class NativeTlvDemuxer(
             mpuSequenceNumber: Long,
             subtitleReferenceStartPtsValue: Long,
             subtitleReferenceStartPtsTimescale: Long,
+            subtitleResourceIndices: IntArray,
+            subtitleResourceTypes: IntArray,
+            subtitleResourceData: Array<ByteArray>,
             randomAccess: Boolean,
             discontinuity: Boolean
         )

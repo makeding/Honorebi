@@ -37,6 +37,10 @@ class NativeLib {
         operationMode: Int,
         timingMode: Int,
         referenceStartPtsMs: Long,
+        resourceScopeId: Long,
+        resourceIndices: IntArray,
+        resourceTypes: IntArray,
+        resourceData: Array<ByteArray>,
         discontinuity: Boolean
     ): Array<NativeCaptionCue>
     external fun getCaptionLanguageCodes(handle: Long): IntArray

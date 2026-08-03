@@ -75,7 +75,7 @@ bool isB62RenderResultWithinBudget(const aribcaption::RenderResult& result) {
 }
 
 std::vector<CaptionRegionGeometry> mapCaptionContentBoundsToRenderFrame(
-    aribcaption::Caption& caption
+    const aribcaption::Caption& caption
 ) {
     std::vector<CaptionRegionGeometry> regions;
     if (caption.plane_width <= 0 || caption.plane_height <= 0 ||
@@ -94,14 +94,14 @@ std::vector<CaptionRegionGeometry> mapCaptionContentBoundsToRenderFrame(
     const float scaleY = static_cast<float>(captionAreaHeight) / caption.plane_height;
 
     regions.reserve(caption.regions.size());
-    for (aribcaption::CaptionRegion& region : caption.regions) {
+    for (const aribcaption::CaptionRegion& region : caption.regions) {
         if (region.chars.empty()) continue;
 
         int contentLeft = std::numeric_limits<int>::max();
         int contentTop = std::numeric_limits<int>::max();
         int contentRight = std::numeric_limits<int>::min();
         int contentBottom = std::numeric_limits<int>::min();
-        for (aribcaption::CaptionChar& character : region.chars) {
+        for (const aribcaption::CaptionChar& character : region.chars) {
             const int sectionWidth = character.section_width();
             const int sectionHeight = character.section_height();
             if (sectionWidth <= 0 || sectionHeight <= 0) continue;
@@ -122,6 +122,19 @@ std::vector<CaptionRegionGeometry> mapCaptionContentBoundsToRenderFrame(
         regions.push_back({left, top, right - left, bottom - top});
     }
     return regions;
+}
+
+const char* b62ResourceMimeType(int dataType) {
+    switch (dataType) {
+    case 1: return "image/png";
+    case 2: return "image/svg+xml";
+    case 3: return "audio/aiff";
+    case 4: return "audio/mpeg";
+    case 5: return "audio/mp4";
+    case 6: return "image/svg+xml";
+    case 7: return "font/woff";
+    default: return nullptr;
+    }
 }
 
 jobject createAndroidBitmapFromRgba(
@@ -498,7 +511,7 @@ public:
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
-            "(JI[BIJJJJJJJJZZ)V");
+            "(JI[BIJJJJJJJJ[I[I[[BZZ)V");
         onBroadcastClockMethod_ = env->GetMethodID(
             callbackClass,
             "onBroadcastClock",
@@ -673,6 +686,28 @@ public:
         jbyteArray data = mayReuse ? makeReusableAccessUnitByteArray(unit.data) : nullptr;
         const bool isReusable = data != nullptr;
         if (data == nullptr) data = makeByteArray(unit.data);
+        const jsize resourceCount = static_cast<jsize>(unit.subtitle_resources.size());
+        jintArray resourceIndices = currentEnv_->NewIntArray(resourceCount);
+        jintArray resourceTypes = currentEnv_->NewIntArray(resourceCount);
+        jclass byteArrayClass = currentEnv_->FindClass("[B");
+        jobjectArray resourceData = currentEnv_->NewObjectArray(
+            resourceCount,
+            byteArrayClass,
+            nullptr);
+        if (resourceCount > 0) {
+            std::vector<jint> indices(static_cast<size_t>(resourceCount));
+            std::vector<jint> types(static_cast<size_t>(resourceCount));
+            for (jsize index = 0; index < resourceCount; ++index) {
+                const auto& resource = unit.subtitle_resources[static_cast<size_t>(index)];
+                indices[static_cast<size_t>(index)] = resource.subsample_number;
+                types[static_cast<size_t>(index)] = resource.data_type;
+                jbyteArray resourceBytes = makeByteArray(resource.data);
+                currentEnv_->SetObjectArrayElement(resourceData, index, resourceBytes);
+                currentEnv_->DeleteLocalRef(resourceBytes);
+            }
+            currentEnv_->SetIntArrayRegion(resourceIndices, 0, resourceCount, indices.data());
+            currentEnv_->SetIntArrayRegion(resourceTypes, 0, resourceCount, types.data());
+        }
         currentEnv_->CallVoidMethod(
             callback_,
             onAccessUnitMethod_,
@@ -694,8 +729,15 @@ public:
             static_cast<jlong>(unit.subtitle_reference_start_pts
                 ? unit.subtitle_reference_start_pts->timescale
                 : 0),
+            resourceIndices,
+            resourceTypes,
+            resourceData,
             unit.random_access ? JNI_TRUE : JNI_FALSE,
             unit.discontinuity ? JNI_TRUE : JNI_FALSE);
+        currentEnv_->DeleteLocalRef(resourceData);
+        currentEnv_->DeleteLocalRef(byteArrayClass);
+        currentEnv_->DeleteLocalRef(resourceTypes);
+        currentEnv_->DeleteLocalRef(resourceIndices);
         if (!isReusable) currentEnv_->DeleteLocalRef(data);
     }
 
@@ -1090,10 +1132,15 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     jint operationMode,
     jint timingMode,
     jlong referenceStartPtsMs,
+    jlong resourceScopeId,
+    jintArray resourceIndices,
+    jintArray resourceTypes,
+    jobjectArray resourceData,
     jboolean discontinuity) {
     auto* ctx = reinterpret_cast<AribCaptionDecoderContext*>(handle);
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    if (!ctx || !ctx->b62Decoder || !ctx->b62Renderer || !data) {
+    if (!ctx || !ctx->b62Decoder || !ctx->b62Renderer || !data ||
+        !resourceIndices || !resourceTypes || !resourceData) {
         return env->NewObjectArray(0, cueClass, nullptr);
     }
 
@@ -1103,9 +1150,54 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
     if (!bytes) return env->NewObjectArray(0, cueClass, nullptr);
 
     std::vector<jobject> cues;
+    std::vector<jbyteArray> pinnedResourceArrays;
+    std::vector<jbyte*> pinnedResourceBytes;
     try {
         std::lock_guard<std::mutex> lock(ctx->mutex);
-        aribcaption::B62DecodeResult decoded;
+        const jsize resourceCount = env->GetArrayLength(resourceData);
+        if (resourceCount != env->GetArrayLength(resourceIndices) ||
+            resourceCount != env->GetArrayLength(resourceTypes) ||
+            resourceCount > 256 || resourceScopeId < 0) {
+            throw std::invalid_argument("Invalid B62 resource context");
+        }
+
+        std::vector<jint> indices(static_cast<size_t>(resourceCount));
+        std::vector<jint> types(static_cast<size_t>(resourceCount));
+        if (resourceCount > 0) {
+            env->GetIntArrayRegion(resourceIndices, 0, resourceCount, indices.data());
+            env->GetIntArrayRegion(resourceTypes, 0, resourceCount, types.data());
+        }
+        pinnedResourceArrays.reserve(static_cast<size_t>(resourceCount));
+        pinnedResourceBytes.reserve(static_cast<size_t>(resourceCount));
+        std::vector<aribcaption::B62ResourceView> resourceViews;
+        resourceViews.reserve(static_cast<size_t>(resourceCount));
+        for (jsize index = 0; index < resourceCount; ++index) {
+            if (indices[static_cast<size_t>(index)] < 0) {
+                throw std::invalid_argument("Invalid B62 resource index");
+            }
+            auto resourceArray = static_cast<jbyteArray>(
+                env->GetObjectArrayElement(resourceData, index));
+            if (!resourceArray) {
+                throw std::invalid_argument("Missing B62 resource data");
+            }
+            const jsize resourceSize = env->GetArrayLength(resourceArray);
+            jbyte* resourceBytes = resourceSize > 0
+                ? env->GetByteArrayElements(resourceArray, nullptr)
+                : nullptr;
+            pinnedResourceArrays.push_back(resourceArray);
+            pinnedResourceBytes.push_back(resourceBytes);
+            if (resourceSize > 0 && !resourceBytes) {
+                throw std::bad_alloc();
+            }
+            aribcaption::B62ResourceView view;
+            view.index = static_cast<uint32_t>(indices[static_cast<size_t>(index)]);
+            view.data = reinterpret_cast<const uint8_t*>(resourceBytes);
+            view.size = static_cast<size_t>(resourceSize);
+            view.mime_type = b62ResourceMimeType(types[static_cast<size_t>(index)]);
+            resourceViews.push_back(view);
+        }
+
+        aribcaption::B62DocumentDecodeResult decoded;
         aribcaption::B62DecodeOptions options;
         options.document_pts = static_cast<int64_t>(ptsMs);
         options.discontinuity = discontinuity == JNI_TRUE;
@@ -1139,25 +1231,45 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
             options.align_earliest_to_document_pts = true;
             break;
         }
-        const auto status = ctx->b62Decoder->Decode(
+        aribcaption::B62ResourceContextView resourceContext;
+        resourceContext.scope_id = static_cast<uint64_t>(resourceScopeId);
+        resourceContext.resources = resourceViews.data();
+        resourceContext.resource_count = resourceViews.size();
+        const auto status = ctx->b62Decoder->DecodeDocument(
             reinterpret_cast<const uint8_t*>(bytes),
             static_cast<size_t>(length),
             options,
+            resourceContext,
             decoded);
         if (status == aribcaption::B62DecodeStatus::kGotCaption) {
             ctx->b62Renderer->Flush();
-            for (aribcaption::Caption& caption : decoded.captions) {
-                aribcaption::RenderResult result;
+            struct RenderPlan {
+                int64_t pts;
+                int64_t duration;
                 std::vector<CaptionRegionGeometry> regions;
-                if (caption.regions.empty()) {
-                    result.pts = caption.pts;
-                    result.duration = caption.wait_duration;
+                bool hasRegions;
+            };
+            std::vector<RenderPlan> plans;
+            plans.reserve(decoded.captions.size());
+            for (const aribcaption::Caption& caption : decoded.captions) {
+                plans.push_back(RenderPlan{
+                    caption.pts,
+                    caption.wait_duration,
+                    mapCaptionContentBoundsToRenderFrame(caption),
+                    !caption.regions.empty()});
+            }
+            if (!ctx->b62Renderer->AppendB62Document(std::move(decoded))) {
+                throw std::runtime_error("Failed to append B62 document");
+            }
+            for (RenderPlan& plan : plans) {
+                aribcaption::RenderResult result;
+                if (!plan.hasRegions) {
+                    result.pts = plan.pts;
+                    result.duration = plan.duration;
                 } else {
-                    regions = mapCaptionContentBoundsToRenderFrame(caption);
-                    const int64_t renderPts = caption.pts == aribcaption::PTS_NOPTS
+                    const int64_t renderPts = plan.pts == aribcaption::PTS_NOPTS
                         ? static_cast<int64_t>(ptsMs)
-                        : caption.pts;
-                    if (!ctx->b62Renderer->AppendCaption(std::move(caption))) continue;
+                        : plan.pts;
                     const auto renderStatus = ctx->b62Renderer->Render(renderPts, result);
                     if (renderStatus != aribcaption::RenderStatus::kGotImage &&
                         renderStatus != aribcaption::RenderStatus::kGotImageUnchanged) {
@@ -1172,7 +1284,7 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
                 // Convert one result at a time. Keeping every native RenderResult until the
                 // whole document finished temporarily retained all RGBA buffers alongside
                 // their Java Bitmaps, which amplified memory peaks on low-memory TVs.
-                jobject cue = renderB62ResultToCue(env, result, ptsMs, &regions);
+                jobject cue = renderB62ResultToCue(env, result, ptsMs, &plan.regions);
                 if (cue != nullptr) cues.push_back(cue);
             }
         }
@@ -1184,6 +1296,15 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
         cues.clear();
         std::lock_guard<std::mutex> lock(ctx->mutex);
         ctx->b62Renderer->Flush();
+    }
+    for (size_t index = 0; index < pinnedResourceArrays.size(); ++index) {
+        if (pinnedResourceBytes[index]) {
+            env->ReleaseByteArrayElements(
+                pinnedResourceArrays[index],
+                pinnedResourceBytes[index],
+                JNI_ABORT);
+        }
+        env->DeleteLocalRef(pinnedResourceArrays[index]);
     }
     env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
 

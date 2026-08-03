@@ -36,7 +36,14 @@ data class B62SubtitleSample(
     val timingMode: Int,
     val referenceStartTimeUs: Long?,
     val mpuSequenceNumber: Long?,
+    val resources: List<B62SubtitleResource>,
     val discontinuity: Boolean
+)
+
+data class B62SubtitleResource(
+    val index: Int,
+    val dataType: Int,
+    val data: ByteArray
 )
 
 class TlvExtractorsFactory(
@@ -428,6 +435,9 @@ class TlvExtractor(
         mpuSequenceNumber: Long,
         subtitleReferenceStartPtsValue: Long,
         subtitleReferenceStartPtsTimescale: Long,
+        subtitleResourceIndices: IntArray,
+        subtitleResourceTypes: IntArray,
+        subtitleResourceData: Array<ByteArray>,
         randomAccess: Boolean,
         discontinuity: Boolean
     ) {
@@ -470,6 +480,17 @@ class TlvExtractor(
                             .takeIf { subtitleReferenceStartPtsTimescale > 0L }
                             ?.let { scaleToMicroseconds(it, subtitleReferenceStartPtsTimescale) },
                         mpuSequenceNumber = mpuSequenceNumber.takeIf { it >= 0L },
+                        resources = subtitleResourceData.indices.mapNotNull { index ->
+                            val subsampleIndex = subtitleResourceIndices.getOrNull(index)
+                                ?: return@mapNotNull null
+                            val dataType = subtitleResourceTypes.getOrNull(index)
+                                ?: return@mapNotNull null
+                            B62SubtitleResource(
+                                index = subsampleIndex,
+                                dataType = dataType,
+                                data = subtitleResourceData[index]
+                            )
+                        },
                         discontinuity = discontinuity
                     )
                 )

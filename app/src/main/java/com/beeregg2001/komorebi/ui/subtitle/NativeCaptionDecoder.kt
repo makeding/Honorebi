@@ -2,6 +2,7 @@ package com.beeregg2001.komorebi.ui.subtitle
 
 import android.util.Log
 import com.beeregg2001.komorebi.NativeLib
+import com.beeregg2001.komorebi.util.mmts.B62SubtitleResource
 
 class NativeCaptionDecoder(
     private val nativeLib: NativeLib = NativeLib()
@@ -46,6 +47,8 @@ class NativeCaptionDecoder(
         operationMode: Int = 1,
         timingMode: Int = 3,
         referenceStartPtsMs: Long? = null,
+        mpuSequenceNumber: Long? = null,
+        resources: List<B62SubtitleResource> = emptyList(),
         discontinuity: Boolean = false
     ): List<NativeCaptionCue> {
         val activeHandle = handle
@@ -58,6 +61,10 @@ class NativeCaptionDecoder(
                 operationMode,
                 timingMode,
                 referenceStartPtsMs ?: Long.MIN_VALUE,
+                mpuSequenceNumber?.plus(1L) ?: 0L,
+                resources.map { it.index }.toIntArray(),
+                resources.map { it.dataType }.toIntArray(),
+                resources.map { it.data }.toTypedArray(),
                 discontinuity
             ).toList()
             if (decoded.isEmpty() && !discontinuity) {

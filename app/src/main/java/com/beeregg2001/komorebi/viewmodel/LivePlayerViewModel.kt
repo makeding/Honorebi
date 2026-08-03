@@ -787,6 +787,8 @@ class LivePlayerViewModel @Inject constructor(
             operationMode = sample.operationMode,
             timingMode = sample.timingMode,
             referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+            mpuSequenceNumber = sample.mpuSequenceNumber,
+            resources = sample.resources,
             discontinuity = sample.discontinuity
         )
         val languages = decoder.availableLanguages()

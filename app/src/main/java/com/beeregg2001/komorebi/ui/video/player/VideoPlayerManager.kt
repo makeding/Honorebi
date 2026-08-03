@@ -474,6 +474,8 @@ fun rememberManagedExoPlayer(
                     operationMode = sample.operationMode,
                     timingMode = sample.timingMode,
                     referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+                    mpuSequenceNumber = sample.mpuSequenceNumber,
+                    resources = sample.resources,
                     discontinuity = sample.discontinuity
                 ) to captionDecoder.availableLanguages()
             }
