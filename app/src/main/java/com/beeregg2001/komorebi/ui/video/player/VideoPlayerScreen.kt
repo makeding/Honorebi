@@ -81,6 +81,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.normalizeQuickSeriesKey
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureBudget
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
+import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingTimelineDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
@@ -956,12 +957,14 @@ fun VideoPlayerScreen(
                 bufferedPositionMs
             ).coerceAtLeast(0L)
         } else {
-            maxOf(
-                (currentProgram.recordedVideo.duration * 1000).toLong(),
-                playbackDurationMs,
-                playbackPositionMs,
-                bufferedPositionMs
-            ).coerceAtLeast(0L)
+            resolveCompletedRecordingTimelineDurationMs(
+                isRawMmtsPlayback = usesSerializedRawMmtsSeek,
+                konomiReportedDurationMs =
+                    (currentProgram.recordedVideo.duration * 1000).toLong(),
+                nativePlayerDurationMs = playbackDurationMs,
+                playbackPositionMs = playbackPositionMs,
+                bufferedPositionMs = bufferedPositionMs,
+            )
         }
 
     LaunchedEffect(isSubMenuOpen, currentProgram.id) {

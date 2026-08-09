@@ -652,7 +652,15 @@ class TlvExtractor(
             val indexed = nativeDemuxer?.getSeekPoints(targetUs) ?: longArrayOf()
             if (indexed.size >= 4 && indexed[0] >= 0L && indexed[1] >= 0L) {
                 val distanceFromIndexedPoint = targetUs - indexed[0]
-                if (distanceFromIndexedPoint <= MAX_INDEXED_SEEK_DISTANCE_US || indexed[2] >= 0L) {
+                val hasFollowingIndexedPoint = indexed[2] >= 0L && indexed[3] >= 0L
+                if (
+                    shouldUseIndexedTlvSeekPoint(
+                        distanceFromIndexedPointUs = distanceFromIndexedPoint,
+                        recordingDurationUs = recordingDurationUs,
+                        inputLengthBytes = inputLength,
+                        hasFollowingIndexedPoint = hasFollowingIndexedPoint,
+                    )
+                ) {
                     val first = androidx.media3.extractor.SeekPoint(indexed[0], indexed[1])
                     Log.i(
                         TAG,
@@ -667,6 +675,12 @@ class TlvExtractor(
                     }
                     return SeekMap.SeekPoints(first)
                 }
+                Log.i(
+                    TAG,
+                    "MMTS indexed seek skipped: target_us=$targetUs indexed_us=${indexed[0]} " +
+                        "estimated_forward_scan_bytes=${estimatedIndexedForwardScanBytes(distanceFromIndexedPoint, recordingDurationUs, inputLength)} " +
+                        "budget_bytes=$MAX_INDEXED_FORWARD_SCAN_BYTES"
+                )
             }
 
             val estimatedPosition = if (recordingDurationUs <= 0L || inputLength <= 0L) {
@@ -702,7 +716,6 @@ class TlvExtractor(
         private const val AUDIO_LAYOUT_STEREO = 3
         private const val AUDIO_LAYOUT_5_1 = 9
         private const val AUDIO_LAYOUT_22_2 = 14
-        private const val MAX_INDEXED_SEEK_DISTANCE_US = 30L * C.MICROS_PER_SECOND
         private const val SEEK_PROBE_BACKOFF_BYTES = 16L * 1024L * 1024L
         private const val GROWING_SEEK_MAP_REFRESH_US = 30L * C.MICROS_PER_SECOND
     }
