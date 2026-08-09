@@ -4,7 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     alias(libs.plugins.kotlin.compose)
-    id("com.google.dagger.hilt.android")
+    alias(libs.plugins.hilt.android)
 //    id("kotlin-kapt")
     id("com.google.devtools.ksp")
     alias(libs.plugins.baselineprofile)
@@ -18,11 +18,11 @@ val releaseKeystoreProperties = Properties().apply {
     }
 }
 val hasReleaseSigningConfig = releaseKeystorePropertiesFile.exists()
-val media3Version = "1.10.1-komorebi"
+val media3Version = libs.versions.media3.get()
 
 android {
     namespace = "com.beeregg2001.komorebi"
-    compileSdk = 36
+    compileSdk = 37
 
     splits {
         abi {
@@ -143,7 +143,7 @@ dependencies {
 
     // 1. Compose BOM を最新に近いバージョンに更新 (ここが最重要)
     // 2023.10.01 だと Tv-Foundation 1.0.0-alpha11 と互換性がありません
-    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    implementation(platform(libs.androidx.compose.bom))
 
     // 2. 各ライブラリの指定 (バージョンは BOM が管理するので書かない)
     implementation("androidx.compose.ui:ui")
@@ -156,34 +156,33 @@ dependencies {
 
     // --- TV用ライブラリ ---
     // これらは BOM に含まれないため、バージョンを固定します
-    implementation("androidx.tv:tv-material:1.0.0")
-    implementation("androidx.tv:tv-foundation:1.0.0-rc01")
+    implementation(libs.androidx.tv.material)
+    implementation(libs.androidx.tv.foundation)
 
     // --- Hilt ---
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
-    implementation("com.google.dagger:hilt-android:2.59.2")
+    implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.hilt.android)
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.hilt.work)
     implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.compose.runtime)
     "baselineProfile"(project(":baselineprofile"))
-    ksp("com.google.dagger:hilt-compiler:2.59.2")
+    ksp(libs.hilt.compiler)
 
     // --- Retrofit ---
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.logging.interceptor)
 
     // --- OkHttp ---
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.sse)
 
     // --- Room (KSPへの移行を推奨) ---
-    val room_version = "2.7.0-alpha11" // 2.7.0より安定している2.6.1を一旦推奨
-    implementation("androidx.room:room-runtime:$room_version")
-    implementation("androidx.room:room-ktx:$room_version")
-    implementation("androidx.room:room-paging:$room_version")
-    ksp("androidx.room:room-compiler:$room_version") // kaptからkspへ
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.room.paging)
+    ksp(libs.androidx.room.compiler)
 
     // --- Media3 ---
     implementation("androidx.media3:media3-exoplayer:$media3Version")
@@ -194,11 +193,11 @@ dependencies {
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
 
     // --- その他 ---
-    implementation("io.coil-kt:coil-compose:2.5.0")
-    implementation("androidx.paging:paging-runtime:3.3.0")
-    implementation("androidx.paging:paging-compose:3.3.0")
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("com.google.android.material:material:1.12.0")
+    implementation(libs.coil.compose)
+    implementation(libs.androidx.paging.runtime)
+    implementation(libs.androidx.paging.compose)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.material)
 
     // Maven Central版の正しいID (DanmakuFlameMaster -> dfm)
     implementation("com.github.ctiao:dfm:0.9.25")
@@ -208,25 +207,22 @@ dependencies {
 //    implementation("com.github.ctiao:ndkbitmap-armv5:0.9.21")
 //    implementation("com.github.ctiao:ndkbitmap-x86:0.9.21")
 
-    compileOnly("org.checkerframework:checker-qual:3.33.0")
+    compileOnly(libs.checker.qual)
 
     // Baseline Profiles のインストールを管理するライブラリ
-    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
-
-    // Hilt Worker (これがないと HiltWorkerFactory が解決できず KAPT がエラーになります)
-    implementation("androidx.hilt:hilt-work:1.2.0")
-    ksp("androidx.hilt:hilt-compiler:1.2.0")
+    // Hilt Worker compiler must match the AndroidX Hilt runtime line.
+    ksp(libs.androidx.hilt.compiler)
 
     // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Gemini
     // --- Ktor Local Server & QR Code ---
     // BOMを使って、Geminiが裏で使うKtorクライアントとローカルサーバーのバージョンを強制統一
-    implementation(platform("io.ktor:ktor-bom:2.3.12"))
+    implementation(platform(libs.ktor.bom))
     implementation("io.ktor:ktor-server-core") // ← バージョン番号はBOMが管理するので消す
     implementation("io.ktor:ktor-server-cio")  // ← バージョン番号はBOMが管理するので消す
-    implementation("com.google.zxing:core:3.5.3")
+    implementation(libs.zxing.core)
 
     // ★ 追加: SMB (ファイルライブラリ) 用
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")

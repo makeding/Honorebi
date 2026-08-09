@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 plugins {
     alias(libs.plugins.android.test)
     alias(libs.plugins.baselineprofile)
@@ -8,7 +10,7 @@ android {
     namespace = "com.beeregg2001.komorebi.baselineprofile"
 
     // ★修正: ライブラリの要求に合わせて 36 に引き上げ
-    compileSdk = 36
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -25,8 +27,10 @@ android {
 
     targetProjectPath = ":app"
 
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
 }
 
