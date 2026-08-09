@@ -26,6 +26,7 @@ import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.ui.home.LoadingScreen
 import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
 import com.beeregg2001.komorebi.ui.video.player.VideoPlayerScreen
+import com.beeregg2001.komorebi.ui.video.player.RecordedProgramSelectionReason
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.ui.theme.AppTheme
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -697,7 +698,10 @@ fun MainRootScreen(
                                 .size(playerWidth, playerHeight)
                                 .clip(RoundedCornerShape(if (state.isMiniPlayerMode) 12.dp else 0.dp))
                         ) {
-                            val target = state.playbackTarget
+                            // Switching retains the committed target for the
+                            // session/Cast lease, but the host must materialize
+                            // the incoming recording until it reaches READY.
+                            val target = state.renderPlaybackTarget
                             if (target is PlaybackTarget.Live) {
                                 LivePlayerScreen(
                                     channel = target.channel,
@@ -764,10 +768,24 @@ fun MainRootScreen(
                                         onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
                                         recentRecordings = recentRecordings,
                                         animeChannels = animeChannels,
-                                        onProgramSelect = { program ->
+                                        onProgramSelect = { program, selectionReason ->
                                             state.isPlayerSubMenuOpen = false
                                             state.isPlayerSceneSearchOpen = false
-                                            state.enterRecorded(program)
+                                            val switchReason = when (selectionReason) {
+                                                RecordedProgramSelectionReason.NextEpisode -> PlaybackSwitchReason.NextEpisode
+                                                RecordedProgramSelectionReason.PreviousEpisode -> PlaybackSwitchReason.PreviousEpisode
+                                                RecordedProgramSelectionReason.QuickSelect -> PlaybackSwitchReason.QuickSelect
+                                            }
+                                            state.beginRecordedSwitch(
+                                                program = program,
+                                                reason = switchReason,
+                                            )
+                                        },
+                                        onProgramReady = { readyProgramId ->
+                                            val pendingSwitch = state.playbackPhase as? PlaybackPhase.Switching
+                                            if (pendingSwitch?.to?.program?.id == readyProgramId) {
+                                                state.commitRecordedSwitch()
+                                            }
                                         },
                                         onChannelSelect = { channel ->
                                             state.isPlayerSubMenuOpen = false

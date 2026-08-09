@@ -46,6 +46,9 @@ fun SystemMediaSession(
     val context = LocalContext.current.applicationContext
     val controller = LocalSystemMediaSessionController.current
     val epoch = LocalSystemMediaSessionEpoch.current
+    val currentOnPrevious = rememberUpdatedState(onPrevious)
+    val currentOnNext = rememberUpdatedState(onNext)
+    val currentOnStop = rememberUpdatedState(onStop)
     val hasPrevious = onPrevious != null
     val hasNext = onNext != null
     val artworkDataState = androidx.compose.runtime.remember(artworkUrl) {
@@ -81,9 +84,10 @@ fun SystemMediaSession(
             epoch = epoch,
             player = player,
             metadata = metadata,
-            onPrevious = onPrevious ?: {},
-            onNext = onNext ?: {},
-            onStop = onStop ?: {},
+            isLoading = isLoading,
+            onPrevious = { currentOnPrevious.value?.invoke() },
+            onNext = { currentOnNext.value?.invoke() },
+            onStop = { currentOnStop.value?.invoke() },
             hasPrevious = hasPrevious,
             hasNext = hasNext,
         ) else null
@@ -170,9 +174,10 @@ private suspend fun loadArtworkData(context: Context, artworkUrl: String?): Byte
     }
 }
 
-private class SystemSessionPlayer(
+internal class SystemSessionPlayer(
     player: Player,
     private val metadata: MediaMetadata,
+    private val forceLoading: Boolean,
     private val onPrevious: () -> Unit,
     private val onNext: () -> Unit,
     private val onStop: () -> Unit,
@@ -181,6 +186,9 @@ private class SystemSessionPlayer(
 ) : ForwardingPlayer(player) {
 
     override fun getMediaMetadata(): MediaMetadata = metadata
+
+    override fun getPlaybackState(): Int =
+        if (forceLoading) Player.STATE_BUFFERING else super.getPlaybackState()
 
     override fun getAvailableCommands(): Player.Commands =
         super.getAvailableCommands().buildUpon()

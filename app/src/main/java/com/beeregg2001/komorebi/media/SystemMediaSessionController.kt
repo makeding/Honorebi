@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Looper
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import com.beeregg2001.komorebi.MainActivity
 
@@ -63,6 +64,7 @@ internal data class SystemMediaSessionAttachment internal constructor(
  * from Compose effects, and explicitly checks that contract so a future caller
  * cannot accidentally mutate the session from an IO callback.
  */
+@OptIn(UnstableApi::class)
 internal class SystemMediaSessionController(context: Context) {
     private val appContext = context.applicationContext
     private val ownership = SystemMediaSessionOwnership()
@@ -79,6 +81,7 @@ internal class SystemMediaSessionController(context: Context) {
         epoch: Long,
         player: Player?,
         metadata: MediaMetadata,
+        isLoading: Boolean,
         onPrevious: () -> Unit,
         onNext: () -> Unit,
         onStop: () -> Unit,
@@ -95,6 +98,7 @@ internal class SystemMediaSessionController(context: Context) {
             val sessionPlayer = SystemSessionPlayer(
                 player = player,
                 metadata = metadata,
+                forceLoading = isLoading,
                 onPrevious = onPrevious,
                 onNext = onNext,
                 onStop = onStop,

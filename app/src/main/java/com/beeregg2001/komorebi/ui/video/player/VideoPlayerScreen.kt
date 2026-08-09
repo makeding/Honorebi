@@ -126,7 +126,8 @@ fun VideoPlayerScreen(
     onSceneSearchToggle: (Boolean) -> Unit,
     recentRecordings: List<RecordedProgram> = emptyList(),
     animeChannels: List<Channel> = emptyList(),
-    onProgramSelect: (RecordedProgram) -> Unit = {},
+    onProgramSelect: (RecordedProgram, RecordedProgramSelectionReason) -> Unit = { _, _ -> },
+    onProgramReady: (programId: Int) -> Unit = {},
     onChannelSelect: (Channel) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
     onBackPressed: () -> Unit,
@@ -548,7 +549,7 @@ fun VideoPlayerScreen(
                 !isNextEpisodeCountdownCancelled
             ) {
                 hasAutoStartedNextEpisode = true
-                onProgramSelect(nextEpisode)
+                onProgramSelect(nextEpisode, RecordedProgramSelectionReason.NextEpisode)
             } else {
                 openQuickVideosOnSubMenuOpen = true
                 onPlaybackEnded()
@@ -643,6 +644,29 @@ fun VideoPlayerScreen(
             }
         }
     )
+
+    // A player can transition through READY more than once while buffering or
+    // renewing a stream. Root only needs the first READY for this program to
+    // commit a pending A -> B handoff, so report it exactly once.
+    val currentOnProgramReady by rememberUpdatedState(onProgramReady)
+    var hasReportedProgramReady by remember(currentProgram.id) { mutableStateOf(false) }
+    DisposableEffect(exoPlayer, currentProgram.id) {
+        fun reportReadyOnce() {
+            if (!hasReportedProgramReady) {
+                hasReportedProgramReady = true
+                currentOnProgramReady(currentProgram.id)
+            }
+        }
+
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) reportReadyOnce()
+            }
+        }
+        exoPlayer.addListener(listener)
+        if (exoPlayer.playbackState == Player.STATE_READY) reportReadyOnce()
+        onDispose { exoPlayer.removeListener(listener) }
+    }
 
     val subtitleCue = rememberNativeCaptionCue(
         events = subtitleEvents,
@@ -1323,8 +1347,12 @@ fun VideoPlayerScreen(
         artworkUrl = systemArtworkUrl,
         mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW,
         isLoading = isBuffering,
-        onPrevious = previousSeriesProgram?.let { target -> { onProgramSelect(target) } },
-        onNext = nextSeriesProgram?.let { target -> { onProgramSelect(target) } },
+        onPrevious = previousSeriesProgram?.let { target ->
+            { onProgramSelect(target, RecordedProgramSelectionReason.PreviousEpisode) }
+        },
+        onNext = nextSeriesProgram?.let { target ->
+            { onProgramSelect(target, RecordedProgramSelectionReason.NextEpisode) }
+        },
         onStop = onBackPressed
     )
     LaunchedEffect(nextSeriesProgram?.id) {
@@ -1396,7 +1424,7 @@ fun VideoPlayerScreen(
             nextEpisode?.let {
                 hasAutoStartedNextEpisode = true
                 hasHandledPlaybackEnd = true
-                onProgramSelect(it)
+                onProgramSelect(it, RecordedProgramSelectionReason.NextEpisode)
             }
         }
     }
@@ -1405,7 +1433,7 @@ fun VideoPlayerScreen(
         if (nextEpisode != null && !hasAutoStartedNextEpisode) {
             hasAutoStartedNextEpisode = true
             hasHandledPlaybackEnd = true
-            onProgramSelect(nextEpisode)
+            onProgramSelect(nextEpisode, RecordedProgramSelectionReason.NextEpisode)
         }
     }
     val cancelNextEpisodeCountdown: () -> Unit = {
@@ -2010,7 +2038,7 @@ fun VideoPlayerScreen(
                     },
                     onVideoSelect = {
                         if (it.id != currentProgram.id) {
-                            onProgramSelect(it)
+                            onProgramSelect(it, RecordedProgramSelectionReason.QuickSelect)
                         }
                     },
                     onChannelSelect = onChannelSelect,
