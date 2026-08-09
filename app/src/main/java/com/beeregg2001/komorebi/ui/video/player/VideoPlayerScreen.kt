@@ -57,6 +57,7 @@ import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.media.SystemMediaSession
+import com.beeregg2001.komorebi.ui.main.RecordedSwitchToken
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.live.B60_INITIAL_MEDIA_PLANE
 import com.beeregg2001.komorebi.ui.live.B60MediaPlane
@@ -76,6 +77,12 @@ import com.beeregg2001.komorebi.ui.video.player.policy.NEXT_EPISODE_COUNTDOWN_WI
 import com.beeregg2001.komorebi.ui.video.player.policy.calculateNextEpisodeCountdownStartMs
 import com.beeregg2001.komorebi.ui.video.player.policy.isNextEpisodeLandingEligible
 import com.beeregg2001.komorebi.ui.video.player.policy.normalizeQuickSeriesKey
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureBudget
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDecision
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import kotlinx.coroutines.channels.BufferOverflow
@@ -88,6 +95,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.time.OffsetDateTime
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
@@ -118,6 +126,7 @@ fun VideoPlayerScreen(
     smbItem: SmbItem? = null,
     initialPositionMs: Long = 0,
     initialQuality: String = "1080p-60fps",
+    isNetworkAvailable: Boolean = true,
     showControls: Boolean,
     onShowControlsChange: (Boolean) -> Unit,
     isSubMenuOpen: Boolean,
@@ -127,7 +136,10 @@ fun VideoPlayerScreen(
     recentRecordings: List<RecordedProgram> = emptyList(),
     animeChannels: List<Channel> = emptyList(),
     onProgramSelect: (RecordedProgram, RecordedProgramSelectionReason) -> Unit = { _, _ -> },
-    onProgramReady: (programId: Int) -> Unit = {},
+    recordedSwitchToken: RecordedSwitchToken? = null,
+    onProgramReady: (programId: Int, token: RecordedSwitchToken?) -> Unit = { _, _ -> },
+    onRecordedSwitchTerminalFailure: (RecordedSwitchToken, RecordedSwitchTerminalFailure) -> Unit = { _, _ -> },
+    shouldPersistWatchHistory: () -> Boolean = { true },
     onChannelSelect: (Channel) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
     onBackPressed: () -> Unit,
@@ -559,6 +571,71 @@ fun VideoPlayerScreen(
         }
     }
 
+    val switchFailureBudget = remember(recordedSwitchToken) {
+        recordedSwitchToken?.let { RecordedSwitchFailureBudget() }
+    }
+    val networkAvailableRef = remember { AtomicBoolean(isNetworkAvailable) }
+    SideEffect { networkAvailableRef.set(isNetworkAvailable) }
+    val networkRecoveryGate = remember(currentProgram.id, smbItem?.path, recordedSwitchToken) {
+        RecordedNetworkRecoveryGate(initiallyAvailable = isNetworkAvailable)
+    }
+    var isWaitingForNetworkRecovery by remember(currentProgram.id, smbItem?.path, recordedSwitchToken) {
+        mutableStateOf(false)
+    }
+    var initialUrlRetryNonce by remember(recordedSwitchToken) { mutableIntStateOf(0) }
+    val currentSwitchToken by rememberUpdatedState(recordedSwitchToken)
+    val currentTerminalSwitchFailure by rememberUpdatedState(onRecordedSwitchTerminalFailure)
+    val renewStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
+        if (smbItem != null || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
+            false
+        } else {
+            val rawPosition = player.currentPosition
+            val resumePositionMs = if (rawPosition == C.TIME_UNSET || rawPosition < 0L) {
+                playbackPositionMs
+            } else if (isLiveStream && !isRecordingChasePlayback) {
+                vs.playbackOffsetMs + rawPosition
+            } else {
+                rawPosition
+            }.coerceAtLeast(0L)
+
+            val newSessionId = UUID.randomUUID().toString()
+            currentSessionId = newSessionId
+            vs.playbackOffsetMs = resumePositionMs
+            isBuffering = true
+            val newUrl = videoPlayerViewModel.resolveStreamUrl(
+                currentProgram.id, vs.currentQuality.value, newSessionId,
+                resumePositionMs / 1000.0, isRecordingChasePlayback,
+            )
+            if (newUrl.isEmpty()) {
+                false
+            } else {
+                Log.i(TAG, "Recovered expired stream session for video=${currentProgram.id}, quality=${vs.currentQuality.value}")
+                currentStreamUrlRef.set(newUrl)
+                val mediaItem = buildVideoMediaItem(newUrl)
+                if (resumePositionMs > 0L && (!isLiveStream || isRecordingChasePlayback)) {
+                    player.setMediaItem(mediaItem, resumePositionMs)
+                } else {
+                    player.setMediaItem(mediaItem)
+                }
+                player.prepare()
+                player.playWhenReady = true
+                true
+            }
+        }
+    }
+    val recoverExpiredStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
+        if (
+            networkRecoveryGate.onFailure(
+                RecordedNetworkRetry.RenewStreamSession,
+                networkAvailableRef.get(),
+            ) == RecordedNetworkRecoveryDecision.WaitForNetwork
+        ) {
+            isWaitingForNetworkRecovery = true
+            true
+        } else {
+            renewStreamSession(player)
+        }
+    }
     val exoPlayer = rememberManagedExoPlayer(
         program = currentProgram,
         vs = vs,
@@ -579,57 +656,47 @@ fun VideoPlayerScreen(
         },
         dataBroadcastingCallback = dataBroadcastingStore,
         enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
-        onStreamSessionExpired = { player ->
-            if (smbItem != null || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
-                return@rememberManagedExoPlayer false
-            }
-
-            val rawPosition = player.currentPosition
-            val resumePositionMs = if (rawPosition == C.TIME_UNSET || rawPosition < 0L) {
-                playbackPositionMs
-            } else if (isLiveStream && !isRecordingChasePlayback) {
-                vs.playbackOffsetMs + rawPosition
+        isNetworkAvailable = networkAvailableRef::get,
+        onStreamSessionExpired = recoverExpiredStreamSession,
+        onPlayerErrorRecovery = { player, error ->
+            val networkRetry = if (smbItem == null) {
+                RecordedNetworkRetry.RenewStreamSession
             } else {
-                rawPosition
-            }.coerceAtLeast(0L)
-
-            val newSessionId = UUID.randomUUID().toString()
-            currentSessionId = newSessionId
-            vs.playbackOffsetMs = resumePositionMs
-            isBuffering = true
-
-            val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                currentProgram.id,
-                vs.currentQuality.value,
-                newSessionId,
-                resumePositionMs / 1000.0,
-                isRecordingChasePlayback
-            )
-            if (newUrl.isEmpty()) {
-                return@rememberManagedExoPlayer false
+                RecordedNetworkRetry.RepreparePlayer
             }
-
-            Log.i(
-                TAG,
-                "Recovered expired stream session for video=${currentProgram.id}, quality=${vs.currentQuality.value}"
-            )
-            currentStreamUrlRef.set(newUrl)
-            val mediaItem = buildVideoMediaItem(newUrl)
-            if (resumePositionMs > 0L && (!isLiveStream || isRecordingChasePlayback)) {
-                player.setMediaItem(mediaItem, resumePositionMs)
-            } else {
-                player.setMediaItem(mediaItem)
+            if (
+                networkRecoveryGate.onFailure(networkRetry, networkAvailableRef.get()) ==
+                RecordedNetworkRecoveryDecision.WaitForNetwork
+            ) {
+                isWaitingForNetworkRecovery = true
+                return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
             }
-            player.prepare()
-            player.playWhenReady = true
-            true
+            val token = currentSwitchToken ?: return@rememberManagedExoPlayer PlayerErrorRecovery.UseDefault
+            val budget = switchFailureBudget ?: return@rememberManagedExoPlayer PlayerErrorRecovery.UseDefault
+            val decision = if (error.hasHttpResponseCode(422)) budget.onHttp422() else budget.onPlaybackError()
+            when (decision) {
+                RecordedSwitchFailureDecision.RenewSession -> {
+                    if (renewStreamSession(player)) PlayerErrorRecovery.Handled else {
+                        val terminal = budget.onSessionRenewalUrlUnavailable()
+                            as RecordedSwitchFailureDecision.Terminal
+                        currentTerminalSwitchFailure(token, terminal.failure)
+                        PlayerErrorRecovery.Handled
+                    }
+                }
+                RecordedSwitchFailureDecision.Reprepare -> PlayerErrorRecovery.Reprepare
+                is RecordedSwitchFailureDecision.Terminal -> {
+                    currentTerminalSwitchFailure(token, decision.failure)
+                    PlayerErrorRecovery.Handled
+                }
+                RecordedSwitchFailureDecision.RetryInitialUrl -> PlayerErrorRecovery.Handled
+            }
         },
         onStopOrDispose = { player ->
             val pendingPositionMs = vs.pendingSeekPositionMs
             // 画質の初期化中に作られた空の Player は、Raw MMTS Player への
             // 再構築時に dispose される。未準備の0秒でレジューム位置を消さず、
             // シーク中なら底層 Player の旧位置より UI の最終目標を優先する。
-            if (smbItem == null && (player.mediaItemCount > 0 || pendingPositionMs != null)) {
+            if (shouldPersistWatchHistory() && smbItem == null && (player.mediaItemCount > 0 || pendingPositionMs != null)) {
                 val rawPosition = player.currentPosition
                 val posMs = resolvePersistablePlaybackPositionMs(
                     pendingSeekPositionMs = pendingPositionMs,
@@ -645,16 +712,64 @@ fun VideoPlayerScreen(
         }
     )
 
+    LaunchedEffect(isNetworkAvailable, exoPlayer, networkRecoveryGate) {
+        when (val decision = networkRecoveryGate.onNetworkChanged(isNetworkAvailable)) {
+            is RecordedNetworkRecoveryDecision.Retry -> when (decision.operation) {
+                RecordedNetworkRetry.ResolveInitialUrl -> initialUrlRetryNonce++
+                RecordedNetworkRetry.RepreparePlayer -> {
+                    delay(500L)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                    isWaitingForNetworkRecovery = false
+                }
+                RecordedNetworkRetry.RenewStreamSession -> {
+                    // The old playlist may have expired while offline. Mint a
+                    // fresh session instead of preparing the stale URL.
+                    delay(500L)
+                    var renewed = renewStreamSession(exoPlayer)
+                    if (!renewed && networkAvailableRef.get()) {
+                        delay(1_000L)
+                        renewed = renewStreamSession(exoPlayer)
+                    }
+                    if (!renewed) {
+                        if (!networkAvailableRef.get()) {
+                            networkRecoveryGate.onFailure(
+                                RecordedNetworkRetry.RenewStreamSession,
+                                networkAvailable = false,
+                            )
+                        } else {
+                            isWaitingForNetworkRecovery = false
+                            val token = currentSwitchToken
+                            if (token != null) {
+                                currentTerminalSwitchFailure(
+                                    token,
+                                    RecordedSwitchTerminalFailure.SessionRenewalFailed,
+                                )
+                            } else {
+                                onShowToast("ネットワーク復帰後の再生再開に失敗しました")
+                            }
+                        }
+                    } else {
+                        isWaitingForNetworkRecovery = false
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+
     // A player can transition through READY more than once while buffering or
     // renewing a stream. Root only needs the first READY for this program to
     // commit a pending A -> B handoff, so report it exactly once.
     val currentOnProgramReady by rememberUpdatedState(onProgramReady)
-    var hasReportedProgramReady by remember(currentProgram.id) { mutableStateOf(false) }
+    var hasReportedProgramReady by remember(currentProgram.id, recordedSwitchToken) { mutableStateOf(false) }
     DisposableEffect(exoPlayer, currentProgram.id) {
         fun reportReadyOnce() {
             if (!hasReportedProgramReady) {
                 hasReportedProgramReady = true
-                currentOnProgramReady(currentProgram.id)
+                networkRecoveryGate.onReady()
+                isWaitingForNetworkRecovery = false
+                currentOnProgramReady(currentProgram.id, recordedSwitchToken)
             }
         }
 
@@ -1006,7 +1121,8 @@ fun VideoPlayerScreen(
         vs.currentQuality.value,
         qualityOptionsKey,
         isQualitiesLoaded,
-        isRecordingChasePlayback
+        isRecordingChasePlayback,
+        initialUrlRetryNonce,
     ) {
         val playbackKey = if (smbItem != null) {
             "smb:${smbItem.path}"
@@ -1014,6 +1130,17 @@ fun VideoPlayerScreen(
             "video:${currentProgram.id}:${vs.currentQuality.value}:$isRecordingChasePlayback"
         }
         if (preparedPlaybackKey == playbackKey && exoPlayer.mediaItemCount > 0) {
+            return@LaunchedEffect
+        }
+
+        if (
+            networkRecoveryGate.onFailure(
+                RecordedNetworkRetry.ResolveInitialUrl,
+                networkAvailableRef.get(),
+            ) == RecordedNetworkRecoveryDecision.WaitForNetwork
+        ) {
+            isBuffering = true
+            isWaitingForNetworkRecovery = true
             return@LaunchedEffect
         }
 
@@ -1058,6 +1185,7 @@ fun VideoPlayerScreen(
         )
 
         if (url.isNotEmpty()) {
+            isWaitingForNetworkRecovery = false
             currentStreamUrlRef.set(url)
             val mediaItem = buildVideoMediaItem(url)
             val startPositionMs = when {
@@ -1081,7 +1209,31 @@ fun VideoPlayerScreen(
             exoPlayer.playWhenReady = true
             hdrModeResumePositionMs = null
         } else {
-            if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
+            if (
+                networkRecoveryGate.onFailure(
+                    RecordedNetworkRetry.ResolveInitialUrl,
+                    networkAvailableRef.get(),
+                ) == RecordedNetworkRecoveryDecision.WaitForNetwork
+            ) {
+                isWaitingForNetworkRecovery = true
+                return@LaunchedEffect
+            }
+            val token = currentSwitchToken
+            val decision = switchFailureBudget?.onInitialUrlUnavailable()
+            when (decision) {
+                RecordedSwitchFailureDecision.RetryInitialUrl -> {
+                    // A freshly-created recorded session can race the backend's
+                    // URL minting. Retry just once; ordinary enter keeps its
+                    // existing non-terminal behavior because it has no budget.
+                    delay(1_000L)
+                    initialUrlRetryNonce++
+                }
+                is RecordedSwitchFailureDecision.Terminal -> {
+                    if (token != null) currentTerminalSwitchFailure(token, decision.failure)
+                }
+                null -> if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
+                else -> Unit
+            }
         }
     }
 
@@ -1208,8 +1360,17 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(currentProgram.recordedVideo.id, vs.currentQuality.value, currentSessionId, smbItem) {
+    DisposableEffect(
+        currentProgram.recordedVideo.id,
+        vs.currentQuality.value,
+        currentSessionId,
+        smbItem,
+        isNetworkAvailable,
+        isWaitingForNetworkRecovery,
+    ) {
         if (
+            isNetworkAvailable &&
+            !isWaitingForNetworkRecovery &&
             smbItem == null &&
             !vs.currentQuality.isRawMmts &&
             vs.currentQuality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE

@@ -34,6 +34,7 @@ sealed interface PlaybackPhase {
         val to: PlaybackTarget.Recorded,
         val reason: PlaybackSwitchReason,
         val initialPositionMs: Long,
+        val token: RecordedSwitchToken,
     ) : PlaybackPhase
 }
 
@@ -46,6 +47,13 @@ enum class PlaybackSwitchReason {
 
 /** Stable identity of a root-owned playback session (and its Cast lease). */
 data class PlaybackSession(val epoch: Long)
+
+/** Identifies one concrete A -> B attempt inside a root playback session. */
+data class RecordedSwitchToken(
+    val sessionEpoch: Long,
+    val attemptId: Long,
+    val toProgramId: Int,
+)
 
 /**
  * State and transitions that belong to playback, rather than to the launcher.
@@ -65,6 +73,7 @@ class MainRootPlaybackState {
     var initialPlaybackPositionMs by mutableLongStateOf(0L)
 
     private var nextPlaybackSessionEpoch = 0L
+    private var nextRecordedSwitchAttemptId = 0L
     private var switchRollbackPositionMs = 0L
 
     // Player overlays
@@ -102,6 +111,8 @@ class MainRootPlaybackState {
     val renderInitialPlaybackPositionMs: Long
         get() = (playbackPhase as? PlaybackPhase.Switching)?.initialPositionMs
             ?: initialPlaybackPositionMs
+    val recordedSwitchToken: RecordedSwitchToken?
+        get() = (playbackPhase as? PlaybackPhase.Switching)?.token
     val livePlayback: PlaybackTarget.Live? get() = playbackTarget as? PlaybackTarget.Live
     val recordedPlayback: PlaybackTarget.Recorded? get() = playbackTarget as? PlaybackTarget.Recorded
     val smbPlayback: PlaybackTarget.Smb? get() = playbackTarget as? PlaybackTarget.Smb
@@ -164,18 +175,25 @@ class MainRootPlaybackState {
         if (from.program.id == program.id) return false
 
         switchRollbackPositionMs = this.initialPlaybackPositionMs
+        val token = RecordedSwitchToken(
+            sessionEpoch = requireNotNull(playbackSession).epoch,
+            attemptId = ++nextRecordedSwitchAttemptId,
+            toProgramId = program.id,
+        )
         playbackPhase = PlaybackPhase.Switching(
             from = from,
             to = PlaybackTarget.Recorded(program),
             reason = reason,
             initialPositionMs = initialPositionMs.coerceAtLeast(0L),
+            token = token,
         )
         return true
     }
 
     /** Applies a successful recorded-item handoff without replacing the playback session. */
-    fun commitRecordedSwitch(): Boolean {
+    fun commitRecordedSwitch(token: RecordedSwitchToken): Boolean {
         val transition = playbackPhase as? PlaybackPhase.Switching ?: return false
+        if (transition.token != token) return false
         playbackTarget = transition.to
         initialPlaybackPositionMs = transition.initialPositionMs
         lastSelectedProgramId = transition.to.program.id.toString()
@@ -188,8 +206,9 @@ class MainRootPlaybackState {
     }
 
     /** Restores the previously playing recording when its replacement cannot be prepared. */
-    fun failRecordedSwitch(): Boolean {
+    fun failRecordedSwitch(token: RecordedSwitchToken): Boolean {
         val transition = playbackPhase as? PlaybackPhase.Switching ?: return false
+        if (transition.token != token) return false
         playbackTarget = transition.from
         initialPlaybackPositionMs = switchRollbackPositionMs
         playbackPhase = PlaybackPhase.Playing(transition.from)

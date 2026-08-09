@@ -171,9 +171,9 @@ class MainRootState {
         reason: PlaybackSwitchReason,
     ): Boolean = playbackState.beginRecordedSwitch(program, initialPositionMs, reason)
 
-    fun commitRecordedSwitch(): Boolean = playbackState.commitRecordedSwitch()
+    fun commitRecordedSwitch(token: RecordedSwitchToken): Boolean = playbackState.commitRecordedSwitch(token)
 
-    fun failRecordedSwitch(): Boolean = playbackState.failRecordedSwitch()
+    fun failRecordedSwitch(token: RecordedSwitchToken): Boolean = playbackState.failRecordedSwitch(token)
 
     fun enterMiniPlayer(): Boolean {
         return playbackState.enterMiniPlayer()

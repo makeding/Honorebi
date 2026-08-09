@@ -83,10 +83,11 @@ class MainRootPlaybackStateTest {
                 to = PlaybackTarget.Recorded(next),
                 reason = PlaybackSwitchReason.NextEpisode,
                 initialPositionMs = 2_000L,
+                token = requireNotNull(state.recordedSwitchToken),
             ),
             state.playbackPhase,
         )
-        assertTrue(state.commitRecordedSwitch())
+        assertTrue(state.commitRecordedSwitch(requireNotNull(state.recordedSwitchToken)))
         assertEquals(PlaybackTarget.Recorded(next), state.playbackTarget)
         assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(next)), state.playbackPhase)
         assertSame(session, state.playbackSession)
@@ -101,7 +102,7 @@ class MainRootPlaybackStateTest {
         val session = requireNotNull(state.playbackSession)
 
         assertTrue(state.beginRecordedSwitch(recording(id = 43), initialPositionMs = 2_000L, reason = PlaybackSwitchReason.QuickSelect))
-        assertTrue(state.failRecordedSwitch())
+        assertTrue(state.failRecordedSwitch(requireNotNull(state.recordedSwitchToken)))
 
         assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
         assertEquals(PlaybackTarget.Recorded(first), state.renderPlaybackTarget)
@@ -124,6 +125,23 @@ class MainRootPlaybackStateTest {
             )
         )
         assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(current)), state.playbackPhase)
+    }
+
+    @Test
+    fun recordedSwitch_ignoresReadyAndFailureFromAnotherAttemptOrSession() {
+        val state = MainRootPlaybackState()
+        val first = recording(id = 42)
+        state.enterRecorded(first)
+        assertTrue(state.beginRecordedSwitch(recording(id = 43), reason = PlaybackSwitchReason.NextEpisode))
+        val token = requireNotNull(state.recordedSwitchToken)
+        val staleAttempt = token.copy(attemptId = token.attemptId - 1)
+        val staleEpoch = token.copy(sessionEpoch = token.sessionEpoch + 1)
+
+        assertFalse(state.commitRecordedSwitch(staleAttempt))
+        assertFalse(state.failRecordedSwitch(staleEpoch))
+        assertEquals(PlaybackPhase.Switching::class, state.playbackPhase::class)
+        assertTrue(state.failRecordedSwitch(token))
+        assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(first)), state.playbackPhase)
     }
 
     @Test

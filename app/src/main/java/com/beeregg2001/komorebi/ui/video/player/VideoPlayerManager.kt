@@ -386,7 +386,7 @@ private fun prefetchRecordedSegments(
     }
 }
 
-private fun Throwable.hasHttpResponseCode(responseCode: Int): Boolean {
+internal fun Throwable.hasHttpResponseCode(responseCode: Int): Boolean {
     var cause: Throwable? = this
     while (cause != null) {
         if (cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == responseCode) {
@@ -397,7 +397,19 @@ private fun Throwable.hasHttpResponseCode(responseCode: Int): Boolean {
     return false
 }
 
-private class HonomiLikeHlsLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy() {
+/** How a caller-owned, bounded recovery policy wants this player error handled. */
+sealed interface PlayerErrorRecovery {
+    /** The caller renewed/reported the error and no further player action is safe. */
+    data object Handled : PlayerErrorRecovery
+    /** Keep the existing delayed Media3 reprepare path. */
+    data object Reprepare : PlayerErrorRecovery
+    /** Use the legacy recovery behavior for ordinary (non-switching) playback. */
+    data object UseDefault : PlayerErrorRecovery
+}
+
+private class HonomiLikeHlsLoadErrorHandlingPolicy(
+    private val isNetworkAvailable: () -> Boolean,
+) : DefaultLoadErrorHandlingPolicy() {
     override fun getMinimumLoadableRetryCount(dataType: Int): Int {
         return when (dataType) {
             C.DATA_TYPE_MANIFEST -> 4
@@ -407,6 +419,9 @@ private class HonomiLikeHlsLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPol
     }
 
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+        // Do not burn Media3's retry count while Android has no active network.
+        // The screen-level recovery gate owns the next false -> true edge.
+        if (!isNetworkAvailable()) return C.TIME_UNSET
         val exception = loadErrorInfo.exception
         if (exception.isHttpResponseCode(422)) {
             return C.TIME_UNSET
@@ -451,7 +466,11 @@ fun rememberManagedExoPlayer(
     onPlaybackEnded: () -> Unit = {},
     dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
     enableHdrToSdrToneMapping: Boolean = false,
+    isNetworkAvailable: () -> Boolean = { true },
     onStreamSessionExpired: suspend (ExoPlayer) -> Boolean = { false },
+    onPlayerErrorRecovery: suspend (ExoPlayer, PlaybackException) -> PlayerErrorRecovery = { _, _ ->
+        PlayerErrorRecovery.UseDefault
+    },
     onStopOrDispose: (ExoPlayer) -> Unit,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
@@ -900,7 +919,7 @@ fun rememberManagedExoPlayer(
         }
 
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, customExtractorsFactory)
-            .setLoadErrorHandlingPolicy(HonomiLikeHlsLoadErrorHandlingPolicy())
+            .setLoadErrorHandlingPolicy(HonomiLikeHlsLoadErrorHandlingPolicy(isNetworkAvailable))
 
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
         val targetBufferBytes = when {
@@ -1001,8 +1020,14 @@ fun rememberManagedExoPlayer(
                         }
                         scope.launch {
                             try {
-                                if (error.hasHttpResponseCode(422) && onStreamSessionExpired(this@apply)) {
-                                    return@launch
+                                when (onPlayerErrorRecovery(this@apply, error)) {
+                                    PlayerErrorRecovery.Handled -> return@launch
+                                    PlayerErrorRecovery.Reprepare -> Unit
+                                    PlayerErrorRecovery.UseDefault -> {
+                                        if (error.hasHttpResponseCode(422) && onStreamSessionExpired(this@apply)) {
+                                            return@launch
+                                        }
+                                    }
                                 }
                                 onBufferingChanged(true)
                                 delay(3000L)
