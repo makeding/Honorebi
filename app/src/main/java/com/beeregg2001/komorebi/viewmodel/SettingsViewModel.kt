@@ -23,8 +23,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.engine.ApplicationEngine
+import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.cio.CIO
+import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.routing.routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -640,7 +641,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private var ktorServer: ApplicationEngine? = null
+    private var ktorServer: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val _localIpAddress = MutableStateFlow(getLocalIpAddress())
     val localIpAddress: StateFlow<String> = _localIpAddress
 
