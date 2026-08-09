@@ -13,11 +13,11 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 
 add_subdirectory(third_party/libaribcaption EXCLUDE_FROM_ALL)
 
-# tlvdemux は Android APK に独立した libtlvdemux.so として同梱する。
+# libaribtlv は Android APK に独立した libaribtlv.so として同梱する。
 # libaribcaption は静的リンクのまま維持したいため、追加後に BUILD_SHARED_LIBS を切り替える。
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/tlvdemux EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/libaribtlv EXCLUDE_FROM_ALL)
 
 # 1. tsreadex のコアロジック（ソースファイル群）を定義
 set(TSREADEX_CORE_SRC
@@ -46,7 +46,7 @@ target_link_libraries(
     ${log-lib}
     ${jnigraphics-lib}
     aribcaption::aribcaption
-    tlvdemux::tlvdemux
+    aribtlv::aribtlv
 )
 
 # インクルードディレクトリの設定（カレントディレクトリを参照）

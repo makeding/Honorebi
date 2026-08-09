@@ -16,9 +16,9 @@
 #include <aribcaption/aribcaption.h>
 #include <aribcaption/b62_decoder.hpp>
 #include <aribcaption/renderer.hpp>
-#include <tlvdemux/demuxer.hpp>
-#include <tlvdemux/duration_probe.hpp>
-#include <tlvdemux/recording.hpp>
+#include <aribtlv/demuxer.hpp>
+#include <aribtlv/duration_probe.hpp>
+#include <aribtlv/recording.hpp>
 
 // tsreadex コアヘッダ
 #include "servicefilter.hpp"
@@ -494,7 +494,7 @@ public:
     }
 };
 
-class TlvDemuxContext final : public tlvdemux::Sink {
+class TlvDemuxContext final : public aribtlv::Sink {
 public:
     TlvDemuxContext(JNIEnv* env, jobject callback, const int preferredVideoPacketId,
                     const bool buildRecordingIndex)
@@ -577,7 +577,7 @@ public:
 
     void reposition(const std::uint64_t inputOffset) {
         std::lock_guard<std::mutex> lock(mutex_);
-        demuxer_.reposition(tlvdemux::RepositionOptions{inputOffset, true});
+        demuxer_.reposition(aribtlv::RepositionOptions{inputOffset, true});
     }
 
     std::array<std::int64_t, 4> seekPoints(const std::int64_t targetUs) {
@@ -585,7 +585,7 @@ public:
         std::array<std::int64_t, 4> result{-1, -1, -1, -1};
         if (!buildRecordingIndex_) return result;
         const auto points = recordingIndex_.seekPointsFor(
-            tlvdemux::Timestamp{targetUs, 1000000});
+            aribtlv::Timestamp{targetUs, 1000000});
         if (!points.has_value()) return result;
         result[0] = points->first.presentation_time.value;
         result[1] = static_cast<std::int64_t>(points->first.signalling_offset);
@@ -608,7 +608,7 @@ public:
         }
     }
 
-    void onService(const tlvdemux::ServiceInfo& info) override {
+    void onService(const aribtlv::ServiceInfo& info) override {
         if (!canCallback(onServiceMethod_)) return;
         jbyteArray packageId = makeByteArray(info.package_id);
         currentEnv_->CallVoidMethod(
@@ -619,34 +619,34 @@ public:
         currentEnv_->DeleteLocalRef(packageId);
     }
 
-    void onTrack(const tlvdemux::TrackInfo& info) override {
-        if (info.kind == tlvdemux::TrackKind::Video) {
+    void onTrack(const aribtlv::TrackInfo& info) override {
+        if (info.kind == aribtlv::TrackKind::Video) {
             const bool matchesPreferred = preferredVideoPacketId_ < 0 ||
                 info.packet_id == preferredVideoPacketId_;
             if (selectedVideoTrackId_ == 0 && matchesPreferred) {
                 selectedVideoTrackId_ = info.track_id;
-                demuxer_.selectTrack(tlvdemux::TrackKind::Video, info.track_id);
+                demuxer_.selectTrack(aribtlv::TrackKind::Video, info.track_id);
                 if (buildRecordingIndex_) recordingIndex_.selectVideoTrack(info.track_id);
             }
             if (selectedVideoTrackId_ == 0 || info.track_id != selectedVideoTrackId_) return;
         }
-        if (info.kind == tlvdemux::TrackKind::Audio) {
+        if (info.kind == aribtlv::TrackKind::Audio) {
             audioTrackIds_.insert(info.track_id);
             const bool isUnsupported22_2 = info.audio.has_value() &&
-                info.audio->channel_layout == tlvdemux::AudioChannelLayout::Channels22_2;
+                info.audio->channel_layout == aribtlv::AudioChannelLayout::Channels22_2;
             if (isUnsupported22_2) return;
 
-            // Keep audio unselected in tlvdemux so every playable MMT audio asset is
+            // Keep audio unselected in aribtlv so every playable MMT audio asset is
             // emitted. Media3 needs all of them as separate TrackGroups in order to
             // switch audio without recreating the raw-MMTS demuxer.
             playableAudioTrackIds_.insert(info.track_id);
         }
-        if (info.kind == tlvdemux::TrackKind::Subtitle) {
+        if (info.kind == aribtlv::TrackKind::Subtitle) {
             const int priority = subtitleTrackPriority(info.component_tag);
             if (selectedSubtitleTrackId_ == 0 || priority > selectedSubtitleTrackPriority_) {
                 selectedSubtitleTrackId_ = info.track_id;
                 selectedSubtitleTrackPriority_ = priority;
-                demuxer_.selectTrack(tlvdemux::TrackKind::Subtitle, info.track_id);
+                demuxer_.selectTrack(aribtlv::TrackKind::Subtitle, info.track_id);
             }
             if (info.track_id != selectedSubtitleTrackId_) return;
         }
@@ -654,7 +654,7 @@ public:
         jstring language = currentEnv_->NewStringUTF(info.language.c_str());
         const auto audioLayout = info.audio.has_value()
             ? static_cast<jint>(info.audio->channel_layout)
-            : static_cast<jint>(tlvdemux::AudioChannelLayout::Unknown);
+            : static_cast<jint>(aribtlv::AudioChannelLayout::Unknown);
         const auto audioSampleRate = info.audio.has_value()
             ? static_cast<jint>(info.audio->sample_rate)
             : 0;
@@ -684,7 +684,7 @@ public:
         currentEnv_->DeleteLocalRef(language);
     }
 
-    void onAccessUnit(tlvdemux::AccessUnit&& unit) override {
+    void onAccessUnit(aribtlv::AccessUnit&& unit) override {
         if (buildRecordingIndex_) recordingIndex_.observe(unit);
         if (audioTrackIds_.find(unit.track_id) != audioTrackIds_.end() &&
             playableAudioTrackIds_.find(unit.track_id) == playableAudioTrackIds_.end()) {
@@ -692,7 +692,7 @@ public:
         }
         if (!canCallback(onAccessUnitMethod_)) return;
         const bool mayReuse =
-            unit.codec != tlvdemux::Codec::Ttml &&
+            unit.codec != aribtlv::Codec::Ttml &&
             unit.data.size() <= MAX_RETAINED_ACCESS_UNIT_BYTES;
         jbyteArray data = mayReuse ? makeReusableAccessUnitByteArray(unit.data) : nullptr;
         const bool isReusable = data != nullptr;
@@ -752,7 +752,7 @@ public:
         if (!isReusable) currentEnv_->DeleteLocalRef(data);
     }
 
-    void onBroadcastClock(const tlvdemux::BroadcastClock& clock) override {
+    void onBroadcastClock(const aribtlv::BroadcastClock& clock) override {
         if (!canCallback(onBroadcastClockMethod_)) return;
         currentEnv_->CallVoidMethod(
             callback_,
@@ -765,7 +765,7 @@ public:
             clock.discontinuity ? JNI_TRUE : JNI_FALSE);
     }
 
-    void onEventInfo(const tlvdemux::EventInfo& event) override {
+    void onEventInfo(const aribtlv::EventInfo& event) override {
         if (!canCallback(onEventInfoMethod_)) return;
         jstring language = currentEnv_->NewStringUTF(event.language.c_str());
         jstring title = currentEnv_->NewStringUTF(event.title.c_str());
@@ -797,7 +797,7 @@ public:
         currentEnv_->DeleteLocalRef(description);
     }
 
-    void onLayoutConfiguration(const tlvdemux::LayoutConfiguration& layout) override {
+    void onLayoutConfiguration(const aribtlv::LayoutConfiguration& layout) override {
         if (!canCallback(onLayoutConfigurationMethod_)) return;
         currentEnv_->CallVoidMethod(
             callback_,
@@ -808,7 +808,7 @@ public:
                 : static_cast<jint>(-1));
     }
 
-    void onApplicationState(const tlvdemux::ApplicationState& state) override {
+    void onApplicationState(const aribtlv::ApplicationState& state) override {
         if (!canCallback(onApplicationStateMethod_)) return;
         jstring entryPath = currentEnv_->NewStringUTF(state.application.entry_path.c_str());
         jclass stringClass = currentEnv_->FindClass("java/lang/String");
@@ -844,7 +844,7 @@ public:
         currentEnv_->DeleteLocalRef(stringClass);
     }
 
-    void onApplicationResource(tlvdemux::ApplicationResource&& resource) override {
+    void onApplicationResource(aribtlv::ApplicationResource&& resource) override {
         if (!canCallback(onApplicationResourceMethod_)) return;
         jstring path = currentEnv_->NewStringUTF(resource.path.c_str());
         jstring contentType = currentEnv_->NewStringUTF(resource.content_type.c_str());
@@ -867,7 +867,7 @@ public:
         currentEnv_->CallVoidMethod(callback_, onApplicationResourcesResetMethod_);
     }
 
-    void onError(const tlvdemux::Error& error) override {
+    void onError(const aribtlv::Error& error) override {
         if (!canCallback(onErrorMethod_)) return;
         jstring message = currentEnv_->NewStringUTF(error.message.c_str());
         currentEnv_->CallVoidMethod(
@@ -944,8 +944,8 @@ private:
     jmethodID onApplicationResourceMethod_ = nullptr;
     jmethodID onApplicationResourcesResetMethod_ = nullptr;
     jmethodID onErrorMethod_ = nullptr;
-    tlvdemux::Demuxer demuxer_;
-    tlvdemux::RecordingIndex recordingIndex_;
+    aribtlv::Demuxer demuxer_;
+    aribtlv::RecordingIndex recordingIndex_;
     int preferredVideoPacketId_ = -1;
     bool buildRecordingIndex_ = false;
     std::uint64_t selectedVideoTrackId_ = 0;
@@ -1507,8 +1507,8 @@ Java_com_beeregg2001_komorebi_NativeLib_openTlvDurationProbe(
     jint preferredVideoPacketId) {
     if (sourceSize <= 0) return 0;
 
-    auto* probe = new tlvdemux::DurationProbe();
-    tlvdemux::DurationProbeOptions options;
+    auto* probe = new aribtlv::DurationProbe();
+    aribtlv::DurationProbeOptions options;
     if (preferredVideoPacketId >= 0) {
         options.video_packet_id = static_cast<std::uint16_t>(preferredVideoPacketId);
     }
@@ -1524,7 +1524,7 @@ Java_com_beeregg2001_komorebi_NativeLib_getTlvDurationProbeNextRange(
     JNIEnv* env,
     jobject thiz,
     jlong handle) {
-    auto* probe = reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    auto* probe = reinterpret_cast<aribtlv::DurationProbe*>(handle);
     jlongArray result = env->NewLongArray(3);
     if (result == nullptr) return nullptr;
 
@@ -1551,7 +1551,7 @@ Java_com_beeregg2001_komorebi_NativeLib_pushTlvDurationProbeRange(
     jbyteArray data,
     jint length,
     jboolean endOfRange) {
-    auto* probe = reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    auto* probe = reinterpret_cast<aribtlv::DurationProbe*>(handle);
     if (probe == nullptr || data == nullptr || length < 0) return JNI_FALSE;
 
     const jsize arrayLength = env->GetArrayLength(data);
@@ -1573,7 +1573,7 @@ Java_com_beeregg2001_komorebi_NativeLib_getTlvDurationProbeResult(
     JNIEnv* env,
     jobject thiz,
     jlong handle) {
-    auto* probe = reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    auto* probe = reinterpret_cast<aribtlv::DurationProbe*>(handle);
     jlongArray result = env->NewLongArray(4);
     if (result == nullptr) return nullptr;
 
@@ -1582,7 +1582,7 @@ Java_com_beeregg2001_komorebi_NativeLib_getTlvDurationProbeResult(
         values[0] = static_cast<jlong>(probe->state());
         values[1] = static_cast<jlong>(probe->failure());
         const auto duration = probe->duration();
-        if (duration.status == tlvdemux::DurationStatus::Complete &&
+        if (duration.status == aribtlv::DurationStatus::Complete &&
             duration.value.timescale != 0) {
             values[2] = static_cast<jlong>(
                 duration.value.value * 1000000LL /
@@ -1599,7 +1599,7 @@ Java_com_beeregg2001_komorebi_NativeLib_closeTlvDurationProbe(
     JNIEnv* env,
     jobject thiz,
     jlong handle) {
-    delete reinterpret_cast<tlvdemux::DurationProbe*>(handle);
+    delete reinterpret_cast<aribtlv::DurationProbe*>(handle);
 }
 
 }

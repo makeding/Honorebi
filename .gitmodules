@@ -1,6 +1,6 @@
 [submodule "app/src/main/cpp/third_party/libaribcaption"]
 	path = app/src/main/cpp/third_party/libaribcaption
 	url = https://github.com/makeding/libaribcaption.git
-[submodule "app/src/main/cpp/third_party/tlvdemux"]
-	path = app/src/main/cpp/third_party/tlvdemux
-	url = https://github.com/makeding/tlvdemux.git
+[submodule "app/src/main/cpp/third_party/libaribtlv"]
+	path = app/src/main/cpp/third_party/libaribtlv
+	url = https://github.com/makeding/libaribtlv.git

@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
@@ -462,6 +463,7 @@ fun LivePlayerScreen(
         onDispose { dualPlayer?.removeListener(listener) }
     }
 
+    CastRouteDiscovery()
     SystemMediaSession(
         player = mainPlayer,
         title = currentChannelItem.programPresent?.title ?: currentChannelItem.name,

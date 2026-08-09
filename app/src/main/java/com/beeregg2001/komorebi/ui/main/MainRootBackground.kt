@@ -60,8 +60,7 @@ fun MainRootBackground(
     val colors = KomorebiTheme.colors
 
     // ★ 修正: SMBアイテムが選択されている場合も背面を非表示（ホームレイヤー維持）にする
-    val showHomeLayer =
-        (state.selectedChannel == null && state.selectedProgram == null && state.selectedSmbItem == null) || state.isMiniPlayerMode
+    val showHomeLayer = !state.isPlaybackActive || state.isMiniPlayerMode
 
     if (showHomeLayer) {
         Box(
@@ -89,14 +88,7 @@ fun MainRootBackground(
                                 program.playbackPosition > 5.0 && (duration <= 0 || program.playbackPosition < (duration - 10)) -> program.playbackPosition
                                 else -> 0.0
                             }
-                            state.initialPlaybackPositionMs = (resumePos * 1000).toLong()
-                            state.selectedProgram = program
-                            state.lastSelectedProgramId = program.id.toString()
-
-                            state.lastPlayedRecordingId = program.id
-                            state.showPlayerControls = true
-                            state.isReturningFromPlayer = false
-                            state.isMiniPlayerMode = false
+                            state.enterRecorded(program, (resumePos * 1000).toLong())
                         },
                         onBack = {
                             state.isRecordListOpen = false
@@ -123,14 +115,7 @@ fun MainRootBackground(
                         onBack = { state.isSmbLibraryOpen = false },
                         onFileClick = { item ->
                             // ★ 修正: SMBファイルをクリックしたら、プレイヤーを起動する
-                            state.selectedSmbItem = item
-                            state.showPlayerControls = true
-                            state.isReturningFromPlayer = false
-                            state.isMiniPlayerMode = false
-                            state.initialPlaybackPositionMs = 0L
-
-                            // ★ 追加: 再生したファイルのパスを保存（戻ってきた時のフォーカス復帰用）
-                            state.lastPlayedSmbPath = item.path
+                            state.enterSmb(item)
                         },
                         // ★ 追加: 再生画面から戻ってきた際のフォーカス復帰用パラメータ
                         isReturningFromPlayer = state.isReturningFromPlayer,
@@ -215,19 +200,16 @@ fun MainRootBackground(
                         initialTabIndex = safeTabIndex,
                         launcherHomeFocusTick = state.launcherHomeFocusTick,
                         onTabChange = { state.currentTabIndex = it },
-                        selectedChannel = state.selectedChannel,
+                        selectedChannel = state.livePlayback?.channel,
                         onChannelClick = { channel, isBaseballMode ->
-                            state.selectedChannel = channel
-                            state.isBaseballMode = isBaseballMode
                             if (channel != null) {
-                                state.lastSelectedChannelId = channel.id
-                                state.lastSelectedProgramId = null
+                                state.enterLive(channel, isBaseballMode)
                                 homeViewModel.saveLastChannel(channel)
-                                state.isReturningFromPlayer = false
-                                state.isMiniPlayerMode = false
+                            } else if (state.livePlayback != null) {
+                                state.leavePlayback(returningFromPlayer = false)
                             }
                         },
-                        selectedProgram = state.selectedProgram,
+                        selectedProgram = state.recordedPlayback?.program,
                         onProgramSelected = { program ->
                             if (program != null) {
                                 val isRecordingProgram =
@@ -237,16 +219,11 @@ fun MainRootBackground(
                                 val history =
                                     watchHistory.find { it.program.id.toString() == program.id.toString() }
                                 val duration = program.recordedVideo.duration
-                                state.initialPlaybackPositionMs =
+                                val initialPositionMs =
                                     if (history != null && history.playback_position > 5.0 && (duration <= 0.0 || history.playback_position < (duration - 10.0))) {
                                         (history.playback_position * 1000).toLong()
                                     } else 0L
-                                state.selectedProgram = program
-                                state.lastSelectedProgramId = program.id.toString()
-                                state.lastSelectedChannelId = null
-                                state.showPlayerControls = true
-                                state.isReturningFromPlayer = false
-                                state.isMiniPlayerMode = false
+                                state.enterRecorded(program, initialPositionMs)
                             }
                         },
                         onReserveSelected = { reserveItem -> state.selectedReserve = reserveItem },
@@ -267,14 +244,9 @@ fun MainRootBackground(
                             val channel =
                                 groupedChannels.values.flatten().find { ch -> ch.id == channelId }
                             if (channel != null) {
-                                state.selectedChannel = channel
-                                state.isBaseballMode = false
-                                state.lastSelectedChannelId = channelId
-                                state.lastSelectedProgramId = null
+                                state.enterLive(channel)
                                 homeViewModel.saveLastChannel(channel)
                                 state.epgSelectedProgram = null; state.isEpgJumpMenuOpen = false
-                                state.isReturningFromPlayer = false
-                                state.isMiniPlayerMode = false
                             }
                         },
                         lastPlayerChannelId = state.lastSelectedChannelId,
@@ -300,7 +272,7 @@ fun MainRootBackground(
                 }
             }
 
-            if (state.selectedChannel == null && state.selectedProgram == null && !isSyncingInitial) {
+            if (!state.isPlaybackActive && !isSyncingInitial) {
                 SyncProgressIndicator(
                     recordViewModel = recordViewModel,
                     modifier = Modifier

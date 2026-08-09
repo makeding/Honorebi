@@ -139,12 +139,10 @@ fun MainRootScreen(
                     val target = channelViewModel.groupedChannels.value.values.flatten()
                         .find { it.id == action.channelId }
                     if (target != null) {
-                        state.selectedProgram = null; state.selectedSmbItem = null
                         state.isPlayerMiniListOpen = false; state.playerIsSubMenuOpen = false
                         state.isPlayerSubMenuOpen = false; state.isPlayerSceneSearchOpen = false
-                        state.isMiniPlayerMode = false
-                        state.selectedChannel = target; state.lastSelectedChannelId = target.id
-                        homeViewModel.saveLastChannel(target); state.isReturningFromPlayer = false
+                        state.enterLive(target)
+                        homeViewModel.saveLastChannel(target)
                     }
                 }
 
@@ -153,13 +151,9 @@ fun MainRootScreen(
                     val target =
                         recordViewModel.recentRecordings.value.find { it.id == action.videoId }
                     if (target != null) {
-                        state.selectedChannel = null; state.selectedSmbItem = null
                         state.isPlayerMiniListOpen = false; state.playerIsSubMenuOpen = false
                         state.isPlayerSubMenuOpen = false; state.isPlayerSceneSearchOpen = false
-                        state.isMiniPlayerMode = false
-                        state.initialPlaybackPositionMs = 0L; state.selectedProgram = target
-                        state.lastSelectedProgramId = target.id.toString()
-                        state.showPlayerControls = true; state.isReturningFromPlayer = false
+                        state.enterRecorded(target)
                     }
                 }
 
@@ -327,17 +321,10 @@ fun MainRootScreen(
         val channels = groupedChannels.values.flatten()
         channels.firstOrNull { it.type == "GR" } ?: channels.firstOrNull()
     }
-    val isPlaybackScreenOpen =
-        state.selectedChannel != null || state.selectedProgram != null || state.selectedSmbItem != null
+    val isPlaybackScreenOpen = state.isPlaybackActive
     IdleSystemMediaSession(enabled = !isPlaybackScreenOpen) {
         val channel = defaultSystemChannel ?: return@IdleSystemMediaSession
-        state.selectedProgram = null
-        state.selectedSmbItem = null
-        state.selectedChannel = channel
-        state.lastSelectedChannelId = channel.id
-        state.lastSelectedProgramId = null
-        state.isMiniPlayerMode = false
-        state.isReturningFromPlayer = false
+        state.enterLive(channel)
         homeViewModel.saveLastChannel(channel)
     }
     fun resumePositionMsFor(program: RecordedProgram): Long {
@@ -410,11 +397,8 @@ fun MainRootScreen(
                     flatChannels.find { it.id == lastHistory?.id } ?: flatChannels.first()
                 } else flatChannels.find { it.id == startupChannelSetting } ?: flatChannels.first()
 
-                state.selectedChannel = targetChannel; state.isBaseballMode =
-                    false; state.lastSelectedChannelId = targetChannel.id
-                state.lastSelectedProgramId =
-                    null; homeViewModel.saveLastChannel(targetChannel); state.isReturningFromPlayer =
-                    false
+                state.enterLive(targetChannel)
+                homeViewModel.saveLastChannel(targetChannel)
 
                 val liveIndex = tabs.indexOf("ライブ")
                 if (liveIndex != -1) state.currentTabIndex = liveIndex
@@ -444,9 +428,7 @@ fun MainRootScreen(
             state.currentTabIndex = 0
         }
 
-        state.selectedChannel = null
-        state.selectedProgram = null
-        state.selectedSmbItem = null
+        state.resetForLauncherHome()
         state.epgSelectedProgram = null
         state.selectedReserve = null
         state.editingReserveItem = null
@@ -463,19 +445,6 @@ fun MainRootScreen(
         state.showDeleteConfirmDialog = false
         state.isAiConciergeOpen = false
         state.showAiKeyboardInput = false
-        state.isMiniPlayerMode = false
-        state.isPlayerMiniListOpen = false
-        state.playerShowOverlay = false
-        state.playerIsManualOverlay = false
-        state.playerIsPinnedOverlay = false
-        state.playerIsSubMenuOpen = false
-        state.isPlayerSubMenuOpen = false
-        state.isPlayerSceneSearchOpen = false
-        state.showPlayerControls = true
-        state.isReturningFromPlayer = false
-        state.launcherHomeFocusTick++
-        state.isBaseballMode = false
-        state.triggerHomeBack = false
     }
 
     LaunchedEffect(homeIntentVersion) {
@@ -509,13 +478,13 @@ fun MainRootScreen(
 
             state.isPlayerMiniListOpen -> state.isPlayerMiniListOpen = false
             state.playerIsSubMenuOpen -> state.playerIsSubMenuOpen = false
-            state.selectedChannel != null && state.playerShowOverlay -> {
+            state.livePlayback != null && state.playerShowOverlay -> {
                 state.playerShowOverlay = false
                 state.playerIsManualOverlay = false
                 state.playerIsPinnedOverlay = false
             }
 
-            state.selectedChannel != null && state.playerIsPinnedOverlay -> {
+            state.livePlayback != null && state.playerIsPinnedOverlay -> {
                 state.playerShowOverlay = false
                 state.playerIsManualOverlay = false
                 state.playerIsPinnedOverlay = false
@@ -526,17 +495,12 @@ fun MainRootScreen(
                 state.isPlayerSceneSearchOpen = false; state.showPlayerControls = false
             }
 
-            state.selectedChannel != null -> {
-                state.selectedChannel = null; state.isReturningFromPlayer =
-                    true; state.isMiniPlayerMode = false
+            state.livePlayback != null -> {
+                state.leavePlayback()
             }
 
-            state.selectedProgram != null || state.selectedSmbItem != null -> {
-                state.selectedProgram = null
-                state.selectedSmbItem = null
-                state.showPlayerControls = true
-                state.isReturningFromPlayer = true
-                state.isMiniPlayerMode = false
+            state.recordedPlayback != null || state.smbPlayback != null -> {
+                state.leavePlayback()
             }
 
             state.isSettingsOpen -> closeSettingsAndRefresh()
@@ -629,8 +593,8 @@ fun MainRootScreen(
                     // ★ 追加: 「プレイヤーのUI（シークバーやボタン）が表示されている時」は、
                     // 親玉（MainRoot）がイベントを横取りせず、子要素（PlayerControlsの早送り連打など）にイベントを譲る！
                     val isVideoUiVisible =
-                        (state.selectedProgram != null || state.selectedSmbItem != null) && state.showPlayerControls
-                    val isLiveUiVisible = (state.selectedChannel != null) && state.playerShowOverlay
+                        (state.recordedPlayback != null || state.smbPlayback != null) && state.showPlayerControls
+                    val isLiveUiVisible = state.livePlayback != null && state.playerShowOverlay
                     if ((isVideoUiVisible || isLiveUiVisible) && isCenterKey) {
                         return@onPreviewKeyEvent false // 横取りせず、子要素へスルーさせる
                     }
@@ -656,7 +620,7 @@ fun MainRootScreen(
                 .background(colors.background)
                 .background(backgroundBrush)
         ) {
-            if (state.selectedChannel == null && state.selectedProgram == null && state.selectedSmbItem == null) {
+            if (!state.isPlaybackActive) {
                 SeasonalDecor(
                     season = themeSeason,
                     isDark = colors.isDark,
@@ -696,7 +660,7 @@ fun MainRootScreen(
                     )
 
                     // ★ 前面のプレイヤー画面（Z-index: 1）
-                    if (state.selectedChannel != null || state.selectedProgram != null || state.selectedSmbItem != null) {
+                    if (state.isPlaybackActive) {
                         val playerWidth by animateDpAsState(
                             targetValue = if (state.isMiniPlayerMode) 320.dp else 1920.dp,
                             label = "width",
@@ -741,9 +705,10 @@ fun MainRootScreen(
                                 .size(playerWidth, playerHeight)
                                 .clip(RoundedCornerShape(if (state.isMiniPlayerMode) 12.dp else 0.dp))
                         ) {
-                            if (state.selectedChannel != null) {
+                            val target = state.playbackTarget
+                            if (target is PlaybackTarget.Live) {
                                 LivePlayerScreen(
-                                    channel = state.selectedChannel!!,
+                                    channel = target.channel,
                                     initialQuality = defaultLiveQuality,
                                     isBaseballMode = state.isBaseballMode,
                                     isMiniListOpen = state.isPlayerMiniListOpen,
@@ -757,38 +722,27 @@ fun MainRootScreen(
                                     isSubMenuOpen = state.playerIsSubMenuOpen,
                                     onSubMenuToggle = { state.playerIsSubMenuOpen = it },
                                     onChannelSelect = { newChannel ->
-                                        state.selectedChannel =
-                                            newChannel; state.lastSelectedChannelId = newChannel.id
-                                        state.lastSelectedProgramId =
-                                            null
-                                        state.isReturningFromPlayer = false
+                                        state.enterLive(
+                                            newChannel,
+                                            baseballMode = state.isBaseballMode,
+                                            exitMiniPlayer = false
+                                        )
                                     },
                                     onChannelPlaybackCommitted = { committedChannel ->
                                         homeViewModel.saveLastChannel(committedChannel)
                                     },
                                     onChasePlaybackSelect = { program ->
-                                        state.selectedChannel = null
-                                        state.selectedSmbItem = null
                                         state.isPlayerMiniListOpen = false
                                         state.playerIsSubMenuOpen = false
                                         state.isPlayerSubMenuOpen = false
                                         state.isPlayerSceneSearchOpen = false
-                                        state.isMiniPlayerMode = false
-                                        state.initialPlaybackPositionMs = resumePositionMsFor(program)
-                                        state.selectedProgram = program
-                                        state.lastSelectedProgramId = program.id.toString()
-                                        state.lastPlayedRecordingId = program.id
-                                        state.showPlayerControls = true
-                                        state.isReturningFromPlayer = false
+                                        state.enterRecorded(program, resumePositionMsFor(program))
                                     },
                                     onBackPressed = {
-                                        state.selectedChannel = null; state.isReturningFromPlayer =
-                                        true; state.isMiniPlayerMode = false
+                                        state.leavePlayback()
                                     },
                                     onCheckDeviceCapabilities = {
-                                        state.selectedChannel = null
-                                        state.isReturningFromPlayer = true
-                                        state.isMiniPlayerMode = false
+                                        state.leavePlayback()
                                         state.settingsInitialCategoryIndex = 2
                                         state.settingsInitialFocusItemIndex = 9
                                         state.settingsOpenDeviceCapabilities = true
@@ -802,8 +756,8 @@ fun MainRootScreen(
                                     },
                                     timeFormat = timeFormat
                                 )
-                            } else if (state.selectedProgram != null) {
-                                val selectedProgram = state.selectedProgram!!
+                            } else if (target is PlaybackTarget.Recorded) {
+                                val selectedProgram = target.program
                                 key(selectedProgram.id) {
                                     VideoPlayerScreen(
                                         program = selectedProgram,
@@ -818,26 +772,16 @@ fun MainRootScreen(
                                         recentRecordings = recentRecordings,
                                         animeChannels = animeChannels,
                                         onProgramSelect = { program ->
-                                            state.initialPlaybackPositionMs = 0L
-                                            state.selectedProgram = program
-                                            state.lastSelectedProgramId = program.id.toString()
-                                            state.lastPlayedRecordingId = program.id
                                             state.isPlayerSubMenuOpen = false
                                             state.isPlayerSceneSearchOpen = false
-                                            state.showPlayerControls = true
-                                            state.isReturningFromPlayer = false
+                                            state.enterRecorded(program)
                                         },
                                         onChannelSelect = { channel ->
-                                            state.selectedProgram = null
-                                            state.selectedSmbItem = null
-                                            state.selectedChannel = channel
-                                            state.lastSelectedChannelId = channel.id
-                                            state.lastSelectedProgramId = null
                                             state.isPlayerSubMenuOpen = false
                                             state.isPlayerSceneSearchOpen = false
                                             state.showPlayerControls = false
                                             state.playerShowOverlay = false
-                                            state.isReturningFromPlayer = false
+                                            state.enterLive(channel)
                                             homeViewModel.saveLastChannel(channel)
                                         },
                                         onPlaybackEnded = {
@@ -845,9 +789,7 @@ fun MainRootScreen(
                                             channelViewModel.fetchChannels()
                                         },
                                         onBackPressed = {
-                                            state.selectedProgram = null
-                                            state.isReturningFromPlayer = true
-                                            state.isMiniPlayerMode = false
+                                            state.leavePlayback()
                                         },
                                         onShowToast = { state.toastMessage = it },
                                         isPiPMode = state.isMiniPlayerMode,
@@ -857,18 +799,18 @@ fun MainRootScreen(
                                         }
                                     )
                                 }
-                            } else if (state.selectedSmbItem != null) {
+                            } else if (target is PlaybackTarget.Smb) {
                                 val baseProgram =
                                     recordViewModel.recentRecordings.collectAsState().value.firstOrNull()
                                 if (baseProgram != null) {
                                     val dummyProgram = baseProgram.copy(
-                                        id = state.selectedSmbItem!!.path.hashCode(),
-                                        title = state.selectedSmbItem!!.name,
-                                        description = "SMBネットワーク再生: ${state.selectedSmbItem!!.path}"
+                                        id = target.item.path.hashCode(),
+                                        title = target.item.name,
+                                        description = "SMBネットワーク再生: ${target.item.path}"
                                     )
                                     VideoPlayerScreen(
                                         program = dummyProgram,
-                                        smbItem = state.selectedSmbItem!!,
+                                        smbItem = target.item,
                                         initialPositionMs = state.initialPlaybackPositionMs,
                                         initialQuality = defaultVideoQuality,
                                         showControls = state.showPlayerControls,
@@ -880,9 +822,7 @@ fun MainRootScreen(
                                             state.isPlayerSceneSearchOpen = it
                                         },
                                         onBackPressed = {
-                                            state.selectedSmbItem = null
-                                            state.isReturningFromPlayer = true
-                                            state.isMiniPlayerMode = false
+                                            state.leavePlayback()
                                         },
                                         onShowToast = { state.toastMessage = it },
                                         isPiPMode = state.isMiniPlayerMode,
@@ -895,7 +835,7 @@ fun MainRootScreen(
                                     LaunchedEffect(Unit) {
                                         state.toastMessage =
                                             "再生用のダミーデータを生成できませんでした"
-                                        state.selectedSmbItem = null
+                                        state.leavePlayback(returningFromPlayer = false)
                                     }
                                 }
                             }

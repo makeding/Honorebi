@@ -6,6 +6,17 @@ import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 
 enum class AiFocusTicket { NONE, PANEL_DEFAULT }
 
+/**
+ * The single source of truth for the active player.  Keeping the payload with
+ * its kind makes an impossible combination such as live + SMB unrepresentable.
+ */
+sealed interface PlaybackTarget {
+    data object None : PlaybackTarget
+    data class Live(val channel: Channel) : PlaybackTarget
+    data class Recorded(val program: RecordedProgram) : PlaybackTarget
+    data class Smb(val item: SmbItem) : PlaybackTarget
+}
+
 @Stable
 class AiFocusTicketManager {
     var currentTicket by mutableStateOf(AiFocusTicket.NONE)
@@ -32,11 +43,8 @@ class AiFocusTicketManager {
 class MainRootState {
     // タブ・選択状態
     var currentTabIndex by mutableIntStateOf(0)
-    var selectedChannel by mutableStateOf<Channel?>(null)
-    var selectedProgram by mutableStateOf<RecordedProgram?>(null)
-
-    // SMB動画を保持
-    var selectedSmbItem by mutableStateOf<SmbItem?>(null)
+    var playbackTarget by mutableStateOf<PlaybackTarget>(PlaybackTarget.None)
+        private set
     var initialPlaybackPositionMs by mutableLongStateOf(0L)
     var epgSelectedProgram by mutableStateOf<EpgProgram?>(null)
 
@@ -119,6 +127,75 @@ class MainRootState {
     var editingCondition by mutableStateOf<ReservationCondition?>(null)
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
 
+    val isPlaybackActive: Boolean get() = playbackTarget !is PlaybackTarget.None
+    val livePlayback: PlaybackTarget.Live? get() = playbackTarget as? PlaybackTarget.Live
+    val recordedPlayback: PlaybackTarget.Recorded? get() = playbackTarget as? PlaybackTarget.Recorded
+    val smbPlayback: PlaybackTarget.Smb? get() = playbackTarget as? PlaybackTarget.Smb
+
+    fun enterLive(
+        channel: Channel,
+        baseballMode: Boolean = false,
+        exitMiniPlayer: Boolean = true
+    ) {
+        playbackTarget = PlaybackTarget.Live(channel)
+        isBaseballMode = baseballMode
+        lastSelectedChannelId = channel.id
+        lastSelectedProgramId = null
+        isReturningFromPlayer = false
+        if (exitMiniPlayer) isMiniPlayerMode = false
+    }
+
+    fun enterRecorded(program: RecordedProgram, initialPositionMs: Long = 0L) {
+        playbackTarget = PlaybackTarget.Recorded(program)
+        initialPlaybackPositionMs = initialPositionMs
+        lastSelectedProgramId = program.id.toString()
+        lastSelectedChannelId = null
+        lastPlayedRecordingId = program.id
+        showPlayerControls = true
+        isReturningFromPlayer = false
+        isMiniPlayerMode = false
+    }
+
+    fun enterSmb(item: SmbItem, initialPositionMs: Long = 0L) {
+        playbackTarget = PlaybackTarget.Smb(item)
+        initialPlaybackPositionMs = initialPositionMs
+        lastPlayedSmbPath = item.path
+        showPlayerControls = true
+        isReturningFromPlayer = false
+        isMiniPlayerMode = false
+    }
+
+    fun leavePlayback(returningFromPlayer: Boolean = true) {
+        playbackTarget = PlaybackTarget.None
+        isMiniPlayerMode = false
+        showPlayerControls = true
+        isReturningFromPlayer = returningFromPlayer
+    }
+
+    /** Clears playback-only state when the system Home intent wins. */
+    fun resetPlayback() {
+        playbackTarget = PlaybackTarget.None
+        initialPlaybackPositionMs = 0L
+        isMiniPlayerMode = false
+        isPlayerMiniListOpen = false
+        playerShowOverlay = false
+        playerIsManualOverlay = false
+        playerIsPinnedOverlay = false
+        playerIsSubMenuOpen = false
+        isPlayerSubMenuOpen = false
+        isPlayerSceneSearchOpen = false
+        showPlayerControls = true
+        isReturningFromPlayer = false
+        isBaseballMode = false
+    }
+
+    /** The playback portion of a system Home reset. Root destinations are reset by their owner. */
+    fun resetForLauncherHome() {
+        resetPlayback()
+        launcherHomeFocusTick++
+        triggerHomeBack = false
+    }
+
     // 戻るボタンの連打ガード
     private var lastBackPressTime by mutableLongStateOf(0L)
     fun canProcessBackPress(): Boolean {
@@ -129,8 +206,6 @@ class MainRootState {
     }
 
     fun isFullScreen(
-        channel: Channel?,
-        program: RecordedProgram?,
         epgProgram: EpgProgram?,
         settingsOpen: Boolean,
         recordListOpen: Boolean,
@@ -138,7 +213,7 @@ class MainRootState {
     ): Boolean {
         if (isMiniPlayerMode) return false
 
-        return channel != null || program != null || selectedSmbItem != null || epgProgram != null ||
+        return isPlaybackActive || epgProgram != null ||
                 settingsOpen || recordListOpen || reserveOverlayOpen ||
                 isSeriesListOpen || isAiConciergeOpen || isSmbLibraryOpen ||
                 editingCondition != null || selectedConditionReserveItem != null ||

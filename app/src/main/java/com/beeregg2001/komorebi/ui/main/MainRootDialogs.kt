@@ -235,13 +235,9 @@ fun MainRootDialogs(
             onPlayClick = {
                 val channel = groupedChannels.values.flatten().find { ch -> ch.id == it.channel_id }
                 if (channel != null) {
-                    state.selectedChannel = channel
-                    state.isBaseballMode = false
-                    state.lastSelectedChannelId = channel.id
-                    state.lastSelectedProgramId = null
+                    state.enterLive(channel)
                     homeViewModel.saveLastChannel(channel)
                     state.epgSelectedProgram = null
-                    state.isReturningFromPlayer = false
                 }
             },
             onRecordClick = { program ->
