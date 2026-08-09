@@ -18,10 +18,11 @@ val releaseKeystoreProperties = Properties().apply {
     }
 }
 val hasReleaseSigningConfig = releaseKeystorePropertiesFile.exists()
+val media3Version = "1.10.1-komorebi"
 
 android {
     namespace = "com.beeregg2001.komorebi"
-    compileSdk = 35
+    compileSdk = 36
 
     splits {
         abi {
@@ -108,19 +109,15 @@ android {
         }
     }
 }
-configurations.all {
+configurations.configureEach {
     resolutionStrategy {
-        // 全ての Media3 モジュールをローカルの独自ビルドに強制上書きする
-        val customVersion = "1.7.1-komorebi"
-        force("androidx.media3:media3-exoplayer:$customVersion")
-        force("androidx.media3:media3-extractor:$customVersion") // パッチ本体！
-        force("androidx.media3:media3-ui:$customVersion")
-        force("androidx.media3:media3-common:$customVersion")
-        force("androidx.media3:media3-decoder:$customVersion")
-        force("androidx.media3:media3-datasource:$customVersion")
-        force("androidx.media3:media3-database:$customVersion")
-        force("androidx.media3:media3-container:$customVersion")
-        force("androidx.media3:media3-exoplayer-hls:$customVersion")
+        // Jellyfin decoder 等の推移依存も、同じローカルパッチ版へ揃える。
+        eachDependency {
+            if (requested.group == "androidx.media3") {
+                useVersion(media3Version)
+                because("Komorebi broadcast playback patches")
+            }
+        }
     }
 }
 ksp {
@@ -189,13 +186,12 @@ dependencies {
     ksp("androidx.room:room-compiler:$room_version") // kaptからkspへ
 
     // --- Media3 ---
-    val media3_version = "1.7.1-komorebi"
-    implementation("androidx.media3:media3-exoplayer:$media3_version")
-    implementation("androidx.media3:media3-ui:$media3_version")
-    implementation("androidx.media3:media3-common:$media3_version")
-    implementation("androidx.media3:media3-exoplayer-hls:$media3_version")
-    implementation("androidx.media3:media3-session:1.7.1")
-    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.6.1+1")
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-common:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
 
     // --- その他 ---
     implementation("io.coil-kt:coil-compose:2.5.0")

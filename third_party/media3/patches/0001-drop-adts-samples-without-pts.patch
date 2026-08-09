@@ -1,0 +1,27 @@
+diff --git a/libraries/extractor/src/main/java/androidx/media3/extractor/ts/AdtsReader.java b/libraries/extractor/src/main/java/androidx/media3/extractor/ts/AdtsReader.java
+index 4271b69..71900d8 100644
+--- a/libraries/extractor/src/main/java/androidx/media3/extractor/ts/AdtsReader.java
++++ b/libraries/extractor/src/main/java/androidx/media3/extractor/ts/AdtsReader.java
+@@ -547,11 +547,20 @@ public final class AdtsReader implements ElementaryStreamReader {
+   @RequiresNonNull("currentOutput")
+   private void readSample(ParsableByteArray data) {
+     int bytesToRead = min(data.bytesLeft(), sampleSize - bytesRead);
+-    currentOutput.sampleData(data, bytesToRead);
++    if (timeUs == C.TIME_UNSET) {
++      // Some Japanese broadcast streams start with ADTS frames before the first PES timestamp.
++      // Drop those frames instead of committing samples without a presentation timestamp.
++      data.skipBytes(bytesToRead);
++    } else {
++      currentOutput.sampleData(data, bytesToRead);
++    }
+     bytesRead += bytesToRead;
+     if (bytesRead == sampleSize) {
++      if (timeUs == C.TIME_UNSET) {
++        setFindingSampleState();
++        return;
++      }
+       // packetStarted method must be called before reading samples.
+-      checkState(timeUs != C.TIME_UNSET);
+       currentOutput.sampleMetadata(timeUs, C.BUFFER_FLAG_KEY_FRAME, sampleSize, 0, null);
+       timeUs += currentSampleDuration;
+       setFindingSampleState();

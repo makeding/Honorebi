@@ -1,0 +1,34 @@
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video/MediaCodecVideoRenderer.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video/MediaCodecVideoRenderer.java
+index dabfc2f..142b40a 100644
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video/MediaCodecVideoRenderer.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video/MediaCodecVideoRenderer.java
+@@ -2165,7 +2165,8 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
+    */
+   protected boolean shouldDropOutputBuffer(
+       long earlyUs, long elapsedRealtimeUs, boolean isLastBuffer) {
+-    return earlyUs < MIN_EARLY_US_LATE_THRESHOLD && !isLastBuffer;
++    // Preserve frames from high-jitter, high-bitrate Japanese broadcast streams.
++    return false;
+   }
+ 
+   /**
+@@ -2180,7 +2181,8 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
+    */
+   protected boolean shouldDropBuffersToKeyframe(
+       long earlyUs, long elapsedRealtimeUs, boolean isLastBuffer) {
+-    return earlyUs < MIN_EARLY_US_VERY_LATE_THRESHOLD && !isLastBuffer;
++    // Let the decoder catch up without discarding the buffered GOP.
++    return false;
+   }
+ 
+   /**
+@@ -2366,7 +2368,8 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
+   protected void renderOutputBufferV21(
+       MediaCodecAdapter codec, int index, long presentationTimeUs, long releaseTimeNs) {
+     TraceUtil.beginSection("releaseOutputBuffer");
+-    codec.releaseOutputBuffer(index, releaseTimeNs);
++    // Render immediately; scheduled release is unreliable on the target TV under broadcast jitter.
++    codec.releaseOutputBuffer(index, true);
+     TraceUtil.endSection();
+     decoderCounters.renderedOutputBufferCount++;
+     consecutiveDroppedFrameCount = 0;

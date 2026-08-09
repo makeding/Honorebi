@@ -1,0 +1,22 @@
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/DefaultAudioSink.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/DefaultAudioSink.java
+index 4e68b5e..f9ddb0a 100644
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/DefaultAudioSink.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/DefaultAudioSink.java
+@@ -1010,11 +1010,12 @@ public final class DefaultAudioSink implements AudioSink {
+                   getSubmittedFrames() - trimmingAudioProcessor.getTrimmedFrameCount());
+       if (!startMediaTimeUsNeedsSync
+           && Math.abs(expectedPresentationTimeUs - presentationTimeUs) > 200000) {
+-        if (listener != null) {
+-          listener.onAudioSinkError(
+-              new AudioSink.UnexpectedDiscontinuityException(
+-                  presentationTimeUs, expectedPresentationTimeUs));
+-        }
++        Log.w(
++            TAG,
++            "Resyncing after broadcast audio discontinuity. expected="
++                + expectedPresentationTimeUs
++                + ", actual="
++                + presentationTimeUs);
+         startMediaTimeUsNeedsSync = true;
+       }
+       if (startMediaTimeUsNeedsSync) {

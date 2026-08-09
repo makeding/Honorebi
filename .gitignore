@@ -15,3 +15,11 @@
 .cxx
 local.properties
 /media/
+
+# Reproducible Media3 patch builds use disposable local checkouts and caches.
+/.media3-work/
+/third_party/media3/src/
+/third_party/media3/build/
+/third_party/media3/.gradle/
+
+/local_repo/
