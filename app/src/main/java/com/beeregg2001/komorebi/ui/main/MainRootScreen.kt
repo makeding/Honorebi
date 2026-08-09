@@ -39,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
+import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -563,10 +564,11 @@ fun MainRootScreen(
                 state.hasAppliedStartupTab && (startupChannelSetting == "OFF" || state.hasAppliedStartupChannel || state.isOfflineMode)
 
     KomorebiTheme(theme = currentTheme) {
-        val colors = KomorebiTheme.colors
-        val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
+        RootSystemMediaSessionHost(playbackSessionEpoch = state.playbackSessionEpoch) {
+            val colors = KomorebiTheme.colors
+            val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
 
-        Box(
+            Box(
             modifier = Modifier
                 .fillMaxSize()
                 // ★ 修正: onPreviewKeyEvent（トップダウン）に戻し、グローバルショートカットの確実性を復活
@@ -921,6 +923,7 @@ fun MainRootScreen(
                     state.isSettingsOpen = true
                 }
             )
+            }
         }
     }
 }

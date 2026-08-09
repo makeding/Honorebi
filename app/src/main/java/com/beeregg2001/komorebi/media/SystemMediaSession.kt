@@ -1,10 +1,7 @@
 package com.beeregg2001.komorebi.media
 
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.MediaMetadata as PlatformMediaMetadata
 import android.media.session.MediaSession as PlatformMediaSession
 import android.media.session.PlaybackState
@@ -19,11 +16,9 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.session.MediaSession
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import com.beeregg2001.komorebi.MainActivity
 import com.beeregg2001.komorebi.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,9 +44,8 @@ fun SystemMediaSession(
     onStop: (() -> Unit)? = null
 ) {
     val context = LocalContext.current.applicationContext
-    val currentOnPrevious = rememberUpdatedState(onPrevious)
-    val currentOnNext = rememberUpdatedState(onNext)
-    val currentOnStop = rememberUpdatedState(onStop)
+    val controller = LocalSystemMediaSessionController.current
+    val epoch = LocalSystemMediaSessionEpoch.current
     val hasPrevious = onPrevious != null
     val hasNext = onNext != null
     val artworkDataState = androidx.compose.runtime.remember(artworkUrl) {
@@ -79,62 +73,21 @@ fun SystemMediaSession(
             .build()
     }
 
-    DisposableEffect(player, metadata, hasPrevious, hasNext, isLoading) {
-        if (player == null || isLoading) {
-            val transitionActions =
-                PlaybackState.ACTION_STOP or
-                    (if (hasPrevious) PlaybackState.ACTION_SKIP_TO_PREVIOUS else 0L) or
-                    (if (hasNext) PlaybackState.ACTION_SKIP_TO_NEXT else 0L)
-            val transitionSession = PlatformMediaSession(context, "HonorebiSwitching").apply {
-                setCallback(object : PlatformMediaSession.Callback() {
-                    override fun onSkipToPrevious() = currentOnPrevious.value?.invoke() ?: Unit
-
-                    override fun onSkipToNext() = currentOnNext.value?.invoke() ?: Unit
-
-                    override fun onStop() = currentOnStop.value?.invoke() ?: Unit
-                })
-                setPlaybackState(
-                    PlaybackState.Builder()
-                        .setActions(transitionActions)
-                        .setState(PlaybackState.STATE_BUFFERING, 0L, 0f)
-                        .build()
-                )
-                setMetadata(
-                    PlatformMediaMetadata.Builder()
-                        .putString(PlatformMediaMetadata.METADATA_KEY_TITLE, title)
-                        .putString(PlatformMediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
-                        .putString(
-                            PlatformMediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE,
-                            subtitle?.takeIf { it.isNotBlank() }
-                        )
-                        .putString(
-                            PlatformMediaMetadata.METADATA_KEY_ARTIST,
-                            subtitle?.takeIf { it.isNotBlank() }
-                        )
-                        .apply {
-                            artworkData?.toBitmapOrNull()?.let { artwork ->
-                                putBitmap(PlatformMediaMetadata.METADATA_KEY_ART, artwork)
-                                putBitmap(PlatformMediaMetadata.METADATA_KEY_ALBUM_ART, artwork)
-                            }
-                        }
-                        .build()
-                )
-                isActive = true
-            }
-            return@DisposableEffect onDispose { transitionSession.release() }
-        }
-
-        val attachment = SystemMediaSessionRegistry.attach(
-            context = context,
+    DisposableEffect(controller, epoch, player, metadata, hasPrevious, hasNext, isLoading) {
+        // A null player is an expected handoff/preparing state. The root-owned
+        // controller intentionally retains its previous MediaSession instead
+        // of replacing it with a short-lived platform session.
+        val attachment = if (controller != null && epoch != null) controller.attach(
+            epoch = epoch,
             player = player,
             metadata = metadata,
-            onPrevious = { currentOnPrevious.value?.invoke() },
-            onNext = { currentOnNext.value?.invoke() },
-            onStop = { currentOnStop.value?.invoke() },
+            onPrevious = onPrevious ?: {},
+            onNext = onNext ?: {},
+            onStop = onStop ?: {},
             hasPrevious = hasPrevious,
-            hasNext = hasNext
-        )
-        onDispose { SystemMediaSessionRegistry.detach(attachment) }
+            hasNext = hasNext,
+        ) else null
+        onDispose { controller?.detach(attachment) }
     }
 }
 
@@ -199,9 +152,6 @@ fun IdleSystemMediaSession(
 private fun String?.toArtworkUriOrNull(): Uri? =
     this?.trim()?.takeIf { it.isNotEmpty() }?.let(Uri::parse)
 
-private fun ByteArray.toBitmapOrNull(): Bitmap? =
-    BitmapFactory.decodeByteArray(this, 0, size)
-
 private suspend fun loadArtworkData(context: Context, artworkUrl: String?): ByteArray? {
     val url = artworkUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val result = context.imageLoader.execute(
@@ -217,58 +167,6 @@ private suspend fun loadArtworkData(context: Context, artworkUrl: String?): Byte
             if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) return@withContext null
             output.toByteArray()
         }
-    }
-}
-
-private object SystemMediaSessionRegistry {
-    private data class ActiveSession(val attachment: Any, val session: MediaSession)
-
-    private var activeSession: ActiveSession? = null
-
-    @Synchronized
-    fun attach(
-        context: Context,
-        player: Player,
-        metadata: MediaMetadata,
-        onPrevious: () -> Unit,
-        onNext: () -> Unit,
-        onStop: () -> Unit,
-        hasPrevious: Boolean,
-        hasNext: Boolean
-    ): Any {
-        activeSession?.session?.release()
-
-        val attachment = Any()
-        val sessionPlayer = SystemSessionPlayer(
-            player = player,
-            metadata = metadata,
-            onPrevious = onPrevious,
-            onNext = onNext,
-            onStop = onStop,
-            hasPrevious = hasPrevious,
-            hasNext = hasNext
-        )
-        val sessionActivity = PendingIntent.getActivity(
-            context,
-            0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val session = MediaSession.Builder(context, sessionPlayer)
-            .setSessionActivity(sessionActivity)
-            .build()
-        activeSession = ActiveSession(attachment, session)
-        return attachment
-    }
-
-    @Synchronized
-    fun detach(attachment: Any) {
-        val active = activeSession ?: return
-        if (active.attachment !== attachment) return
-        active.session.release()
-        activeSession = null
     }
 }
 
