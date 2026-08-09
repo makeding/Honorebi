@@ -45,4 +45,56 @@ class RecordedTimelineDurationPolicyTest {
             )
         )
     }
+
+    @Test
+    fun rawMmts_resumePositionCannotDriveAutomationBeforeNativeDurationIsKnown() {
+        assertEquals(
+            0L,
+            resolveCompletedRecordingAutomationDurationMs(
+                requiresRawMmtsPlayback = true,
+                isRawMmtsPlayback = true,
+                konomiReportedDurationMs = 3_600_000L,
+                nativePlayerDurationMs = 0L,
+            )
+        )
+    }
+
+    @Test
+    fun rawMmts_bootstrapPlayerDurationIsNotAuthoritative() {
+        assertEquals(
+            0L,
+            resolveCompletedRecordingAutomationDurationMs(
+                requiresRawMmtsPlayback = true,
+                isRawMmtsPlayback = false,
+                konomiReportedDurationMs = 3_600_000L,
+                nativePlayerDurationMs = 3_600_000L,
+            )
+        )
+    }
+
+    @Test
+    fun rawMmts_nativeDurationCanDriveAutomationAfterRawPlayerIsReady() {
+        assertEquals(
+            1_815_065L,
+            resolveCompletedRecordingAutomationDurationMs(
+                requiresRawMmtsPlayback = true,
+                isRawMmtsPlayback = true,
+                konomiReportedDurationMs = 3_600_000L,
+                nativePlayerDurationMs = 1_815_065L,
+            )
+        )
+    }
+
+    @Test
+    fun ordinaryRecordingKeepsReportedDurationForAutomation() {
+        assertEquals(
+            3_600_000L,
+            resolveCompletedRecordingAutomationDurationMs(
+                requiresRawMmtsPlayback = false,
+                isRawMmtsPlayback = false,
+                konomiReportedDurationMs = 3_600_000L,
+                nativePlayerDurationMs = 3_599_000L,
+            )
+        )
+    }
 }

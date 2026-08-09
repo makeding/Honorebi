@@ -81,6 +81,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.normalizeQuickSeriesKey
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureBudget
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
+import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingAutomationDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingTimelineDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
@@ -966,20 +967,39 @@ fun VideoPlayerScreen(
                 bufferedPositionMs = bufferedPositionMs,
             )
         }
+    val trustedPlaybackEndDurationMs =
+        if (smbItem != null || isRecordingChasePlayback) {
+            0L
+        } else {
+            resolveCompletedRecordingAutomationDurationMs(
+                requiresRawMmtsPlayback = requiresRawMmtsPlayback,
+                isRawMmtsPlayback = usesSerializedRawMmtsSeek,
+                konomiReportedDurationMs =
+                    (currentProgram.recordedVideo.duration * 1000).toLong(),
+                nativePlayerDurationMs = playbackDurationMs,
+            )
+        }
 
     LaunchedEffect(isSubMenuOpen, currentProgram.id) {
         if (!isSubMenuOpen) openQuickVideosOnSubMenuOpen = false
     }
 
-    LaunchedEffect(currentProgram.id, smbItem, totalDurationForControls) {
-        if (smbItem != null || totalDurationForControls <= PLAYBACK_END_FALLBACK_WINDOW_MS) {
+    LaunchedEffect(currentProgram.id, smbItem, trustedPlaybackEndDurationMs) {
+        if (
+            smbItem != null ||
+            trustedPlaybackEndDurationMs <= PLAYBACK_END_FALLBACK_WINDOW_MS
+        ) {
             return@LaunchedEffect
         }
         while (isActive && !hasHandledPlaybackEnd) {
-            val remainingMs = totalDurationForControls - getCurrentPositionMs()
+            val remainingMs = trustedPlaybackEndDurationMs - getCurrentPositionMs()
             if (remainingMs in 0..PLAYBACK_END_FALLBACK_WINDOW_MS) {
                 delay(remainingMs + PLAYBACK_END_FALLBACK_GRACE_MS)
-                if (!hasHandledPlaybackEnd && getCurrentPositionMs() >= totalDurationForControls - 1_500L) {
+                if (
+                    !hasHandledPlaybackEnd &&
+                    exoPlayer.playbackState == Player.STATE_READY &&
+                    getCurrentPositionMs() >= trustedPlaybackEndDurationMs - 1_500L
+                ) {
                     handlePlaybackEnded()
                 }
             }
@@ -1564,18 +1584,18 @@ fun VideoPlayerScreen(
     val nextEpisodeCountdownStartMs = remember(
         currentProgram.id,
         currentProgram.channel,
-        totalDurationForControls,
+        trustedPlaybackEndDurationMs,
         allComments.size
     ) {
         calculateNextEpisodeCountdownStartMs(
             program = currentProgram,
             comments = allComments,
-            totalDurationMs = totalDurationForControls
+            totalDurationMs = trustedPlaybackEndDurationMs
         )
     }
     val nextEpisodeCountdownEndMs =
         (nextEpisodeCountdownStartMs + NEXT_EPISODE_COUNTDOWN_WINDOW_MS)
-            .coerceAtMost(totalDurationForControls)
+            .coerceAtMost(trustedPlaybackEndDurationMs)
             .coerceAtLeast(nextEpisodeCountdownStartMs)
     val nextEpisodeCountdownRemainingMs =
         (nextEpisodeCountdownEndMs - getEffectivePositionMs()).coerceAtLeast(0L)
@@ -1585,7 +1605,8 @@ fun VideoPlayerScreen(
                 !isRecordingChasePlayback &&
                 !hasAutoStartedNextEpisode &&
                 !isNextEpisodeCountdownCancelled &&
-                totalDurationForControls > NEXT_EPISODE_COUNTDOWN_WINDOW_MS &&
+                trustedPlaybackEndDurationMs > NEXT_EPISODE_COUNTDOWN_WINDOW_MS &&
+                exoPlayer.playbackState == Player.STATE_READY &&
                 getEffectivePositionMs() >= nextEpisodeCountdownStartMs
     val nextEpisodeCountdownProgress =
         if (nextEpisodeCountdownEndMs <= nextEpisodeCountdownStartMs) {
