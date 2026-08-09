@@ -78,17 +78,10 @@ fun MainRootBackground(
                                 program.isRecording || program.recordedVideo.status == "Recording"
                             val isAnalyzed = isRecordingProgram || (program.recordedVideo.hasKeyFrames ?: true)
                             if (!isAnalyzed) return@RecordListScreen
-                            val duration = program.recordedVideo.duration
-                            val history =
-                                watchHistory.find { it.program.id.toString() == program.id.toString() }
-
-                            val resumePos = when {
-                                forcedPosition != null -> forcedPosition
-                                history != null && history.playback_position > 5.0 && (duration <= 0 || history.playback_position < (duration - 10)) -> history.playback_position
-                                program.playbackPosition > 5.0 && (duration <= 0 || program.playbackPosition < (duration - 10)) -> program.playbackPosition
-                                else -> 0.0
-                            }
-                            state.enterRecorded(program, (resumePos * 1000).toLong())
+                            state.enterRecorded(
+                                program,
+                                playbackResumePositionMs(program, watchHistory, forcedPosition),
+                            )
                         },
                         onBack = {
                             state.isRecordListOpen = false
@@ -216,14 +209,7 @@ fun MainRootBackground(
                                     program.isRecording || program.recordedVideo.status == "Recording"
                                 val isAnalyzed = isRecordingProgram || (program.recordedVideo.hasKeyFrames ?: true)
                                 if (!isAnalyzed) return@HomeLauncherScreen
-                                val history =
-                                    watchHistory.find { it.program.id.toString() == program.id.toString() }
-                                val duration = program.recordedVideo.duration
-                                val initialPositionMs =
-                                    if (history != null && history.playback_position > 5.0 && (duration <= 0.0 || history.playback_position < (duration - 10.0))) {
-                                        (history.playback_position * 1000).toLong()
-                                    } else 0L
-                                state.enterRecorded(program, initialPositionMs)
+                                state.enterRecorded(program, playbackResumePositionMs(program, watchHistory))
                             }
                         },
                         onReserveSelected = { reserveItem -> state.selectedReserve = reserveItem },

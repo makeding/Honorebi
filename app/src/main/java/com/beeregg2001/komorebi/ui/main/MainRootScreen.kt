@@ -37,7 +37,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
-import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 
 private const val TAG = "MainRootScreen"
@@ -327,22 +326,6 @@ fun MainRootScreen(
         state.enterLive(channel)
         homeViewModel.saveLastChannel(channel)
     }
-    fun resumePositionMsFor(program: RecordedProgram): Long {
-        val history = watchHistory.firstOrNull { history ->
-            history.program.id.toIntOrNull() == program.id ||
-                    history.videoId == program.recordedVideo.id
-        }
-        val duration = program.recordedVideo.duration
-        val historyPosition = history?.playback_position?.takeIf {
-            it > 5.0 && (duration <= 0.0 || it < duration - 10.0)
-        }
-        val programPosition = program.playbackPosition.takeIf {
-            it > 5.0 && (duration <= 0.0 || it < duration - 10.0)
-        }
-        val positionSeconds = historyPosition ?: programPosition ?: 0.0
-        return (positionSeconds.coerceAtLeast(0.0) * 1000.0).toLong()
-    }
-
     val updateState by homeViewModel.updateState.collectAsState()
 
     val autoReserveKeywords = remember(conditions) {
@@ -736,7 +719,7 @@ fun MainRootScreen(
                                         state.playerIsSubMenuOpen = false
                                         state.isPlayerSubMenuOpen = false
                                         state.isPlayerSceneSearchOpen = false
-                                        state.enterRecorded(program, resumePositionMsFor(program))
+                                        state.enterRecorded(program, playbackResumePositionMs(program, watchHistory))
                                     },
                                     onBackPressed = {
                                         state.leavePlayback()
