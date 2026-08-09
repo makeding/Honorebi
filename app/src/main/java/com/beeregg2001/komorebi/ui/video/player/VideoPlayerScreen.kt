@@ -44,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -576,10 +577,13 @@ fun VideoPlayerScreen(
     }
     val networkAvailableRef = remember { AtomicBoolean(isNetworkAvailable) }
     SideEffect { networkAvailableRef.set(isNetworkAvailable) }
-    val networkRecoveryGate = remember(currentProgram.id, smbItem?.path, recordedSwitchToken) {
+    // The token becomes null at READY without replacing the ExoPlayer. Keep
+    // connectivity ownership keyed to that player/program lifetime so its
+    // error callback and its online-edge effect always share the same gate.
+    val networkRecoveryGate = remember(currentProgram.id, smbItem?.path) {
         RecordedNetworkRecoveryGate(initiallyAvailable = isNetworkAvailable)
     }
-    var isWaitingForNetworkRecovery by remember(currentProgram.id, smbItem?.path, recordedSwitchToken) {
+    var isWaitingForNetworkRecovery by remember(currentProgram.id, smbItem?.path) {
         mutableStateOf(false)
     }
     var initialUrlRetryNonce by remember(recordedSwitchToken) { mutableIntStateOf(0) }
@@ -762,7 +766,7 @@ fun VideoPlayerScreen(
     // renewing a stream. Root only needs the first READY for this program to
     // commit a pending A -> B handoff, so report it exactly once.
     val currentOnProgramReady by rememberUpdatedState(onProgramReady)
-    var hasReportedProgramReady by remember(currentProgram.id, recordedSwitchToken) { mutableStateOf(false) }
+    var hasReportedProgramReady by remember(currentProgram.id) { mutableStateOf(false) }
     DisposableEffect(exoPlayer, currentProgram.id) {
         fun reportReadyOnce() {
             if (!hasReportedProgramReady) {

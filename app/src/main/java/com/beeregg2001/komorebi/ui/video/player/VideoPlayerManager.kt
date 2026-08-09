@@ -85,7 +85,6 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 
 private const val TAG = "VideoPlayerManager"
 private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
@@ -106,7 +105,6 @@ private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 15_000
 private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
 private const val HLS_LOAD_MAX_RETRY_DELAY_MS = 8_000L
 private const val RECORDED_SEGMENT_PREFETCH_COUNT = 0
-private const val RECORDED_SEGMENT_RECOVERY_DEBOUNCE_MS = 2_000L
 private const val GROWING_FILE_RETRY_INTERVAL_MS = 3_000L
 private const val GROWING_FILE_MAX_IDLE_RETRIES = 20
 private const val GROWING_FILE_LIVE_EDGE_SAFETY_MS = 2_000L
@@ -613,8 +611,6 @@ fun rememberManagedExoPlayer(
         val nativeLib = NativeLib()
 
         val segmentPrefetchCache = SegmentPrefetchCache()
-        val playerRef = AtomicReference<ExoPlayer?>()
-        val isImmediateStreamRecoveryRunning = AtomicBoolean(false)
         val isPlaybackRecoveryRunning = AtomicBoolean(false)
 
         val dataSourceFactory = DataSource.Factory {
@@ -714,27 +710,6 @@ fun rememberManagedExoPlayer(
                             "HTTP source open failed. [code=${e.responseCode}, uri=${requestSpec.uri}]",
                             e
                         )
-                        if (
-                            e.responseCode == 422 &&
-                            isHttpSource &&
-                            isRecordedSegmentUri(requestSpec.uri) &&
-                            isImmediateStreamRecoveryRunning.compareAndSet(false, true)
-                        ) {
-                            scope.launch(Dispatchers.Main.immediate) {
-                                try {
-                                    val player = playerRef.get()
-                                    if (player != null && onStreamSessionExpired(player)) {
-                                        Log.i(
-                                            TAG,
-                                            "Immediate stream session recovery requested after segment 422. [uri=${requestSpec.uri}]"
-                                        )
-                                    }
-                                    delay(RECORDED_SEGMENT_RECOVERY_DEBOUNCE_MS)
-                                } finally {
-                                    isImmediateStreamRecoveryRunning.set(false)
-                                }
-                            }
-                        }
                         throw e
                     }
                     if (
@@ -969,7 +944,6 @@ fun rememberManagedExoPlayer(
             .setLoadControl(loadControl)
             .setLivePlaybackSpeedControl(livePlaybackSpeedControl)
             .build().apply {
-                playerRef.set(this)
                 setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
                 setAudioAttributes(
                     AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
