@@ -68,6 +68,7 @@ fun LiveTopSubMenuUI(
     isDataBroadcastingAvailable: Boolean,
     groupedChannels: Map<String, List<Channel>>,
     currentChannelId: String,
+    onMiniPlayerSelectionRequested: () -> Unit,
     onDualDisplayToggle: () -> Unit,
     onSwapScreens: () -> Unit,
     onChannelSelect: (Channel) -> Unit,
@@ -323,6 +324,15 @@ fun LiveTopSubMenuUI(
                         title = "二画面", icon = Icons.Default.PictureInPicture,
                         subtitle = "開始",
                         onClick = { onDualDisplayToggle(); onCloseMenu() },
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = colors.textPrimary
+                    )
+
+                    LiveMenuTileItem(
+                        title = "ミニプレイヤー",
+                        icon = Icons.Default.PictureInPictureAlt,
+                        subtitle = "チャンネル・録画を選ぶ",
+                        onClick = onMiniPlayerSelectionRequested,
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                         contentColor = colors.textPrimary
                     )

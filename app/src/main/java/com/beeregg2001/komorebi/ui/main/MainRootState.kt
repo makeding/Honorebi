@@ -165,6 +165,16 @@ class MainRootState {
         isMiniPlayerMode = false
     }
 
+    fun enterMiniPlayer(): Boolean {
+        if (!isPlaybackActive) return false
+        isMiniPlayerMode = true
+        return true
+    }
+
+    fun exitMiniPlayer() {
+        isMiniPlayerMode = false
+    }
+
     fun leavePlayback(returningFromPlayer: Boolean = true) {
         playbackTarget = PlaybackTarget.None
         isMiniPlayerMode = false

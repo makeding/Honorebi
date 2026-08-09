@@ -175,6 +175,7 @@ fun LivePlayerScreen(
     val subtitleEnabledState =
         rememberSaveable(liveSubtitleDefaultStr) { mutableStateOf(liveSubtitleDefaultStr == "ON") }
     val isSubtitleEnabled by subtitleEnabledState
+    var isMiniPlayerSelectionPending by rememberSaveable { mutableStateOf(false) }
 
     val reserves by reserveViewModel.reserves.collectAsState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
@@ -714,8 +715,11 @@ fun LivePlayerScreen(
     }
 
     LaunchedEffect(isMiniListOpen) {
-        if (!isMiniListOpen && !currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.lCropMode == LCropMode.HIDDEN) {
-            delay(100); mainFocusRequester.safeRequestFocus(TAG)
+        if (!isMiniListOpen) {
+            isMiniPlayerSelectionPending = false
+            if (!currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.lCropMode == LCropMode.HIDDEN) {
+                delay(100); mainFocusRequester.safeRequestFocus(TAG)
+            }
         }
     }
 
@@ -1085,18 +1089,28 @@ fun LivePlayerScreen(
                 konomiPort = konomiPort,
                 currentChannelId = currentChannelItem.id,
                 onChannelSelect = { selectedChannel ->
+                    val enterMiniPlayer = isMiniPlayerSelectionPending
+                    isMiniPlayerSelectionPending = false
                     if (!ps.isDualDisplayMode) onChannelSelect(selectedChannel) else {
                         if (ps.activeDualPlayerIndex == 0) onChannelSelect(selectedChannel) else ps.dualRightChannel =
                             selectedChannel
-                    }; onMiniListToggle(false); scope.launch {
-                    delay(200); mainFocusRequester.safeRequestFocus(
-                    TAG
-                )
-                }
+                    }
+                    onMiniListToggle(false)
+                    if (enterMiniPlayer) {
+                        onPiPRequested()
+                    } else {
+                        scope.launch {
+                            delay(200)
+                            mainFocusRequester.safeRequestFocus(TAG)
+                        }
+                    }
                 },
                 onRecordingSelect = { program ->
+                    val enterMiniPlayer = isMiniPlayerSelectionPending
+                    isMiniPlayerSelectionPending = false
                     onMiniListToggle(false)
                     onChasePlaybackSelect(program)
+                    if (enterMiniPlayer) onPiPRequested()
                 },
                 logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,
@@ -1130,6 +1144,11 @@ fun LivePlayerScreen(
                 isDataBroadcastingAvailable = isB60Channel,
                 groupedChannels = displayGroupedChannels,
                 currentChannelId = currentChannelItem.id,
+                onMiniPlayerSelectionRequested = {
+                    isMiniPlayerSelectionPending = true
+                    onSubMenuToggle(false)
+                    onMiniListToggle(true)
+                },
                 onDualDisplayToggle = {
                     ps.isDualDisplayMode = !ps.isDualDisplayMode
                     if (ps.isDualDisplayMode) {

@@ -114,6 +114,62 @@ class MainRootStateTest {
     }
 
     @Test
+    fun enterMiniPlayer_withoutPlaybackTarget_returnsFalseAndKeepsItClosed() {
+        val state = MainRootState()
+
+        assertFalse(state.enterMiniPlayer())
+
+        assertEquals(PlaybackTarget.None, state.playbackTarget)
+        assertFalse(state.isMiniPlayerMode)
+    }
+
+    @Test
+    fun enterMiniPlayer_withAnyPlaybackTarget_returnsTrue() {
+        val cases = listOf<(MainRootState) -> Unit>(
+            { it.enterLive(channel()) },
+            { it.enterRecorded(recording()) },
+            { it.enterSmb(smbItem()) },
+        )
+
+        cases.forEach { enterPlayback ->
+            val state = MainRootState()
+            enterPlayback(state)
+
+            assertTrue(state.enterMiniPlayer())
+            assertTrue(state.isMiniPlayerMode)
+            assertTrue(state.isPlaybackActive)
+        }
+    }
+
+    @Test
+    fun exitMiniPlayer_preservesPlaybackTarget() {
+        val state = MainRootState()
+        val recording = recording()
+        state.enterRecorded(recording)
+        assertTrue(state.enterMiniPlayer())
+
+        state.exitMiniPlayer()
+
+        assertFalse(state.isMiniPlayerMode)
+        assertEquals(PlaybackTarget.Recorded(recording), state.playbackTarget)
+        assertEquals(recording, state.recordedPlayback?.program)
+    }
+
+    @Test
+    fun enterLive_withExitMiniPlayerFalse_keepsMiniModeWhileSwitchingChannel() {
+        val state = MainRootState()
+        val nextChannel = channel(id = "gr-next")
+        state.enterLive(channel())
+        assertTrue(state.enterMiniPlayer())
+
+        state.enterLive(nextChannel, exitMiniPlayer = false)
+
+        assertTrue(state.isMiniPlayerMode)
+        assertEquals(PlaybackTarget.Live(nextChannel), state.playbackTarget)
+        assertEquals(nextChannel.id, state.lastSelectedChannelId)
+    }
+
+    @Test
     fun resetForLauncherHome_clearsTargetAndRestoresPlaybackUiDefaults() {
         val state = MainRootState()
         val previousFocusTick = state.launcherHomeFocusTick
@@ -150,8 +206,8 @@ class MainRootStateTest {
         assertFalse(state.triggerHomeBack)
     }
 
-    private fun channel() = Channel(
-        id = "gr-test",
+    private fun channel(id: String = "gr-test") = Channel(
+        id = id,
         displayChannelId = "gr011",
         name = "Test Channel",
         channelNumber = "011",

@@ -473,7 +473,7 @@ fun MainRootScreen(
 
             state.showDeleteConfirmDialog -> state.showDeleteConfirmDialog = false
             state.isMiniPlayerMode -> {
-                state.isMiniPlayerMode = false; state.toastMessage = "フルスクリーンに戻りました"
+                state.exitMiniPlayer(); state.toastMessage = "フルスクリーンに戻りました"
             }
 
             state.isPlayerMiniListOpen -> state.isPlayerMiniListOpen = false
@@ -751,8 +751,9 @@ fun MainRootScreen(
                                     onShowToast = { state.toastMessage = it },
                                     isPiPMode = state.isMiniPlayerMode,
                                     onPiPRequested = {
-                                        state.isMiniPlayerMode = true; state.toastMessage =
-                                        "ミニプレイヤーに変更しました"
+                                        if (state.enterMiniPlayer()) {
+                                            state.toastMessage = "ミニプレイヤーに変更しました"
+                                        }
                                     },
                                     timeFormat = timeFormat
                                 )
@@ -794,8 +795,9 @@ fun MainRootScreen(
                                         onShowToast = { state.toastMessage = it },
                                         isPiPMode = state.isMiniPlayerMode,
                                         onPiPRequested = {
-                                            state.isMiniPlayerMode = true
-                                            state.toastMessage = "ミニプレイヤーに変更しました"
+                                            if (state.enterMiniPlayer()) {
+                                                state.toastMessage = "ミニプレイヤーに変更しました"
+                                            }
                                         }
                                     )
                                 }
@@ -827,8 +829,9 @@ fun MainRootScreen(
                                         onShowToast = { state.toastMessage = it },
                                         isPiPMode = state.isMiniPlayerMode,
                                         onPiPRequested = {
-                                            state.isMiniPlayerMode = true
-                                            state.toastMessage = "ミニプレイヤーに変更しました"
+                                            if (state.enterMiniPlayer()) {
+                                                state.toastMessage = "ミニプレイヤーに変更しました"
+                                            }
                                         }
                                     )
                                 } else {
