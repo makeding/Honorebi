@@ -99,6 +99,9 @@ class MainRootPlaybackState {
             is PlaybackPhase.Switching -> phase.to
             PlaybackPhase.Idle -> PlaybackTarget.None
         }
+    val renderInitialPlaybackPositionMs: Long
+        get() = (playbackPhase as? PlaybackPhase.Switching)?.initialPositionMs
+            ?: initialPlaybackPositionMs
     val livePlayback: PlaybackTarget.Live? get() = playbackTarget as? PlaybackTarget.Live
     val recordedPlayback: PlaybackTarget.Recorded? get() = playbackTarget as? PlaybackTarget.Recorded
     val smbPlayback: PlaybackTarget.Smb? get() = playbackTarget as? PlaybackTarget.Smb
@@ -158,6 +161,7 @@ class MainRootPlaybackState {
     ): Boolean {
         val from = playbackTarget as? PlaybackTarget.Recorded ?: return false
         if (playbackPhase !is PlaybackPhase.Playing || playbackSession == null) return false
+        if (from.program.id == program.id) return false
 
         switchRollbackPositionMs = this.initialPlaybackPositionMs
         playbackPhase = PlaybackPhase.Switching(

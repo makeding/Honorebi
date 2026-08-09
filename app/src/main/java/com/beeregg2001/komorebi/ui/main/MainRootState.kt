@@ -36,6 +36,7 @@ class MainRootState {
 
     val playbackTarget: PlaybackTarget get() = playbackState.playbackTarget
     val renderPlaybackTarget: PlaybackTarget get() = playbackState.renderPlaybackTarget
+    val renderInitialPlaybackPositionMs: Long get() = playbackState.renderInitialPlaybackPositionMs
     val playbackPhase: PlaybackPhase get() = playbackState.playbackPhase
     val playbackSession: PlaybackSession? get() = playbackState.playbackSession
     val playbackSessionEpoch: Long? get() = playbackState.playbackSessionEpoch

@@ -75,6 +75,7 @@ class MainRootPlaybackStateTest {
 
         assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
         assertEquals(PlaybackTarget.Recorded(next), state.renderPlaybackTarget)
+        assertEquals(2_000L, state.renderInitialPlaybackPositionMs)
         assertSame(session, state.playbackSession)
         assertEquals(
             PlaybackPhase.Switching(
@@ -104,9 +105,25 @@ class MainRootPlaybackStateTest {
 
         assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
         assertEquals(PlaybackTarget.Recorded(first), state.renderPlaybackTarget)
+        assertEquals(1_000L, state.renderInitialPlaybackPositionMs)
         assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(first)), state.playbackPhase)
         assertEquals(1_000L, state.initialPlaybackPositionMs)
         assertSame(session, state.playbackSession)
+    }
+
+    @Test
+    fun recordedSwitch_rejectsTheCurrentProgram() {
+        val state = MainRootPlaybackState()
+        val current = recording(id = 42)
+        state.enterRecorded(current)
+
+        assertFalse(
+            state.beginRecordedSwitch(
+                current,
+                reason = PlaybackSwitchReason.QuickSelect,
+            )
+        )
+        assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(current)), state.playbackPhase)
     }
 
     @Test

@@ -758,7 +758,7 @@ fun MainRootScreen(
                                 key(selectedProgram.id) {
                                     VideoPlayerScreen(
                                         program = selectedProgram,
-                                        initialPositionMs = state.initialPlaybackPositionMs,
+                                        initialPositionMs = state.renderInitialPlaybackPositionMs,
                                         initialQuality = defaultVideoQuality,
                                         showControls = state.showPlayerControls,
                                         onShowControlsChange = { state.showPlayerControls = it },

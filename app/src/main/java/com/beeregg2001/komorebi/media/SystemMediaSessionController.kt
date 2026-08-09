@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.Looper
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import com.beeregg2001.komorebi.MainActivity
 
@@ -52,7 +51,7 @@ internal class SystemMediaSessionOwnership {
     }
 }
 
-internal data class SystemMediaSessionAttachment internal constructor(
+internal class SystemMediaSessionAttachment internal constructor(
     val epoch: Long,
     internal val id: Long,
 )
@@ -64,7 +63,6 @@ internal data class SystemMediaSessionAttachment internal constructor(
  * from Compose effects, and explicitly checks that contract so a future caller
  * cannot accidentally mutate the session from an IO callback.
  */
-@OptIn(UnstableApi::class)
 internal class SystemMediaSessionController(context: Context) {
     private val appContext = context.applicationContext
     private val ownership = SystemMediaSessionOwnership()
@@ -95,6 +93,9 @@ internal class SystemMediaSessionController(context: Context) {
         // replacement player is preparing.  Keeping the previous Media3
         // session alive preserves the Cast route/controller across A -> B.
         if (player != null) {
+            check(player.applicationLooper == Looper.getMainLooper()) {
+                "System media-session players must use the main application looper"
+            }
             val sessionPlayer = SystemSessionPlayer(
                 player = player,
                 metadata = metadata,
