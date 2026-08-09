@@ -711,6 +711,10 @@ fun VideoPlayerScreen(
                     isRecordingChasePlayback = isRecordingChasePlayback,
                     playbackOffsetMs = vs.playbackOffsetMs
                 )
+                // A legitimate renderer/source reconstruction must resume the
+                // old instance's last UI/pending position instead of asking
+                // the new, empty player (which necessarily reports zero).
+                playbackPositionMs = posMs
                 videoPlayerViewModel.updateWatchHistory(currentProgram, posMs / 1000.0)
             }
         }
@@ -881,6 +885,11 @@ fun VideoPlayerScreen(
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
     val usesSerializedRawMmtsSeek = requiresRawMmtsPlayback && vs.currentQuality.isRawMmts
+    val usesExtractorByteSeek = usesSerializedRawMmtsSeek || (
+        currentProgram.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
+            currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true) &&
+            vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
+        )
     val rawMmtsSeekCoordinator = remember(exoPlayer, currentProgram.id) {
         RawMmtsSeekCoordinator()
     }
@@ -981,7 +990,15 @@ fun VideoPlayerScreen(
                 !tiledThumbnailUrl.isNullOrBlank() &&
                 totalDurationForControls > 0L
 
-    val performSeek: (Long) -> Unit = { targetMs: Long ->
+    val performSeek: (Long) -> Unit = seek@ { targetMs: Long ->
+        if (isEdcbDirect && smbItem == null) {
+            onShowToast("EDCBダイレクト再生ではシークできません")
+            return@seek
+        }
+        if (usesExtractorByteSeek && !exoPlayer.isCurrentMediaItemSeekable) {
+            onShowToast("シーク情報を準備しています")
+            return@seek
+        }
         val safeTarget = targetMs.coerceIn(
             0L,
             if (totalDurationForControls > 0) totalDurationForControls else Long.MAX_VALUE
@@ -1171,7 +1188,11 @@ fun VideoPlayerScreen(
         if (availableQualities.isNotEmpty() && availableQualities.none { it.value == vs.currentQuality.value }) return@LaunchedEffect
 
         isBuffering = true
-        val resumePositionMs = hdrModeResumePositionMs
+        val resumePositionMs = resolveRecreatedPlayerStartPositionMs(
+            explicitResumePositionMs = hdrModeResumePositionMs,
+            isFirstLoad = isFirstLoad,
+            retainedPlaybackPositionMs = playbackPositionMs,
+        )
         val offsetPositionMs = when {
             resumePositionMs != null -> resumePositionMs
             isFirstLoad && effectiveInitialPositionMs > 0 -> effectiveInitialPositionMs

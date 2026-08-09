@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -59,6 +60,12 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.live.RawAribSubtitlePayloadReaderFactory
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadDataType
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryDecision
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryPolicy
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedPlayerBufferProfile
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedPlayerConstructionKey
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedByteSeekPolicy
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbContextBuilder
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbDataSourceFactory
 import com.beeregg2001.komorebi.data.model.AudioMode
@@ -85,25 +92,9 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 private const val TAG = "VideoPlayerManager"
-private const val RECORDED_PLAYER_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
-private const val RECORDED_PLAYER_MIN_BUFFER_MS = 30_000
-private const val RECORDED_PLAYER_MAX_BUFFER_MS = 90_000
-private const val RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS = 4_000
-private const val RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS = 8_000
-private const val RAW_MMTS_PLAYER_TARGET_BUFFER_BYTES = 32 * 1024 * 1024
-private const val RAW_MMTS_PLAYER_MIN_BUFFER_MS = 5_000
-private const val RAW_MMTS_PLAYER_MAX_BUFFER_MS = 10_000
-private const val RAW_MMTS_PLAYER_BUFFER_FOR_PLAYBACK_MS = 1_000
-private const val RAW_MMTS_PLAYER_BUFFER_FOR_REBUFFER_MS = 2_000
-private const val CHASE_PLAYER_TARGET_BUFFER_BYTES = 48 * 1024 * 1024
-private const val CHASE_PLAYER_MIN_BUFFER_MS = 15_000
-private const val CHASE_PLAYER_MAX_BUFFER_MS = 45_000
-private const val CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS = 8_000
-private const val CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS = 15_000
-private const val HLS_LOAD_RETRY_DELAY_MS = 1_000L
-private const val HLS_LOAD_MAX_RETRY_DELAY_MS = 8_000L
 private const val RECORDED_SEGMENT_PREFETCH_COUNT = 0
 private const val GROWING_FILE_RETRY_INTERVAL_MS = 3_000L
 private const val GROWING_FILE_MAX_IDLE_RETRIES = 20
@@ -409,30 +400,33 @@ private class HonomiLikeHlsLoadErrorHandlingPolicy(
     private val isNetworkAvailable: () -> Boolean,
 ) : DefaultLoadErrorHandlingPolicy() {
     override fun getMinimumLoadableRetryCount(dataType: Int): Int {
-        return when (dataType) {
-            C.DATA_TYPE_MANIFEST -> 4
-            C.DATA_TYPE_MEDIA, C.DATA_TYPE_MEDIA_INITIALIZATION -> 7
-            else -> super.getMinimumLoadableRetryCount(dataType)
-        }
+        return RecordedLoadRetryPolicy.minimumLoadableRetryCount(
+            when (dataType) {
+                C.DATA_TYPE_MANIFEST -> RecordedLoadDataType.Manifest
+                C.DATA_TYPE_MEDIA -> RecordedLoadDataType.Media
+                C.DATA_TYPE_MEDIA_INITIALIZATION -> RecordedLoadDataType.MediaInitialization
+                else -> RecordedLoadDataType.Other
+            },
+            super.getMinimumLoadableRetryCount(dataType),
+        )
     }
 
     override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
-        // Do not burn Media3's retry count while Android has no active network.
-        // The screen-level recovery gate owns the next false -> true edge.
-        if (!isNetworkAvailable()) return C.TIME_UNSET
-        val exception = loadErrorInfo.exception
-        if (exception.isHttpResponseCode(422)) {
-            return C.TIME_UNSET
-        }
-        val defaultDelayMs = super.getRetryDelayMsFor(loadErrorInfo)
-        if (defaultDelayMs == C.TIME_UNSET) {
-            return C.TIME_UNSET
-        }
-        return if (loadErrorInfo.errorCount <= 2) {
-            0L
+        val networkAvailable = isNetworkAvailable()
+        val isHttp422 = loadErrorInfo.exception.isHttpResponseCode(422)
+        val defaultDelayMs = if (networkAvailable && !isHttp422) {
+            super.getRetryDelayMsFor(loadErrorInfo)
         } else {
-            ((loadErrorInfo.errorCount - 2) * HLS_LOAD_RETRY_DELAY_MS)
-                .coerceAtMost(HLS_LOAD_MAX_RETRY_DELAY_MS)
+            C.TIME_UNSET
+        }
+        return when (val decision = RecordedLoadRetryPolicy.retryDecision(
+            networkAvailable = networkAvailable,
+            isHttp422 = isHttp422,
+            errorCount = loadErrorInfo.errorCount,
+            media3CanRetry = defaultDelayMs != C.TIME_UNSET,
+        )) {
+            RecordedLoadRetryDecision.DoNotRetry -> C.TIME_UNSET
+            is RecordedLoadRetryDecision.RetryAfter -> decision.delayMs
         }
     }
 }
@@ -481,6 +475,13 @@ fun rememberManagedExoPlayer(
     }
     val currentOnSubtitleCue = rememberUpdatedState(onSubtitleCue)
     val currentOnSubtitleLanguagesChanged = rememberUpdatedState(onSubtitleLanguagesChanged)
+    val currentOnVideoSizeChanged = rememberUpdatedState(onVideoSizeChanged)
+    val currentOnBufferingChanged = rememberUpdatedState(onBufferingChanged)
+    val currentOnDurationChanged = rememberUpdatedState(onDurationChanged)
+    val currentOnPlaybackEnded = rememberUpdatedState(onPlaybackEnded)
+    val currentOnStreamSessionExpired = rememberUpdatedState(onStreamSessionExpired)
+    val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
+    val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
     LaunchedEffect(captionDecoder, b62SubtitleSamples) {
         for (sample in b62SubtitleSamples) {
             if (!vs.isSubtitleEnabled) continue
@@ -540,7 +541,14 @@ fun rememberManagedExoPlayer(
     ) && vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
     val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()
     val epgDurationUs = program?.epgDurationUs() ?: C.TIME_UNSET
+    val tsreadexServiceId = program?.channel?.serviceId ?: -1
     val smbServerList by settingsViewModel.smbServerList.collectAsState()
+    val programRef = remember(program?.id) { AtomicReference(program) }
+    val programDurationUsRef = remember(program?.id) { AtomicLong(programDurationUs) }
+    SideEffect {
+        programRef.set(program)
+        if (programDurationUs > 0L) programDurationUsRef.set(programDurationUs)
+    }
     val fileSizeBytesRef = remember(program?.id, isOriginalMpegTsPlayback, isRawMmtsPlayback) {
         AtomicLong(0L)
     }
@@ -551,6 +559,18 @@ fun rememberManagedExoPlayer(
     ) {
         AtomicLong(if (isRecordingChasePlayback) 0L else programDurationUs)
     }
+    val constructionKey = RecordedPlayerConstructionKey(
+        programId = program?.id,
+        isRecordingChasePlayback = isRecordingChasePlayback,
+        isRawMmtsPlayback = isRawMmtsPlayback,
+        isOriginalMpegTsPlayback = isOriginalMpegTsPlayback,
+        isEdcbDirect = isEdcbDirect,
+        tsreadexServiceId = tsreadexServiceId,
+        chaseProgramWindowDurationUs = if (
+            isRecordingChasePlayback && (isRawMmtsPlayback || isOriginalMpegTsPlayback)
+        ) epgDurationUs else C.TIME_UNSET,
+        enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
+    )
 
     val applyAudioSelectionAndMatrix = { mode: AudioMode, player: ExoPlayer ->
         val audioGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -582,15 +602,11 @@ fun rememberManagedExoPlayer(
     }
 
     val exoPlayer = remember(
+        constructionKey,
         smbServerList,
-        program?.id,
-        isRecordingChasePlayback,
-        isRawMmtsPlayback,
-        isOriginalMpegTsPlayback,
-        programDurationUs,
         dataBroadcastingCallback,
-        enableHdrToSdrToneMapping
     ) {
+        Log.i(TAG, "Building recorded ExoPlayer: $constructionKey")
         val renderersFactory = object : DefaultRenderersFactory(context) {
             override fun getCodecAdapterFactory() = HdrToneMapping.codecAdapterFactory(
                 delegate = super.getCodecAdapterFactory(),
@@ -628,8 +644,7 @@ fun rememberManagedExoPlayer(
                     val isDirectTs = dataSpec.uri.path?.endsWith(".ts", ignoreCase = true) == true || dataSpec.uri.path?.endsWith("m2ts", ignoreCase = true) == true
 //                    val isMirakurun = dataSpec.uri.path?.contains("/api/streams/") == true || dataSpec.uri.path?.contains("/api/channels/") == true
 
-                    val sid = program?.channel?.serviceId ?: -1
-                    val nValue = sid.toString()
+                    val nValue = constructionKey.tsreadexServiceId.toString()
 
                     val dynamicTsArgs = arrayOf(
                         "tsreadex", "-x", "18/38/39", "-n", nValue,
@@ -657,10 +672,10 @@ fun rememberManagedExoPlayer(
                                     fileSizeBytesRef.updateAndGet { knownSize ->
                                         maxOf(knownSize, totalFileSize)
                                     }
-                                    val recordedDurationUs = program
+                                    val recordedDurationUs = programRef.get()
                                         ?.currentChaseDurationMs()
                                         ?.times(1_000L)
-                                        ?: programDurationUs
+                                        ?: programDurationUsRef.get()
                                     fileSizeReferenceDurationUsRef.updateAndGet { knownDurationUs ->
                                         maxOf(knownDurationUs, recordedDurationUs)
                                     }
@@ -722,10 +737,10 @@ fun rememberManagedExoPlayer(
                             maxOf(knownSize, totalFileSize)
                         }
                         if (isRecordingChasePlayback) {
-                            val recordedDurationUs = program
+                            val recordedDurationUs = programRef.get()
                                 ?.currentChaseDurationMs()
                                 ?.times(1_000L)
-                                ?: programDurationUs
+                                ?: programDurationUsRef.get()
                             fileSizeReferenceDurationUsRef.updateAndGet { knownDurationUs ->
                                 maxOf(knownDurationUs, recordedDurationUs)
                             }
@@ -766,7 +781,7 @@ fun rememberManagedExoPlayer(
                     growing = isRecordingChasePlayback,
                     growingDurationLimitUs = epgDurationUs,
                     growingDurationFallbackUsProvider = {
-                        program
+                        programRef.get()
                             ?.currentChaseDurationMs()
                             ?.minus(GROWING_FILE_LIVE_EDGE_SAFETY_MS)
                             ?.coerceAtLeast(0L)
@@ -800,14 +815,20 @@ fun rememberManagedExoPlayer(
             }
 
             // ダイレクトTSまたはHonomiTVの原始TS再生時は、HTTP Rangeに対応するSeekMapを注入する
-            val hasTsSeekDuration = if (
+            val tsSeekDurationUs = if (
                 isOriginalMpegTsPlayback && isRecordingChasePlayback
             ) {
-                epgDurationUs > 0L
+                epgDurationUs
             } else {
-                programDurationUs > 0L
+                programDurationUsRef.get()
             }
-            if ((isEdcbDirect || isOriginalMpegTsPlayback) && hasTsSeekDuration) {
+            if (
+                RecordedByteSeekPolicy.shouldWrapTsSeekMap(
+                    isEdcbDirect = isEdcbDirect,
+                    isOriginalMpegTsPlayback = isOriginalMpegTsPlayback,
+                    durationUs = tsSeekDurationUs,
+                )
+            ) {
                 for (i in defaultExtractors.indices) {
                     val extractor = defaultExtractors[i]
                     if (extractor is TsExtractor) {
@@ -823,21 +844,27 @@ fun rememberManagedExoPlayer(
                                     override fun seekMap(seekMap: SeekMap) {
                                         // TsExtractor が算出したエラーの SeekMap を無視し、独自の高精度マップを注入
                                         val customSeekMap = object : SeekMap {
-                                            override fun isSeekable() = true
+                                            override fun isSeekable() =
+                                                RecordedByteSeekPolicy.isEstimatedByteSeekable(
+                                                    sourceLengthBytes = fileSizeBytesRef.get(),
+                                                    durationUs = getDurationUs(),
+                                                )
                                             override fun getDurationUs(): Long {
                                                 if (!isOriginalMpegTsPlayback || !isRecordingChasePlayback) {
-                                                    return programDurationUs
+                                                    return programDurationUsRef.get()
                                                 }
-                                                val elapsedMs = program
+                                                val elapsedMs = programRef.get()
                                                     ?.currentChaseDurationMs()
-                                                    ?: (programDurationUs / 1_000L)
+                                                    ?: (programDurationUsRef.get() / 1_000L)
                                                 return (
                                                     elapsedMs - GROWING_FILE_LIVE_EDGE_SAFETY_MS
                                                 ).coerceAtLeast(0L) * 1_000L
                                             }
                                             override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
                                                 val size = fileSizeBytesRef.get()
-                                                if (size <= 0L) return SeekMap.SeekPoints(SeekPoint(timeUs, 0L))
+                                                if (size <= 0L) {
+                                                    return SeekMap.SeekPoints(SeekPoint.START)
+                                                }
                                                 val currentDurationUs = getDurationUs().coerceAtLeast(1L)
                                                 val safeTime = timeUs.coerceIn(0L, currentDurationUs)
                                                 val referenceDurationUs = if (
@@ -897,39 +924,18 @@ fun rememberManagedExoPlayer(
             .setLoadErrorHandlingPolicy(HonomiLikeHlsLoadErrorHandlingPolicy(isNetworkAvailable))
 
         val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
-        val targetBufferBytes = when {
-            isRawMmtsPlayback -> RAW_MMTS_PLAYER_TARGET_BUFFER_BYTES
-            isRecordingChasePlayback -> CHASE_PLAYER_TARGET_BUFFER_BYTES
-            else -> RECORDED_PLAYER_TARGET_BUFFER_BYTES
-        }
-        val minBufferMs = when {
-            isRawMmtsPlayback -> RAW_MMTS_PLAYER_MIN_BUFFER_MS
-            isRecordingChasePlayback -> CHASE_PLAYER_MIN_BUFFER_MS
-            else -> RECORDED_PLAYER_MIN_BUFFER_MS
-        }
-        val maxBufferMs = when {
-            isRawMmtsPlayback -> RAW_MMTS_PLAYER_MAX_BUFFER_MS
-            isRecordingChasePlayback -> CHASE_PLAYER_MAX_BUFFER_MS
-            else -> RECORDED_PLAYER_MAX_BUFFER_MS
-        }
-        val bufferForPlaybackMs = when {
-            isRawMmtsPlayback -> RAW_MMTS_PLAYER_BUFFER_FOR_PLAYBACK_MS
-            isRecordingChasePlayback -> CHASE_PLAYER_BUFFER_FOR_PLAYBACK_MS
-            else -> RECORDED_PLAYER_BUFFER_FOR_PLAYBACK_MS
-        }
-        val bufferForPlaybackAfterRebufferMs = when {
-            isRawMmtsPlayback -> RAW_MMTS_PLAYER_BUFFER_FOR_REBUFFER_MS
-            isRecordingChasePlayback -> CHASE_PLAYER_BUFFER_FOR_REBUFFER_MS
-            else -> RECORDED_PLAYER_BUFFER_FOR_REBUFFER_MS
-        }
+        val bufferProfile = RecordedPlayerBufferProfile.select(
+            isRawMmtsPlayback = isRawMmtsPlayback,
+            isRecordingChasePlayback = isRecordingChasePlayback,
+        )
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
-            .setTargetBufferBytes(targetBufferBytes)
+            .setTargetBufferBytes(bufferProfile.targetBufferBytes)
             .setBufferDurationsMs(
-                minBufferMs,
-                maxBufferMs,
-                bufferForPlaybackMs,
-                bufferForPlaybackAfterRebufferMs
+                bufferProfile.minBufferMs,
+                bufferProfile.maxBufferMs,
+                bufferProfile.bufferForPlaybackMs,
+                bufferProfile.bufferForPlaybackAfterRebufferMs
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
@@ -954,7 +960,11 @@ fun rememberManagedExoPlayer(
                     private var wasBuffering = false
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
-                        onVideoSizeChanged(videoSize.width, videoSize.height, videoSize.pixelWidthHeightRatio)
+                        currentOnVideoSizeChanged.value(
+                            videoSize.width,
+                            videoSize.height,
+                            videoSize.pixelWidthHeightRatio,
+                        )
                     }
 
                     override fun onIsPlayingChanged(playing: Boolean) {
@@ -967,7 +977,7 @@ fun rememberManagedExoPlayer(
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         val isBuffering = playbackState == Player.STATE_BUFFERING
-                        onBufferingChanged(isBuffering)
+                        currentOnBufferingChanged.value(isBuffering)
                         if (isBuffering && !wasBuffering) {
                             Log.i(
                                 TAG,
@@ -975,7 +985,7 @@ fun rememberManagedExoPlayer(
                             )
                         }
                         if (playbackState == Player.STATE_READY) {
-                            onDurationChanged(duration)
+                            currentOnDurationChanged.value(duration)
                             if (wasBuffering) {
                                 Log.i(
                                     TAG,
@@ -984,7 +994,7 @@ fun rememberManagedExoPlayer(
                             }
                         }
                         wasBuffering = isBuffering
-                        if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
+                        if (playbackState == Player.STATE_ENDED) currentOnPlaybackEnded.value()
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
@@ -994,16 +1004,19 @@ fun rememberManagedExoPlayer(
                         }
                         scope.launch {
                             try {
-                                when (onPlayerErrorRecovery(this@apply, error)) {
+                                when (currentOnPlayerErrorRecovery.value(this@apply, error)) {
                                     PlayerErrorRecovery.Handled -> return@launch
                                     PlayerErrorRecovery.Reprepare -> Unit
                                     PlayerErrorRecovery.UseDefault -> {
-                                        if (error.hasHttpResponseCode(422) && onStreamSessionExpired(this@apply)) {
+                                        if (
+                                            error.hasHttpResponseCode(422) &&
+                                            currentOnStreamSessionExpired.value(this@apply)
+                                        ) {
                                             return@launch
                                         }
                                     }
                                 }
-                                onBufferingChanged(true)
+                                currentOnBufferingChanged.value(true)
                                 delay(3000L)
                                 prepare()
                                 playWhenReady = true
@@ -1042,12 +1055,12 @@ fun rememberManagedExoPlayer(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 exoPlayer.pause()
-                onStopOrDispose(exoPlayer)
+                currentOnStopOrDispose.value(exoPlayer)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            onStopOrDispose(exoPlayer)
+            currentOnStopOrDispose.value(exoPlayer)
             lifecycleOwner.lifecycle.removeObserver(observer)
             exoPlayer.release()
         }

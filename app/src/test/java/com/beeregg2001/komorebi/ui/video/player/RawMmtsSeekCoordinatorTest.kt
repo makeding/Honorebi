@@ -74,4 +74,31 @@ class RawMmtsSeekCoordinatorTest {
             )
         )
     }
+
+    @Test
+    fun recreatedPlayer_resumesTheRetainedSeekPosition() {
+        assertEquals(
+            180_000L,
+            resolveRecreatedPlayerStartPositionMs(
+                explicitResumePositionMs = null,
+                isFirstLoad = false,
+                retainedPlaybackPositionMs = 180_000L,
+            )
+        )
+        assertNull(
+            resolveRecreatedPlayerStartPositionMs(
+                explicitResumePositionMs = null,
+                isFirstLoad = true,
+                retainedPlaybackPositionMs = 180_000L,
+            )
+        )
+        assertEquals(
+            90_000L,
+            resolveRecreatedPlayerStartPositionMs(
+                explicitResumePositionMs = 90_000L,
+                isFirstLoad = false,
+                retainedPlaybackPositionMs = 180_000L,
+            )
+        )
+    }
 }

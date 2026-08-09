@@ -38,6 +38,13 @@ internal class RawMmtsSeekCoordinator {
     }
 }
 
+internal fun resolveRecreatedPlayerStartPositionMs(
+    explicitResumePositionMs: Long?,
+    isFirstLoad: Boolean,
+    retainedPlaybackPositionMs: Long,
+): Long? = explicitResumePositionMs
+    ?: retainedPlaybackPositionMs.takeIf { !isFirstLoad && it > 0L }
+
 internal fun resolvePersistablePlaybackPositionMs(
     pendingSeekPositionMs: Long?,
     rawPlayerPositionMs: Long?,

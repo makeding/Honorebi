@@ -654,6 +654,11 @@ class TlvExtractor(
                 val distanceFromIndexedPoint = targetUs - indexed[0]
                 if (distanceFromIndexedPoint <= MAX_INDEXED_SEEK_DISTANCE_US || indexed[2] >= 0L) {
                     val first = androidx.media3.extractor.SeekPoint(indexed[0], indexed[1])
+                    Log.i(
+                        TAG,
+                        "MMTS indexed seek: target_us=$targetUs indexed_us=${indexed[0]} " +
+                            "offset=${indexed[1]} input_length=$inputLength"
+                    )
                     if (indexed[2] >= 0L && indexed[3] >= 0L) {
                         return SeekMap.SeekPoints(
                             first,
@@ -672,6 +677,11 @@ class TlvExtractor(
                     .minus(SEEK_PROBE_BACKOFF_BYTES)
                     .coerceIn(0L, (inputLength - 1L).coerceAtLeast(0L))
             }
+            Log.w(
+                TAG,
+                "MMTS estimated seek: target_us=$targetUs duration_us=$recordingDurationUs " +
+                    "offset=$estimatedPosition input_length=$inputLength indexed=false"
+            )
             return SeekMap.SeekPoints(
                 androidx.media3.extractor.SeekPoint(targetUs, estimatedPosition)
             )
