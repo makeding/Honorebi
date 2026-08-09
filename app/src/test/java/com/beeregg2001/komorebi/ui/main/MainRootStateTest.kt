@@ -114,6 +114,24 @@ class MainRootStateTest {
     }
 
     @Test
+    fun recordedSwitch_isAvailableThroughTheRootCompatibilityFacade() {
+        val state = MainRootState()
+        val first = recording()
+        val next = recording(id = 43)
+        state.enterRecorded(first)
+        val session = requireNotNull(state.playbackSession)
+
+        assertTrue(state.beginRecordedSwitch(next, reason = PlaybackSwitchReason.NextEpisode))
+        assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
+        assertEquals(PlaybackTarget.Recorded(next), state.renderPlaybackTarget)
+        assertEquals(PlaybackPhase.Switching::class, state.playbackPhase::class)
+        assertTrue(state.commitRecordedSwitch())
+
+        assertEquals(PlaybackTarget.Recorded(next), state.playbackTarget)
+        assertEquals(session, state.playbackSession)
+    }
+
+    @Test
     fun enterMiniPlayer_withoutPlaybackTarget_returnsFalseAndKeepsItClosed() {
         val state = MainRootState()
 
@@ -221,8 +239,8 @@ class MainRootStateTest {
         remocon_Id = 1,
     )
 
-    private fun recording() = RecordedProgram(
-        id = 42,
+    private fun recording(id: Int = 42) = RecordedProgram(
+        id = id,
         title = "Test Recording",
         description = "",
         startTime = "2026-08-09T00:00:00+09:00",
@@ -230,7 +248,7 @@ class MainRootStateTest {
         duration = 3600.0,
         isPartiallyRecorded = false,
         recordedVideo = RecordedVideo(
-            id = 42,
+            id = id,
             status = "Recorded",
             filePath = "/recordings/test.ts",
             duration = 3600.0,

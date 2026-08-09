@@ -35,6 +35,10 @@ class MainRootState {
     val playbackState = MainRootPlaybackState()
 
     val playbackTarget: PlaybackTarget get() = playbackState.playbackTarget
+    val renderPlaybackTarget: PlaybackTarget get() = playbackState.renderPlaybackTarget
+    val playbackPhase: PlaybackPhase get() = playbackState.playbackPhase
+    val playbackSession: PlaybackSession? get() = playbackState.playbackSession
+    val playbackSessionEpoch: Long? get() = playbackState.playbackSessionEpoch
     var initialPlaybackPositionMs: Long
         get() = playbackState.initialPlaybackPositionMs
         set(value) { playbackState.initialPlaybackPositionMs = value }
@@ -159,6 +163,16 @@ class MainRootState {
     fun enterSmb(item: SmbItem, initialPositionMs: Long = 0L) {
         playbackState.enterSmb(item, initialPositionMs)
     }
+
+    fun beginRecordedSwitch(
+        program: RecordedProgram,
+        initialPositionMs: Long = 0L,
+        reason: PlaybackSwitchReason,
+    ): Boolean = playbackState.beginRecordedSwitch(program, initialPositionMs, reason)
+
+    fun commitRecordedSwitch(): Boolean = playbackState.commitRecordedSwitch()
+
+    fun failRecordedSwitch(): Boolean = playbackState.failRecordedSwitch()
 
     fun enterMiniPlayer(): Boolean {
         return playbackState.enterMiniPlayer()

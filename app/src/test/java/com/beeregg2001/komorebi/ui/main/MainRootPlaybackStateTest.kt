@@ -5,6 +5,8 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.RecordedVideo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -61,8 +63,86 @@ class MainRootPlaybackStateTest {
         assertFalse(state.isBaseballMode)
     }
 
-    private fun channel() = Channel(
-        id = "gr-test",
+    @Test
+    fun recordedSwitch_keepsTheSessionAndNeverClearsTheCurrentTarget() {
+        val state = MainRootPlaybackState()
+        val first = recording(id = 42)
+        val next = recording(id = 43)
+        state.enterRecorded(first, initialPositionMs = 1_000L)
+        val session = requireNotNull(state.playbackSession)
+
+        assertTrue(state.beginRecordedSwitch(next, initialPositionMs = 2_000L, reason = PlaybackSwitchReason.NextEpisode))
+
+        assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
+        assertEquals(PlaybackTarget.Recorded(next), state.renderPlaybackTarget)
+        assertSame(session, state.playbackSession)
+        assertEquals(
+            PlaybackPhase.Switching(
+                from = PlaybackTarget.Recorded(first),
+                to = PlaybackTarget.Recorded(next),
+                reason = PlaybackSwitchReason.NextEpisode,
+                initialPositionMs = 2_000L,
+            ),
+            state.playbackPhase,
+        )
+        assertTrue(state.commitRecordedSwitch())
+        assertEquals(PlaybackTarget.Recorded(next), state.playbackTarget)
+        assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(next)), state.playbackPhase)
+        assertSame(session, state.playbackSession)
+        assertEquals(2_000L, state.initialPlaybackPositionMs)
+    }
+
+    @Test
+    fun failedRecordedSwitch_restoresThePreviousRecordingAndSession() {
+        val state = MainRootPlaybackState()
+        val first = recording(id = 42)
+        state.enterRecorded(first, initialPositionMs = 1_000L)
+        val session = requireNotNull(state.playbackSession)
+
+        assertTrue(state.beginRecordedSwitch(recording(id = 43), initialPositionMs = 2_000L, reason = PlaybackSwitchReason.QuickSelect))
+        assertTrue(state.failRecordedSwitch())
+
+        assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
+        assertEquals(PlaybackTarget.Recorded(first), state.renderPlaybackTarget)
+        assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(first)), state.playbackPhase)
+        assertEquals(1_000L, state.initialPlaybackPositionMs)
+        assertSame(session, state.playbackSession)
+    }
+
+    @Test
+    fun leavePlayback_endsTheSessionAndReturnsToIdle() {
+        val state = MainRootPlaybackState()
+        state.enterRecorded(recording())
+
+        state.leavePlayback()
+
+        assertEquals(PlaybackTarget.None, state.playbackTarget)
+        assertEquals(PlaybackPhase.Idle, state.playbackPhase)
+        assertNull(state.playbackSession)
+    }
+
+    @Test
+    fun playbackSession_livesUntilLeaveEvenWhenOrdinaryEnterChangesTarget() {
+        val state = MainRootPlaybackState()
+        state.enterLive(channel())
+        val firstSession = requireNotNull(state.playbackSession)
+
+        state.enterLive(channel(id = "gr-next"))
+
+        assertSame(firstSession, state.playbackSession)
+        assertEquals(PlaybackTarget.Live(channel(id = "gr-next")), state.playbackTarget)
+
+        state.leavePlayback()
+        state.enterLive(channel(id = "gr-after-leave"))
+
+        val secondSession = requireNotNull(state.playbackSession)
+        assertFalse(firstSession == secondSession)
+        assertTrue(secondSession.epoch > firstSession.epoch)
+        assertEquals(PlaybackPhase.Playing(PlaybackTarget.Live(channel(id = "gr-after-leave"))), state.playbackPhase)
+    }
+
+    private fun channel(id: String = "gr-test") = Channel(
+        id = id,
         displayChannelId = "gr011",
         name = "Test Channel",
         channelNumber = "011",
@@ -76,8 +156,8 @@ class MainRootPlaybackStateTest {
         remocon_Id = 1,
     )
 
-    private fun recording() = RecordedProgram(
-        id = 42,
+    private fun recording(id: Int = 42) = RecordedProgram(
+        id = id,
         title = "Test Recording",
         description = "",
         startTime = "2026-08-09T00:00:00+09:00",
@@ -85,7 +165,7 @@ class MainRootPlaybackStateTest {
         duration = 3600.0,
         isPartiallyRecorded = false,
         recordedVideo = RecordedVideo(
-            id = 42,
+            id = id,
             status = "Recorded",
             filePath = "/recordings/test.ts",
             duration = 3600.0,
