@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
+import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 
 private const val TAG = "MainRootScreen"
@@ -644,6 +645,12 @@ fun MainRootScreen(
 
                     // ★ 前面のプレイヤー画面（Z-index: 1）
                     if (state.isPlaybackActive) {
+                        // Keep MediaRouter2 route discovery alive for the whole playback
+                        // session. In particular, a recorded-program transition replaces
+                        // the keyed VideoPlayerScreen below, but must not make Cast targets
+                        // temporarily disappear while the next episode starts.
+                        CastRouteDiscovery()
+
                         val playerWidth by animateDpAsState(
                             targetValue = if (state.isMiniPlayerMode) 320.dp else 1920.dp,
                             label = "width",

@@ -52,11 +52,10 @@ class NextEpisodePolicyTest {
 
         val comments = buildList {
             repeat(45) { add(comment(60.0 + it)) }
-            repeat(5) { add(comment(25 * 60.0 + it)) }
-            repeat(5) { add(comment(25 * 60.0 + 10 + it)) }
-            repeat(15) { add(comment(25 * 60.0 + 20 + it)) }
-            repeat(5) { add(comment(25 * 60.0 + 40 + it)) }
-            repeat(5) { add(comment(26 * 60.0 + it)) }
+            listOf(0, 20, 40, 60, 80, 100, 140, 160, 180, 200).forEach { offset ->
+                add(comment(25 * 60.0 + offset))
+            }
+            repeat(25) { add(comment(27 * 60.0 + (it % 9))) }
         }
         assertNotNull(calculateCommentClimaxCountdownStartMs(comments, durationMs))
     }

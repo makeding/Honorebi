@@ -6,17 +6,6 @@ import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 
 enum class AiFocusTicket { NONE, PANEL_DEFAULT }
 
-/**
- * The single source of truth for the active player.  Keeping the payload with
- * its kind makes an impossible combination such as live + SMB unrepresentable.
- */
-sealed interface PlaybackTarget {
-    data object None : PlaybackTarget
-    data class Live(val channel: Channel) : PlaybackTarget
-    data class Recorded(val program: RecordedProgram) : PlaybackTarget
-    data class Smb(val item: SmbItem) : PlaybackTarget
-}
-
 @Stable
 class AiFocusTicketManager {
     var currentTicket by mutableStateOf(AiFocusTicket.NONE)
@@ -43,9 +32,12 @@ class AiFocusTicketManager {
 class MainRootState {
     // タブ・選択状態
     var currentTabIndex by mutableIntStateOf(0)
-    var playbackTarget by mutableStateOf<PlaybackTarget>(PlaybackTarget.None)
-        private set
-    var initialPlaybackPositionMs by mutableLongStateOf(0L)
+    val playbackState = MainRootPlaybackState()
+
+    val playbackTarget: PlaybackTarget get() = playbackState.playbackTarget
+    var initialPlaybackPositionMs: Long
+        get() = playbackState.initialPlaybackPositionMs
+        set(value) { playbackState.initialPlaybackPositionMs = value }
     var epgSelectedProgram by mutableStateOf<EpgProgram?>(null)
 
     var backendType by mutableStateOf("KONOMITV")
@@ -87,32 +79,52 @@ class MainRootState {
 
     var triggerHomeBack by mutableStateOf(false)
 
-    // プレイヤー固有の状態
-    var isPlayerMiniListOpen by mutableStateOf(false)
-    var playerShowOverlay by mutableStateOf(true)
-    var playerIsManualOverlay by mutableStateOf(false)
-    var playerIsPinnedOverlay by mutableStateOf(false)
-    var playerIsSubMenuOpen by mutableStateOf(false)
-    var showPlayerControls by mutableStateOf(true)
-    var isPlayerSubMenuOpen by mutableStateOf(false)
-    var isPlayerSceneSearchOpen by mutableStateOf(false)
-
-    // アプリ内ミニプレイヤー（PiP）のフラグ
-    var isMiniPlayerMode by mutableStateOf(false)
-
-    // 履歴・復帰状態
-    var lastSelectedChannelId by mutableStateOf<String?>(null)
-    var lastSelectedProgramId by mutableStateOf<String?>(null)
-    var isReturningFromPlayer by mutableStateOf(false)
-
-    // プロ野球特化モードのフラグ
-    var isBaseballMode by mutableStateOf(false)
-
-    // 再生から戻った際にフォーカスすべき録画番組のID
-    var lastPlayedRecordingId by mutableStateOf<Int?>(null)
-
-    // 再生から戻った際にフォーカスすべきSMBファイルのパス
-    var lastPlayedSmbPath by mutableStateOf<String?>(null)
+    // Playback state is delegated to MainRootPlaybackState during the migration.
+    var isPlayerMiniListOpen: Boolean
+        get() = playbackState.isPlayerMiniListOpen
+        set(value) { playbackState.isPlayerMiniListOpen = value }
+    var playerShowOverlay: Boolean
+        get() = playbackState.playerShowOverlay
+        set(value) { playbackState.playerShowOverlay = value }
+    var playerIsManualOverlay: Boolean
+        get() = playbackState.playerIsManualOverlay
+        set(value) { playbackState.playerIsManualOverlay = value }
+    var playerIsPinnedOverlay: Boolean
+        get() = playbackState.playerIsPinnedOverlay
+        set(value) { playbackState.playerIsPinnedOverlay = value }
+    var playerIsSubMenuOpen: Boolean
+        get() = playbackState.playerIsSubMenuOpen
+        set(value) { playbackState.playerIsSubMenuOpen = value }
+    var showPlayerControls: Boolean
+        get() = playbackState.showPlayerControls
+        set(value) { playbackState.showPlayerControls = value }
+    var isPlayerSubMenuOpen: Boolean
+        get() = playbackState.isPlayerSubMenuOpen
+        set(value) { playbackState.isPlayerSubMenuOpen = value }
+    var isPlayerSceneSearchOpen: Boolean
+        get() = playbackState.isPlayerSceneSearchOpen
+        set(value) { playbackState.isPlayerSceneSearchOpen = value }
+    var isMiniPlayerMode: Boolean
+        get() = playbackState.isMiniPlayerMode
+        set(value) { playbackState.isMiniPlayerMode = value }
+    var lastSelectedChannelId: String?
+        get() = playbackState.lastSelectedChannelId
+        set(value) { playbackState.lastSelectedChannelId = value }
+    var lastSelectedProgramId: String?
+        get() = playbackState.lastSelectedProgramId
+        set(value) { playbackState.lastSelectedProgramId = value }
+    var isReturningFromPlayer: Boolean
+        get() = playbackState.isReturningFromPlayer
+        set(value) { playbackState.isReturningFromPlayer = value }
+    var isBaseballMode: Boolean
+        get() = playbackState.isBaseballMode
+        set(value) { playbackState.isBaseballMode = value }
+    var lastPlayedRecordingId: Int?
+        get() = playbackState.lastPlayedRecordingId
+        set(value) { playbackState.lastPlayedRecordingId = value }
+    var lastPlayedSmbPath: String?
+        get() = playbackState.lastPlayedSmbPath
+        set(value) { playbackState.lastPlayedSmbPath = value }
 
     // システム状態
     var isDataReady by mutableStateOf(false)
@@ -127,76 +139,42 @@ class MainRootState {
     var editingCondition by mutableStateOf<ReservationCondition?>(null)
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
 
-    val isPlaybackActive: Boolean get() = playbackTarget !is PlaybackTarget.None
-    val livePlayback: PlaybackTarget.Live? get() = playbackTarget as? PlaybackTarget.Live
-    val recordedPlayback: PlaybackTarget.Recorded? get() = playbackTarget as? PlaybackTarget.Recorded
-    val smbPlayback: PlaybackTarget.Smb? get() = playbackTarget as? PlaybackTarget.Smb
+    val isPlaybackActive: Boolean get() = playbackState.isPlaybackActive
+    val livePlayback: PlaybackTarget.Live? get() = playbackState.livePlayback
+    val recordedPlayback: PlaybackTarget.Recorded? get() = playbackState.recordedPlayback
+    val smbPlayback: PlaybackTarget.Smb? get() = playbackState.smbPlayback
 
     fun enterLive(
         channel: Channel,
         baseballMode: Boolean = false,
         exitMiniPlayer: Boolean = true
     ) {
-        playbackTarget = PlaybackTarget.Live(channel)
-        isBaseballMode = baseballMode
-        lastSelectedChannelId = channel.id
-        lastSelectedProgramId = null
-        isReturningFromPlayer = false
-        if (exitMiniPlayer) isMiniPlayerMode = false
+        playbackState.enterLive(channel, baseballMode, exitMiniPlayer)
     }
 
     fun enterRecorded(program: RecordedProgram, initialPositionMs: Long = 0L) {
-        playbackTarget = PlaybackTarget.Recorded(program)
-        initialPlaybackPositionMs = initialPositionMs
-        lastSelectedProgramId = program.id.toString()
-        lastSelectedChannelId = null
-        lastPlayedRecordingId = program.id
-        showPlayerControls = true
-        isReturningFromPlayer = false
-        isMiniPlayerMode = false
+        playbackState.enterRecorded(program, initialPositionMs)
     }
 
     fun enterSmb(item: SmbItem, initialPositionMs: Long = 0L) {
-        playbackTarget = PlaybackTarget.Smb(item)
-        initialPlaybackPositionMs = initialPositionMs
-        lastPlayedSmbPath = item.path
-        showPlayerControls = true
-        isReturningFromPlayer = false
-        isMiniPlayerMode = false
+        playbackState.enterSmb(item, initialPositionMs)
     }
 
     fun enterMiniPlayer(): Boolean {
-        if (!isPlaybackActive) return false
-        isMiniPlayerMode = true
-        return true
+        return playbackState.enterMiniPlayer()
     }
 
     fun exitMiniPlayer() {
-        isMiniPlayerMode = false
+        playbackState.exitMiniPlayer()
     }
 
     fun leavePlayback(returningFromPlayer: Boolean = true) {
-        playbackTarget = PlaybackTarget.None
-        isMiniPlayerMode = false
-        showPlayerControls = true
-        isReturningFromPlayer = returningFromPlayer
+        playbackState.leavePlayback(returningFromPlayer)
     }
 
     /** Clears playback-only state when the system Home intent wins. */
     fun resetPlayback() {
-        playbackTarget = PlaybackTarget.None
-        initialPlaybackPositionMs = 0L
-        isMiniPlayerMode = false
-        isPlayerMiniListOpen = false
-        playerShowOverlay = false
-        playerIsManualOverlay = false
-        playerIsPinnedOverlay = false
-        playerIsSubMenuOpen = false
-        isPlayerSubMenuOpen = false
-        isPlayerSceneSearchOpen = false
-        showPlayerControls = true
-        isReturningFromPlayer = false
-        isBaseballMode = false
+        playbackState.resetPlayback()
     }
 
     /** The playback portion of a system Home reset. Root destinations are reset by their owner. */

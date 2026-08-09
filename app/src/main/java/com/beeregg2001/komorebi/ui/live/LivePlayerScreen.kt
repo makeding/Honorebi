@@ -34,7 +34,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
-import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
@@ -121,15 +120,12 @@ fun LivePlayerScreen(
         remember(groupedChannels, baseballGroupedChannels, isBaseballMode) {
             if (isBaseballMode) baseballGroupedChannels else groupedChannels
         }
-    val displayFlatChannels =
-        remember(displayGroupedChannels) { displayGroupedChannels.values.flatten() }
-    val displayLastWatchedChannels = remember(lastWatchedChannels, displayFlatChannels) {
-        val displayChannelsByUniqueId = displayFlatChannels.associateBy { it.uniqueId }
-        lastWatchedChannels.mapNotNull { displayChannelsByUniqueId[it.uniqueId] }
+    val channelNavigation = remember(channel, displayGroupedChannels, lastWatchedChannels) {
+        deriveLiveChannelNavigation(channel, displayGroupedChannels, lastWatchedChannels)
     }
-    val currentChannelItem by remember(channel.id, displayGroupedChannels) {
-        derivedStateOf { displayFlatChannels.find { it.id == channel.id } ?: channel }
-    }
+    val displayFlatChannels = channelNavigation.flatChannels
+    val displayLastWatchedChannels = channelNavigation.recentChannels
+    val currentChannelItem = channelNavigation.currentChannel
 
     val mirakurunIp by settingsViewModel.mirakurunIp.collectAsState()
     val mirakurunPort by settingsViewModel.mirakurunPort.collectAsState()
@@ -205,19 +201,8 @@ fun LivePlayerScreen(
     val dualSubtitleLanguages by livePlayerViewModel.dualSubtitleLanguages.collectAsState()
     val currentSubtitleLanguageId by livePlayerViewModel.currentSubtitleLanguageId.collectAsState()
 
-    val currentChannelIndex = remember(displayFlatChannels, currentChannelItem.id) {
-        displayFlatChannels.indexOfFirst { it.id == currentChannelItem.id }
-    }
-    val previousChannel = remember(displayFlatChannels, currentChannelIndex) {
-        if (displayFlatChannels.size <= 1 || currentChannelIndex < 0) null
-        else displayFlatChannels[
-            (currentChannelIndex - 1 + displayFlatChannels.size) % displayFlatChannels.size
-        ]
-    }
-    val nextChannel = remember(displayFlatChannels, currentChannelIndex) {
-        if (displayFlatChannels.size <= 1 || currentChannelIndex < 0) null
-        else displayFlatChannels[(currentChannelIndex + 1) % displayFlatChannels.size]
-    }
+    val previousChannel = channelNavigation.previousChannel
+    val nextChannel = channelNavigation.nextChannel
     val activeSubtitleLanguages = if (ps.isDualDisplayMode && ps.activeDualPlayerIndex == 1) {
         dualSubtitleLanguages
     } else {
@@ -266,11 +251,7 @@ fun LivePlayerScreen(
     val availableQualities by livePlayerViewModel.availableQualities.collectAsState(initial = StreamQuality.DEFAULT_QUALITIES)
     val isQualitiesLoaded by livePlayerViewModel.isQualitiesLoaded.collectAsState()
     val effectiveAvailableQualities = remember(availableQualities, currentChannelItem) {
-        if (currentChannelItem.type.equals("BS4K", ignoreCase = true)) {
-            StreamQuality.rawMmtsQualities(currentChannelItem)
-        } else {
-            availableQualities
-        }
+        effectiveLiveQualities(availableQualities, currentChannelItem)
     }
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
@@ -464,16 +445,18 @@ fun LivePlayerScreen(
         onDispose { dualPlayer?.removeListener(listener) }
     }
 
-    CastRouteDiscovery()
     SystemMediaSession(
         player = mainPlayer,
         title = currentChannelItem.programPresent?.title ?: currentChannelItem.name,
         subtitle = currentChannelItem.name,
         artworkUrl = sharedCurrentLogoUrl,
         mediaType = MediaMetadata.MEDIA_TYPE_TV_CHANNEL,
-        isLoading = currentChannelItem.id != lastChannelIdForSwitchHint ||
-            !hasMainRenderedFirstFrame ||
-            isMainBuffering,
+        isLoading = isLiveMediaSessionLoading(
+            currentChannelId = currentChannelItem.id,
+            lastChannelIdForSwitchHint = lastChannelIdForSwitchHint,
+            hasRenderedFirstFrame = hasMainRenderedFirstFrame,
+            isBuffering = isMainBuffering
+        ),
         onPrevious = previousChannel?.let { target -> { onChannelSelect(target) } },
         onNext = nextChannel?.let { target -> { onChannelSelect(target) } },
         onStop = onBackPressed
@@ -958,37 +941,32 @@ fun LivePlayerScreen(
                 })
         }
 
-        val showMainLoading = remember(
+        val mainLoadingPresentation = remember(
             ps.currentStreamSource,
             ps.isEdcbDirect,
             ps.sseStatus,
             ps.sseDetail,
             ps.playerError,
             isMainBuffering,
-            hasMainRenderedFirstFrame
+            hasMainRenderedFirstFrame,
+            mainPlaybackState
         ) {
-            if (ps.playerError != null) return@remember false
-            if (!hasMainRenderedFirstFrame) {
-                true
-            } else if (ps.currentStreamSource == StreamSource.KONOMITV) {
-                (ps.sseStatus == "Standby" || ps.sseStatus == "Offline") && ps.sseDetail.isNotEmpty()
-            } else if (ps.currentStreamSource == StreamSource.EDCB && !ps.isEdcbDirect) {
-                ps.sseStatus == "Standby" || isMainBuffering
-            } else {
-                isMainBuffering
-            }
+            liveLoadingPresentation(
+                streamSource = ps.currentStreamSource,
+                isEdcbDirect = ps.isEdcbDirect,
+                sseStatus = ps.sseStatus,
+                sseDetail = ps.sseDetail,
+                playerError = ps.playerError,
+                isBuffering = isMainBuffering,
+                hasRenderedFirstFrame = hasMainRenderedFirstFrame,
+                isPlaybackReady = mainPlaybackState == Player.STATE_READY,
+                statusLoadingText = AppStrings.STATUS_LOADING
+            )
         }
-
-        val mainLoadingText =
-            if (!hasMainRenderedFirstFrame && mainPlaybackState == Player.STATE_READY) "映像をデコード中..."
-            else if (!hasMainRenderedFirstFrame && ps.sseDetail.isBlank()) "映像データを待っています..."
-            else if (ps.currentStreamSource == StreamSource.KONOMITV) ps.sseDetail
-            else if (ps.currentStreamSource == StreamSource.EDCB && !ps.isEdcbDirect && ps.sseStatus == "Standby") ps.sseDetail
-            else AppStrings.STATUS_LOADING
 
         // ★ 修正: バッファリング中の黒画面を回避し、スピナーだけを表示する
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && showMainLoading && !isChannelSwitchDebouncing,
+            visible = !isPiPMode && !ps.isDualDisplayMode && mainLoadingPresentation.isVisible && !isChannelSwitchDebouncing,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
@@ -1008,7 +986,7 @@ fun LivePlayerScreen(
                     )
                     Spacer(Modifier.width(16.dp))
                     Text(
-                        text = mainLoadingText,
+                        text = mainLoadingPresentation.message,
                         color = Color.White,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold

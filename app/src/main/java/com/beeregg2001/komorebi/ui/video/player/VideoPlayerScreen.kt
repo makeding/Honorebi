@@ -56,7 +56,6 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.common.UrlBuilder
-import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.live.B60_INITIAL_MEDIA_PLANE
@@ -1317,7 +1316,6 @@ fun VideoPlayerScreen(
             newestFirst[currentIndex + 1]
         } else null
     }
-    CastRouteDiscovery()
     SystemMediaSession(
         player = exoPlayer,
         title = smbItem?.name ?: currentProgram.title,
