@@ -97,7 +97,15 @@ class TsReadExDataSource(
             }
         }
         val responseCode = connection?.responseCode ?: -1
-        if (responseCode !in 200..299) throw IOException("Server returned code $responseCode")
+        if (!HttpByteRangePolicy.acceptsResponse(dataSpec.position, responseCode)) {
+            throw IOException(
+                if (dataSpec.position > 0L && responseCode == HttpURLConnection.HTTP_OK) {
+                    "Server ignored byte-range request at position ${dataSpec.position}"
+                } else {
+                    "Server returned code $responseCode"
+                }
+            )
+        }
 
         val contentLengthStr = connection?.getHeaderField("Content-Length")
         val contentLength = contentLengthStr?.toLongOrNull() ?: 0L

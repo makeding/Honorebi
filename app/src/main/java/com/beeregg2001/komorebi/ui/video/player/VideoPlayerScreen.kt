@@ -885,7 +885,7 @@ fun VideoPlayerScreen(
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
     val usesSerializedRawMmtsSeek = requiresRawMmtsPlayback && vs.currentQuality.isRawMmts
-    val usesExtractorByteSeek = usesSerializedRawMmtsSeek || (
+    val usesExtractorByteSeek = isEdcbDirect || usesSerializedRawMmtsSeek || (
         currentProgram.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
             currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true) &&
             vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
@@ -991,10 +991,6 @@ fun VideoPlayerScreen(
                 totalDurationForControls > 0L
 
     val performSeek: (Long) -> Unit = seek@ { targetMs: Long ->
-        if (isEdcbDirect && smbItem == null) {
-            onShowToast("EDCBダイレクト再生ではシークできません")
-            return@seek
-        }
         if (usesExtractorByteSeek && !exoPlayer.isCurrentMediaItemSeekable) {
             onShowToast("シーク情報を準備しています")
             return@seek
