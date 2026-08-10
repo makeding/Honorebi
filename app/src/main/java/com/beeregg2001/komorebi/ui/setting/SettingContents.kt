@@ -1146,15 +1146,9 @@ fun CommentSettingsContent(
 
 @Composable
 fun LabSettingsContent(
-    apiKey: String,
-    baseball: Set<String>,
     mirakurunDual: String,
     dualR: FocusRequester,
-    baseballR: FocusRequester,
-    apiKeyR: FocusRequester,
     sidebarR: FocusRequester,
-    onEditApiKey: () -> Unit,
-    onBaseball: () -> Unit,
     onToggleMirakurunDual: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -1176,29 +1170,12 @@ fun LabSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = FocusRequester.Cancel
-                        down = baseballR
+                        down = FocusRequester.Cancel
                     },
                 onClick = { onClick(dualR); onToggleMirakurunDual() }
             )
         }
 
-        SettingsSection("プロ野球モード (アルファ版)") {
-            val baseballText =
-                if (baseball.isEmpty()) "未設定" else "${baseball.size}球団選択中"
-            SettingItem(
-                title = "フォロー球団の設定",
-                value = baseballText,
-                icon = Icons.Default.SportsBaseball,
-                modifier = Modifier
-                    .focusRequester(baseballR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = dualR
-                        down = FocusRequester.Cancel
-                    },
-                onClick = { onClick(baseballR); onBaseball() }
-            )
-        }
     }
 }
 

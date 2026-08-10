@@ -86,13 +86,12 @@ class MainRootStateTest {
         state.enterRecorded(recording(), initialPositionMs = 7_000L)
         state.isMiniPlayerMode = true
 
-        state.enterLive(channel, baseballMode = true)
+        state.enterLive(channel)
 
         assertEquals(PlaybackTarget.Live(channel), state.playbackTarget)
         assertEquals(channel, state.livePlayback?.channel)
         assertNull(state.recordedPlayback)
         assertFalse(state.isMiniPlayerMode)
-        assertTrue(state.isBaseballMode)
         assertEquals(channel.id, state.lastSelectedChannelId)
         assertNull(state.lastSelectedProgramId)
     }
@@ -191,7 +190,7 @@ class MainRootStateTest {
     fun resetForLauncherHome_clearsTargetAndRestoresPlaybackUiDefaults() {
         val state = MainRootState()
         val previousFocusTick = state.launcherHomeFocusTick
-        state.enterLive(channel(), baseballMode = true)
+        state.enterLive(channel())
         state.initialPlaybackPositionMs = 9_999L
         state.isMiniPlayerMode = true
         state.isPlayerMiniListOpen = true
@@ -219,7 +218,6 @@ class MainRootStateTest {
         assertFalse(state.isPlayerSceneSearchOpen)
         assertTrue(state.showPlayerControls)
         assertFalse(state.isReturningFromPlayer)
-        assertFalse(state.isBaseballMode)
         assertEquals(previousFocusTick + 1, state.launcherHomeFocusTick)
         assertFalse(state.triggerHomeBack)
     }

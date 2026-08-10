@@ -18,9 +18,8 @@ class MainRootPlaybackStateTest {
         val channel = channel()
         val recording = recording()
 
-        state.enterLive(channel, baseballMode = true)
+        state.enterLive(channel)
         assertEquals(PlaybackTarget.Live(channel), state.playbackTarget)
-        assertTrue(state.isBaseballMode)
         assertEquals(channel.id, state.lastSelectedChannelId)
 
         state.enterRecorded(recording, initialPositionMs = 12_345L)
@@ -33,7 +32,7 @@ class MainRootPlaybackStateTest {
     @Test
     fun resetPlayback_onlyResetsPlaybackOwnedState() {
         val state = MainRootPlaybackState()
-        state.enterLive(channel(), baseballMode = true)
+        state.enterLive(channel())
         state.initialPlaybackPositionMs = 7_000L
         state.isMiniPlayerMode = true
         state.isPlayerMiniListOpen = true
@@ -60,7 +59,6 @@ class MainRootPlaybackStateTest {
         assertFalse(state.isPlayerSceneSearchOpen)
         assertTrue(state.showPlayerControls)
         assertFalse(state.isReturningFromPlayer)
-        assertFalse(state.isBaseballMode)
     }
 
     @Test

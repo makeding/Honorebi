@@ -89,11 +89,6 @@ class HomeLauncherState(
     var openedSeriesTitle by mutableStateOf<String?>(null)
     var isSeriesListOpen by mutableStateOf(false)
 
-    var favoriteBaseballTeams by mutableStateOf<Set<String>>(emptySet())
-    var favoriteBaseballGames by mutableStateOf<List<Pair<String, List<BaseballGameInfo>>>>(
-        emptyList()
-    )
-
     // ★ 修正: タブがいくつ増えても対応できるようにRequesterをあらかじめ余裕を持って生成しておく
     val tabFocusRequesters = List(10) { FocusRequester() }
     val contentFirstItemRequesters = List(10) { FocusRequester() }
@@ -211,9 +206,6 @@ fun rememberHomeLauncherState(
         val eData = state.epgUiState
         if (eData is EpgUiState.Success) eData.logoUrls else emptyList()
     }
-
-    state.favoriteBaseballTeams = homeViewModel.favoriteBaseballTeams.collectAsState().value
-    state.favoriteBaseballGames = homeViewModel.favoriteBaseballGames.collectAsState().value
 
     return state
 }

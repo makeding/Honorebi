@@ -171,7 +171,7 @@ fun SettingsScreen(
                 FocusRequester(),
                 FocusRequester()
             ),
-            listOf(FocusRequester(), FocusRequester(), FocusRequester()),
+            listOf(FocusRequester()),
             listOf(FocusRequester())
         )
     }
@@ -775,15 +775,7 @@ fun SettingsScreen(
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_STARTUP_TAB,
-                                    if (prefs.favoriteBaseballTeams.isNotEmpty()) listOf(
-                                        "ホーム" to "ホーム",
-                                        "ライブ" to "ライブ",
-                                        "アプリ" to "アプリ",
-                                        "ビデオ" to "ビデオ",
-                                        "番組表" to "番組表",
-                                        "録画予約" to "録画予約",
-                                        "プロ野球" to "プロ野球"
-                                    ) else listOf(
+                                    listOf(
                                         "ホーム" to "ホーム",
                                         "ライブ" to "ライブ",
                                         "アプリ" to "アプリ",
@@ -862,15 +854,7 @@ fun SettingsScreen(
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_STARTUP_TAB,
-                                    if (prefs.favoriteBaseballTeams.isNotEmpty()) listOf(
-                                        "ホーム" to "ホーム",
-                                        "ライブ" to "ライブ",
-                                        "アプリ" to "アプリ",
-                                        "ビデオ" to "ビデオ",
-                                        "番組表" to "番組表",
-                                        "録画予約" to "録画予約",
-                                        "プロ野球" to "プロ野球"
-                                    ) else listOf(
+                                    listOf(
                                         "ホーム" to "ホーム",
                                         "ライブ" to "ライブ",
                                         "アプリ" to "アプリ",
@@ -1015,35 +999,9 @@ fun SettingsScreen(
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 7 }
 
                         8 -> LabSettingsContent(
-                            prefs.geminiApiKey,
-                            prefs.favoriteBaseballTeams,
                             prefs.labAllowMirakurunDual,
                             itemFocusRequesters[8][0],
-                            itemFocusRequesters[8][1],
-                            itemFocusRequesters[8][2],
                             categoryFocusRequesters[8],
-                            { uiState.activeDialog = SettingDialogState.GeminiSetup },
-                            {
-                                uiState.activeDialog = SettingDialogState.MultiSelection(
-                                    "フォロー球団の選択",
-                                    listOf(
-                                        "阪神タイガース" to "阪神",
-                                        "広島東洋カープ" to "広島",
-                                        "横浜DeNAベイスターズ" to "DeNA",
-                                        "読売ジャイアンツ" to "巨人",
-                                        "東京ヤクルトスワローズ" to "ヤクルト",
-                                        "中日ドラゴンズ" to "中日",
-                                        "オリックス・バファローズ" to "オリックス",
-                                        "千葉ロッテマリーンズ" to "ロッテ",
-                                        "福岡ソフトバンクホークス" to "ソフトバンク",
-                                        "東北楽天ゴールデンイーグルス" to "楽天",
-                                        "埼玉西武ライオンズ" to "西武",
-                                        "北海道日本ハムファイターズ" to "日本ハム",
-                                        "侍ジャパン" to "侍ジャパン"
-                                    ),
-                                    prefs.favoriteBaseballTeams
-                                ) { viewModel.updateFavoriteBaseballTeams(it) }
-                            },
                             {
                                 if (prefs.labAllowMirakurunDual == "OFF") {
                                     uiState.activeDialog = SettingDialogState.ConfirmClear(

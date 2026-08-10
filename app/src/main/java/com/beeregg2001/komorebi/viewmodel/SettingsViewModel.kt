@@ -343,17 +343,6 @@ class SettingsViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val favoriteBaseballTeams: StateFlow<Set<String>> = settingsRepository.favoriteBaseballTeams
-        .map { json ->
-            try {
-                val type = object : TypeToken<Set<String>>() {}.type
-                gson.fromJson<Set<String>>(json, type) ?: emptySet()
-            } catch (e: Exception) {
-                emptySet()
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
-
     private val _smbServerAddedEvent = MutableSharedFlow<String>()
     val smbServerAddedEvent = _smbServerAddedEvent.asSharedFlow()
 
@@ -583,15 +572,6 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.saveString(
                 SettingsRepository.SMB_SERVER_LIST,
                 gson.toJson(newList)
-            )
-        }
-    }
-
-    fun updateFavoriteBaseballTeams(teams: Set<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsRepository.saveString(
-                SettingsRepository.FAVORITE_BASEBALL_TEAMS,
-                gson.toJson(teams)
             )
         }
     }

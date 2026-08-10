@@ -122,9 +122,6 @@ class MainRootState {
     var isReturningFromPlayer: Boolean
         get() = playbackState.isReturningFromPlayer
         set(value) { playbackState.isReturningFromPlayer = value }
-    var isBaseballMode: Boolean
-        get() = playbackState.isBaseballMode
-        set(value) { playbackState.isBaseballMode = value }
     var lastPlayedRecordingId: Int?
         get() = playbackState.lastPlayedRecordingId
         set(value) { playbackState.lastPlayedRecordingId = value }
@@ -152,10 +149,9 @@ class MainRootState {
 
     fun enterLive(
         channel: Channel,
-        baseballMode: Boolean = false,
         exitMiniPlayer: Boolean = true
     ) {
-        playbackState.enterLive(channel, baseballMode, exitMiniPlayer)
+        playbackState.enterLive(channel, exitMiniPlayer)
     }
 
     fun enterRecorded(program: RecordedProgram, initialPositionMs: Long = 0L) {

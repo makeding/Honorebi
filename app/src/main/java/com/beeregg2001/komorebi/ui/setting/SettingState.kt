@@ -38,7 +38,6 @@ class SettingPreferences(
     val labAllowMirakurunDual: String,
     val defaultPostCommand: String,
     val postRecordingBatchList: List<PostRecordingBatch>,
-    val favoriteBaseballTeams: Set<String>,
     val geminiApiKey: String,
     val enableAiNormalization: String,
     val pickupGenre: String,
@@ -70,16 +69,6 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
             gson.fromJson<List<PostRecordingBatch>>(batchListJson, type) ?: emptyList()
         } catch (e: Exception) {
             emptyList()
-        }
-    }
-
-    val favoriteTeamsJson = repository.favoriteBaseballTeams.collectAsState(initial = "[]").value
-    val favoriteTeams = remember(favoriteTeamsJson) {
-        try {
-            val type = object : TypeToken<Set<String>>() {}.type
-            gson.fromJson<Set<String>>(favoriteTeamsJson, type) ?: emptySet()
-        } catch (e: Exception) {
-            emptySet()
         }
     }
 
@@ -121,7 +110,6 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         labAllowMirakurunDual = repository.labAllowMirakurunDual.collectAsState(initial = "OFF").value,
         defaultPostCommand = repository.defaultPostCommand.collectAsState(initial = "").value,
         postRecordingBatchList = batchList,
-        favoriteBaseballTeams = favoriteTeams,
         geminiApiKey = repository.geminiApiKey.collectAsState(initial = "").value,
         enableAiNormalization = repository.enableAiNormalization.collectAsState(initial = "OFF").value,
         pickupGenre = repository.homePickupGenre.collectAsState(initial = "アニメ").value,

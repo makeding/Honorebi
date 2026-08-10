@@ -194,9 +194,9 @@ fun MainRootBackground(
                         launcherHomeFocusTick = state.launcherHomeFocusTick,
                         onTabChange = { state.currentTabIndex = it },
                         selectedChannel = state.livePlayback?.channel,
-                        onChannelClick = { channel, isBaseballMode ->
+                        onChannelClick = { channel ->
                             if (channel != null) {
-                                state.enterLive(channel, isBaseballMode)
+                                state.enterLive(channel)
                                 homeViewModel.saveLastChannel(channel)
                             } else if (state.livePlayback != null) {
                                 state.leavePlayback(returningFromPlayer = false)

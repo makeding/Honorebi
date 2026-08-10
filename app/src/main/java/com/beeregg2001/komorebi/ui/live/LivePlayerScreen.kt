@@ -78,7 +78,6 @@ internal fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
 fun LivePlayerScreen(
     channel: Channel,
     initialQuality: String = "1080p-60fps",
-    isBaseballMode: Boolean = false,
     isMiniListOpen: Boolean,
     onMiniListToggle: (Boolean) -> Unit,
     showOverlay: Boolean,
@@ -114,14 +113,9 @@ fun LivePlayerScreen(
     val ps = rememberLivePlayerState(uiContext)
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
-    val baseballGroupedChannels by channelViewModel.baseballGroupedChannels.collectAsState()
     val lastWatchedChannels by channelViewModel.lastWatchedChannels.collectAsState()
-    val displayGroupedChannels =
-        remember(groupedChannels, baseballGroupedChannels, isBaseballMode) {
-            if (isBaseballMode) baseballGroupedChannels else groupedChannels
-        }
-    val channelNavigation = remember(channel, displayGroupedChannels, lastWatchedChannels) {
-        deriveLiveChannelNavigation(channel, displayGroupedChannels, lastWatchedChannels)
+    val channelNavigation = remember(channel, groupedChannels, lastWatchedChannels) {
+        deriveLiveChannelNavigation(channel, groupedChannels, lastWatchedChannels)
     }
     val displayFlatChannels = channelNavigation.flatChannels
     val displayLastWatchedChannels = channelNavigation.recentChannels
@@ -752,7 +746,7 @@ fun LivePlayerScreen(
                     isManualOverlay = isManualOverlay,
                     isPinnedOverlay = isPinnedOverlay,
                     currentChannelItem = currentChannelItem,
-                    groupedChannels = displayGroupedChannels,
+                    groupedChannels = groupedChannels,
                     scrollState = scrollState,
                     scope = scope,
                     onChannelSelect = onChannelSelect,
@@ -1059,7 +1053,7 @@ fun LivePlayerScreen(
                 .fillMaxSize()
         ) {
             ChannelListOverlay(
-                groupedChannels = displayGroupedChannels,
+                groupedChannels = groupedChannels,
                 recentChannels = displayLastWatchedChannels,
                 recentRecordings = recentRecordings.take(10),
                 backendType = backendType,
@@ -1120,7 +1114,7 @@ fun LivePlayerScreen(
                 isHdrToSdrToneMappingSupported = isHdrToSdrToneMappingSupported,
                 isDualDisplayMode = ps.isDualDisplayMode,
                 isDataBroadcastingAvailable = isB60Channel,
-                groupedChannels = displayGroupedChannels,
+                groupedChannels = groupedChannels,
                 currentChannelId = currentChannelItem.id,
                 onMiniPlayerSelectionRequested = {
                     isMiniPlayerSelectionPending = true

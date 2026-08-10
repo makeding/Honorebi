@@ -110,7 +110,6 @@ fun MainRootPlaybackHost(
             is PlaybackTarget.Live -> LivePlayerScreen(
                 channel = target.channel,
                 initialQuality = data.defaultLiveQuality,
-                isBaseballMode = state.isBaseballMode,
                 isMiniListOpen = state.isPlayerMiniListOpen,
                 onMiniListToggle = { state.isPlayerMiniListOpen = it },
                 showOverlay = state.playerShowOverlay,
@@ -124,7 +123,6 @@ fun MainRootPlaybackHost(
                 onChannelSelect = { newChannel ->
                     state.enterLive(
                         newChannel,
-                        baseballMode = state.isBaseballMode,
                         exitMiniPlayer = false,
                     )
                 },

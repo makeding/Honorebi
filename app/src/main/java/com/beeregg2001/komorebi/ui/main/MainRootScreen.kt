@@ -77,7 +77,7 @@ fun MainRootScreen(
                             "アプリがバックグラウンドから復帰しました。データをリフレッシュします。"
                         )
 
-                        // 1. プロ野球タブやホーム画面のデータを最新に更新する
+                        // 1. ホーム画面のデータを最新に更新する
                         homeViewModel.refreshHomeData()
                         homeViewModel.refreshLauncherApps()
                         channelViewModel.fetchChannels()
@@ -101,8 +101,11 @@ fun MainRootScreen(
         aiConciergeViewModel.resetState()
 
         if (restoreFocus) {
-            if (state.currentTabIndex == 3) epgViewModel.triggerRestore()
-            else state.aiFocusReturnTick++
+            if (state.currentTabIndex == state.getVisibleTabs().indexOf("番組表")) {
+                epgViewModel.triggerRestore()
+            } else {
+                state.aiFocusReturnTick++
+            }
         }
         epgViewModel.clearSearch()
     }
@@ -110,11 +113,7 @@ fun MainRootScreen(
     val backendType by homeViewModel.backendType.collectAsState()
     LaunchedEffect(backendType) { state.backendType = backendType }
 
-    val baseTabs = state.getVisibleTabs()
-    val favoriteBaseballTeams by homeViewModel.favoriteBaseballTeams.collectAsState()
-    val tabs = remember(favoriteBaseballTeams, baseTabs) {
-        if (favoriteBaseballTeams.isNotEmpty() && !baseTabs.contains("プロ野球")) baseTabs + "プロ野球" else baseTabs
-    }
+    val tabs = state.getVisibleTabs()
 
     val safeTabIndex = state.currentTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
 

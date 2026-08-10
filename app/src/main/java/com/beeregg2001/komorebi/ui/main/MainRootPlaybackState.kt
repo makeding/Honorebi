@@ -91,7 +91,6 @@ class MainRootPlaybackState {
     var lastSelectedChannelId by mutableStateOf<String?>(null)
     var lastSelectedProgramId by mutableStateOf<String?>(null)
     var isReturningFromPlayer by mutableStateOf(false)
-    var isBaseballMode by mutableStateOf(false)
     var lastPlayedRecordingId by mutableStateOf<Int?>(null)
     var lastPlayedSmbPath by mutableStateOf<String?>(null)
 
@@ -119,13 +118,9 @@ class MainRootPlaybackState {
 
     fun enterLive(
         channel: Channel,
-        baseballMode: Boolean = false,
         exitMiniPlayer: Boolean = true,
     ) {
-        // Live playback never consumed this value, and keeping it here avoids
-        // changing the legacy state contract while sessions are introduced.
         startPlayback(PlaybackTarget.Live(channel), initialPlaybackPositionMs)
-        isBaseballMode = baseballMode
         lastSelectedChannelId = channel.id
         lastSelectedProgramId = null
         isReturningFromPlayer = false
@@ -235,7 +230,6 @@ class MainRootPlaybackState {
         isPlayerSceneSearchOpen = false
         showPlayerControls = true
         isReturningFromPlayer = false
-        isBaseballMode = false
     }
 
     private fun startPlayback(target: PlaybackTarget, initialPositionMs: Long = 0L) {

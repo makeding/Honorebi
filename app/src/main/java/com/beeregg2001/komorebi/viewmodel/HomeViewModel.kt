@@ -10,7 +10,6 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.local.entity.LastChannelEntity
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
-import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
 import com.beeregg2001.komorebi.data.repository.KonomiRepository
 import com.beeregg2001.komorebi.data.repository.EpgRepository
 import com.beeregg2001.komorebi.data.repository.LauncherAppRepository
@@ -32,12 +31,6 @@ import java.time.LocalTime
 import java.time.OffsetDateTime
 import javax.inject.Inject
 
-data class BaseballGameInfo(
-    val program: EpgProgram,
-    val channel: EpgChannel,
-    val logoUrl: String
-)
-
 private val PINNED_SYSTEM_APP_PACKAGES = setOf("com.mitv.livetv")
 private val STRING_LIST_TYPE = object : TypeToken<List<String>>() {}.type
 
@@ -51,7 +44,6 @@ class HomeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val lastChannelRepository: LastChannelRepository,
     private val watchHistoryRepository: WatchHistoryRepository,
-    private val channelLogoCache: ChannelLogoCache,
     private val launcherAppRepository: LauncherAppRepository,
     private val appUpdater: AppUpdater
 ) : ViewModel() {
@@ -227,27 +219,6 @@ class HomeViewModel @Inject constructor(
 
     val updateState: StateFlow<UpdateState> = appUpdater.updateState
 
-    val favoriteBaseballTeams: StateFlow<Set<String>> = settingsRepository.favoriteBaseballTeams
-        .map { json ->
-            try {
-                val listType = object : TypeToken<List<String>>() {}.type
-                val list: List<String>? = Gson().fromJson(json, listType)
-                list?.toSet() ?: emptySet()
-            } catch (e: Exception) {
-                emptySet()
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
-
-    private val _favoriteBaseballGames =
-        MutableStateFlow<List<Pair<String, List<BaseballGameInfo>>>>(emptyList())
-    val favoriteBaseballGames: StateFlow<List<Pair<String, List<BaseballGameInfo>>>> =
-        _favoriteBaseballGames.asStateFlow()
-
-    private val _baseballDateOffset = MutableStateFlow(0)
-    val baseballDateOffset: StateFlow<Int> = _baseballDateOffset.asStateFlow()
-
-    private var cachedBaseballPrograms: List<Pair<EpgProgram, EpgChannel>> = emptyList()
     @Volatile
     private var isRefreshingHomeData = false
     private var lastBackendHealthCheckMillis = 0L
@@ -283,18 +254,11 @@ class HomeViewModel @Inject constructor(
 
             val now = OffsetDateTime.now()
             val startSearch = now.minusHours(1)
-            // Genre pickup only renders the next 24 hours. Keep three days solely
-            // when the baseball dashboard needs its day-offset data.
-            val endSearch = if (favoriteBaseballTeams.value.isEmpty()) {
-                now.plusHours(24)
-            } else {
-                now.plusDays(3)
-            }
+            val endSearch = now.plusHours(24)
 
             val types = listOf("GR", "BS", "CS")
 
             val genreCandidates = mutableListOf<Pair<EpgProgram, String>>()
-            val baseballCandidates = mutableListOf<Pair<EpgProgram, EpgChannel>>()
 
             // Process one broadcast type at a time and discard its full EPG graph
             // immediately after extracting the small Home-screen result.  Expanding
@@ -311,104 +275,12 @@ class HomeViewModel @Inject constructor(
                     timeSetting,
                     isExcludePaid,
                 )
-                baseballCandidates += typePrograms.flatMap { wrapper ->
-                    wrapper.programs.map { it to wrapper.channel }
-                }.filter { (prog, _) ->
-                    val isSports = prog.genres?.any { it.major.contains("スポーツ") } == true
-                    if (!isSports) return@filter false
-
-                    val isBaseballGenre =
-                        prog.genres?.any { it.middle?.contains("野球") == true } == true || prog.title.contains(
-                            "プロ野球"
-                        )
-                    if (!isBaseballGenre) return@filter false
-
-                    val excludeKeywords = listOf(
-                        "特集", "ヴィンテージ", "ハイライト", "ダイジェスト", "ニュース",
-                        "名勝負", "傑作選", "セレクション", "トラリンク", "ガンガン！",
-                        "伝説", "回顧", "すぽると", "熱闘", "プロ野球ニュース"
-                    )
-                    if (excludeKeywords.any { prog.title.contains(it) }) return@filter false
-
-                    val matchKeywords =
-                        listOf("中継", "対", "×", "vs", "戦", "生放送", "LIVE", "L！VE")
-                    matchKeywords.any { keyword ->
-                        prog.title.contains(
-                            keyword,
-                            ignoreCase = true
-                        ) || prog.description.contains(
-                            keyword,
-                            ignoreCase = true
-                        )
-                    }
-                }
             }
 
-            cachedBaseballPrograms = baseballCandidates
             _genrePickupPrograms.value = genreCandidates
                 .sortedBy { it.first.start_time }
                 .take(15)
-
-            _favoriteBaseballGames.value = filterFavoriteBaseballGames(
-                cachedBaseballPrograms,
-                favoriteBaseballTeams.value,
-                _baseballDateOffset.value
-            )
         }
-    }
-
-    fun updateBaseballDateOffset(offset: Int) {
-        if (offset in 0..2) {
-            _baseballDateOffset.value = offset
-            viewModelScope.launch {
-                if (cachedBaseballPrograms.isNotEmpty()) {
-                    _favoriteBaseballGames.value = filterFavoriteBaseballGames(
-                        cachedBaseballPrograms,
-                        favoriteBaseballTeams.value,
-                        offset
-                    )
-                } else {
-                    fetchAllTypeGenrePickup()
-                }
-            }
-        }
-    }
-
-    private suspend fun filterFavoriteBaseballGames(
-        baseballPrograms: List<Pair<EpgProgram, EpgChannel>>,
-        favoriteTeams: Set<String>,
-        offsetDays: Int
-    ): List<Pair<String, List<BaseballGameInfo>>> = withContext(Dispatchers.Default) {
-        if (favoriteTeams.isEmpty() || baseballPrograms.isEmpty()) return@withContext emptyList()
-
-        val now = OffsetDateTime.now()
-        val targetDateStart = now.withHour(4).withMinute(0).withSecond(0).withNano(0).let {
-            if (now.hour < 4) it.minusDays(1) else it
-        }.plusDays(offsetDays.toLong())
-        val targetDateEnd = targetDateStart.plusDays(1)
-
-        val groupedGames = favoriteTeams.mapNotNull { team ->
-            val gamesForTeam = baseballPrograms.filter { (prog, _) ->
-                prog.title.contains(team) || prog.description.contains(team)
-            }.filter { (prog, _) ->
-                val start = runCatching { OffsetDateTime.parse(prog.start_time) }.getOrNull()
-                    ?: return@filter false
-                start.isAfter(targetDateStart) && start.isBefore(targetDateEnd)
-            }.map { (prog, channel) ->
-
-                val logoUrl = channelLogoCache.getChannelLogoUrl(channel.display_channel_id)
-
-                BaseballGameInfo(
-                    program = prog,
-                    channel = channel,
-                    logoUrl = logoUrl
-                )
-            }.sortedBy { it.program.start_time }
-
-            if (gamesForTeam.isNotEmpty()) team to gamesForTeam else null
-        }
-
-        groupedGames.sortedBy { it.first }
     }
 
     private suspend fun filterGenrePickup(
@@ -479,10 +351,9 @@ class HomeViewModel @Inject constructor(
             combine(
                 pickupGenreLabel,
                 pickupTimeSetting,
-                excludePaidBroadcasts,
-                favoriteBaseballTeams
-            ) { genre, time, excludePaid, baseballTeams ->
-                listOf(genre, time, excludePaid, baseballTeams.toString())
+                excludePaidBroadcasts
+            ) { genre, time, excludePaid ->
+                listOf(genre, time, excludePaid)
             }
                 .distinctUntilChanged()
                 .debounce(1500L)

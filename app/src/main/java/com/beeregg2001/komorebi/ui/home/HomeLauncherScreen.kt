@@ -197,7 +197,7 @@ fun HomeLauncherScreen(
     groupedChannels: Map<String, List<Channel>>,
     mirakurunIp: String, mirakurunPort: String,
     konomiIp: String, konomiPort: String,
-    onChannelClick: (Channel?, Boolean) -> Unit,
+    onChannelClick: (Channel?) -> Unit,
     selectedChannel: Channel?,
     onTabChange: (Int) -> Unit,
     initialTabIndex: Int = 0,
@@ -249,9 +249,6 @@ fun HomeLauncherScreen(
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    val favoriteBaseballTeams by homeViewModel.favoriteBaseballTeams.collectAsState()
-    val favoriteBaseballGames by homeViewModel.favoriteBaseballGames.collectAsState()
-    val baseballDateOffset by homeViewModel.baseballDateOffset.collectAsState()
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val inputSourceApp = remember(launcherApps) {
         launcherApps.firstOrNull { homeViewModel.isPinnedSystemApp(it) }
@@ -260,9 +257,8 @@ fun HomeLauncherScreen(
     val backendType by homeViewModel.backendType.collectAsState()
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
-    val tabs = remember(favoriteBaseballTeams, backendType) {
-        val base = listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
-        if (favoriteBaseballTeams.isNotEmpty()) base + "プロ野球" else base
+    val tabs = remember {
+        listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
     }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
@@ -408,12 +404,6 @@ fun HomeLauncherScreen(
                     } else {
                         ticketManager.issue(HomeFocusTicket.CONTENT_TOP)
                     }
-                    onAiReturnConsumed()
-                }
-
-                "プロ野球" -> {
-                    ui.contentFirstItemRequesters.getOrNull(safeTabIndex)
-                        ?.safeRequestFocusWithRetry("BaseballAiReturn")
                     onAiReturnConsumed()
                 }
 
@@ -792,9 +782,7 @@ fun HomeLauncherScreen(
                             groupedChannels = groupedChannels,
                             getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
                             shouldCropLogo = shouldCropLogo,
-                            onChannelClick = {
-                                if (it != null) onChannelClick(it, false)
-                            },
+                            onChannelClick = onChannelClick,
                             onHistoryClick = { historyItem ->
                                 val programId = historyItem.program.id.toIntOrNull()
                                 val betterProgram = ui.recentRecordings.find { it.id == programId }
@@ -835,7 +823,7 @@ fun HomeLauncherScreen(
                                 epgViewModel = epgViewModel,
                                 groupedChannels = groupedChannels,
                                 selectedChannel = selectedChannel,
-                                onChannelClick = { onChannelClick(it, false) },
+                                onChannelClick = onChannelClick,
                                 onFocusChannelChange = { ui.internalLastPlayerChannelId = it },
                                 mirakurunIp = mirakurunIp,
                                 mirakurunPort = mirakurunPort,
@@ -945,26 +933,6 @@ fun HomeLauncherScreen(
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
                             LaunchedEffect(Unit) { delay(500); handleUiReady() }
-                        }
-
-                        "プロ野球" -> {
-                            BaseballDashboardScreen(
-                                groupedGames = favoriteBaseballGames,
-                                groupedChannels = groupedChannels,
-                                dateOffset = baseballDateOffset,
-                                onDateOffsetChange = { homeViewModel.updateBaseballDateOffset(it) },
-                                onChannelClick = { channel ->
-                                    val matchedChannel = displayFlatChannels.find {
-                                        it.networkId == channel.networkId && it.serviceId == channel.serviceId
-                                    } ?: channel
-                                    onChannelClick(matchedChannel, true)
-                                },
-                                onProgramClick = { onEpgProgramSelected(it) },
-                                topNavFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
-                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                onUiReady = { delay(500); handleUiReady() },
-                                timeFormat = timeFormat
-                            )
                         }
                     }
                 }

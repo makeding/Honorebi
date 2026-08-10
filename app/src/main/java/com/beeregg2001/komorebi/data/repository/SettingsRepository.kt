@@ -14,12 +14,17 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
+private val LEGACY_FAVORITE_BASEBALL_TEAMS = stringPreferencesKey("favorite_baseball_teams")
+private const val LEGACY_BASEBALL_STARTUP_TAB = "プロ野球"
+private const val DEFAULT_STARTUP_TAB = "ホーム"
+
+internal fun normalizeStartupTab(value: String?): String =
+    if (value == LEGACY_BASEBALL_STARTUP_TAB) DEFAULT_STARTUP_TAB else value ?: DEFAULT_STARTUP_TAB
 
 @Singleton
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-
     companion object {
         val BACKEND_TYPE = stringPreferencesKey("backend_type")
         val EDCB_IP = stringPreferencesKey("edcb_ip")
@@ -57,7 +62,6 @@ class SettingsRepository @Inject constructor(
         val LAB_ALLOW_MIRAKURUN_DUAL = stringPreferencesKey("lab_allow_mirakurun_dual")
         val DEFAULT_POST_COMMAND = stringPreferencesKey("default_post_command")
         val POST_RECORDING_BATCH_LIST = stringPreferencesKey("post_recording_batch_list")
-        val FAVORITE_BASEBALL_TEAMS = stringPreferencesKey("favorite_baseball_teams")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         val ENABLE_AI_NORMALIZATION = stringPreferencesKey("enable_ai_normalization")
 
@@ -152,8 +156,6 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[DEFAULT_POST_COMMAND] ?: "" }
     val postRecordingBatchList: Flow<String> =
         context.dataStore.data.map { it[POST_RECORDING_BATCH_LIST] ?: "[]" }
-    val favoriteBaseballTeams: Flow<String> =
-        context.dataStore.data.map { it[FAVORITE_BASEBALL_TEAMS] ?: "[]" }
     val geminiApiKey: Flow<String> = context.dataStore.data.map { it[GEMINI_API_KEY] ?: "" }
     val enableAiNormalization: Flow<String> =
         context.dataStore.data.map { it[ENABLE_AI_NORMALIZATION] ?: "OFF" }
@@ -162,7 +164,9 @@ class SettingsRepository @Inject constructor(
     val excludePaidBroadcasts: Flow<String> =
         context.dataStore.data.map { it[EXCLUDE_PAID_BROADCASTS] ?: "ON" }
     val homePickupTime: Flow<String> = context.dataStore.data.map { it[HOME_PICKUP_TIME] ?: "自動" }
-    val startupTab: Flow<String> = context.dataStore.data.map { it[STARTUP_TAB] ?: "ホーム" }
+    val startupTab: Flow<String> = context.dataStore.data.map {
+        normalizeStartupTab(it[STARTUP_TAB])
+    }
     val startupChannel: Flow<String> = context.dataStore.data.map { it[STARTUP_CHANNEL] ?: "OFF" }
     val timeFormat: Flow<String> = context.dataStore.data.map { it[TIME_FORMAT] ?: "24H" }
     val appTheme: Flow<String> = context.dataStore.data.map { it[APP_THEME] ?: "MONOTONE" }
@@ -244,8 +248,19 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun getStartupTabOnce(): String {
-        val prefs = context.dataStore.data.first()
-        return prefs[STARTUP_TAB] ?: "ホーム"
+        val preferences = context.dataStore.data.first()
+        val storedTab = preferences[STARTUP_TAB]
+        if (storedTab == LEGACY_BASEBALL_STARTUP_TAB || preferences.contains(LEGACY_FAVORITE_BASEBALL_TEAMS)) {
+            context.dataStore.edit { currentPreferences ->
+                if (currentPreferences[STARTUP_TAB] == LEGACY_BASEBALL_STARTUP_TAB) {
+                    currentPreferences[STARTUP_TAB] = DEFAULT_STARTUP_TAB
+                }
+                if (currentPreferences.contains(LEGACY_FAVORITE_BASEBALL_TEAMS)) {
+                    currentPreferences.remove(LEGACY_FAVORITE_BASEBALL_TEAMS)
+                }
+            }
+        }
+        return normalizeStartupTab(storedTab)
     }
 
     suspend fun getBackendConfig(source: com.beeregg2001.komorebi.data.model.StreamSource): com.beeregg2001.komorebi.data.model.BackendConfig {
