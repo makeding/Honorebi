@@ -106,7 +106,6 @@ class EpgViewModel @OptIn(UnstableApi::class)
 
     init {
         loadSearchHistory()
-        loadInitialData()
 
         viewModelScope.launch {
             com.beeregg2001.komorebi.data.repository.edcb.EdcbEpgCacheManager.epgBackgroundUpdateEvent.collect {
@@ -114,9 +113,18 @@ class EpgViewModel @OptIn(UnstableApi::class)
                     "EpgViewModel",
                     "Background EPG fetch completed! Refreshing ViewModel cache..."
                 )
-                refreshEpgData()
+                if (hasStartedInitialLoad) refreshEpgData()
             }
         }
+    }
+
+    private var hasStartedInitialLoad = false
+
+    /** Load the seven-day EPG only when its UI is actually requested. */
+    fun ensureInitialDataLoaded() {
+        if (hasStartedInitialLoad) return
+        hasStartedInitialLoad = true
+        loadInitialData()
     }
 
     private fun loadSearchHistory() {
@@ -313,7 +321,7 @@ class EpgViewModel @OptIn(UnstableApi::class)
     }
 
     fun preloadAllEpgData() {
-        refreshEpgData()
+        if (hasStartedInitialLoad) refreshEpgData() else ensureInitialDataLoaded()
     }
 
     fun refreshEpgData(channelType: String? = null) {

@@ -92,6 +92,13 @@ fun VideoTabContent(
 
     val programDetail by recordViewModel.programDetail.collectAsState()
     val backendType by settingViewModel.backendType.collectAsState()
+
+    LaunchedEffect(recordViewModel) {
+        // Recent recordings are not part of App startup readiness.  Load them on
+        // first entry to the surface that actually renders them.
+        recordViewModel.fetchRecentRecordings(forceRefresh = false)
+    }
+
     var focusedProgramId by remember { mutableStateOf<Int?>(null) }
     val recentItems = remember(recentRecordings) { recentRecordings.take(20) }
     val historyItems = remember(watchHistory) { watchHistory.take(20) }

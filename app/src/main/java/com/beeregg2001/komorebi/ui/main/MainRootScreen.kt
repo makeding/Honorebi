@@ -5,8 +5,6 @@ package com.beeregg2001.komorebi.ui.main
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -353,6 +351,7 @@ fun MainRootScreen(
             val tab = settingsViewModel.getStartupTabOnce()
             val index = tabs.indexOf(tab)
             state.currentTabIndex = if (index != -1) index else 0
+            if (tab == "番組表") epgViewModel.ensureInitialDataLoaded()
             channelViewModel.fetchChannels()
             state.hasAppliedStartupTab = true
         }
@@ -556,6 +555,14 @@ fun MainRootScreen(
         ((state.isDataReady && state.isSplashFinished) || (!isSettingsInitialized && state.isSplashFinished)) &&
                 state.hasAppliedStartupTab && (startupChannelSetting == "OFF" || state.hasAppliedStartupChannel || state.isOfflineMode)
 
+    val startupRenderPlan = startupRenderPlan(
+        isSystemReady = isSystemReady,
+        isSettingsInitialized = isSettingsInitialized,
+        hasConnectionError = state.showConnectionErrorDialog,
+        isSyncingInitial = isSyncingInitial,
+        isPlaybackActive = state.isPlaybackActive,
+    )
+
     KomorebiTheme(theme = currentTheme) {
         RootSystemMediaSessionHost(playbackSessionEpoch = state.playbackSessionEpoch) {
             val colors = KomorebiTheme.colors
@@ -599,7 +606,7 @@ fun MainRootScreen(
                 .background(colors.background)
                 .background(backgroundBrush)
         ) {
-            if (!state.isPlaybackActive) {
+            if (startupRenderPlan.showSeasonalDecor) {
                 SeasonalDecor(
                     season = themeSeason,
                     isDark = colors.isDark,
@@ -607,10 +614,7 @@ fun MainRootScreen(
                 )
             }
 
-            val showMainContent =
-                isSystemReady && isSettingsInitialized && !state.showConnectionErrorDialog && !isSyncingInitial
-
-            if (showMainContent) {
+            if (startupRenderPlan.showMainContent) {
                 Box(modifier = Modifier.fillMaxSize()) {
 
                     MainRootBackground(
@@ -660,11 +664,9 @@ fun MainRootScreen(
                 }
             }
 
-            AnimatedVisibility(
-                visible = !state.isUiReady && !state.showConnectionErrorDialog && isSettingsInitialized,
-                enter = fadeIn(),
-                exit = fadeOut(tween(250))
-            ) {
+            // Strictly mutually exclusive with MainRootBackground. An exit animation here
+            // would still animate the spinner while the complete Home tree is first composed.
+            if (startupRenderPlan.showLoading) {
                 if (isSyncingInitial) {
                     val currentSync by recordViewModel.syncProgress.collectAsState()
                     val pRatio =

@@ -10,9 +10,12 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import com.beeregg2001.komorebi.data.model.LauncherApp
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,29 +24,75 @@ class LauncherAppRepository @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     private val packageManager = context.packageManager
+    private val launcherCachePreferences =
+        context.getSharedPreferences(LAUNCHER_CACHE_PREFERENCES, Context.MODE_PRIVATE)
+    private val gson = Gson()
 
     suspend fun loadLauncherApps(): List<LauncherApp> = withContext(Dispatchers.IO) {
+        val cachedApps = readCachedLauncherApps()
+        val cachedByStableId = cachedApps.associateBy { "${it.packageName}/${it.activityName}" }
         val leanbackApps = queryMainActivities(Intent.CATEGORY_LEANBACK_LAUNCHER)
         val normalApps = queryMainActivities(Intent.CATEGORY_LAUNCHER)
 
-        (leanbackApps + normalApps)
+        val resolvedApps = (leanbackApps + normalApps)
             .asSequence()
             .filter { it.activityInfo?.packageName != null && it.activityInfo?.name != null }
             .filter { it.activityInfo.packageName != context.packageName }
             .distinctBy { "${it.activityInfo.packageName}/${it.activityInfo.name}" }
             .map { info ->
-                LauncherApp(
-                    packageName = info.activityInfo.packageName,
-                    activityName = info.activityInfo.name,
+                val activityInfo = info.activityInfo
+                val applicationInfo = activityInfo.applicationInfo
+                val resourcePackage = info.resolvePackageName ?: activityInfo.packageName
+                val iconResourceId = firstLauncherResourceId(
+                    info.iconResource,
+                    activityInfo.icon,
+                    applicationInfo.icon,
+                )
+                val bannerResourceId = firstLauncherResourceId(
+                    activityInfo.banner,
+                    applicationInfo.banner,
+                )
+                val iconUri = launcherResourceUri(resourcePackage, iconResourceId)
+                val bannerUri = launcherResourceUri(resourcePackage, bannerResourceId)
+                val artworkCacheVersion = applicationInfo.sourceDir.orEmpty()
+                val stableId = "${activityInfo.packageName}/${activityInfo.name}"
+                val cached = cachedByStableId[stableId]
+
+                if (cached != null &&
+                    cached.icon == iconUri &&
+                    cached.banner == bannerUri &&
+                    cached.artworkCacheVersion == artworkCacheVersion
+                ) {
+                    cached
+                } else LauncherApp(
+                    packageName = activityInfo.packageName,
+                    activityName = activityInfo.name,
                     label = info.loadLabel(packageManager)?.toString().orEmpty()
-                        .ifBlank { info.activityInfo.packageName },
-                    icon = info.loadIcon(packageManager),
-                    banner = loadBanner(info)
+                        .ifBlank { activityInfo.packageName },
+                    icon = iconUri,
+                    banner = bannerUri,
+                    artworkCacheVersion = artworkCacheVersion,
                 )
             }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
             .toList()
+
+        if (resolvedApps != cachedApps) {
+            launcherCachePreferences.edit()
+                .putString(launcherCacheKey(), gson.toJson(resolvedApps))
+                .apply()
+        }
+        resolvedApps
     }
+
+    private fun readCachedLauncherApps(): List<LauncherApp> = runCatching {
+        val json = launcherCachePreferences.getString(launcherCacheKey(), null)
+            ?: return@runCatching emptyList()
+        gson.fromJson<List<LauncherApp>>(json, LAUNCHER_APP_LIST_TYPE) ?: emptyList()
+    }.getOrDefault(emptyList())
+
+    private fun launcherCacheKey(): String =
+        "launcher_apps_v1_${Locale.getDefault().toLanguageTag()}"
 
     fun launch(app: LauncherApp): Boolean {
         val intent = Intent(Intent.ACTION_MAIN).apply {
@@ -138,15 +187,6 @@ class LauncherAppRepository @Inject constructor(
         }
     }
 
-    private fun loadBanner(info: ResolveInfo) =
-        runCatching {
-            packageManager.getActivityBanner(
-                ComponentName(info.activityInfo.packageName, info.activityInfo.name)
-            )
-        }.getOrNull()
-            ?: runCatching { packageManager.getApplicationBanner(info.activityInfo.packageName) }
-                .getOrNull()
-
     private fun tryStartActivity(intent: Intent): Boolean =
         try {
             context.startActivity(intent)
@@ -158,6 +198,7 @@ class LauncherAppRepository @Inject constructor(
         }
 
     private companion object {
+        const val LAUNCHER_CACHE_PREFERENCES = "launcher_app_metadata_cache"
         const val ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS"
         const val LIVE_TV_PACKAGE = "com.mitv.livetv"
         const val LIVE_TV_INPUT_ACTIVITY = "com.mitv.livetv.input.SelectInputActivity"
@@ -166,5 +207,13 @@ class LauncherAppRepository @Inject constructor(
             "com.android.settings",
             "com.xiaomi.mitv.settings"
         )
+        val LAUNCHER_APP_LIST_TYPE = object : TypeToken<List<LauncherApp>>() {}.type
     }
 }
+
+internal fun firstLauncherResourceId(vararg candidates: Int): Int =
+    candidates.firstOrNull { it != 0 } ?: 0
+
+internal fun launcherResourceUri(packageName: String, resourceId: Int): String? =
+    if (packageName.isBlank() || resourceId == 0) null
+    else "android.resource://$packageName/$resourceId"

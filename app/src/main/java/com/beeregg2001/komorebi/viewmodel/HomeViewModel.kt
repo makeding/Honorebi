@@ -26,8 +26,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
@@ -103,6 +101,8 @@ class HomeViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        // This scan now publishes metadata/resource URIs only. Artwork itself is
+        // decoded lazily and cached by Coil when a launcher card becomes visible.
         refreshLauncherApps()
     }
 
@@ -273,28 +273,45 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun fetchAllTypeGenrePickup() {
-        viewModelScope.launch {
+        // Room/JSON flows for three broadcast types resume into this parent scope.
+        // Keep flattening and list construction off the UI thread as well as the
+        // filtering below; this job starts shortly after app launch.
+        viewModelScope.launch(Dispatchers.Default) {
             val genre = pickupGenreLabel.value
             val timeSetting = pickupTimeSetting.value
             val isExcludePaid = excludePaidBroadcasts.value == "ON"
 
             val now = OffsetDateTime.now()
             val startSearch = now.minusHours(1)
-            val endSearch = now.plusDays(3)
+            // Genre pickup only renders the next 24 hours. Keep three days solely
+            // when the baseball dashboard needs its day-offset data.
+            val endSearch = if (favoriteBaseballTeams.value.isEmpty()) {
+                now.plusHours(24)
+            } else {
+                now.plusDays(3)
+            }
 
             val types = listOf("GR", "BS", "CS")
 
-            val allPrograms = types.map { type ->
-                async {
-                    epgRepository.getEpgDataStream(startSearch, endSearch, type)
-                        .take(1)
-                        .map { it.getOrNull() ?: emptyList() }
-                        .firstOrNull() ?: emptyList()
-                }
-            }.awaitAll().flatten()
+            val genreCandidates = mutableListOf<Pair<EpgProgram, String>>()
+            val baseballCandidates = mutableListOf<Pair<EpgProgram, EpgChannel>>()
 
-            cachedBaseballPrograms = withContext(Dispatchers.Default) {
-                allPrograms.flatMap { wrapper ->
+            // Process one broadcast type at a time and discard its full EPG graph
+            // immediately after extracting the small Home-screen result.  Expanding
+            // GR/BS/CS concurrently caused a >200 MB allocation spike on 32-bit TVs.
+            for (type in types) {
+                val typePrograms = epgRepository.getEpgDataStream(startSearch, endSearch, type)
+                    .take(1)
+                    .map { it.getOrNull() ?: emptyList() }
+                    .firstOrNull() ?: emptyList()
+
+                genreCandidates += filterGenrePickup(
+                    typePrograms,
+                    genre,
+                    timeSetting,
+                    isExcludePaid,
+                )
+                baseballCandidates += typePrograms.flatMap { wrapper ->
                     wrapper.programs.map { it to wrapper.channel }
                 }.filter { (prog, _) ->
                     val isSports = prog.genres?.any { it.major.contains("スポーツ") } == true
@@ -327,8 +344,10 @@ class HomeViewModel @Inject constructor(
                 }
             }
 
-            _genrePickupPrograms.value =
-                filterGenrePickup(allPrograms, genre, timeSetting, isExcludePaid)
+            cachedBaseballPrograms = baseballCandidates
+            _genrePickupPrograms.value = genreCandidates
+                .sortedBy { it.first.start_time }
+                .take(15)
 
             _favoriteBaseballGames.value = filterFavoriteBaseballGames(
                 cachedBaseballPrograms,

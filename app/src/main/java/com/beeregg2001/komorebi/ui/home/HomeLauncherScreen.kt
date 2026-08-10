@@ -358,6 +358,10 @@ fun HomeLauncherScreen(
     LaunchedEffect(activeRenderIndex, networkConnectionStatus.isAvailable) {
         val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
 
+        // Offline mode can still render cached EPG data, so establish the lazy
+        // subscription before the network-only polling guard below.
+        if (currentLabel == "番組表") epgViewModel.ensureInitialDataLoaded()
+
         if (!networkConnectionStatus.isAvailable) {
             channelViewModel.stopPolling()
             return@LaunchedEffect
@@ -378,6 +382,10 @@ fun HomeLauncherScreen(
             }
 
             "録画予約" -> {
+                channelViewModel.stopPolling()
+            }
+
+            "番組表" -> {
                 channelViewModel.stopPolling()
             }
 

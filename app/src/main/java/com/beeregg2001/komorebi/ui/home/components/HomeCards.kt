@@ -608,6 +608,31 @@ fun LauncherAppCard(
     var longPressJob by remember(app.stableId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val scope = rememberCoroutineScope()
     val colors = KomorebiTheme.colors
+    val context = LocalContext.current
+    val iconModel = remember(app.icon, app.artworkCacheVersion) {
+        app.icon?.let { uri ->
+            ImageRequest.Builder(context)
+                .data(uri)
+                .memoryCacheKey("launcher-icon:${app.stableId}:${app.artworkCacheVersion}:$uri")
+                .diskCacheKey("launcher-icon:${app.stableId}:${app.artworkCacheVersion}:$uri")
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .crossfade(false)
+                .build()
+        }
+    }
+    val bannerModel = remember(app.banner, app.artworkCacheVersion) {
+        app.banner?.let { uri ->
+            ImageRequest.Builder(context)
+                .data(uri)
+                .memoryCacheKey("launcher-banner:${app.stableId}:${app.artworkCacheVersion}:$uri")
+                .diskCacheKey("launcher-banner:${app.stableId}:${app.artworkCacheVersion}:$uri")
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .crossfade(false)
+                .build()
+        }
+    }
     val shape = RoundedCornerShape(8.dp)
     val containerColor = when {
         isEditing -> colors.accent.copy(alpha = 0.2f)
@@ -761,7 +786,7 @@ fun LauncherAppCard(
         ) {
             if (fullBleedBanner && app.banner != null) {
                 AsyncImage(
-                    model = app.banner,
+                    model = bannerModel,
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -782,7 +807,7 @@ fun LauncherAppCard(
                     contentAlignment = Alignment.Center
                 ) {
                     AsyncImage(
-                        model = app.banner ?: app.icon,
+                        model = bannerModel ?: iconModel,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxSize()

@@ -2,7 +2,6 @@ package com.beeregg2001.komorebi.ui.home.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -17,7 +16,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,6 +25,7 @@ import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Scale
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
@@ -132,6 +131,7 @@ fun HomeHeroDashboard(
     modifier: Modifier = Modifier           // ★ 追加: 呼び出し元からの modifier を受け取る
 ) {
     val colors = KomorebiTheme.colors
+    val context = LocalContext.current
 
     AnimatedContent(
         targetState = state,
@@ -158,9 +158,21 @@ fun HomeHeroDashboard(
             if (targetState.tag == "Welcome") {
                 val welcomeImageRes =
                     if (colors.isDark) R.drawable.dark_image else R.drawable.light_image
+                val welcomeImageRequest = remember(welcomeImageRes) {
+                    ImageRequest.Builder(context)
+                        .data(welcomeImageRes)
+                        // The source art is larger than a 1080p TV frame.  Decode only the
+                        // displayed size so entering Home does not allocate its full bitmap.
+                        .size(1920, 1080)
+                        .scale(Scale.FILL)
+                        .crossfade(false)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.DISABLED)
+                        .build()
+                }
 
-                Image(
-                    painter = painterResource(id = welcomeImageRes),
+                AsyncImage(
+                    model = welcomeImageRequest,
                     contentDescription = "Welcome Background",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

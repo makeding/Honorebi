@@ -68,10 +68,11 @@ class AppContentStore @Inject constructor(
     private var progressUpdateJob: Job? = null
     private var lastChannelsFetchedAtMillis = 0L
     private var lastRecordingsFetchedAtMillis = 0L
+    @Volatile
+    private var isRecordingPollingEnabled = false
 
     init {
         startMaintenance()
-        refreshRecentRecordings()
     }
 
     fun setPollingPaused(paused: Boolean) = Unit
@@ -86,6 +87,9 @@ class AppContentStore @Inject constructor(
     }
 
     fun refreshRecentRecordings() {
+        // Recordings are intentionally lazy.  The first recording surface to call
+        // this method opts into both the initial request and subsequent polling.
+        isRecordingPollingEnabled = true
         if (isFetchingRecordings || recordingFetchJob?.isActive == true) return
         _isRecordingsLoading.value = true
         recordingFetchJob?.cancel()
@@ -111,7 +115,9 @@ class AppContentStore @Inject constructor(
                 if (now - lastChannelsFetchedAtMillis >= CHANNEL_REFRESH_INTERVAL_MS) {
                     fetchChannelsInternal()
                 }
-                if (now - lastRecordingsFetchedAtMillis >= RECORDING_REFRESH_INTERVAL_MS) {
+                if (isRecordingPollingEnabled &&
+                    now - lastRecordingsFetchedAtMillis >= RECORDING_REFRESH_INTERVAL_MS
+                ) {
                     fetchRecentRecordingsInternal()
                 }
             }

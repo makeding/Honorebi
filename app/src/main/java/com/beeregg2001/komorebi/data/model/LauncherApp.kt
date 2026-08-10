@@ -1,13 +1,14 @@
 package com.beeregg2001.komorebi.data.model
 
-import android.graphics.drawable.Drawable
-
 data class LauncherApp(
     val packageName: String,
     val activityName: String,
     val label: String,
-    val icon: Drawable,
-    val banner: Drawable?
+    /** Android resource URI; decoded lazily by Coil instead of PackageManager during scan. */
+    val icon: String?,
+    val banner: String?,
+    /** Changes when Android installs a replacement APK, invalidating Coil artwork keys. */
+    val artworkCacheVersion: String,
 ) {
     val stableId: String = "$packageName/$activityName"
 }
