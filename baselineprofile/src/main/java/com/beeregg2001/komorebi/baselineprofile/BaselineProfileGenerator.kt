@@ -1,7 +1,6 @@
 package com.beeregg2001.komorebi.baselineprofile
 
 import androidx.benchmark.macro.junit4.BaselineProfileRule
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
@@ -16,9 +15,9 @@ class BaselineProfileGenerator {
 
     @Test
     fun generate() {
-        // ★修正: 引数から取得。取得できない場合はデフォルト値を試行
-        val targetAppId = InstrumentationRegistry.getArguments().getString("targetAppId")
-            ?: "com.beeregg2001.Honorebi"
+        val targetAppId = requireNotNull(
+            InstrumentationRegistry.getArguments().getString("targetAppId")
+        ) { "targetAppId not passed as instrumentation runner arg" }
 
         baselineProfileRule.collect(
             packageName = targetAppId
@@ -26,20 +25,15 @@ class BaselineProfileGenerator {
             pressHome()
             startActivityAndWait()
 
-            // Default tab is Video. Cover the real TV path: Video -> Home -> Live/Video/EPG.
+            // Cover the current launcher path and compose the tab surfaces used at startup.
             device.waitForIdle()
-            Thread.sleep(2000)
-
-            repeat(2) {
-                device.pressDPadLeft()
-                device.waitForIdle()
-                Thread.sleep(700)
-            }
-
-            repeat(4) {
+            repeat(5) {
                 device.pressDPadRight()
                 device.waitForIdle()
-                Thread.sleep(1200)
+            }
+            repeat(5) {
+                device.pressDPadLeft()
+                device.waitForIdle()
             }
         }
     }

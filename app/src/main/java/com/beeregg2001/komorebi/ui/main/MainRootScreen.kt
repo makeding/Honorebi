@@ -4,6 +4,7 @@ package com.beeregg2001.komorebi.ui.main
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -561,6 +562,11 @@ fun MainRootScreen(
         isSyncingInitial = isSyncingInitial,
         isPlaybackActive = state.isPlaybackActive,
     )
+    ReportDrawnWhen {
+        startupRenderPlan.showMainContent ||
+            state.showConnectionErrorDialog ||
+            !isSettingsInitialized && state.isSplashFinished
+    }
 
     KomorebiTheme(theme = currentTheme) {
         RootSystemMediaSessionHost(playbackSessionEpoch = state.playbackSessionEpoch) {

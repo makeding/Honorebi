@@ -541,6 +541,16 @@ public:
             "onError",
             "(IJZLjava/lang/String;)V");
         env->DeleteLocalRef(callbackClass);
+
+        jclass byteArrayClass = env->FindClass("[B");
+        byteArrayClass_ = static_cast<jclass>(env->NewGlobalRef(byteArrayClass));
+        jintArray emptyIntArray = env->NewIntArray(0);
+        emptyIntArray_ = static_cast<jintArray>(env->NewGlobalRef(emptyIntArray));
+        jobjectArray emptyByteArrayArray = env->NewObjectArray(0, byteArrayClass, nullptr);
+        emptyByteArrayArray_ = static_cast<jobjectArray>(env->NewGlobalRef(emptyByteArrayArray));
+        env->DeleteLocalRef(emptyByteArrayArray);
+        env->DeleteLocalRef(emptyIntArray);
+        env->DeleteLocalRef(byteArrayClass);
     }
 
     ~TlvDemuxContext() override = default;
@@ -597,6 +607,18 @@ public:
     }
 
     void release(JNIEnv* env) {
+        if (emptyByteArrayArray_ != nullptr) {
+            env->DeleteGlobalRef(emptyByteArrayArray_);
+            emptyByteArrayArray_ = nullptr;
+        }
+        if (emptyIntArray_ != nullptr) {
+            env->DeleteGlobalRef(emptyIntArray_);
+            emptyIntArray_ = nullptr;
+        }
+        if (byteArrayClass_ != nullptr) {
+            env->DeleteGlobalRef(byteArrayClass_);
+            byteArrayClass_ = nullptr;
+        }
         if (reusableAccessUnitBuffer_ != nullptr) {
             env->DeleteGlobalRef(reusableAccessUnitBuffer_);
             reusableAccessUnitBuffer_ = nullptr;
@@ -698,13 +720,16 @@ public:
         const bool isReusable = data != nullptr;
         if (data == nullptr) data = makeByteArray(unit.data);
         const jsize resourceCount = static_cast<jsize>(unit.subtitle_resources.size());
-        jintArray resourceIndices = currentEnv_->NewIntArray(resourceCount);
-        jintArray resourceTypes = currentEnv_->NewIntArray(resourceCount);
-        jclass byteArrayClass = currentEnv_->FindClass("[B");
-        jobjectArray resourceData = currentEnv_->NewObjectArray(
-            resourceCount,
-            byteArrayClass,
-            nullptr);
+        const bool hasResources = resourceCount > 0;
+        jintArray resourceIndices = hasResources
+            ? currentEnv_->NewIntArray(resourceCount)
+            : emptyIntArray_;
+        jintArray resourceTypes = hasResources
+            ? currentEnv_->NewIntArray(resourceCount)
+            : emptyIntArray_;
+        jobjectArray resourceData = hasResources
+            ? currentEnv_->NewObjectArray(resourceCount, byteArrayClass_, nullptr)
+            : emptyByteArrayArray_;
         if (resourceCount > 0) {
             std::vector<jint> indices(static_cast<size_t>(resourceCount));
             std::vector<jint> types(static_cast<size_t>(resourceCount));
@@ -745,10 +770,11 @@ public:
             resourceData,
             unit.random_access ? JNI_TRUE : JNI_FALSE,
             unit.discontinuity ? JNI_TRUE : JNI_FALSE);
-        currentEnv_->DeleteLocalRef(resourceData);
-        currentEnv_->DeleteLocalRef(byteArrayClass);
-        currentEnv_->DeleteLocalRef(resourceTypes);
-        currentEnv_->DeleteLocalRef(resourceIndices);
+        if (hasResources) {
+            currentEnv_->DeleteLocalRef(resourceData);
+            currentEnv_->DeleteLocalRef(resourceTypes);
+            currentEnv_->DeleteLocalRef(resourceIndices);
+        }
         if (!isReusable) currentEnv_->DeleteLocalRef(data);
     }
 
@@ -932,6 +958,9 @@ private:
     JNIEnv* currentEnv_ = nullptr;
     std::mutex mutex_;
     jobject callback_ = nullptr;
+    jclass byteArrayClass_ = nullptr;
+    jintArray emptyIntArray_ = nullptr;
+    jobjectArray emptyByteArrayArray_ = nullptr;
     jbyteArray reusableAccessUnitBuffer_ = nullptr;
     jsize reusableAccessUnitCapacity_ = 0;
     jmethodID onServiceMethod_ = nullptr;

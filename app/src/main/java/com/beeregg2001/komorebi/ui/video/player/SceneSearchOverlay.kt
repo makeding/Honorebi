@@ -4,8 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
-import android.util.LruCache
 import android.view.KeyEvent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,14 +23,19 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -50,36 +55,56 @@ import java.security.MessageDigest
 import kotlin.math.floor
 
 private const val TAG = "SceneSearchOverlay"
-private const val TILE_CACHE_SIZE_BYTES = 6 * 1024 * 1024
+
+internal data class TileBounds(
+    val left: Int,
+    val top: Int,
+    val width: Int,
+    val height: Int,
+)
+
+internal fun tileBoundsFor(
+    col: Int,
+    row: Int,
+    tileWidth: Int,
+    tileHeight: Int,
+    sheetWidth: Int,
+    sheetHeight: Int,
+): TileBounds? {
+    if (col < 0 || row < 0 || tileWidth <= 0 || tileHeight <= 0) return null
+    val left = col.toLong() * tileWidth
+    val top = row.toLong() * tileHeight
+    if (left + tileWidth > sheetWidth || top + tileHeight > sheetHeight) return null
+    return TileBounds(left.toInt(), top.toInt(), tileWidth, tileHeight)
+}
+
+internal data class TileSheetRegion(
+    val sheet: Bitmap,
+    val bounds: TileBounds,
+)
 
 class TileSheetLoader(private val context: Context) {
     private var isReleased = false
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val decodeDispatcher = Dispatchers.IO.limitedParallelism(2)
-    private val tileCache = object : LruCache<String, Bitmap>(TILE_CACHE_SIZE_BYTES) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-    }
     private var fullSheetBitmap: Bitmap? = null
     private val sheetLoadingMutex = Mutex()
 
     fun release() {
         isReleased = true
-        tileCache.evictAll()
         fullSheetBitmap?.recycle()
         fullSheetBitmap = null
     }
 
-    suspend fun loadTile(url: String, col: Int, row: Int, tileW: Int, tileH: Int): Bitmap? {
+    internal suspend fun loadRegion(
+        url: String,
+        col: Int,
+        row: Int,
+        tileW: Int,
+        tileH: Int,
+    ): TileSheetRegion? {
         if (isReleased) return null
-        val key = "c${col}_r${row}"
-
-        synchronized(tileCache) {
-            tileCache.get(key)?.let {
-                // Log.i(TAG, "[TileLoader] Cache hit for tile: $key") // キャッシュヒットはログが膨大になるのでコメントアウト
-                return it
-            }
-        }
 
         return withContext(decodeDispatcher) {
             if (!isActive || isReleased) return@withContext null
@@ -89,23 +114,18 @@ class TileSheetLoader(private val context: Context) {
                     return@withContext null
                 }
 
-                val x = col * tileW
-                val y = row * tileH
-
-                // ★ ログ仕込み: 画像の範囲外を参照していないかチェック
-                if (x + tileW > sheet.width || y + tileH > sheet.height) {
+                val bounds = tileBoundsFor(col, row, tileW, tileH, sheet.width, sheet.height)
+                if (bounds == null) {
                     Log.e(
                         TAG,
-                        "[TileLoader] Out of bounds! Request: x=$x, y=$y, w=$tileW, h=$tileH / Sheet Size: ${sheet.width}x${sheet.height}"
+                        "[TileLoader] Out of bounds! Request: col=$col, row=$row, " +
+                            "w=$tileW, h=$tileH / Sheet Size: ${sheet.width}x${sheet.height}"
                     )
                     return@withContext null
                 }
-
-                val tileBitmap = Bitmap.createBitmap(sheet, x, y, tileW, tileH)
-                synchronized(tileCache) { if (!isReleased) tileCache.put(key, tileBitmap) }
-                tileBitmap
+                TileSheetRegion(sheet, bounds)
             } catch (e: Exception) {
-                Log.e(TAG, "[TileLoader] Error creating tile bitmap: col=$col, row=$row", e)
+                Log.e(TAG, "[TileLoader] Error loading tile region: col=$col, row=$row", e)
                 null
             }
         }
@@ -143,7 +163,7 @@ class TileSheetLoader(private val context: Context) {
                 }
 
                 val options = BitmapFactory.Options()
-                    .apply { inPreferredConfig = Bitmap.Config.RGB_565; inMutable = true }
+                    .apply { inPreferredConfig = Bitmap.Config.RGB_565 }
                 val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
 
                 if (bitmap != null) {
@@ -170,6 +190,28 @@ class TileSheetLoader(private val context: Context) {
     private fun hashString(input: String): String =
         MessageDigest.getInstance("MD5").digest(input.toByteArray())
             .joinToString("") { "%02x".format(it) }
+}
+
+@Composable
+internal fun TileSheetRegionImage(
+    region: TileSheetRegion,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+) {
+    val image = remember(region.sheet) { region.sheet.asImageBitmap() }
+    val description = contentDescription
+    val accessibleModifier = if (description == null) modifier else {
+        modifier.semantics { this.contentDescription = description }
+    }
+    Canvas(modifier = accessibleModifier) {
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(region.bounds.left, region.bounds.top),
+            srcSize = IntSize(region.bounds.width, region.bounds.height),
+            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+            filterQuality = FilterQuality.Medium,
+        )
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -357,7 +399,7 @@ fun TiledThumbnailItem(
     imageTimeOffsetSec: Long = 0L,
     overlayContent: @Composable BoxScope.() -> Unit = {}
 ) {
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var region by remember { mutableStateOf<TileSheetRegion?>(null) }
 
     val fetchTime = time + imageTimeOffsetSec
     val tileIndex = floor(fetchTime / tileInterval).toInt()
@@ -371,9 +413,9 @@ fun TiledThumbnailItem(
         }
         delay(50)
         if (isActive) {
-            val result = loader.loadTile(imageUrl, col, row, tileWidth, tileHeight)
+            val result = loader.loadRegion(imageUrl, col, row, tileWidth, tileHeight)
             if (result != null && isActive) {
-                bitmap = result
+                region = result
             } else {
                 Log.w(
                     TAG,
@@ -398,11 +440,10 @@ fun TiledThumbnailItem(
             .onFocusChanged { if (it.isFocused) onFocused() }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap!!.asImageBitmap(),
+            if (region != null) {
+                TileSheetRegionImage(
+                    region = region!!,
                     contentDescription = null,
-                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {

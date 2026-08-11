@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -787,6 +789,7 @@ fun VideoPlayerScreen(
     // commit a pending A -> B handoff, so report it exactly once.
     val currentOnProgramReady by rememberUpdatedState(onProgramReady)
     var hasReportedProgramReady by remember(currentProgram.id) { mutableStateOf(false) }
+    var renderedFrameGeneration by remember(exoPlayer, currentProgram.id) { mutableIntStateOf(0) }
     DisposableEffect(exoPlayer, currentProgram.id) {
         fun reportReadyOnce() {
             if (!hasReportedProgramReady) {
@@ -798,6 +801,10 @@ fun VideoPlayerScreen(
         }
 
         val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                renderedFrameGeneration++
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) reportReadyOnce()
             }
@@ -1862,6 +1869,13 @@ fun VideoPlayerScreen(
                     } else {
                         scaleX = 1f; scaleY = 1f; translationX = 0f; translationY =
                             0f; transformOrigin = TransformOrigin.Center
+                    }
+                }
+                .semantics {
+                    contentDescription = if (renderedFrameGeneration > 0) {
+                        "再生映像:$renderedFrameGeneration"
+                    } else {
+                        "映像準備中"
                     }
                 }
                 .focusRequester(mainFocusRequester)

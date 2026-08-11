@@ -229,7 +229,7 @@ fun PlayerControls(
                             ) else 0f
                         val horizontalBias = (progress * 2f) - 1f
 
-                        var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+                        var thumbnailRegion by remember { mutableStateOf<TileSheetRegion?>(null) }
 
                         val timeSec = displayPositionMs / 1000
                         val tileIndex = floor(timeSec / tileInterval).toInt()
@@ -240,14 +240,19 @@ fun PlayerControls(
                             if (tiledThumbnailUrl.isNullOrBlank()) {
                                 return@LaunchedEffect
                             }
-                            val res =
-                                loader.loadTile(tiledThumbnailUrl, col, row, tileWidth, tileHeight)
+                            val res = loader.loadRegion(
+                                tiledThumbnailUrl,
+                                col,
+                                row,
+                                tileWidth,
+                                tileHeight,
+                            )
                             if (res != null) {
-                                bitmap = res
+                                thumbnailRegion = res
                             }
                         }
 
-                        if (bitmap != null) {
+                        if (thumbnailRegion != null) {
                             Box(
                                 modifier = Modifier
                                     .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
@@ -256,10 +261,9 @@ fun PlayerControls(
                                     .background(Color.DarkGray.copy(alpha = 0.8f))
                                     .border(2.dp, colors.accent, RoundedCornerShape(6.dp))
                             ) {
-                                Image(
-                                    bitmap = bitmap!!.asImageBitmap(),
+                                TileSheetRegionImage(
+                                    region = thumbnailRegion!!,
                                     contentDescription = "Seek Preview",
-                                    contentScale = ContentScale.Fit,
                                     modifier = Modifier.fillMaxSize()
                                 )
                                 Text(

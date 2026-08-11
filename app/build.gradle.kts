@@ -144,6 +144,7 @@ dependencies {
     // 1. Compose BOM を最新に近いバージョンに更新 (ここが最重要)
     // 2023.10.01 だと Tv-Foundation 1.0.0-alpha11 と互換性がありません
     implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
 
     // 2. 各ライブラリの指定 (バージョンは BOM が管理するので書かない)
     implementation("androidx.compose.ui:ui")
