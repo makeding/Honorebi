@@ -23,6 +23,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
@@ -364,12 +365,16 @@ private fun VideoAdjustmentButton(
 @Composable
 fun AnimatedVisibilityScope.ProgramInfoOverlay( // ★ 修正: AnimatedVisibilityScopeの拡張関数にする
     program: RecordedProgram,
+    timeFormat: String,
     onClose: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
     val focusRequester = remember { FocusRequester() }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val infoRows = remember(program, timeFormat) {
+        PlaybackProgramInfoFormatter.format(program, timeFormat)
+    }
 
     LaunchedEffect(Unit) {
         delay(150)
@@ -383,7 +388,7 @@ fun AnimatedVisibilityScope.ProgramInfoOverlay( // ★ 修正: AnimatedVisibilit
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f))
+            .background(Color.Black.copy(alpha = 0.45f))
             .onKeyEvent {
                 if (it.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
                     when (it.nativeKeyEvent.keyCode) {
@@ -430,9 +435,23 @@ fun AnimatedVisibilityScope.ProgramInfoOverlay( // ★ 修正: AnimatedVisibilit
                 text = program.title,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = colors.textPrimary
+                color = colors.textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            infoRows.forEach { row ->
+                Text(
+                    text = "${row.label}: ${row.value}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+            }
+            Spacer(modifier = Modifier.height(20.dp))
 
             Text(
                 text = program.description,

@@ -331,6 +331,7 @@ fun VideoPlayerScreen(
     val commentDefaultDisplayStr by settingsViewModel.commentDefaultDisplay.collectAsState()
     val subtitleCommentLayer by settingsViewModel.subtitleCommentLayer.collectAsState()
     val videoSubtitleDefaultStr by settingsViewModel.videoSubtitleDefault.collectAsState()
+    val timeFormat by settingsViewModel.timeFormat.collectAsState()
 
     val commentSpeed = commentSpeedStr.toFloatOrNull() ?: 1.0f
     val commentFontSizeScale = commentFontSizeStr.toFloatOrNull() ?: 1.0f
@@ -388,6 +389,19 @@ fun VideoPlayerScreen(
     var isKeyframeGridOpen by remember { mutableStateOf(false) }
     var isSeekingPreviewVisible by remember { mutableStateOf(false) }
     var seekingPreviewJob by remember { mutableStateOf<Job?>(null) }
+
+    val openProgramInfo: () -> Unit = {
+        isProgramInfoOpen = true
+        onShowControlsChange(true)
+    }
+    val closeProgramInfo: () -> Unit = {
+        isProgramInfoOpen = false
+        onShowControlsChange(true)
+        scope.launch {
+            delay(150)
+            mainFocusRequester.safeRequestFocus(TAG)
+        }
+    }
 
     val isSubOverlayOpen =
         isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
@@ -1688,6 +1702,13 @@ fun VideoPlayerScreen(
                     return@onPreviewKeyEvent true
                 }
 
+                if (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_INFO) {
+                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP) {
+                        if (isProgramInfoOpen) closeProgramInfo() else openProgramInfo()
+                    }
+                    return@onPreviewKeyEvent true
+                }
+
                 if (isSubOverlayOpen) {
                     return@onPreviewKeyEvent false
                 }
@@ -1898,6 +1919,7 @@ fun VideoPlayerScreen(
 
             PlayerControls(
                 program = currentProgram,
+                timeFormat = timeFormat,
                 tiledThumbnailUrl = tiledThumbnailUrl,
                 allComments = allComments,
                 isVisible = showControls && !isSubOverlayOpen && vs.lCropMode == LCropMode.HIDDEN,
@@ -1938,7 +1960,7 @@ fun VideoPlayerScreen(
                 canOpenKeyframeGrid = canOpenSceneSearch,
                 onKeyframeGridToggle = openKeyframeGrid,
                 onChapterListToggle = { isChapterListOpen = true; onShowControlsChange(true) },
-                onInfoToggle = { isProgramInfoOpen = true; onShowControlsChange(true) },
+                onInfoToggle = openProgramInfo,
                 onSettingsToggle = {
                     if (isModern) isModernSettingsOpen = true else onSubMenuToggle(
                         true
@@ -1949,7 +1971,9 @@ fun VideoPlayerScreen(
             AnimatedVisibility(visible = isProgramInfoOpen, enter = fadeIn(), exit = fadeOut()) {
                 ProgramInfoOverlay(
                     program = currentProgram,
-                    onClose = { isProgramInfoOpen = false })
+                    timeFormat = timeFormat,
+                    onClose = closeProgramInfo
+                )
             }
 
             AnimatedVisibility(

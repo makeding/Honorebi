@@ -62,6 +62,7 @@ import kotlin.math.pow
 @Composable
 fun PlayerControls(
     program: RecordedProgram,
+    timeFormat: String,
     allComments: List<ArchivedComment>,
     tiledThumbnailUrl: String?,
     isVisible: Boolean,
@@ -184,7 +185,31 @@ fun PlayerControls(
                         .basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2000)
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formatPlaybackProgramMeta(program, timeFormat),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.72f),
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (!isModernUi) {
+                        Text(
+                            text = "INFO  番組情報",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.72f),
+                            modifier = Modifier.padding(start = 24.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
 
                 AnimatedVisibility(
                     visible = isSeekingPreviewVisible && isModernUi,
