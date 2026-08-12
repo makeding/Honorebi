@@ -21,6 +21,22 @@ data class WatchedHistoryItem(
 
 data class WatchedHistoryPayload(val items: List<WatchedHistoryItem>)
 
+data class DeviceAuthCreateRequest(
+    @com.google.gson.annotations.SerializedName("device_name") val deviceName: String,
+)
+
+data class DeviceAuthTokenRequest(
+    @com.google.gson.annotations.SerializedName("device_code") val deviceCode: String,
+)
+
+data class DeviceAuthRequest(
+    @com.google.gson.annotations.SerializedName("device_code") val deviceCode: String,
+    @com.google.gson.annotations.SerializedName("user_code") val userCode: String,
+    @com.google.gson.annotations.SerializedName("verification_url") val verificationUrl: String,
+    @com.google.gson.annotations.SerializedName("expires_in") val expiresIn: Int,
+    val interval: Int,
+)
+
 data class KonomiHistoryProgram(
     val program: KonomiProgram,
     val playback_position: Double,

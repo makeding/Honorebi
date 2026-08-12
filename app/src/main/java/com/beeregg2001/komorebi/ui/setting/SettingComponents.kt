@@ -440,13 +440,13 @@ fun HonomiLoginDialog(
     isLoading: Boolean,
     error: String?,
     onDismiss: () -> Unit,
-    onLogin: (String, String) -> Unit,
+    onStart: () -> Unit,
+    pairing: com.beeregg2001.komorebi.data.model.DeviceAuthRequest?,
+    verificationUrl: String?,
 ) {
     val colors = KomorebiTheme.colors
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    val usernameFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(150); usernameFocus.safeRequestFocus() }
+    val qrBitmap = verificationUrl?.let { rememberQrBitmap(it, 260) }
+    LaunchedEffect(Unit) { onStart() }
 
     Box(
         modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.8f)).focusGroup()
@@ -463,19 +463,19 @@ fun HonomiLoginDialog(
             modifier = Modifier.width(540.dp),
         ) {
             Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Text("HonomiTV アカウント", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                DialogTextField(username, { username = it }, "ユーザー名", focusRequester = usernameFocus)
-                DialogTextField(password, { password = it }, "パスワード", isPassword = true)
+                Text("HonomiTV とペアリング", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("スマートフォンで QR コードを開き、HonomiTV にログインしてこのテレビを許可してください。")
+                if (qrBitmap != null) Image(qrBitmap, null, Modifier.size(260.dp).align(Alignment.CenterHorizontally))
+                if (pairing != null) Text(
+                    pairing.userCode.chunked(4).joinToString(" "),
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Button(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.weight(1f)) { Text("キャンセル") }
-                    Button(
-                        onClick = { onLogin(username, password) },
-                        enabled = !isLoading && username.isNotBlank() && password.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("ログイン")
-                    }
+                    if (isLoading) CircularProgressIndicator(Modifier.size(36.dp).align(Alignment.CenterVertically))
                 }
             }
         }

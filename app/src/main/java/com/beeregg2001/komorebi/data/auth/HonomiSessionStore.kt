@@ -24,6 +24,14 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
 
     fun current(): HonomiSession? = cachedSession
 
+    fun historyOwner(): String? = preferences.getString(KEY_HISTORY_OWNER, null)
+
+    fun markHistoryOwner(session: HonomiSession) {
+        preferences.edit().putString(KEY_HISTORY_OWNER, identity(session)).apply()
+    }
+
+    fun isHistoryOwner(session: HonomiSession): Boolean = historyOwner() == identity(session)
+
     @Synchronized
     fun save(session: HonomiSession) {
         val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
@@ -40,7 +48,13 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
 
     @Synchronized
     fun clear() {
-        preferences.edit().clear().apply()
+        preferences.edit()
+            .remove(KEY_IV)
+            .remove(KEY_TOKEN)
+            .remove(KEY_ORIGIN)
+            .remove(KEY_USER_ID)
+            .remove(KEY_USER_NAME)
+            .apply()
         cachedSession = null
     }
 
@@ -75,6 +89,8 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
         }
     }
 
+    private fun identity(session: HonomiSession): String = "${session.origin}|${session.userId}"
+
     private companion object {
         const val KEY_ALIAS = "komorebi_honomi_session_v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
@@ -83,5 +99,6 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
         const val KEY_ORIGIN = "origin"
         const val KEY_USER_ID = "user_id"
         const val KEY_USER_NAME = "user_name"
+        const val KEY_HISTORY_OWNER = "history_owner"
     }
 }

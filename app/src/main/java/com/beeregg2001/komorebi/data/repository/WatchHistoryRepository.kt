@@ -64,7 +64,14 @@ class WatchHistoryRepository @Inject constructor(
     }
 
     suspend fun syncWithServer() {
-        if (sessionStore.current() == null) return
+        val session = sessionStore.current() ?: return
+        val previousOwner = sessionStore.historyOwner()
+        if (previousOwner != null && !sessionStore.isHistoryOwner(session)) {
+            watchHistoryDao.clearAll()
+            applyRemoteHistory(apiService.getSyncedWatchHistory().items)
+            sessionStore.markHistoryOwner(session)
+            return
+        }
         val localItems = watchHistoryDao.getAllHistoryOnce().map {
             WatchedHistoryItem(
                 videoId = it.id,
@@ -75,6 +82,7 @@ class WatchHistoryRepository @Inject constructor(
         }
         val merged = apiService.updateSyncedWatchHistory(WatchedHistoryPayload(localItems))
         applyRemoteHistory(merged.items)
+        sessionStore.markHistoryOwner(session)
     }
 
     private suspend fun applyRemoteHistory(items: List<WatchedHistoryItem>) {

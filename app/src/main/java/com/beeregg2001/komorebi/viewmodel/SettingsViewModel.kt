@@ -14,6 +14,7 @@ import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
 import com.beeregg2001.komorebi.data.auth.HonomiSession
+import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -132,14 +133,14 @@ class SettingsViewModel @Inject constructor(
         .map { it?.lastSyncedAt ?: 0L }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
-    suspend fun loginHonomi(username: String, password: String): Result<HonomiSession> {
+    suspend fun createHonomiPairing(): Result<DeviceAuthRequest> {
         _honomiLoginInProgress.value = true
-        return try {
-            honomiAuthRepository.login(username, password).onSuccess {
-                watchHistoryRepository.syncWithServer()
-            }
-        } finally {
-            _honomiLoginInProgress.value = false
+        return honomiAuthRepository.createPairing().also { _honomiLoginInProgress.value = false }
+    }
+
+    suspend fun pollHonomiPairing(pairing: DeviceAuthRequest): Result<HonomiSession?> {
+        return honomiAuthRepository.pollPairing(pairing).onSuccess { session ->
+            if (session != null) watchHistoryRepository.syncWithServer()
         }
     }
 

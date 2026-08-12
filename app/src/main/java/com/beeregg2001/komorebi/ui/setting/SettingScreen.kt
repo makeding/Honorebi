@@ -46,6 +46,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import java.time.LocalTime
+import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -84,6 +85,7 @@ fun SettingsScreen(
 
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var honomiLoginError by remember { mutableStateOf<String?>(null) }
+    var honomiPairing by remember { mutableStateOf<DeviceAuthRequest?>(null) }
     LaunchedEffect(toastMessage) {
         if (toastMessage != null) {
             delay(3500)
@@ -402,6 +404,7 @@ fun SettingsScreen(
                             {
                                 if (honomiSession == null) {
                                     honomiLoginError = null
+                                    honomiPairing = null
                                     uiState.activeDialog = SettingDialogState.HonomiLogin
                                 } else {
                                     viewModel.logoutHonomi()
@@ -1053,6 +1056,30 @@ fun SettingsScreen(
         }
 
         // --- ダイアログ表示制御 ---
+        LaunchedEffect(uiState.activeDialog, honomiPairing) {
+            val pairing = honomiPairing ?: return@LaunchedEffect
+            if (uiState.activeDialog !is SettingDialogState.HonomiLogin) return@LaunchedEffect
+            val deadline = System.currentTimeMillis() + pairing.expiresIn * 1000L
+            while (System.currentTimeMillis() < deadline && uiState.activeDialog is SettingDialogState.HonomiLogin) {
+                delay(pairing.interval * 1000L)
+                viewModel.pollHonomiPairing(pairing)
+                    .onSuccess { session ->
+                        if (session != null) {
+                            toastMessage = "${session.userName} とペアリングしました"
+                            closeDialog()
+                            return@LaunchedEffect
+                        }
+                    }
+                    .onFailure {
+                        honomiLoginError = it.message ?: "ペアリングに失敗しました"
+                        return@LaunchedEffect
+                    }
+            }
+            if (uiState.activeDialog is SettingDialogState.HonomiLogin) {
+                honomiLoginError = "ペアリングコードの有効期限が切れました"
+            }
+        }
+
         when (val state = uiState.activeDialog) {
             is SettingDialogState.Input -> InputDialog(
                 state.title,
@@ -1091,16 +1118,15 @@ fun SettingsScreen(
                 honomiLoginInProgress,
                 honomiLoginError,
                 { if (!honomiLoginInProgress) closeDialog() },
-                { username, password ->
+                {
                     scope.launch {
-                        viewModel.loginHonomi(username, password)
-                            .onSuccess {
-                                toastMessage = "${it.userName} としてログインしました"
-                                closeDialog()
-                            }
+                        viewModel.createHonomiPairing()
+                            .onSuccess { honomiPairing = it }
                             .onFailure { honomiLoginError = it.message ?: "ログインに失敗しました" }
                     }
                 },
+                honomiPairing,
+                honomiPairing?.verificationUrl,
             )
             is SettingDialogState.GeminiSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
