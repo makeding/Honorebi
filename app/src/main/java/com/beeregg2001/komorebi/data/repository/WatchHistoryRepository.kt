@@ -9,6 +9,9 @@ import com.beeregg2001.komorebi.data.local.entity.WatchHistoryEntity
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.model.WatchedHistoryItem
+import com.beeregg2001.komorebi.data.model.WatchedHistoryPayload
+import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +29,8 @@ class WatchHistoryRepository @Inject constructor(
     private val apiService: KonomiApi,
     private val watchHistoryDao: WatchHistoryDao,
     private val lastChannelDao: LastChannelDao,
-    private val konomiRepository: KonomiRepository
+    private val konomiRepository: KonomiRepository,
+    private val sessionStore: HonomiSessionStore,
 ) {
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingSaveJobs = ConcurrentHashMap<Int, Job>()
@@ -40,11 +44,8 @@ class WatchHistoryRepository @Inject constructor(
 
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun refreshHistoryFromApi() {
-        runCatching { apiService.getWatchHistory() }.onSuccess { apiHistoryList ->
-            apiHistoryList.forEach { history ->
-                watchHistoryDao.insertOrUpdate(KonomiDataMapper.toEntity(history))
-            }
-        }
+        if (sessionStore.current() == null) return
+        runCatching { apiService.getSyncedWatchHistory() }.onSuccess { applyRemoteHistory(it.items) }
     }
 
     suspend fun saveWatchHistory(program: RecordedProgram, positionSeconds: Double) {
@@ -52,9 +53,45 @@ class WatchHistoryRepository @Inject constructor(
         val entity = KonomiDataMapper.toEntity(program, positionSeconds)
         watchHistoryDao.insertOrUpdate(entity)
 
-        // 2. サーバーへ同期
-        runCatching {
-            konomiRepository.syncPlaybackPosition(program.id.toString(), positionSeconds)
+        if (sessionStore.current() != null) {
+            val now = entity.watchedAt / 1000.0
+            runCatching {
+                apiService.updateSyncedWatchHistory(
+                    WatchedHistoryPayload(listOf(WatchedHistoryItem(program.id, positionSeconds, now, now)))
+                )
+            }
+        }
+    }
+
+    suspend fun syncWithServer() {
+        if (sessionStore.current() == null) return
+        val localItems = watchHistoryDao.getAllHistoryOnce().map {
+            WatchedHistoryItem(
+                videoId = it.id,
+                playbackPosition = it.playbackPosition,
+                createdAt = it.watchedAt / 1000.0,
+                updatedAt = it.watchedAt / 1000.0,
+            )
+        }
+        val merged = apiService.updateSyncedWatchHistory(WatchedHistoryPayload(localItems))
+        applyRemoteHistory(merged.items)
+    }
+
+    private suspend fun applyRemoteHistory(items: List<WatchedHistoryItem>) {
+        items.forEach { remote ->
+            val watchedAt = (remote.updatedAt * 1000).toLong()
+            val local = watchHistoryDao.getById(remote.videoId)
+            if (local != null && watchedAt > local.watchedAt) {
+                watchHistoryDao.insertOrUpdate(
+                    local.copy(playbackPosition = remote.playbackPosition, watchedAt = watchedAt)
+                )
+            } else if (local == null) {
+                konomiRepository.getRecordedProgram(remote.videoId).getOrNull()?.let { program ->
+                    watchHistoryDao.insertOrUpdate(
+                        KonomiDataMapper.toEntity(program, remote.playbackPosition).copy(watchedAt = watchedAt)
+                    )
+                }
+            }
         }
     }
 

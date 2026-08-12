@@ -91,6 +91,7 @@ sealed class SettingDialogState {
     object Licenses : SettingDialogState()
     object GeminiSetup : SettingDialogState()
     object DeviceCapabilities : SettingDialogState()
+    object HonomiLogin : SettingDialogState()
 
     data class SmbAction(val target: SmbServer) : SettingDialogState()
     data class SmbSetup(val target: SmbServer? = null) : SettingDialogState()
@@ -428,6 +429,53 @@ fun InputDialog(
                         onClick = { isClosing = true; onConfirm(value) },
                         modifier = Modifier.weight(1f)
                     ) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HonomiLoginDialog(
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onLogin: (String, String) -> Unit,
+) {
+    val colors = KomorebiTheme.colors
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val usernameFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(150); usernameFocus.safeRequestFocus() }
+
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black.copy(0.8f)).focusGroup()
+            .onKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK && !isLoading) {
+                    onDismiss(); true
+                } else false
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            colors = SurfaceDefaults.colors(containerColor = colors.surface),
+            modifier = Modifier.width(540.dp),
+        ) {
+            Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text("HonomiTV アカウント", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                DialogTextField(username, { username = it }, "ユーザー名", focusRequester = usernameFocus)
+                DialogTextField(password, { password = it }, "パスワード", isPassword = true)
+                if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.weight(1f)) { Text("キャンセル") }
+                    Button(
+                        onClick = { onLogin(username, password) },
+                        enabled = !isLoading && username.isNotBlank() && password.isNotBlank(),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("ログイン")
+                    }
                 }
             }
         }

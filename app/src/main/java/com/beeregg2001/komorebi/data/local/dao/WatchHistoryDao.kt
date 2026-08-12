@@ -17,6 +17,9 @@ interface WatchHistoryDao {
     @Query("SELECT * FROM watch_history ORDER BY watchedAt DESC LIMIT 30")
     fun getAllHistory(): Flow<List<WatchHistoryEntity>>
 
+    @Query("SELECT * FROM watch_history ORDER BY watchedAt DESC LIMIT 50")
+    suspend fun getAllHistoryOnce(): List<WatchHistoryEntity>
+
     // IDによる個別取得（メタデータ引き継ぎ用）
     @Query("SELECT * FROM watch_history WHERE id = :id")
     suspend fun getById(id: Int): WatchHistoryEntity?

@@ -77,10 +77,13 @@ fun SettingsScreen(
     val autoCmSkip by viewModel.autoCmSkip.collectAsState()
     val preferOriginalMpegTs by viewModel.preferOriginalMpegTs.collectAsState()
     val availableQualities by viewModel.availableQualities.collectAsState()
+    val honomiSession by viewModel.honomiSession.collectAsState()
+    val honomiLoginInProgress by viewModel.honomiLoginInProgress.collectAsState()
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val flatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     var toastMessage by remember { mutableStateOf<String?>(null) }
+    var honomiLoginError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(toastMessage) {
         if (toastMessage != null) {
             delay(3500)
@@ -125,6 +128,7 @@ fun SettingsScreen(
                 FocusRequester()
             ),
             listOf(
+                FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
@@ -394,6 +398,16 @@ fun SettingsScreen(
                             prefs.preferredSource,
                             prefs.edcbRecordPlayMethod,
                             prefs.smbServerList,
+                            honomiSession?.userName,
+                            {
+                                if (honomiSession == null) {
+                                    honomiLoginError = null
+                                    uiState.activeDialog = SettingDialogState.HonomiLogin
+                                } else {
+                                    viewModel.logoutHonomi()
+                                    toastMessage = "HonomiTV からログアウトしました"
+                                }
+                            },
                             { uiState.activeDialog = SettingDialogState.SmbSetup(null) },
                             { uiState.activeDialog = SettingDialogState.SmbAction(it) },
                             itemFocusRequesters[1][7],
@@ -529,6 +543,7 @@ fun SettingsScreen(
                             itemFocusRequesters[1][4],
                             itemFocusRequesters[1][5],
                             itemFocusRequesters[1][6],
+                            itemFocusRequesters[1][8],
                             categoryFocusRequesters[1]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 1 }
 
@@ -1072,6 +1087,21 @@ fun SettingsScreen(
 
             is SettingDialogState.Licenses -> OpenSourceLicensesScreen(onBack = { closeDialog() })
             is SettingDialogState.DeviceCapabilities -> DeviceCapabilitiesScreen(onBack = { closeDialog() })
+            is SettingDialogState.HonomiLogin -> HonomiLoginDialog(
+                honomiLoginInProgress,
+                honomiLoginError,
+                { if (!honomiLoginInProgress) closeDialog() },
+                { username, password ->
+                    scope.launch {
+                        viewModel.loginHonomi(username, password)
+                            .onSuccess {
+                                toastMessage = "${it.userName} としてログインしました"
+                                closeDialog()
+                            }
+                            .onFailure { honomiLoginError = it.message ?: "ログインに失敗しました" }
+                    }
+                },
+            )
             is SettingDialogState.GeminiSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
                 GeminiSetupDialog(

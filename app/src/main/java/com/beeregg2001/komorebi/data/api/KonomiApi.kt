@@ -10,6 +10,12 @@ interface KonomiApi {
     @GET("api/users/me")
     suspend fun getCurrentUser(): KonomiUser
 
+    @GET("api/settings/client/watched-history")
+    suspend fun getSyncedWatchHistory(): WatchedHistoryPayload
+
+    @PUT("api/settings/client/watched-history")
+    suspend fun updateSyncedWatchHistory(@Body request: WatchedHistoryPayload): WatchedHistoryPayload
+
     // --- チャンネル ---
     @GET("api/channels")
     suspend fun getChannels(): ChannelApiResponse

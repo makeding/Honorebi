@@ -3,8 +3,23 @@ package com.beeregg2001.komorebi.data.model
 data class KonomiUser(
     val id: Int,
     val name: String,
-    val pinned_channel_ids: List<String>,
+    val is_admin: Boolean = false,
+    val pinned_channel_ids: List<String> = emptyList(),
 )
+
+data class UserAccessToken(
+    @com.google.gson.annotations.SerializedName("access_token") val accessToken: String,
+    @com.google.gson.annotations.SerializedName("token_type") val tokenType: String,
+)
+
+data class WatchedHistoryItem(
+    @com.google.gson.annotations.SerializedName("video_id") val videoId: Int,
+    @com.google.gson.annotations.SerializedName("last_playback_position") val playbackPosition: Double,
+    @com.google.gson.annotations.SerializedName("created_at") val createdAt: Double,
+    @com.google.gson.annotations.SerializedName("updated_at") val updatedAt: Double,
+)
+
+data class WatchedHistoryPayload(val items: List<WatchedHistoryItem>)
 
 data class KonomiHistoryProgram(
     val program: KonomiProgram,

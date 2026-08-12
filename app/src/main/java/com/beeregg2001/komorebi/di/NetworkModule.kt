@@ -4,6 +4,7 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.api.KonomiApi
 import com.beeregg2001.komorebi.data.model.StreamSource
+import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
@@ -31,7 +32,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(settingsRepository: SettingsRepository): OkHttpClient {
+    fun provideOkHttpClient(settingsRepository: SettingsRepository, sessionStore: HonomiSessionStore): OkHttpClient {
         val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
             override fun checkClientTrusted(
                 chain: Array<out X509Certificate>?,
@@ -53,8 +54,9 @@ object NetworkModule {
         }
 
         val logging = HttpLoggingInterceptor().apply {
+            redactHeader("Authorization")
             level =
-                if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+                if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
         }
 
         return OkHttpClient.Builder()
@@ -87,6 +89,15 @@ object NetworkModule {
                     .url(modifiedUrl)
                     .build()
                 chain.proceed(newRequest)
+            })
+            .addInterceptor(Interceptor { chain ->
+                val request = chain.request()
+                val session = sessionStore.current()
+                val requestOrigin = "${request.url.scheme}://${request.url.host}:${request.url.port}"
+                val authenticated = if (session != null && session.origin == requestOrigin) {
+                    request.newBuilder().header("Authorization", "Bearer ${session.token}").build()
+                } else request
+                chain.proceed(authenticated)
             })
             .build()
     }

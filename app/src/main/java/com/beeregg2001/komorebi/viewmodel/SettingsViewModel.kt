@@ -11,6 +11,9 @@ import com.beeregg2001.komorebi.data.local.AppDatabase
 import com.beeregg2001.komorebi.data.sync.RecordSyncEngine
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.repository.RecordProvider
+import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
+import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
+import com.beeregg2001.komorebi.data.auth.HonomiSession
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -63,12 +66,17 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val syncEngine: RecordSyncEngine,
     private val recordProvider: RecordProvider,
-    private val db: AppDatabase
+    private val db: AppDatabase,
+    private val honomiAuthRepository: HonomiAuthRepository,
+    private val watchHistoryRepository: WatchHistoryRepository,
 ) : ViewModel() {
 
     private val gson = Gson()
 
     private val _dynamicQualities = MutableStateFlow<List<StreamQuality>?>(null)
+    val honomiSession: StateFlow<HonomiSession?> = honomiAuthRepository.session
+    private val _honomiLoginInProgress = MutableStateFlow(false)
+    val honomiLoginInProgress: StateFlow<Boolean> = _honomiLoginInProgress
 
     val availableQualities: StateFlow<List<StreamQuality>> = combine(
         _dynamicQualities,
@@ -123,6 +131,19 @@ class SettingsViewModel @Inject constructor(
     val lastSyncedAt: StateFlow<Long> = db.syncMetaDao().getSyncMetaFlow()
         .map { it?.lastSyncedAt ?: 0L }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    suspend fun loginHonomi(username: String, password: String): Result<HonomiSession> {
+        _honomiLoginInProgress.value = true
+        return try {
+            honomiAuthRepository.login(username, password).onSuccess {
+                watchHistoryRepository.syncWithServer()
+            }
+        } finally {
+            _honomiLoginInProgress.value = false
+        }
+    }
+
+    fun logoutHonomi() = honomiAuthRepository.logout()
 
     val backendType: StateFlow<String> = settingsRepository.backendType.stateIn(
         viewModelScope,

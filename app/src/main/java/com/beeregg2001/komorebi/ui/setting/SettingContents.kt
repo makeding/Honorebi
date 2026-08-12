@@ -237,6 +237,8 @@ fun ConnectionSettingsContent(
     prefSrc: String,
     edcbPlayMethod: String,
     smbServerList: List<SmbServer>,
+    honomiUserName: String?,
+    onHonomiAccountClick: () -> Unit,
     onAddSmbServer: () -> Unit,
     onSmbServerClick: (SmbServer) -> Unit,
     addSmbR: FocusRequester,
@@ -253,6 +255,7 @@ fun ConnectionSettingsContent(
     prefSrcR: FocusRequester,
     overrideIpR: FocusRequester,
     overridePortR: FocusRequester,
+    honomiAccountR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -354,7 +357,7 @@ fun ConnectionSettingsContent(
                     .focusProperties {
                         left = sidebarR; up = backendIpR;
                         down =
-                            if (backendType == "EDCB") edcbHttpPortR else if (backendType != "MIRAKURUN_ONLY") prefSrcR else addSmbR
+                            if (backendType == "EDCB") edcbHttpPortR else if (backendType == "KONOMITV") honomiAccountR else addSmbR
                     },
                 onClick = { onClick(backendPortR); onEdit(portTitle, currentPort) }
             )
@@ -377,6 +380,22 @@ fun ConnectionSettingsContent(
 
             if (currentIp.isBlank() || currentPort.isBlank()) {
                 ValidationErrorText("メインシステムのIPアドレスまたはポート番号が未設定です。\n番組情報の取得や録画機能が正常に動作しません。")
+            }
+        }
+
+        if (backendType == "KONOMITV") {
+            SettingsSection("HonomiTV アカウント") {
+                SettingItem(
+                    title = if (honomiUserName == null) "ログイン" else "ログアウト",
+                    value = honomiUserName ?: "再生履歴を同期",
+                    icon = Icons.Default.AccountCircle,
+                    modifier = Modifier.focusRequester(honomiAccountR).focusProperties {
+                        left = sidebarR
+                        up = backendPortR
+                        down = prefSrcR
+                    },
+                    onClick = { onClick(honomiAccountR); onHonomiAccountClick() },
+                )
             }
         }
 
@@ -416,7 +435,7 @@ fun ConnectionSettingsContent(
                         .focusRequester(prefSrcR)
                         .focusProperties {
                             left = sidebarR
-                            up = if (backendType == "EDCB") edcbPlayMethodR else backendPortR
+                            up = if (backendType == "EDCB") edcbPlayMethodR else if (backendType == "KONOMITV") honomiAccountR else backendPortR
                             down = if (hasOverride) overrideIpR else addSmbR
                         },
                     onClick = { onClick(prefSrcR); onSelectSrc() }
