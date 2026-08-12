@@ -60,15 +60,15 @@ class KonomiRepository @Inject constructor(
      * 連携状態・90% 判定・重複排除は HonomiTV が一元管理します。
      */
     suspend fun updateBangumiPlaybackProgress(videoId: Int, positionSeconds: Double, durationSeconds: Double) {
-        // 未取得なら一度だけユーザー情報を読み込み、未連携ユーザーでは 422 を繰り返さない。
-        if (_currentUser.value == null) {
-            _currentUser.value = apiService.getCurrentUser()
-        }
-        if (_currentUser.value?.bangumi_user_id == null) return
-        apiService.updateBangumiPlaybackProgress(
+        val response = apiService.updateBangumiPlaybackProgress(
             videoId,
             BangumiPlaybackProgressRequest(positionSeconds, durationSeconds),
         )
+        // 422 は Bangumi 未連携または同期対象外なので、この再生中は終端として扱う。
+        // 一時的なサーバーエラーだけ例外にし、プレイヤーの次回更新で再送できるようにする。
+        if (response.isSuccessful.not() && response.code() != 422) {
+            error("Bangumi playback progress update failed (HTTP ${response.code()})")
+        }
     }
 
     // ==========================================
