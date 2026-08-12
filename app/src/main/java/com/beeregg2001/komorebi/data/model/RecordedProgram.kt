@@ -28,8 +28,12 @@ data class SeriesProgram(
 data class RecordedProgram(
     val id: Int,
     val title: String,
+    @SerializedName("series_id") val seriesId: Int? = null,
+    @SerializedName("series_broadcast_period_id") val seriesBroadcastPeriodId: Int? = null,
     @SerializedName(value = "series_name", alternate = ["seriesName", "series_title"])
     val seriesName: String? = null,
+    @SerializedName("episode_number") val episodeNumber: String? = null,
+    val subtitle: String? = null,
     val isEpisodic: Boolean? = false,
     val description: String,
     val detail: Map<String, String>? = null,

@@ -72,6 +72,13 @@ data class SeriesInfo(
     val apiThumbnailUrl: String? = null
 )
 
+data class ExpandedSeriesState(
+    val seriesId: Int? = null,
+    val isLoading: Boolean = false,
+    val programs: List<RecordedProgram> = emptyList(),
+    val errorMessage: String? = null,
+)
+
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class RecordViewModel @Inject constructor(
@@ -146,6 +153,9 @@ class RecordViewModel @Inject constructor(
     private val _groupedSeries = MutableStateFlow<Map<String, List<SeriesInfo>>>(emptyMap())
     val groupedSeries: StateFlow<Map<String, List<SeriesInfo>>> = _groupedSeries.asStateFlow()
 
+    private val _expandedSeries = MutableStateFlow(ExpandedSeriesState())
+    val expandedSeries: StateFlow<ExpandedSeriesState> = _expandedSeries.asStateFlow()
+
     private val _groupedChannels =
         MutableStateFlow<Map<String, List<Pair<String, String>>>>(emptyMap())
     val groupedChannels: StateFlow<Map<String, List<Pair<String, String>>>> =
@@ -155,6 +165,7 @@ class RecordViewModel @Inject constructor(
     private var streamMaintenanceJob: Job? = null
     private var onlineChannelIndexJob: Job? = null
     private var onlineFilterIndexJob: Job? = null
+    private var expandedSeriesJob: Job? = null
 
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
@@ -308,11 +319,50 @@ class RecordViewModel @Inject constructor(
     }
 
     fun updateSeriesGenre(genre: String?) {
+        collapseSeries()
         _selectedSeriesGenre.value = genre
+    }
+
+    fun toggleSeries(seriesId: Int) {
+        if (_expandedSeries.value.seriesId == seriesId) {
+            collapseSeries()
+            return
+        }
+
+        expandedSeriesJob?.cancel()
+        _expandedSeries.value = ExpandedSeriesState(seriesId = seriesId, isLoading = true)
+        expandedSeriesJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val programs = mutableListOf<RecordedProgram>()
+                var page = 1
+                var total = Int.MAX_VALUE
+                while (programs.size < total) {
+                    val response = recordProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
+                    total = response.total
+                    if (response.recordedPrograms.isEmpty()) break
+                    programs += response.recordedPrograms
+                    page++
+                }
+                _expandedSeries.value = ExpandedSeriesState(seriesId = seriesId, programs = programs)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load expanded series", e)
+                _expandedSeries.value = ExpandedSeriesState(
+                    seriesId = seriesId,
+                    errorMessage = "シリーズの録画番組を取得できませんでした",
+                )
+            }
+        }
+    }
+
+    fun collapseSeries() {
+        expandedSeriesJob?.cancel()
+        expandedSeriesJob = null
+        _expandedSeries.value = ExpandedSeriesState()
     }
 
     fun updateCategory(category: RecordCategory) {
         if (_selectedCategory.value == category) return
+        collapseSeries()
         when (category) {
             RecordCategory.CHANNEL -> ensureOnlineChannels()
             RecordCategory.GENRE, RecordCategory.SERIES -> loadOnlineFilterIndexes()

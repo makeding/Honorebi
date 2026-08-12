@@ -170,6 +170,7 @@ fun RecordListScreen(
     val selectedDay by viewModel.selectedDay.collectAsState()
     val availableGenres by viewModel.availableGenres.collectAsState()
     val groupedSeries by viewModel.groupedSeries.collectAsState()
+    val expandedSeries by viewModel.expandedSeries.collectAsState()
 
     // ★ 追加: ViewModelからソート状態を取得
     val sortType by viewModel.sortType.collectAsState()
@@ -439,6 +440,11 @@ fun RecordListScreen(
 
     val handleBackPress: () -> Unit = {
         when {
+            expandedSeries.seriesId != null -> {
+                val representativeId = focusedSeries?.representativeVideoId
+                viewModel.collapseSeries()
+                if (representativeId != null) ticketManager.issue(FocusTicket.TARGET_ID, representativeId)
+            }
             menuState.isDetailActive -> {
                 menuState.isDetailActive = false
                 if (lastKnownFocusedId != null) {
@@ -539,7 +545,9 @@ fun RecordListScreen(
                                     seriesList = list,
                                     konomiIp = konomiIp,
                                     konomiPort = konomiPort,
-                                    onSeriesClick = { executeSearch(it) },
+                                    expandedSeries = expandedSeries,
+                                    onSeriesClick = { series -> series.seriesId?.let(viewModel::toggleSeries) },
+                                    onProgramClick = onProgramClick,
                                     onOpenNavPane = handleOpenNavPane,
                                     isListView = true,
                                     firstItemFocusRequester = focuses.firstItem,
@@ -622,7 +630,9 @@ fun RecordListScreen(
                                     seriesList = list,
                                     konomiIp = konomiIp,
                                     konomiPort = konomiPort,
-                                    onSeriesClick = { executeSearch(it) },
+                                    expandedSeries = expandedSeries,
+                                    onSeriesClick = { series -> series.seriesId?.let(viewModel::toggleSeries) },
+                                    onProgramClick = onProgramClick,
                                     onOpenNavPane = handleOpenNavPane,
                                     firstItemFocusRequester = focuses.firstItem,
                                     contentContainerFocusRequester = focuses.contentContainer,

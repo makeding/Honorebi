@@ -6,11 +6,14 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +41,8 @@ import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
+import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.viewmodel.ExpandedSeriesState
 import com.beeregg2001.komorebi.viewmodel.SeriesInfo
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
@@ -54,7 +59,9 @@ fun RecordSeriesGridContent(
     konomiIp: String,
     konomiPort: String,
     settingViewModel: SettingsViewModel = hiltViewModel(),
-    onSeriesClick: (String) -> Unit,
+    expandedSeries: ExpandedSeriesState,
+    onSeriesClick: (SeriesInfo) -> Unit,
+    onProgramClick: (RecordedProgram, Double?) -> Unit,
     onOpenNavPane: () -> Unit,
     firstItemFocusRequester: FocusRequester,
     contentContainerFocusRequester: FocusRequester,
@@ -105,54 +112,50 @@ fun RecordSeriesGridContent(
             .focusGroup()
             .simpleGridVerticalScrollbar(state = gridState, color = colors.textPrimary)
     ) {
-        itemsIndexed(seriesList) { index, series ->
-            var isFocused by remember { mutableStateOf(false) }
-            val specificRequester = remember { FocusRequester() }
+        seriesList.chunked(4).forEachIndexed { rowIndex, row ->
+            row.forEachIndexed { columnIndex, series ->
+                val index = rowIndex * 4 + columnIndex
+                item(key = "series:${series.seriesId ?: series.representativeVideoId}") {
+                    var isFocused by remember { mutableStateOf(false) }
+                    val specificRequester = remember { FocusRequester() }
+                    val isExpanded = expandedSeries.seriesId == series.seriesId
 
-            LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                val ticket = ticketManager.currentTicket
-                if (ticket == FocusTicket.TARGET_ID && series.representativeVideoId == ticketManager.targetProgramId) {
-                    specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_SeriesGrid")
-                    ticketManager.consume(FocusTicket.TARGET_ID)
-                }
-            }
+                    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+                        val ticket = ticketManager.currentTicket
+                        if (ticket == FocusTicket.TARGET_ID && series.representativeVideoId == ticketManager.targetProgramId) {
+                            specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_SeriesGrid")
+                            ticketManager.consume(FocusTicket.TARGET_ID)
+                        }
+                    }
 
-            val itemModifier = Modifier
-                .aspectRatio(16f / 9f)
-                .focusRequester(specificRequester)
-                .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
-                .onFocusChanged {
-                    isFocused = it.isFocused
-                    if (it.isFocused) {
-                        onFocusedSeriesChanged(series)
-                    }
-                }
-                .focusProperties {
-                    if (index < 4) {
-                        up = upFocusTarget
-                    }
-                    if (index % 4 == 0) {
-                        left = FocusRequester.Cancel
-                    }
-                }
-                .onKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown) {
-                        if (event.key == Key.DirectionLeft && index % 4 == 0) {
-                            if (!isScrollInProgress) {
-                                onOpenNavPane()
+                    val itemModifier = Modifier
+                        .aspectRatio(16f / 9f)
+                        .focusRequester(specificRequester)
+                        .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
+                        .onFocusChanged {
+                            isFocused = it.isFocused
+                            if (it.isFocused) onFocusedSeriesChanged(series)
+                        }
+                        .focusProperties {
+                            if (index < 4) up = upFocusTarget
+                            if (index % 4 == 0) left = FocusRequester.Cancel
+                        }
+                        .onKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown) {
+                                if (event.key == Key.DirectionLeft && index % 4 == 0) {
+                                    if (!isScrollInProgress) onOpenNavPane()
+                                    return@onKeyEvent true
+                                }
+                                if (event.key == Key.Back || event.key == Key.Escape) {
+                                    onBackPress()
+                                    return@onKeyEvent true
+                                }
                             }
-                            return@onKeyEvent true
+                            false
                         }
-                        if (event.key == Key.Back || event.key == Key.Escape) {
-                            onBackPress()
-                            return@onKeyEvent true
-                        }
-                    }
-                    false
-                }
 
-            Surface(
-                onClick = { onSeriesClick(series.searchKeyword) }, modifier = itemModifier,
+                    Surface(
+                onClick = { onSeriesClick(series) }, modifier = itemModifier,
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = colors.surface, focusedContainerColor = colors.surface
@@ -221,6 +224,36 @@ fun RecordSeriesGridContent(
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
+                    )
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (isExpanded) "閉じる" else "エピソードを表示",
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = 7.dp)
+                            .size(22.dp)
+                            .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(11.dp)),
+                        tint = if (isExpanded) colors.accent else Color.White,
+                    )
+                }
+            }
+                }
+            }
+
+            val expanded = row.firstOrNull { it.seriesId == expandedSeries.seriesId }
+            if (expanded != null) {
+                item(
+                    key = "expanded:${expanded.seriesId}",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
+                    SeriesEpisodeMatrixContent(
+                        title = expanded.displayTitle,
+                        state = expandedSeries,
+                        konomiIp = konomiIp,
+                        konomiPort = konomiPort,
+                        onProgramClick = onProgramClick,
+                        onOpenNavPane = onOpenNavPane,
+                        onBackPress = onBackPress,
                     )
                 }
             }

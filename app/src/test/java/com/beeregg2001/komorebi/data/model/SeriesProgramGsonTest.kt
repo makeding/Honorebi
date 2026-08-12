@@ -34,4 +34,41 @@ class SeriesProgramGsonTest {
         assertEquals("https://example.com/", series.officialWebsiteUrl)
         assertEquals(456, series.bangumiSubjectId)
     }
+
+    @Test
+    fun recordedProgramSeriesFields_areDeserializedFromCurrentHonomiContract() {
+        val program = Gson().fromJson(
+            """
+                {
+                  "id": 901,
+                  "title": "作品名 #7",
+                  "series_id": 123,
+                  "series_broadcast_period_id": 456,
+                  "series_title": "作品名",
+                  "episode_number": "7",
+                  "subtitle": "旅立ち",
+                  "description": "",
+                  "start_time": "2026-08-12T22:00:00+09:00",
+                  "end_time": "2026-08-12T22:30:00+09:00",
+                  "duration": 1800.0,
+                  "is_partially_recorded": false,
+                  "recorded_video": {
+                    "id": 901,
+                    "status": "Recorded",
+                    "file_path": "sample.ts",
+                    "duration": 1800.0,
+                    "container_format": "MPEG-TS",
+                    "video_codec": "H.264",
+                    "primary_audio_codec": "AAC"
+                  }
+                }
+            """.trimIndent(),
+            RecordedProgram::class.java,
+        )
+
+        assertEquals(123, program.seriesId)
+        assertEquals(456, program.seriesBroadcastPeriodId)
+        assertEquals("7", program.episodeNumber)
+        assertEquals("旅立ち", program.subtitle)
+    }
 }

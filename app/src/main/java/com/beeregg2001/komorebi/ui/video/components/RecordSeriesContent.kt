@@ -12,7 +12,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,6 +40,8 @@ import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
+import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.viewmodel.ExpandedSeriesState
 import com.beeregg2001.komorebi.viewmodel.SeriesInfo
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import androidx.compose.ui.draw.drawWithContent
@@ -55,7 +58,9 @@ fun RecordSeriesContent(
     konomiIp: String,
     konomiPort: String,
     settingViewModel: SettingsViewModel = hiltViewModel(),
-    onSeriesClick: (String) -> Unit,
+    expandedSeries: ExpandedSeriesState,
+    onSeriesClick: (SeriesInfo) -> Unit,
+    onProgramClick: (RecordedProgram, Double?) -> Unit,
     onOpenNavPane: () -> Unit,
     isListView: Boolean,
     firstItemFocusRequester: FocusRequester,
@@ -124,6 +129,7 @@ fun RecordSeriesContent(
         ) {
             itemsIndexed(seriesList) { index, series ->
                 var isFocused by remember { mutableStateOf(false) }
+                val isExpanded = expandedSeries.seriesId == series.seriesId
 
                 // ★ 修正: 保持用のマップから FocusRequester を取得する
                 val specificRequester =
@@ -137,11 +143,10 @@ fun RecordSeriesContent(
                     }
                 }
 
-                Surface(
-                    onClick = { onSeriesClick(series.searchKeyword) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
+                Column {
+                    Surface(
+                    onClick = { onSeriesClick(series) },
+                    modifier = Modifier.fillMaxWidth().height(64.dp)
                         .focusRequester(specificRequester)
                         .then(if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier)
                         .onFocusChanged {
@@ -241,18 +246,27 @@ fun RecordSeriesContent(
                                 )
                             }
                         }
-                        if (isFocused) {
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .padding(end = 8.dp)
-                                    .size(24.dp),
-                                tint = if (colors.isDark) Color.Black.copy(alpha = 0.7f) else Color.White.copy(
-                                    alpha = 0.7f
-                                )
-                            )
-                        }
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (isExpanded) "閉じる" else "エピソードを表示",
+                            modifier = Modifier.padding(end = 10.dp).size(24.dp),
+                            tint = if (isFocused) {
+                                if (colors.isDark) Color.Black else Color.White
+                            } else if (isExpanded) colors.accent else colors.textSecondary,
+                        )
+                    }
+                }
+                    if (isExpanded) {
+                        Spacer(Modifier.height(8.dp))
+                        SeriesEpisodeMatrixContent(
+                            title = series.displayTitle,
+                            state = expandedSeries,
+                            konomiIp = konomiIp,
+                            konomiPort = konomiPort,
+                            onProgramClick = onProgramClick,
+                            onOpenNavPane = onOpenNavPane,
+                            onBackPress = onBackPress,
+                        )
                     }
                 }
             }
