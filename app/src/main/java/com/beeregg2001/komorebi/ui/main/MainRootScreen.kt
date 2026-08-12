@@ -84,6 +84,10 @@ fun MainRootScreen(
                         state.enterRecorded(program, (command.positionSeconds * 1_000).toLong())
                     }
                 }
+                HonomiRemoteCommand.Play,
+                HonomiRemoteCommand.Pause,
+                HonomiRemoteCommand.Stop,
+                is HonomiRemoteCommand.SeekRelative -> Unit
             }
         }
     }
@@ -603,7 +607,15 @@ fun MainRootScreen(
     }
 
     KomorebiTheme(theme = currentTheme) {
-        RootSystemMediaSessionHost(playbackSessionEpoch = state.playbackSessionEpoch) {
+        RootSystemMediaSessionHost(
+            playbackSessionEpoch = state.playbackSessionEpoch,
+            remoteContentType = when {
+                state.livePlayback != null -> "Live"
+                state.recordedPlayback != null -> "Recorded"
+                else -> "Idle"
+            },
+            remoteControlClient = remoteControlViewModel.client,
+        ) {
             val colors = KomorebiTheme.colors
             val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
 

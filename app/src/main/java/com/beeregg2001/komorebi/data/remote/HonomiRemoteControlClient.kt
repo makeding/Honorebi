@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.data.remote
 
 import android.os.Build
+import android.provider.Settings
 import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import com.google.gson.Gson
@@ -28,6 +29,10 @@ import java.util.concurrent.TimeUnit
 sealed interface HonomiRemoteCommand {
     data class OpenLive(val displayChannelId: String) : HonomiRemoteCommand
     data class OpenRecording(val recordedProgramId: Int, val positionSeconds: Double) : HonomiRemoteCommand
+    data object Play : HonomiRemoteCommand
+    data object Pause : HonomiRemoteCommand
+    data object Stop : HonomiRemoteCommand
+    data class SeekRelative(val deltaSeconds: Double) : HonomiRemoteCommand
 }
 
 internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCommand? = runCatching {
@@ -40,6 +45,10 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
             recordedProgramId = command.get("recorded_program_id").asInt,
             positionSeconds = command.get("position_seconds")?.asDouble ?: 0.0,
         )
+        "Play" -> HonomiRemoteCommand.Play
+        "Pause" -> HonomiRemoteCommand.Pause
+        "Stop" -> HonomiRemoteCommand.Stop
+        "SeekRelative" -> HonomiRemoteCommand.SeekRelative(command.get("delta_seconds").asDouble)
         else -> null
     }
 }.getOrNull()
@@ -47,6 +56,7 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
 /** HonomiTV Server と接続し、選択されたこのテレビ宛ての操作だけを配信する。 */
 @Singleton
 class HonomiRemoteControlClient @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     okHttpClient: OkHttpClient,
     private val gson: Gson,
     private val sessionStore: HonomiSessionStore,
@@ -57,6 +67,28 @@ class HonomiRemoteControlClient @Inject constructor(
     private val _commands = MutableSharedFlow<HonomiRemoteCommand>(extraBufferCapacity = 16)
     val commands: SharedFlow<HonomiRemoteCommand> = _commands.asSharedFlow()
     private var connectionJob: Job? = null
+    @Volatile private var activeWebSocket: WebSocket? = null
+
+    /** 現在の再生状態を HonomiTV の接続先選択・操作メニューへ通知する。 */
+    fun sendState(
+        contentType: String,
+        isPlaying: Boolean = false,
+        isBuffering: Boolean = false,
+        positionSeconds: Double? = null,
+        durationSeconds: Double? = null,
+        canSeek: Boolean = false,
+    ) {
+        val state = JsonObject().apply {
+            addProperty("type", "State")
+            addProperty("content_type", contentType)
+            addProperty("is_playing", isPlaying)
+            addProperty("is_buffering", isBuffering)
+            addProperty("can_seek", canSeek)
+            positionSeconds?.let { addProperty("position_seconds", it) }
+            durationSeconds?.let { addProperty("duration_seconds", it) }
+        }
+        activeWebSocket?.send(gson.toJson(state))
+    }
 
     /** ルート画面の寿命に合わせて接続を開始する。同じ画面からの重複開始は無視する。 */
     fun start(scope: CoroutineScope) {
@@ -71,7 +103,9 @@ class HonomiRemoteControlClient @Inject constructor(
 
                 val completed = CompletableDeferred<Unit>()
                 val deviceId = sessionStore.remoteDeviceId()
-                val deviceName = listOf(Build.MANUFACTURER, Build.MODEL)
+                val configuredDeviceName = Settings.Global.getString(context.contentResolver, "device_name")
+                    ?: Settings.Secure.getString(context.contentResolver, "bluetooth_name")
+                val deviceName = configuredDeviceName?.takeIf { it.isNotBlank() } ?: listOf(Build.MANUFACTURER, Build.MODEL)
                     .filter { it.isNotBlank() }
                     .joinToString(" ")
                     .ifBlank { "Komorebi TV" }
@@ -86,7 +120,8 @@ class HonomiRemoteControlClient @Inject constructor(
                     .build()
                 val webSocket = webSocketClient.newWebSocket(request, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
-                        webSocket.send("{\"type\":\"State\",\"content_type\":\"Idle\"}")
+                        activeWebSocket = webSocket
+                        sendState(contentType = "Idle")
                     }
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
@@ -105,6 +140,7 @@ class HonomiRemoteControlClient @Inject constructor(
                 try {
                     completed.await()
                 } finally {
+                    if (activeWebSocket === webSocket) activeWebSocket = null
                     webSocket.cancel()
                 }
                 delay(RECONNECT_DELAY_MILLISECONDS)

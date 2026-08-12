@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Looper
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.C
 import androidx.media3.session.MediaSession
 import com.beeregg2001.komorebi.MainActivity
 
@@ -135,6 +136,44 @@ internal class SystemMediaSessionController(context: Context) {
         releaseSession()
     }
 
+    fun play() {
+        requireMainLooper()
+        session?.player?.play()
+    }
+
+    fun pause() {
+        requireMainLooper()
+        session?.player?.pause()
+    }
+
+    fun stop() {
+        requireMainLooper()
+        session?.player?.stop()
+    }
+
+    fun seekRelative(deltaMilliseconds: Long) {
+        requireMainLooper()
+        val player = session?.player ?: return
+        if (!player.isCurrentMediaItemSeekable) return
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 }
+        val target = player.currentPosition + deltaMilliseconds
+        player.seekTo(if (duration == null) target.coerceAtLeast(0) else target.coerceIn(0, duration))
+    }
+
+    fun playbackState(): RemotePlaybackState? {
+        requireMainLooper()
+        val player = session?.player ?: return null
+        val position = player.currentPosition.takeIf { it >= 0 }
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 }
+        return RemotePlaybackState(
+            isPlaying = player.isPlaying,
+            isBuffering = player.playbackState == Player.STATE_BUFFERING,
+            positionSeconds = position?.div(1_000.0),
+            durationSeconds = duration?.div(1_000.0),
+            canSeek = player.isCurrentMediaItemSeekable,
+        )
+    }
+
     private fun sessionActivity(): PendingIntent = PendingIntent.getActivity(
         appContext,
         0,
@@ -155,3 +194,11 @@ internal class SystemMediaSessionController(context: Context) {
         }
     }
 }
+
+internal data class RemotePlaybackState(
+    val isPlaying: Boolean,
+    val isBuffering: Boolean,
+    val positionSeconds: Double?,
+    val durationSeconds: Double?,
+    val canSeek: Boolean,
+)
