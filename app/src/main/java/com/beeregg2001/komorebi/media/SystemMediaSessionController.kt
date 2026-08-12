@@ -4,9 +4,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Looper
+import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.common.C
 import androidx.media3.session.MediaSession
 import com.beeregg2001.komorebi.MainActivity
 
@@ -83,6 +83,8 @@ internal class SystemMediaSessionController(context: Context) {
         isLoading: Boolean,
         onPrevious: () -> Unit,
         onNext: () -> Unit,
+        onSeekRelative: (Long) -> Unit,
+        canSeekRelative: Boolean,
         onStop: () -> Unit,
         hasPrevious: Boolean,
         hasNext: Boolean,
@@ -103,6 +105,8 @@ internal class SystemMediaSessionController(context: Context) {
                 forceLoading = isLoading,
                 onPrevious = onPrevious,
                 onNext = onNext,
+                onSeekRelative = onSeekRelative,
+                canSeekRelative = canSeekRelative,
                 onStop = onStop,
                 hasPrevious = hasPrevious,
                 hasNext = hasNext,
@@ -153,11 +157,9 @@ internal class SystemMediaSessionController(context: Context) {
 
     fun seekRelative(deltaMilliseconds: Long) {
         requireMainLooper()
-        val player = session?.player ?: return
-        if (!player.isCurrentMediaItemSeekable) return
-        val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 }
-        val target = player.currentPosition + deltaMilliseconds
-        player.seekTo(if (duration == null) target.coerceAtLeast(0) else target.coerceIn(0, duration))
+        val player = session?.player as? SystemSessionPlayer ?: return
+        if (!player.canSeekRelative) return
+        player.seekRelative(deltaMilliseconds)
     }
 
     fun playbackState(): RemotePlaybackState? {
@@ -166,11 +168,14 @@ internal class SystemMediaSessionController(context: Context) {
         val position = player.currentPosition.takeIf { it >= 0 }
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0 }
         return RemotePlaybackState(
+            title = player.mediaMetadata.title?.toString(),
+            subtitle = player.mediaMetadata.subtitle?.toString(),
+            artworkUrl = player.mediaMetadata.artworkUri?.toString(),
             isPlaying = player.isPlaying,
             isBuffering = player.playbackState == Player.STATE_BUFFERING,
             positionSeconds = position?.div(1_000.0),
             durationSeconds = duration?.div(1_000.0),
-            canSeek = player.isCurrentMediaItemSeekable,
+            canSeek = (player as? SystemSessionPlayer)?.canSeekRelative == true && player.isCurrentMediaItemSeekable,
         )
     }
 
@@ -196,6 +201,9 @@ internal class SystemMediaSessionController(context: Context) {
 }
 
 internal data class RemotePlaybackState(
+    val title: String?,
+    val subtitle: String?,
+    val artworkUrl: String?,
     val isPlaying: Boolean,
     val isBuffering: Boolean,
     val positionSeconds: Double?,

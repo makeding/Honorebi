@@ -47,6 +47,9 @@ fun RootSystemMediaSessionHost(
             val state = controller.playbackState()
             remoteControlClient.sendState(
                 contentType = if (state == null) "Idle" else remoteContentType,
+                title = state?.title,
+                subtitle = state?.subtitle,
+                artworkUrl = state?.artworkUrl,
                 isPlaying = state?.isPlaying ?: false,
                 isBuffering = state?.isBuffering ?: false,
                 positionSeconds = state?.positionSeconds,

@@ -72,6 +72,9 @@ class HonomiRemoteControlClient @Inject constructor(
     /** 現在の再生状態を HonomiTV の接続先選択・操作メニューへ通知する。 */
     fun sendState(
         contentType: String,
+        title: String? = null,
+        subtitle: String? = null,
+        artworkUrl: String? = null,
         isPlaying: Boolean = false,
         isBuffering: Boolean = false,
         positionSeconds: Double? = null,
@@ -81,6 +84,9 @@ class HonomiRemoteControlClient @Inject constructor(
         val state = JsonObject().apply {
             addProperty("type", "State")
             addProperty("content_type", contentType)
+            title?.let { addProperty("title", it) }
+            subtitle?.let { addProperty("subtitle", it) }
+            artworkUrl?.let { addProperty("artwork_url", it) }
             addProperty("is_playing", isPlaying)
             addProperty("is_buffering", isBuffering)
             addProperty("can_seek", canSeek)

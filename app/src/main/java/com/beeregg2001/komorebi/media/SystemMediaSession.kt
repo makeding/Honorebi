@@ -41,6 +41,7 @@ fun SystemMediaSession(
     isLoading: Boolean = player == null,
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
+    onSeekRelative: ((Long) -> Unit)? = null,
     onStop: (() -> Unit)? = null
 ) {
     val context = LocalContext.current.applicationContext
@@ -48,9 +49,11 @@ fun SystemMediaSession(
     val epoch = LocalSystemMediaSessionEpoch.current
     val currentOnPrevious = rememberUpdatedState(onPrevious)
     val currentOnNext = rememberUpdatedState(onNext)
+    val currentOnSeekRelative = rememberUpdatedState(onSeekRelative)
     val currentOnStop = rememberUpdatedState(onStop)
     val hasPrevious = onPrevious != null
     val hasNext = onNext != null
+    val canSeekRelative = onSeekRelative != null
     val artworkDataState = androidx.compose.runtime.remember(artworkUrl) {
         androidx.compose.runtime.mutableStateOf<ByteArray?>(null)
     }
@@ -67,16 +70,15 @@ fun SystemMediaSession(
             .setMediaType(mediaType)
             .setIsPlayable(true)
             .apply {
+                setArtworkUri(artworkUrl.toArtworkUriOrNull())
                 if (artworkData != null) {
                     setArtworkData(artworkData!!, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                } else {
-                    setArtworkUri(artworkUrl.toArtworkUriOrNull())
                 }
             }
             .build()
     }
 
-    DisposableEffect(controller, epoch, player, metadata, hasPrevious, hasNext, isLoading) {
+    DisposableEffect(controller, epoch, player, metadata, hasPrevious, hasNext, canSeekRelative, isLoading) {
         // A null player is an expected handoff/preparing state. The root-owned
         // controller intentionally retains its previous MediaSession instead
         // of replacing it with a short-lived platform session.
@@ -87,6 +89,8 @@ fun SystemMediaSession(
             isLoading = isLoading,
             onPrevious = { currentOnPrevious.value?.invoke() },
             onNext = { currentOnNext.value?.invoke() },
+            onSeekRelative = { deltaMilliseconds -> currentOnSeekRelative.value?.invoke(deltaMilliseconds) },
+            canSeekRelative = canSeekRelative,
             onStop = { currentOnStop.value?.invoke() },
             hasPrevious = hasPrevious,
             hasNext = hasNext,
@@ -180,10 +184,14 @@ internal class SystemSessionPlayer(
     private val forceLoading: Boolean,
     private val onPrevious: () -> Unit,
     private val onNext: () -> Unit,
+    private val onSeekRelative: (Long) -> Unit,
+    internal val canSeekRelative: Boolean,
     private val onStop: () -> Unit,
     private val hasPrevious: Boolean,
     private val hasNext: Boolean
 ) : ForwardingPlayer(player) {
+
+    internal fun seekRelative(deltaMilliseconds: Long) = onSeekRelative(deltaMilliseconds)
 
     override fun getMediaMetadata(): MediaMetadata = metadata
 

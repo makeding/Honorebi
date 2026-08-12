@@ -1594,6 +1594,9 @@ fun VideoPlayerScreen(
         onNext = nextSeriesProgram?.let { target ->
             { onProgramSelect(target, RecordedProgramSelectionReason.NextEpisode) }
         },
+        onSeekRelative = { deltaMilliseconds ->
+            performSeek(getEffectivePositionMs() + deltaMilliseconds)
+        },
         onStop = onBackPressed
     )
     LaunchedEffect(nextSeriesProgram?.id) {
