@@ -27,11 +27,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalTime
 import androidx.compose.runtime.collectAsState
 import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
+import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -47,12 +49,44 @@ fun MainRootScreen(
     recordViewModel: RecordViewModel,
     reserveViewModel: ReserveViewModel = hiltViewModel(),
     aiConciergeViewModel: AiConciergeViewModel = hiltViewModel(),
+    remoteControlViewModel: RemoteControlViewModel = hiltViewModel(),
     homeIntentVersion: Int = 0,
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = rememberMainRootState()
+
+    // HonomiTV Web クライアントで選択されたライブ放送・録画番組を、既存の再生状態へ直接引き渡す。
+    // 再生開始後の操作は既存の Android MediaSession / Cast 経路へ任せ、独自制御を重複実装しない。
+    LaunchedEffect(remoteControlViewModel) {
+        remoteControlViewModel.client.commands.collect { command ->
+            when (command) {
+                is HonomiRemoteCommand.OpenLive -> {
+                    val findChannel = {
+                        channelViewModel.groupedChannels.value.values.flatten()
+                            .firstOrNull { it.displayChannelId == command.displayChannelId }
+                    }
+                    val channel = findChannel() ?: run {
+                        channelViewModel.fetchChannels()
+                        withTimeoutOrNull(10_000) {
+                            while (findChannel() == null) delay(100)
+                            findChannel()
+                        }
+                    }
+                    channel?.let {
+                        state.enterLive(it)
+                        homeViewModel.saveLastChannel(it)
+                    }
+                }
+                is HonomiRemoteCommand.OpenRecording -> {
+                    recordViewModel.getRemoteProgram(command.recordedProgramId)?.let { program ->
+                        state.enterRecorded(program, (command.positionSeconds * 1_000).toLong())
+                    }
+                }
+            }
+        }
+    }
 
     // =========================================================================================
     // ★ 追加: アプリのバックグラウンド移行（スリープ）と復帰を検知する機構

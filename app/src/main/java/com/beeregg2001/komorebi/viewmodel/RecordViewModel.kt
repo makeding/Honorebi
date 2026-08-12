@@ -190,6 +190,11 @@ class RecordViewModel @Inject constructor(
         _programDetail.value = null
     }
 
+    /** HonomiTV のリモート操作で指定された録画番組を、そのまま再生開始できる形で取得する。 */
+    suspend fun getRemoteProgram(videoId: Int): RecordedProgram? = withContext(Dispatchers.IO) {
+        recordProvider.getRecordedProgram(videoId).getOrNull()
+    }
+
     val recentRecordings: StateFlow<List<RecordedProgram>> = appContentStore.recentRecordings
     val localRecordedCount: StateFlow<Int> = programDao.getTotalCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)

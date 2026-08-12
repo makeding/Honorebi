@@ -470,6 +470,7 @@ fun HonomiLoginDialog(
                     pairing.userCode.chunked(4).joinToString(" "),
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                     style = MaterialTheme.typography.displaySmall,
+                    fontSize = 44.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 4.sp,
                 )

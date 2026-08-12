@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.UUID
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -23,6 +24,14 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
     private var cachedSession: HonomiSession? = load()
 
     fun current(): HonomiSession? = cachedSession
+
+    /** HonomiTV 側で複数台のテレビを区別する、インストール単位の固定 ID。 */
+    fun remoteDeviceId(): String {
+        preferences.getString(KEY_REMOTE_DEVICE_ID, null)?.let { return it }
+        val deviceId = UUID.randomUUID().toString()
+        preferences.edit().putString(KEY_REMOTE_DEVICE_ID, deviceId).apply()
+        return deviceId
+    }
 
     fun historyOwner(): String? = preferences.getString(KEY_HISTORY_OWNER, null)
 
@@ -100,5 +109,6 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
         const val KEY_USER_ID = "user_id"
         const val KEY_USER_NAME = "user_name"
         const val KEY_HISTORY_OWNER = "history_owner"
+        const val KEY_REMOTE_DEVICE_ID = "remote_device_id"
     }
 }
