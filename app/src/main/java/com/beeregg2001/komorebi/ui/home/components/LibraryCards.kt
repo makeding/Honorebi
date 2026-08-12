@@ -43,6 +43,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
 import com.beeregg2001.komorebi.viewmodel.SeriesInfo
+import com.beeregg2001.komorebi.ui.video.components.SeriesThumbnailCollage
 import kotlinx.coroutines.delay
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -394,29 +395,6 @@ fun VideoSeriesCard(
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
 
-    val fallbackUrl = series.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
-        backendType, konomiIp, konomiPort, series.representativeVideoId.toString()
-    )
-    val primaryUrl = series.directThumbnailUrl ?: fallbackUrl
-    var currentThumbnailUrl by remember(series.representativeVideoId, primaryUrl) {
-        mutableStateOf(
-            primaryUrl
-        )
-    }
-
-    val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
-        ImageRequest.Builder(context)
-            .data(currentThumbnailUrl)
-            .crossfade(true)
-            .memoryCacheKey(currentThumbnailUrl)
-            .diskCacheKey(currentThumbnailUrl)
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-            .networkCachePolicy(if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
-            .build()
-    }
-
     Surface(
         onClick = onClick,
         modifier = modifier
@@ -437,18 +415,15 @@ fun VideoSeriesCard(
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            SeriesThumbnailCollage(
+                series = series,
+                backendType = backendType,
+                konomiIp = konomiIp,
+                konomiPort = konomiPort,
                 modifier = Modifier
                     .fillMaxSize()
                     .alpha(if (isFocused) 0.8f else 0.4f),
-                onError = {
-                    if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
-                        currentThumbnailUrl = fallbackUrl
-                    }
-                }
+                allowNetworkImages = allowNetworkImages,
             )
             Box(
                 modifier = Modifier

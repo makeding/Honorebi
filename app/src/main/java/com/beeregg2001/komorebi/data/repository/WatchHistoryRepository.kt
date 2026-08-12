@@ -67,8 +67,9 @@ class WatchHistoryRepository @Inject constructor(
         val session = sessionStore.current() ?: return
         val previousOwner = sessionStore.historyOwner()
         if (previousOwner != null && !sessionStore.isHistoryOwner(session)) {
+            val remoteItems = apiService.getSyncedWatchHistory().items
             watchHistoryDao.clearAll()
-            applyRemoteHistory(apiService.getSyncedWatchHistory().items)
+            applyRemoteHistory(remoteItems)
             sessionStore.markHistoryOwner(session)
             return
         }

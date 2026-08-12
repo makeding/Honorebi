@@ -17,12 +17,12 @@ data class SeriesProgram(
     val title: String,
     val description: String = "",
     val genres: List<EpgGenre>? = null,
-    @SerializedName("broadcast_periods") val broadcastPeriods: List<SeriesBroadcastPeriod> = emptyList()
-)
-
-data class SeriesBroadcastPeriod(
-    val channel: RecordedChannel? = null,
-    @SerializedName("recorded_programs") val recordedPrograms: List<RecordedProgram> = emptyList()
+    @SerializedName("thumbnail_recorded_program_ids") val thumbnailRecordedProgramIds: List<Int> = emptyList(),
+    @SerializedName("official_website_url") val officialWebsiteUrl: String? = null,
+    @SerializedName("bangumi_subject_id") val bangumiSubjectId: Int? = null,
+    @SerializedName("recorded_programs_count") val recordedProgramsCount: Int = 0,
+    @SerializedName("created_at") val createdAt: String = "",
+    @SerializedName("updated_at") val updatedAt: String = ""
 )
 
 data class RecordedProgram(

@@ -65,6 +65,8 @@ data class SeriesInfo(
     val searchKeyword: String,
     val programCount: Int,
     val representativeVideoId: Int,
+    val description: String = "",
+    val thumbnailVideoIds: List<Int> = emptyList(),
     val isEpisodic: Boolean = false,
     val directThumbnailUrl: String? = null,
     val apiThumbnailUrl: String? = null
@@ -560,10 +562,7 @@ class RecordViewModel @Inject constructor(
                     val response = recordProvider.getSeriesList(page = page, order = "desc")
                     val seriesList = response.seriesList
                     seriesList.forEach { series ->
-                        val programs = series.broadcastPeriods.flatMap { it.recordedPrograms }
-                        val representative = programs.firstOrNull()
                         val majorGenre = series.genres?.firstOrNull()?.major
-                            ?: representative?.genres?.firstOrNull()?.major
                             ?: "その他"
                         genresSet.add(majorGenre)
                         grouped.getOrPut(majorGenre) { mutableListOf() }.add(
@@ -571,11 +570,12 @@ class RecordViewModel @Inject constructor(
                                 seriesId = series.id,
                                 displayTitle = series.title,
                                 searchKeyword = "series:${series.id}",
-                                programCount = programs.size.coerceAtLeast(1),
-                                representativeVideoId = representative?.id ?: series.id,
+                                programCount = series.recordedProgramsCount,
+                                representativeVideoId = series.thumbnailRecordedProgramIds.firstOrNull()
+                                    ?: series.id,
+                                description = series.description,
+                                thumbnailVideoIds = series.thumbnailRecordedProgramIds,
                                 isEpisodic = true,
-                                directThumbnailUrl = representative?.directThumbnailUrl,
-                                apiThumbnailUrl = representative?.apiThumbnailUrl
                             )
                         )
                     }

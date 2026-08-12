@@ -540,22 +540,25 @@ fun VideoTabContent(
                                         series = series,
                                         konomiIp = konomiIp,
                                         konomiPort = konomiPort,
-                                        onClick = { recordViewModel.searchRecordings(series.displayTitle); onShowAllRecordings() },
+                                        onClick = { recordViewModel.searchRecordings(series.searchKeyword); onShowAllRecordings() },
                                         onFocus = {
                                             focusedProgramId = null
-                                            val fallbackUrl = series.apiThumbnailUrl
+                                            val heroVideoId = series.thumbnailVideoIds.firstOrNull()
+                                                ?: series.representativeVideoId
+                                            val primaryUrl = series.directThumbnailUrl
+                                                ?: series.apiThumbnailUrl
                                                 ?: UrlBuilder.getThumbnailUrl(
                                                     backendType,
                                                     konomiIp,
                                                     konomiPort,
-                                                    series.representativeVideoId.toString()
+                                                    heroVideoId.toString()
                                                 )
-                                            val primaryUrl =
-                                                series.directThumbnailUrl ?: fallbackUrl
                                             pendingHeroInfo = HomeHeroInfo(
                                                 title = series.displayTitle,
                                                 subtitle = "録画エピソード: ${series.programCount}件",
-                                                description = "「${series.displayTitle}」の録画一覧を表示します。",
+                                                description = series.description.ifBlank {
+                                                    "「${series.displayTitle}」の録画一覧を表示します。"
+                                                },
                                                 imageUrl = primaryUrl,
                                                 isThumbnail = true,
                                                 tag = "シリーズ"

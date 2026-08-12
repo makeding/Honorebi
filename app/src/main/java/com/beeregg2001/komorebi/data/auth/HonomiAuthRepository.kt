@@ -64,7 +64,7 @@ class HonomiAuthRepository @Inject constructor(
                 .build()
             val user = loginClient.newCall(userRequest).execute().use { response ->
                 if (!response.isSuccessful) error("アカウント情報を確認できませんでした (HTTP ${response.code})")
-                gson.fromJson(response.body?.charStream(), KonomiUser::class.java)
+                gson.fromJson(response.body.charStream(), KonomiUser::class.java)
             }
             HonomiSession(canonicalOrigin(origin), token, user.id, user.name).also {
                 sessionStore.save(it)

@@ -168,30 +168,12 @@ fun RecordSeriesGridContent(
                 )
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val fallbackUrl = series.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
-                        backendType,
-                        konomiIp,
-                        konomiPort,
-                        series.representativeVideoId.toString()
-                    )
-                    val primaryUrl = series.directThumbnailUrl ?: fallbackUrl
-                    var currentThumbnailUrl by remember(
-                        series.representativeVideoId,
-                        primaryUrl
-                    ) { mutableStateOf(primaryUrl) }
-
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(currentThumbnailUrl)
-                            .crossfade(true).build(),
-                        contentDescription = null,
+                    SeriesThumbnailCollage(
+                        series = series,
+                        backendType = backendType,
+                        konomiIp = konomiIp,
+                        konomiPort = konomiPort,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        onError = {
-                            if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
-                                currentThumbnailUrl = fallbackUrl
-                            }
-                        }
                     )
                     Box(
                         modifier = Modifier
