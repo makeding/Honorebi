@@ -14,6 +14,7 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
+import com.beeregg2001.komorebi.ui.video.player.policy.selectNaturalEpisodePrograms
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import com.google.gson.Gson
@@ -98,6 +99,8 @@ class VideoPlayerViewModel @Inject constructor(
     private var streamMaintenanceJob: Job? = null
     private var quickVideoFetchJob: Job? = null
     private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
+    private var quickSeriesIdentity: String? = null
+    private var preferredQuickSeriesChannelId: String? = null
 
     fun fetchAvailableQualities(program: RecordedProgram? = null) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -304,6 +307,11 @@ class VideoPlayerViewModel @Inject constructor(
     ) {
         val seriesTitle = quickSeriesDisplayTitle(program)
         val seriesKey = normalizeQuickSeriesKey(seriesTitle)
+        val seriesIdentity = program.seriesId?.let { "series:$it" } ?: seriesKey
+        if (quickSeriesIdentity != seriesIdentity) {
+            quickSeriesIdentity = seriesIdentity
+            preferredQuickSeriesChannelId = program.channel?.id
+        }
         val cacheKey = seriesKey.ifBlank { "program:${program.id}" }
         val now = System.currentTimeMillis()
         val localCandidates = QuickVideoCandidates(
@@ -414,6 +422,20 @@ class VideoPlayerViewModel @Inject constructor(
         seriesTitle: String,
         seriesKey: String
     ): List<RecordedProgram> {
+        program.seriesId?.let { seriesId ->
+            val programs = mutableListOf<RecordedProgram>()
+            var page = 1
+            var total = Int.MAX_VALUE
+            while (programs.size < total) {
+                val response = recordProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
+                total = response.total
+                if (response.recordedPrograms.isEmpty()) break
+                programs += response.recordedPrograms
+                page++
+            }
+            return programs
+        }
+
         val keywords = listOf(
             seriesTitle,
             program.seriesName?.trim().orEmpty(),
@@ -445,7 +467,9 @@ class VideoPlayerViewModel @Inject constructor(
         seriesKey: String,
         seriesTitle: String
     ): List<RecordedProgram> =
-        (listOf(program) + candidates)
+        selectNaturalEpisodePrograms(
+            currentProgram = program,
+            candidates = (listOf(program) + candidates)
             .distinctBy { it.id }
             .filter { candidate ->
                 val candidateTitle = quickSeriesDisplayTitle(candidate)
@@ -453,8 +477,9 @@ class VideoPlayerViewModel @Inject constructor(
                 candidate.id == program.id ||
                         (seriesKey.isNotBlank() && candidateKey == seriesKey) ||
                         (seriesTitle.isNotBlank() && candidate.title.contains(seriesTitle))
-            }
-            .sortedByDescending { it.startTime }
+            },
+            preferredChannelId = preferredQuickSeriesChannelId,
+        )
             .take(QUICK_VIDEO_LIMIT)
 
     private fun buildRecentProgramList(

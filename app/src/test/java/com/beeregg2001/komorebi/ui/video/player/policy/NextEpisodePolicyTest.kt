@@ -24,6 +24,46 @@ class NextEpisodePolicyTest {
     }
 
     @Test
+    fun naturalEpisodeNavigationKeepsEntryChannelPreferenceWithoutRepeatingAnEpisode() {
+        val mx = channel("NID15-SID23608", "TOKYO MX1")
+        val bs11 = channel("NID4-SID211", "BS11イレブン")
+        val current = program(id = 50, episodeNumber = "5", channel = mx)
+        val selected = selectNaturalEpisodePrograms(
+            currentProgram = current,
+            candidates = listOf(
+                current,
+                program(id = 41, episodeNumber = "4", channel = bs11),
+                program(id = 31, episodeNumber = "3", channel = bs11),
+                program(id = 30, episodeNumber = "3", channel = mx),
+                program(id = 20, episodeNumber = "2", channel = mx),
+            ),
+            preferredChannelId = mx.id,
+        )
+
+        assertEquals(listOf(50, 41, 30, 20), selected.map { it.id })
+    }
+
+    @Test
+    fun fallbackChannelDoesNotReplaceTheOriginalPreference() {
+        val mx = channel("NID15-SID23608", "TOKYO MX1")
+        val bs11 = channel("NID4-SID211", "BS11イレブン")
+        val currentFallback = program(id = 41, episodeNumber = "4", channel = bs11)
+        val selected = selectNaturalEpisodePrograms(
+            currentProgram = currentFallback,
+            candidates = listOf(
+                currentFallback,
+                program(id = 31, episodeNumber = "3", channel = bs11),
+                program(id = 30, episodeNumber = "3", channel = mx),
+                program(id = 21, episodeNumber = "2", channel = bs11),
+                program(id = 20, episodeNumber = "2", channel = mx),
+            ),
+            preferredChannelId = mx.id,
+        )
+
+        assertEquals(listOf(41, 30, 20), selected.map { it.id })
+    }
+
+    @Test
     fun atxThirtyMinuteRecordingUsesFixedTwentySixMinuteTrigger() {
         val channel = RecordedChannel("CS333", serviceId = 333, displayChannelId = "CS333", type = "CS", name = "AT-X", channelNumber = "333")
 
@@ -61,19 +101,30 @@ class NextEpisodePolicyTest {
     }
 
     private fun program(
+        id: Int = 1,
+        episodeNumber: String? = null,
         channel: RecordedChannel? = null,
         genres: List<EpgGenre>? = null
     ) = RecordedProgram(
-        id = 1,
+        id = id,
         title = "test",
+        episodeNumber = episodeNumber,
         description = "",
         startTime = "2026-01-01T00:00:00+09:00",
         endTime = "2026-01-01T00:30:00+09:00",
         duration = 30 * 60.0,
         isPartiallyRecorded = false,
         channel = channel,
-        recordedVideo = RecordedVideo(1, "Recorded", "/test.ts", duration = 30 * 60.0, containerFormat = "MPEG-TS", videoCodec = "H.264", audioCodec = "AAC"),
+        recordedVideo = RecordedVideo(id, "Recorded", "/test.ts", duration = 30 * 60.0, containerFormat = "MPEG-TS", videoCodec = "H.264", audioCodec = "AAC"),
         genres = genres
+    )
+
+    private fun channel(id: String, name: String) = RecordedChannel(
+        id = id,
+        displayChannelId = id,
+        type = "BS",
+        name = name,
+        channelNumber = "1",
     )
 
     private fun comment(time: Double, text: String = "comment") =

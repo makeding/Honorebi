@@ -33,6 +33,40 @@ fun normalizeQuickSeriesKey(value: String): String =
         .replace(Regex("[\\s　]+"), "")
         .lowercase()
 
+fun selectNaturalEpisodePrograms(
+    currentProgram: RecordedProgram,
+    candidates: List<RecordedProgram>,
+    preferredChannelId: String?,
+): List<RecordedProgram> {
+    val currentEpisode = parsePrimaryEpisodeNumber(currentProgram.episodeNumber) ?: return candidates
+        .distinctBy { it.id }
+        .sortedByDescending { it.startTime }
+
+    return (listOf(currentProgram) + candidates)
+        .distinctBy { it.id }
+        .mapNotNull { candidate ->
+            parsePrimaryEpisodeNumber(candidate.episodeNumber)?.let { episode -> episode to candidate }
+        }
+        .groupBy({ it.first }, { it.second })
+        .mapValues { (episode, programs) ->
+            when {
+                episode == currentEpisode -> programs.firstOrNull { it.id == currentProgram.id }
+                preferredChannelId != null -> programs.firstOrNull { it.channel?.id == preferredChannelId }
+                else -> null
+            } ?: programs.minBy { it.startTime }
+        }
+        .toSortedMap(compareByDescending { it })
+        .values
+        .toList()
+}
+
+private fun parsePrimaryEpisodeNumber(value: String?): Double? =
+    value
+        ?.substringBefore('・')
+        ?.substringBefore('-')
+        ?.trim()
+        ?.toDoubleOrNull()
+
 fun isNextEpisodeLandingEligible(program: RecordedProgram): Boolean =
     program.genres.orEmpty().any { genre ->
         val label = "${genre.major} ${genre.middle}".lowercase()
