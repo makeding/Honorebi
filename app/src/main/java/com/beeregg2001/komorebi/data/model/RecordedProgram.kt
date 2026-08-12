@@ -18,8 +18,13 @@ data class SeriesProgram(
     val description: String = "",
     val genres: List<EpgGenre>? = null,
     @SerializedName("thumbnail_recorded_program_ids") val thumbnailRecordedProgramIds: List<Int> = emptyList(),
+    @SerializedName("channel_ids") val channelIds: List<String> = emptyList(),
     @SerializedName("official_website_url") val officialWebsiteUrl: String? = null,
     @SerializedName("bangumi_subject_id") val bangumiSubjectId: Int? = null,
+    @SerializedName("bangumi_subject_name") val bangumiSubjectName: String? = null,
+    @SerializedName("bangumi_subject_name_cn") val bangumiSubjectNameCn: String? = null,
+    @SerializedName("bangumi_subject_summary") val bangumiSubjectSummary: String? = null,
+    @SerializedName("bangumi_subject_image_url") val bangumiSubjectImageUrl: String? = null,
     @SerializedName("recorded_programs_count") val recordedProgramsCount: Int = 0,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = ""

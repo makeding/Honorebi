@@ -85,6 +85,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDeci
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingAutomationDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingTimelineDurationMs
+import com.beeregg2001.komorebi.ui.video.player.policy.isBangumiPlaybackProgressEligible
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
@@ -1000,6 +1001,20 @@ fun VideoPlayerScreen(
                 nativePlayerDurationMs = playbackDurationMs,
             )
         }
+
+    LaunchedEffect(currentProgram.id, trustedPlaybackEndDurationMs, playbackPositionMs) {
+        if (
+            smbItem == null &&
+            !isRecordingChasePlayback &&
+            isBangumiPlaybackProgressEligible(playbackPositionMs, trustedPlaybackEndDurationMs)
+        ) {
+            videoPlayerViewModel.reportBangumiPlaybackProgress(
+                currentProgram.id,
+                playbackPositionMs,
+                trustedPlaybackEndDurationMs,
+            )
+        }
+    }
 
     LaunchedEffect(isSubMenuOpen, currentProgram.id) {
         if (!isSubMenuOpen) openQuickVideosOnSubMenuOpen = false

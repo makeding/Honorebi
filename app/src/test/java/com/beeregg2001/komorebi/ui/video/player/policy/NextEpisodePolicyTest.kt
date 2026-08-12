@@ -64,6 +64,40 @@ class NextEpisodePolicyTest {
     }
 
     @Test
+    fun completeRecordingWinsOverPreferredChannelPartialRecording() {
+        val mx = channel("NID15-SID23608", "TOKYO MX1")
+        val bs11 = channel("NID4-SID211", "BS11イレブン")
+        val current = program(id = 50, episodeNumber = "5", channel = mx)
+
+        val selected = selectNaturalEpisodePrograms(
+            currentProgram = current,
+            candidates = listOf(
+                current,
+                program(id = 40, episodeNumber = "4", channel = mx, isPartiallyRecorded = true),
+                program(id = 41, episodeNumber = "4", channel = bs11),
+            ),
+            preferredChannelId = mx.id,
+        )
+
+        assertEquals(listOf(50, 41), selected.map { it.id })
+    }
+
+    @Test
+    fun longerPartialRecordingWinsWhenNoCompleteRecordingExists() {
+        val short = program(id = 1, isPartiallyRecorded = true, recordedDuration = 600.0)
+        val long = program(id = 2, isPartiallyRecorded = true, recordedDuration = 1200.0)
+
+        assertEquals(2, selectPreferredEpisodeRecording(listOf(short, long))?.id)
+    }
+
+    @Test
+    fun bangumiProgressRequiresTrustedDurationAndNinetyPercentPlayback() {
+        assertFalse(isBangumiPlaybackProgressEligible(1_000L, 0L))
+        assertFalse(isBangumiPlaybackProgressEligible(899_999L, 1_000_000L))
+        assertTrue(isBangumiPlaybackProgressEligible(900_000L, 1_000_000L))
+    }
+
+    @Test
     fun atxThirtyMinuteRecordingUsesFixedTwentySixMinuteTrigger() {
         val channel = RecordedChannel("CS333", serviceId = 333, displayChannelId = "CS333", type = "CS", name = "AT-X", channelNumber = "333")
 
@@ -104,7 +138,9 @@ class NextEpisodePolicyTest {
         id: Int = 1,
         episodeNumber: String? = null,
         channel: RecordedChannel? = null,
-        genres: List<EpgGenre>? = null
+        genres: List<EpgGenre>? = null,
+        isPartiallyRecorded: Boolean = false,
+        recordedDuration: Double = 30 * 60.0,
     ) = RecordedProgram(
         id = id,
         title = "test",
@@ -113,9 +149,9 @@ class NextEpisodePolicyTest {
         startTime = "2026-01-01T00:00:00+09:00",
         endTime = "2026-01-01T00:30:00+09:00",
         duration = 30 * 60.0,
-        isPartiallyRecorded = false,
+        isPartiallyRecorded = isPartiallyRecorded,
         channel = channel,
-        recordedVideo = RecordedVideo(id, "Recorded", "/test.ts", duration = 30 * 60.0, containerFormat = "MPEG-TS", videoCodec = "H.264", audioCodec = "AAC"),
+        recordedVideo = RecordedVideo(id, "Recorded", "/test.ts", duration = recordedDuration, containerFormat = "MPEG-TS", videoCodec = "H.264", audioCodec = "AAC"),
         genres = genres
     )
 

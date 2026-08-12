@@ -49,16 +49,36 @@ fun selectNaturalEpisodePrograms(
         }
         .groupBy({ it.first }, { it.second })
         .mapValues { (episode, programs) ->
-            when {
-                episode == currentEpisode -> programs.firstOrNull { it.id == currentProgram.id }
-                preferredChannelId != null -> programs.firstOrNull { it.channel?.id == preferredChannelId }
-                else -> null
-            } ?: programs.minBy { it.startTime }
+            if (episode == currentEpisode) {
+                programs.firstOrNull { it.id == currentProgram.id }
+            } else {
+                selectPreferredEpisodeRecording(programs, preferredChannelId)
+            } ?: programs.first()
         }
         .toSortedMap(compareByDescending { it })
         .values
         .toList()
 }
+
+/**
+ * 同じ自然話数の録画から、実際に視聴する一件を選びます。
+ * 完全録画を最優先し、同条件なら視聴開始時のチャンネル、実録画時間、新しい録画の順に選びます。
+ */
+fun selectPreferredEpisodeRecording(
+    programs: List<RecordedProgram>,
+    preferredChannelId: String? = null,
+): RecordedProgram? = programs.maxWithOrNull(
+    compareBy<RecordedProgram>(
+        { !it.isPartiallyRecorded },
+        { preferredChannelId != null && it.channel?.id == preferredChannelId },
+        { it.recordedVideo.duration },
+        { it.startTime },
+        { it.id },
+    ),
+)
+
+fun isBangumiPlaybackProgressEligible(positionMs: Long, trustedDurationMs: Long): Boolean =
+    trustedDurationMs > 0L && positionMs >= trustedDurationMs * 9L / 10L
 
 private fun parsePrimaryEpisodeNumber(value: String?): Double? =
     value

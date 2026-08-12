@@ -16,6 +16,12 @@ interface KonomiApi {
     @PUT("api/settings/client/watched-history")
     suspend fun updateSyncedWatchHistory(@Body request: WatchedHistoryPayload): WatchedHistoryPayload
 
+    @POST("api/bangumi/videos/{videoId}/progress")
+    suspend fun updateBangumiPlaybackProgress(
+        @Path("videoId") videoId: Int,
+        @Body request: BangumiPlaybackProgressRequest,
+    ): Response<Unit>
+
     // --- チャンネル ---
     @GET("api/channels")
     suspend fun getChannels(): ChannelApiResponse

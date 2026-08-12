@@ -32,7 +32,28 @@ class SeriesEpisodeMatrixContentTest {
         assertEquals(listOf(4, 4, 4), matrix.rows.single().programs.map { it?.id })
     }
 
-    private fun program(id: Int, episodeNumber: String, channelId: String, channelName: String) = RecordedProgram(
+    @Test
+    fun matrix_prefersCompleteRecordingThenLongerPartialRecording() {
+        val matrix = buildSeriesEpisodeMatrix(
+            listOf(
+                program(1, "3", "channel-a", "放送局 A", isPartiallyRecorded = true, recordedDuration = 1_000.0),
+                program(2, "3", "channel-a", "放送局 A", recordedDuration = 600.0),
+                program(3, "4", "channel-a", "放送局 A", isPartiallyRecorded = true, recordedDuration = 300.0),
+                program(4, "4", "channel-a", "放送局 A", isPartiallyRecorded = true, recordedDuration = 500.0),
+            ),
+        )
+
+        assertEquals(listOf(2, 4), matrix.rows.single().programs.map { it?.id })
+    }
+
+    private fun program(
+        id: Int,
+        episodeNumber: String,
+        channelId: String,
+        channelName: String,
+        isPartiallyRecorded: Boolean = false,
+        recordedDuration: Double = 1800.0,
+    ) = RecordedProgram(
         id = id,
         title = "作品 第${episodeNumber}話",
         episodeNumber = episodeNumber,
@@ -40,8 +61,8 @@ class SeriesEpisodeMatrixContentTest {
         startTime = "2026-08-12T22:00:00+09:00",
         endTime = "2026-08-12T22:30:00+09:00",
         duration = 1800.0,
-        isPartiallyRecorded = false,
+        isPartiallyRecorded = isPartiallyRecorded,
         channel = RecordedChannel(channelId, null, null, channelId, "BS", channelName, "1"),
-        recordedVideo = RecordedVideo(id, "Recorded", "sample.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC"),
+        recordedVideo = RecordedVideo(id, "Recorded", "sample.ts", null, null, recordedDuration, "MPEG-TS", "H.264", "AAC"),
     )
 }

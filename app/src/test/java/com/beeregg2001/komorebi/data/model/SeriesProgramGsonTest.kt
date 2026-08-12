@@ -17,8 +17,13 @@ class SeriesProgramGsonTest {
                     "description": "作品紹介",
                     "genres": [{"major": "アニメ・特撮", "middle": "国内アニメ"}],
                     "thumbnail_recorded_program_ids": [901, 872, 841],
+                    "channel_ids": ["NID4-SID211"],
                     "official_website_url": "https://example.com/",
                     "bangumi_subject_id": 456,
+                    "bangumi_subject_name": "作品名",
+                    "bangumi_subject_name_cn": "作品名 中文",
+                    "bangumi_subject_summary": "Bangumi 介绍",
+                    "bangumi_subject_image_url": "https://example.com/image.jpg",
                     "recorded_programs_count": 12,
                     "created_at": "2026-08-12T00:00:00+09:00",
                     "updated_at": "2026-08-12T01:00:00+09:00"
@@ -31,8 +36,13 @@ class SeriesProgramGsonTest {
         val series = response.seriesList.single()
         assertEquals(12, series.recordedProgramsCount)
         assertEquals(listOf(901, 872, 841), series.thumbnailRecordedProgramIds)
+        assertEquals(listOf("NID4-SID211"), series.channelIds)
         assertEquals("https://example.com/", series.officialWebsiteUrl)
         assertEquals(456, series.bangumiSubjectId)
+        assertEquals("作品名", series.bangumiSubjectName)
+        assertEquals("作品名 中文", series.bangumiSubjectNameCn)
+        assertEquals("Bangumi 介绍", series.bangumiSubjectSummary)
+        assertEquals("https://example.com/image.jpg", series.bangumiSubjectImageUrl)
     }
 
     @Test

@@ -5,6 +5,15 @@ data class KonomiUser(
     val name: String,
     val is_admin: Boolean = false,
     val pinned_channel_ids: List<String> = emptyList(),
+    val bangumi_user_id: Int? = null,
+    val bangumi_user_name: String? = null,
+    val bangumi_user_nickname: String? = null,
+    val bangumi_user_avatar_url: String? = null,
+)
+
+data class BangumiPlaybackProgressRequest(
+    val playback_position: Double,
+    val duration: Double,
 )
 
 data class UserAccessToken(

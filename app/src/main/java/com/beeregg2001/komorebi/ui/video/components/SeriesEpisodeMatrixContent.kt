@@ -31,6 +31,7 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.video.player.policy.selectPreferredEpisodeRecording
 import com.beeregg2001.komorebi.viewmodel.ExpandedSeriesState
 
 data class SeriesEpisodeSlot(
@@ -79,7 +80,11 @@ fun buildSeriesEpisodeMatrix(programs: List<RecordedProgram>): SeriesEpisodeMatr
     val rows = programs.groupBy { it.channel?.id ?: "unknown" }.values.map { channelPrograms ->
         val programsBySlot = mutableMapOf<String, RecordedProgram>()
         channelPrograms.forEach { program ->
-            getEpisodeSlots(program).forEach { slot -> programsBySlot.putIfAbsent(slot.key, program) }
+            getEpisodeSlots(program).forEach { slot ->
+                programsBySlot[slot.key] = selectPreferredEpisodeRecording(
+                    listOfNotNull(programsBySlot[slot.key], program),
+                ) ?: program
+            }
         }
         SeriesEpisodeChannelRow(
             channelId = channelPrograms.first().channel?.id,

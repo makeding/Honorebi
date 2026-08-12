@@ -469,8 +469,9 @@ fun HonomiLoginDialog(
                 if (pairing != null) Text(
                     pairing.userCode.chunked(4).joinToString(" "),
                     modifier = Modifier.align(Alignment.CenterHorizontally),
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
+                    letterSpacing = 4.sp,
                 )
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {

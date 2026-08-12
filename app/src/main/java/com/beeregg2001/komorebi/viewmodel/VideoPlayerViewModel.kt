@@ -11,6 +11,7 @@ import com.beeregg2001.komorebi.data.model.CmSection
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.data.repository.KonomiRepository
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
@@ -49,7 +50,8 @@ data class QuickVideoCandidates(
 class VideoPlayerViewModel @Inject constructor(
     private val recordProvider: RecordProvider,
     private val historyRepository: WatchHistoryRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val konomiRepository: KonomiRepository,
 ) : ViewModel() {
 
     companion object {
@@ -101,6 +103,26 @@ class VideoPlayerViewModel @Inject constructor(
     private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
     private var quickSeriesIdentity: String? = null
     private var preferredQuickSeriesChannelId: String? = null
+    private var bangumiProgressReportedProgramId: Int? = null
+
+    fun reportBangumiPlaybackProgress(programId: Int, positionMs: Long, durationMs: Long) {
+        if (bangumiProgressReportedProgramId == programId) return
+        bangumiProgressReportedProgramId = programId
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                konomiRepository.updateBangumiPlaybackProgress(
+                    programId,
+                    positionMs / 1000.0,
+                    durationMs / 1000.0,
+                )
+            }.onFailure { error ->
+                if (bangumiProgressReportedProgramId == programId) {
+                    bangumiProgressReportedProgramId = null
+                }
+                Log.w(TAG, "Failed to update Bangumi playback progress. [video_id=$programId]", error)
+            }
+        }
+    }
 
     fun fetchAvailableQualities(program: RecordedProgram? = null) {
         viewModelScope.launch(Dispatchers.IO) {
