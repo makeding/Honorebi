@@ -61,7 +61,9 @@ class KonomiRepository @Inject constructor(
      */
     suspend fun updateBangumiPlaybackProgress(videoId: Int, positionSeconds: Double, durationSeconds: Double) {
         // 未取得なら一度だけユーザー情報を読み込み、未連携ユーザーでは 422 を繰り返さない。
-        if (_currentUser.value == null) refreshUser()
+        if (_currentUser.value == null) {
+            _currentUser.value = apiService.getCurrentUser()
+        }
         if (_currentUser.value?.bangumi_user_id == null) return
         apiService.updateBangumiPlaybackProgress(
             videoId,
