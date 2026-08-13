@@ -51,6 +51,7 @@ fun MainRootScreen(
     aiConciergeViewModel: AiConciergeViewModel = hiltViewModel(),
     remoteControlViewModel: RemoteControlViewModel = hiltViewModel(),
     homeIntentVersion: Int = 0,
+    onRemotePlaybackOpened: () -> Unit = {},
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
@@ -75,12 +76,14 @@ fun MainRootScreen(
                         }
                     }
                     channel?.let {
+                        onRemotePlaybackOpened()
                         state.enterLive(it)
                         homeViewModel.saveLastChannel(it)
                     }
                 }
                 is HonomiRemoteCommand.OpenRecording -> {
                     recordViewModel.getRemoteProgram(command.recordedProgramId)?.let { program ->
+                        onRemotePlaybackOpened()
                         state.enterRecorded(program, (command.positionSeconds * 1_000).toLong())
                     }
                 }
