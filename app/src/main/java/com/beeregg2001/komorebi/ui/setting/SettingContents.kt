@@ -705,8 +705,12 @@ fun PlaybackSettingsContent(
             )
 
             SettingItem(
-                title = "自動CMスキップ",
-                value = if (autoCmSkip == "ON") "有効" else "無効",
+                title = "CMスキップ",
+                value = when (autoCmSkip) {
+                    "MANUAL" -> "手動（決定ボタン）"
+                    "AUTO" -> "自動"
+                    else -> "オフ"
+                },
                 icon = Icons.Default.FastForward,
                 modifier = Modifier
                     .focusRequester(autoCmSkipR)

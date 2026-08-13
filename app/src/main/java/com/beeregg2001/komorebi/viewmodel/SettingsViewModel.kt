@@ -10,6 +10,7 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.local.AppDatabase
 import com.beeregg2001.komorebi.data.sync.RecordSyncEngine
 import com.beeregg2001.komorebi.data.model.StreamQuality
+import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
@@ -450,6 +451,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateEpgVisibleHours(value: String) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(SettingsRepository.EPG_VISIBLE_HOURS, value)
+    }
+
+    fun setCmSkipMode(mode: CmSkipMode) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.AUTO_CM_SKIP, mode.name)
     }
 
     fun updateBackendType(newType: String) = viewModelScope.launch(Dispatchers.IO) {

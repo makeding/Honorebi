@@ -58,6 +58,7 @@ import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.main.RecordedSwitchToken
@@ -211,6 +212,9 @@ fun VideoPlayerScreen(
     var hdrModeResumePositionMs by remember(currentProgram.id) {
         mutableStateOf<Long?>(null)
     }
+    var armedManualCmSkipTargetMs by remember(currentProgram.id) {
+        mutableStateOf<Long?>(null)
+    }
     val requiresRawMmtsPlayback = currentProgram.requiresRawMmtsPlayback
     val isHdrRenderModeSupported =
         requiresRawMmtsPlayback && videoPlayerViewModel.isHdrToSdrToneMappingSupported
@@ -284,9 +288,7 @@ fun VideoPlayerScreen(
     }
 
     val autoCmSkipStr by settingsViewModel.autoCmSkip.collectAsState()
-    LaunchedEffect(autoCmSkipStr) {
-        vs.isAutoCmSkipEnabled = (autoCmSkipStr == "ON")
-    }
+    val cmSkipMode = CmSkipMode.fromPreference(autoCmSkipStr)
 
     LaunchedEffect(
         availableQualities,
@@ -839,7 +841,9 @@ fun VideoPlayerScreen(
         }.coerceAtLeast(0L)
     }
 
-    val playbackStatePollIntervalMs = if (showControls || isSeekingPreviewVisible) {
+    val playbackStatePollIntervalMs = if (
+        showControls || isSeekingPreviewVisible || cmSkipMode == CmSkipMode.MANUAL
+    ) {
         ACTIVE_PLAYBACK_STATE_POLL_MS
     } else {
         IDLE_PLAYBACK_STATE_POLL_MS
@@ -1140,10 +1144,10 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(vs.isAutoCmSkipEnabled, chapters) {
+    LaunchedEffect(cmSkipMode, chapters) {
         var hasWarnedEmptyChapters = false
         while (isActive) {
-            if (vs.isAutoCmSkipEnabled && exoPlayer.isPlaying) {
+            if (cmSkipMode == CmSkipMode.AUTO && exoPlayer.isPlaying) {
                 if (chapters.isNotEmpty()) {
                     val currentPos = getCurrentPositionMs()
                     val cmChapter =
@@ -1762,6 +1766,40 @@ fun VideoPlayerScreen(
                     vs.lastInteractionTime = System.currentTimeMillis()
                 }
 
+                val isConfirmKey = keyEvent.nativeKeyEvent.keyCode in listOf(
+                    android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                    android.view.KeyEvent.KEYCODE_ENTER
+                )
+                val manualSkipTargetMs = manualCmSkipTargetMs(
+                    mode = cmSkipMode,
+                    currentPositionMs = getEffectivePositionMs(),
+                    chapters = chapters,
+                    interactionBlocked = showControls ||
+                        isSubOverlayOpen ||
+                        isDataBroadcastingActive ||
+                        showNextEpisodeCountdown ||
+                        vs.lCropMode != LCropMode.HIDDEN
+                )
+                if (isConfirmKey) {
+                    if (
+                        keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                        manualSkipTargetMs != null
+                    ) {
+                        armedManualCmSkipTargetMs = manualSkipTargetMs
+                        return@onPreviewKeyEvent true
+                    }
+                    if (
+                        keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
+                        armedManualCmSkipTargetMs != null
+                    ) {
+                        val targetMs = armedManualCmSkipTargetMs
+                        armedManualCmSkipTargetMs = null
+                        performSeek(targetMs!!)
+                        onShowToast("CMをスキップしました")
+                        return@onPreviewKeyEvent true
+                    }
+                }
+
                 vs.handleKeyEvent(
                     keyEvent = keyEvent,
                     isPiPMode = isPiPMode,
@@ -1933,6 +1971,25 @@ fun VideoPlayerScreen(
             )
 
             val nextCountdownProgram = nextSeriesProgram
+            val showManualCmSkipPrompt = manualCmSkipTargetMs(
+                mode = cmSkipMode,
+                currentPositionMs = getEffectivePositionMs(),
+                chapters = chapters,
+                interactionBlocked = showControls ||
+                    isSubOverlayOpen ||
+                    isDataBroadcastingActive ||
+                    showNextEpisodeCountdown ||
+                    vs.lCropMode != LCropMode.HIDDEN
+            ) != null
+            AnimatedVisibility(
+                visible = showManualCmSkipPrompt,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                ManualCmSkipPrompt()
+            }
+
             if (nextCountdownProgram != null) {
                 AnimatedVisibility(
                     visible = showNextEpisodeCountdown && !isSubOverlayOpen,
@@ -2053,7 +2110,7 @@ fun VideoPlayerScreen(
                     currentQuality = vs.currentQuality,
                     isCommentEnabled = vs.isCommentEnabled,
                     isLCropEnabled = vs.lCropEnabled,
-                    isAutoCmSkipEnabled = vs.isAutoCmSkipEnabled,
+                    cmSkipMode = cmSkipMode,
                     availableQualities = availableQualities,
                     onAudioToggle = {
                         // Stateを変更するだけ。実際の適用は VideoPlayerManager の LaunchedEffect が検知して行います。
@@ -2143,11 +2200,10 @@ fun VideoPlayerScreen(
                                 0f; vs.lCropY = 0f; vs.lCropOrigin = ZoomOrigin.TopRight
                         }
                     },
-                    onAutoCmSkipToggle = {
-                        vs.isAutoCmSkipEnabled = !vs.isAutoCmSkipEnabled
-                        if (vs.isAutoCmSkipEnabled && chapters.size <= 1) onShowToast("チャプター情報がないためスキップできません") else onShowToast(
-                            "自動CMスキップ: ${if (vs.isAutoCmSkipEnabled) "ON" else "OFF"}"
-                        )
+                    onCmSkipModeToggle = {
+                        val nextMode = cmSkipMode.next()
+                        settingsViewModel.setCmSkipMode(nextMode)
+                        onShowToast("CMスキップ: ${nextMode.displayLabel}")
                     },
                     onClose = { isModernSettingsOpen = false }
                 )
@@ -2170,7 +2226,7 @@ fun VideoPlayerScreen(
                     currentQuality = vs.currentQuality,
                     isCommentEnabled = vs.isCommentEnabled,
                     isLCropEnabled = vs.lCropEnabled,
-                    isAutoCmSkipEnabled = vs.isAutoCmSkipEnabled,
+                    cmSkipMode = cmSkipMode,
                     hdrRenderMode = hdrRenderMode,
                     isHdrRenderModeSupported = isHdrRenderModeSupported,
                     isDataBroadcastingAvailable = isDataBroadcastingAvailable,
@@ -2272,11 +2328,10 @@ fun VideoPlayerScreen(
                                 0f; vs.lCropY = 0f; vs.lCropOrigin = ZoomOrigin.TopRight
                         }
                     },
-                    onAutoCmSkipToggle = {
-                        vs.isAutoCmSkipEnabled = !vs.isAutoCmSkipEnabled
-                        if (vs.isAutoCmSkipEnabled && chapters.size <= 1) onShowToast("チャプター情報がないためスキップできません") else onShowToast(
-                            "自動CMスキップ: ${if (vs.isAutoCmSkipEnabled) "ON" else "OFF"}"
-                        )
+                    onCmSkipModeToggle = {
+                        val nextMode = cmSkipMode.next()
+                        settingsViewModel.setCmSkipMode(nextMode)
+                        onShowToast("CMスキップ: ${nextMode.displayLabel}")
                     },
                     onHdrRenderModeToggle = {
                         val nextMode = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {

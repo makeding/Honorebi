@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.beeregg2001.komorebi.data.model.CmSkipMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -20,6 +21,8 @@ private const val DEFAULT_STARTUP_TAB = "ホーム"
 
 internal fun normalizeStartupTab(value: String?): String =
     if (value == LEGACY_BASEBALL_STARTUP_TAB) DEFAULT_STARTUP_TAB else value ?: DEFAULT_STARTUP_TAB
+
+internal fun normalizeCmSkipMode(value: String?): String = CmSkipMode.fromPreference(value).name
 
 @Singleton
 class SettingsRepository @Inject constructor(
@@ -143,7 +146,7 @@ class SettingsRepository @Inject constructor(
     val hdrRenderMode: Flow<String> =
         context.dataStore.data.map { it[HDR_RENDER_MODE] ?: "ORIGINAL" }
     val playerUiMode: Flow<String> = context.dataStore.data.map { it[PLAYER_UI_MODE] ?: "CLASSIC" }
-    val autoCmSkip: Flow<String> = context.dataStore.data.map { it[AUTO_CM_SKIP] ?: "OFF" }
+    val autoCmSkip: Flow<String> = context.dataStore.data.map { normalizeCmSkipMode(it[AUTO_CM_SKIP]) }
     val preferOriginalMpegTs: Flow<String> =
         context.dataStore.data.map { it[PREFER_ORIGINAL_MPEG_TS] ?: "OFF" }
     val labAnnictIntegration: Flow<String> =

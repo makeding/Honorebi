@@ -94,6 +94,24 @@ fun VideoToast(messageState: Pair<String, Long>?) {
     }
 }
 
+@Composable
+fun ManualCmSkipPrompt() {
+    Box(
+        modifier = Modifier
+            .padding(end = 48.dp, bottom = 64.dp)
+            .background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+    ) {
+        Text(
+            text = "決定ボタンでCMをスキップ",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp
+        )
+    }
+}
+
 /**
  * ★ 追加: L字クロップ機能の設定・調整用オーバーレイ (録画視聴版)
  */

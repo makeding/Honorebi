@@ -45,6 +45,7 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
@@ -71,7 +72,7 @@ fun VideoTopSubMenuUI(
     currentQuality: StreamQuality,
     isCommentEnabled: Boolean,
     isLCropEnabled: Boolean,
-    isAutoCmSkipEnabled: Boolean,
+    cmSkipMode: CmSkipMode,
     hdrRenderMode: String,
     isHdrRenderModeSupported: Boolean,
     isDataBroadcastingAvailable: Boolean,
@@ -85,7 +86,7 @@ fun VideoTopSubMenuUI(
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
-    onAutoCmSkipToggle: () -> Unit,
+    onCmSkipModeToggle: () -> Unit,
     onHdrRenderModeToggle: () -> Unit,
     onDataBroadcastingToggle: () -> Unit,
     onVideoSelect: (RecordedProgram) -> Unit,
@@ -300,12 +301,12 @@ fun VideoTopSubMenuUI(
                 )
 
                 VideoMenuTileItem(
-                    title = "自動CMスキップ",
+                    title = "CMスキップ",
                     icon = Icons.Default.FastForward,
-                    subtitle = if (isAutoCmSkipEnabled) "有効" else "無効",
-                    onClick = onAutoCmSkipToggle,
+                    subtitle = cmSkipMode.displayLabel,
+                    onClick = onCmSkipModeToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                    contentColor = if (isAutoCmSkipEnabled) colors.accent else colors.textPrimary,
+                    contentColor = if (cmSkipMode != CmSkipMode.OFF) colors.accent else colors.textPrimary,
                     enabled = isAutoCmSkipSupported // ★ 適用
                 )
 
@@ -854,7 +855,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
     currentQuality: StreamQuality,
     isCommentEnabled: Boolean,
     isLCropEnabled: Boolean,
-    isAutoCmSkipEnabled: Boolean,
+    cmSkipMode: CmSkipMode,
     availableQualities: List<StreamQuality>,
     onAudioToggle: () -> Unit,
     onSpeedToggle: () -> Unit,
@@ -862,7 +863,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
     onQualitySelect: (StreamQuality) -> Unit,
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
-    onAutoCmSkipToggle: () -> Unit,
+    onCmSkipModeToggle: () -> Unit,
     // ★ 追加: 各機能のサポート状況を受け取るフラグ
     isAudioSupported: Boolean = true,
     isQualitySupported: Boolean = true,
@@ -980,11 +981,11 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             enabled = isQualitySupported && availableQualities.isNotEmpty() // ★ 適用
                         )
                         ModernSettingRow(
-                            title = "自動CMスキップ",
-                            value = if (isAutoCmSkipEnabled) "有効" else "無効",
+                            title = "CMスキップ",
+                            value = cmSkipMode.displayLabel,
                             icon = Icons.Default.FastForward,
-                            onClick = onAutoCmSkipToggle,
-                            highlight = isAutoCmSkipEnabled,
+                            onClick = onCmSkipModeToggle,
+                            highlight = cmSkipMode != CmSkipMode.OFF,
                             enabled = isAutoCmSkipSupported // ★ 適用
                         )
                         ModernSettingRow(

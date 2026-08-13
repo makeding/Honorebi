@@ -15,4 +15,11 @@ class SettingsRepositoryStartupTabTest {
         assertEquals("ライブ", normalizeStartupTab("ライブ"))
         assertEquals("ホーム", normalizeStartupTab(null))
     }
+
+    @Test
+    fun legacyCmSkipOnIsReadAsAuto() {
+        assertEquals("AUTO", normalizeCmSkipMode("ON"))
+        assertEquals("MANUAL", normalizeCmSkipMode("MANUAL"))
+        assertEquals("OFF", normalizeCmSkipMode(null))
+    }
 }

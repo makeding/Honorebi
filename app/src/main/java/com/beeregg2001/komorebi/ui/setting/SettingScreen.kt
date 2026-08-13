@@ -671,8 +671,12 @@ fun SettingsScreen(
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
-                                    "自動CMスキップ",
-                                    listOf("有効" to "ON", "無効" to "OFF"),
+                                    "CMスキップ",
+                                    listOf(
+                                        "オフ" to "OFF",
+                                        "手動（CM開始から5秒間、決定ボタンでスキップ）" to "MANUAL",
+                                        "自動" to "AUTO"
+                                    ),
                                     autoCmSkip
                                 ) {
                                     scope.launch {

@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.CmSkipMode
 
 enum class LCropMode { HIDDEN, MENU, DIRECT_ADJUST }
 enum class ZoomOrigin { TopLeft, TopRight, BottomLeft, BottomRight }
@@ -24,6 +25,32 @@ data class ChapterInfo(
     val isMarkerOnly: Boolean = false, // trueなら「区間」ではなく「点（マーカー）」として扱う
     val label: String = ""             // UIに表示するチャプター名（例: "Aパート", "oxA" など）
 )
+
+internal const val MANUAL_CM_SKIP_WINDOW_MS = 5_000L
+
+internal val CmSkipMode.displayLabel: String
+    get() = when (this) {
+        CmSkipMode.OFF -> "オフ"
+        CmSkipMode.MANUAL -> "手動（決定ボタン）"
+        CmSkipMode.AUTO -> "自動"
+    }
+
+internal fun manualCmSkipTargetMs(
+    mode: CmSkipMode,
+    currentPositionMs: Long,
+    chapters: List<ChapterInfo>,
+    interactionBlocked: Boolean = false
+): Long? {
+    if (mode != CmSkipMode.MANUAL || interactionBlocked) return null
+    return chapters.firstOrNull { chapter ->
+        chapter.isCm &&
+            currentPositionMs >= chapter.startTimeMs &&
+            currentPositionMs < minOf(
+                chapter.endTimeMs,
+                chapter.startTimeMs + MANUAL_CM_SKIP_WINDOW_MS
+            )
+    }?.endTimeMs
+}
 
 @Stable
 class VideoPlayerState {
@@ -40,8 +67,6 @@ class VideoPlayerState {
     var lCropX by mutableFloatStateOf(0f)
     var lCropY by mutableFloatStateOf(0f)
     var lCropOrigin by mutableStateOf(ZoomOrigin.TopRight)
-    var isAutoCmSkipEnabled by mutableStateOf(true)
-
     var playbackOffsetMs by mutableLongStateOf(0L)
     var pendingSeekPositionMs by mutableStateOf<Long?>(null)
 
