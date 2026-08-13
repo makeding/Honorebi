@@ -68,6 +68,12 @@ internal class SystemMediaSessionController(context: Context) {
     private val appContext = context.applicationContext
     private val ownership = SystemMediaSessionOwnership()
     private var session: MediaSession? = null
+    private var playbackStateChangedListener: (() -> Unit)? = null
+    private val playerListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            playbackStateChangedListener?.invoke()
+        }
+    }
 
     fun openEpoch(epoch: Long) {
         requireMainLooper()
@@ -116,9 +122,13 @@ internal class SystemMediaSessionController(context: Context) {
                 session = MediaSession.Builder(appContext, sessionPlayer)
                     .setSessionActivity(sessionActivity())
                     .build()
+                sessionPlayer.addListener(playerListener)
             } else {
+                activeSession.player.removeListener(playerListener)
                 activeSession.setPlayer(sessionPlayer)
+                sessionPlayer.addListener(playerListener)
             }
+            playbackStateChangedListener?.invoke()
         }
         return attachment
     }
@@ -179,6 +189,11 @@ internal class SystemMediaSessionController(context: Context) {
         )
     }
 
+    fun setPlaybackStateChangedListener(listener: (() -> Unit)?) {
+        requireMainLooper()
+        playbackStateChangedListener = listener
+    }
+
     private fun sessionActivity(): PendingIntent = PendingIntent.getActivity(
         appContext,
         0,
@@ -189,8 +204,10 @@ internal class SystemMediaSessionController(context: Context) {
     )
 
     private fun releaseSession() {
+        session?.player?.removeListener(playerListener)
         session?.release()
         session = null
+        playbackStateChangedListener?.invoke()
     }
 
     private fun requireMainLooper() {

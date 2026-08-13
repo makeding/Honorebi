@@ -25,6 +25,21 @@ fun RootSystemMediaSessionHost(
     val context = LocalContext.current.applicationContext
     val controller = remember(context) { SystemMediaSessionController(context) }
 
+    fun sendCurrentState() {
+        val state = controller.playbackState()
+        remoteControlClient.sendState(
+            contentType = if (state == null) "Idle" else remoteContentType,
+            title = state?.title,
+            subtitle = state?.subtitle,
+            artworkUrl = state?.artworkUrl,
+            isPlaying = state?.isPlaying ?: false,
+            isBuffering = state?.isBuffering ?: false,
+            positionSeconds = state?.positionSeconds,
+            durationSeconds = state?.durationSeconds,
+            canSeek = remoteContentType == "Recorded" && state?.canSeek == true,
+        )
+    }
+
     LaunchedEffect(controller, remoteControlClient) {
         remoteControlClient.commands.collect { command ->
             when (command) {
@@ -44,19 +59,16 @@ fun RootSystemMediaSessionHost(
 
     LaunchedEffect(controller, remoteControlClient, remoteContentType, playbackSessionEpoch) {
         while (true) {
-            val state = controller.playbackState()
-            remoteControlClient.sendState(
-                contentType = if (state == null) "Idle" else remoteContentType,
-                title = state?.title,
-                subtitle = state?.subtitle,
-                artworkUrl = state?.artworkUrl,
-                isPlaying = state?.isPlaying ?: false,
-                isBuffering = state?.isBuffering ?: false,
-                positionSeconds = state?.positionSeconds,
-                durationSeconds = state?.durationSeconds,
-                canSeek = remoteContentType == "Recorded" && state?.canSeek == true,
-            )
-            delay(1_000)
+            sendCurrentState()
+            delay(5_000)
+        }
+    }
+
+    // プレイヤーの外部更新は即時通知し、上記の5秒周期送信は位置更新と取りこぼしの補完に限定する。
+    DisposableEffect(controller, remoteControlClient, remoteContentType, playbackSessionEpoch) {
+        controller.setPlaybackStateChangedListener(::sendCurrentState)
+        onDispose {
+            controller.setPlaybackStateChangedListener(null)
         }
     }
 

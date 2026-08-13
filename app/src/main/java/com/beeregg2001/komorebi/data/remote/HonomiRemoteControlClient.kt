@@ -35,6 +35,11 @@ sealed interface HonomiRemoteCommand {
     data class SeekRelative(val deltaSeconds: Double) : HonomiRemoteCommand
 }
 
+internal sealed interface HonomiRemoteServerEvent {
+    data object RequestState : HonomiRemoteServerEvent
+    data class Command(val command: HonomiRemoteCommand) : HonomiRemoteServerEvent
+}
+
 internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCommand? = runCatching {
     val envelope = gson.fromJson(text, JsonObject::class.java)
     if (envelope.get("type")?.asString != "Command") return@runCatching null
@@ -49,6 +54,15 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
         "Pause" -> HonomiRemoteCommand.Pause
         "Stop" -> HonomiRemoteCommand.Stop
         "SeekRelative" -> HonomiRemoteCommand.SeekRelative(command.get("delta_seconds").asDouble)
+        else -> null
+    }
+}.getOrNull()
+
+internal fun parseHonomiRemoteServerEvent(gson: Gson, text: String): HonomiRemoteServerEvent? = runCatching {
+    val envelope = gson.fromJson(text, JsonObject::class.java)
+    when (envelope.get("type")?.asString) {
+        "RequestState" -> HonomiRemoteServerEvent.RequestState
+        "Command" -> parseHonomiRemoteCommand(gson, text)?.let(HonomiRemoteServerEvent::Command)
         else -> null
     }
 }.getOrNull()
@@ -68,6 +82,7 @@ class HonomiRemoteControlClient @Inject constructor(
     val commands: SharedFlow<HonomiRemoteCommand> = _commands.asSharedFlow()
     private var connectionJob: Job? = null
     @Volatile private var activeWebSocket: WebSocket? = null
+    @Volatile private var latestStateJson: String? = null
 
     /** 現在の再生状態を HonomiTV の接続先選択・操作メニューへ通知する。 */
     fun sendState(
@@ -93,7 +108,9 @@ class HonomiRemoteControlClient @Inject constructor(
             positionSeconds?.let { addProperty("position_seconds", it) }
             durationSeconds?.let { addProperty("duration_seconds", it) }
         }
-        activeWebSocket?.send(gson.toJson(state))
+        val stateJson = gson.toJson(state)
+        latestStateJson = stateJson
+        activeWebSocket?.send(stateJson)
     }
 
     /** ルート画面の寿命に合わせて接続を開始する。同じ画面からの重複開始は無視する。 */
@@ -127,11 +144,16 @@ class HonomiRemoteControlClient @Inject constructor(
                 val webSocket = webSocketClient.newWebSocket(request, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
                         activeWebSocket = webSocket
-                        sendState(contentType = "Idle")
+                        // 再接続時は一時的な Idle で再生中の状態を上書きせず、直前の完全な状態を即座に再送する。
+                        latestStateJson?.let(webSocket::send) ?: sendState(contentType = "Idle")
                     }
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
-                        parseHonomiRemoteCommand(gson, text)?.let(_commands::tryEmit)
+                        when (val event = parseHonomiRemoteServerEvent(gson, text)) {
+                            HonomiRemoteServerEvent.RequestState -> latestStateJson?.let(webSocket::send)
+                            is HonomiRemoteServerEvent.Command -> _commands.tryEmit(event.command)
+                            null -> Unit
+                        }
                     }
 
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {

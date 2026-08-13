@@ -9,7 +9,7 @@ class HonomiRemoteControlClientTest {
     private val gson = Gson()
 
     @Test
-    fun parsesOnlyBasicOpenCommands() {
+    fun parsesRemoteCommands() {
         assertEquals(
             HonomiRemoteCommand.OpenLive("gr011"),
             parseHonomiRemoteCommand(
@@ -24,6 +24,26 @@ class HonomiRemoteControlClientTest {
                 """{"type":"Command","command":{"type":"OpenRecording","recorded_program_id":42,"position_seconds":12.5}}""",
             ),
         )
-        assertNull(parseHonomiRemoteCommand(gson, """{"type":"Command","command":{"type":"Pause"}}"""))
+        assertEquals(
+            HonomiRemoteCommand.Pause,
+            parseHonomiRemoteCommand(gson, """{"type":"Command","command":{"type":"Pause"}}"""),
+        )
+        assertNull(parseHonomiRemoteCommand(gson, """{"type":"Unknown"}"""))
+    }
+
+    @Test
+    fun separatesStateRequestsFromRemoteCommands() {
+        assertEquals(
+            HonomiRemoteServerEvent.RequestState,
+            parseHonomiRemoteServerEvent(gson, """{"type":"RequestState"}"""),
+        )
+        assertEquals(
+            HonomiRemoteServerEvent.Command(HonomiRemoteCommand.Pause),
+            parseHonomiRemoteServerEvent(
+                gson,
+                """{"type":"Command","command":{"type":"Pause"}}""",
+            ),
+        )
+        assertNull(parseHonomiRemoteServerEvent(gson, """{"type":"Unknown"}"""))
     }
 }
