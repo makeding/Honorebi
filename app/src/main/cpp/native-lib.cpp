@@ -507,7 +507,7 @@ public:
         onTrackMethod_ = env->GetMethodID(
             callbackClass,
             "onTrack",
-            "(JJIIILjava/lang/String;IJIIZII)V");
+            "(JJIIILjava/lang/String;IJ[I[IIIZII)V");
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
@@ -677,6 +677,24 @@ public:
         const auto audioLayout = info.audio.has_value()
             ? static_cast<jint>(info.audio->channel_layout)
             : static_cast<jint>(aribtlv::AudioChannelLayout::Unknown);
+        const auto assetGroupCount = static_cast<jsize>(info.asset_groups.size());
+        jintArray assetGroupIdentifications = currentEnv_->NewIntArray(assetGroupCount);
+        jintArray assetGroupSelectionLevels = currentEnv_->NewIntArray(assetGroupCount);
+        if (assetGroupCount > 0) {
+            std::vector<jint> identifications(static_cast<std::size_t>(assetGroupCount));
+            std::vector<jint> selectionLevels(static_cast<std::size_t>(assetGroupCount));
+            for (jsize index = 0; index < assetGroupCount; ++index) {
+                const auto& group = info.asset_groups[static_cast<std::size_t>(index)];
+                identifications[static_cast<std::size_t>(index)] =
+                    static_cast<jint>(group.group_identification);
+                selectionLevels[static_cast<std::size_t>(index)] =
+                    static_cast<jint>(group.selection_level);
+            }
+            currentEnv_->SetIntArrayRegion(
+                assetGroupIdentifications, 0, assetGroupCount, identifications.data());
+            currentEnv_->SetIntArrayRegion(
+                assetGroupSelectionLevels, 0, assetGroupCount, selectionLevels.data());
+        }
         const auto audioSampleRate = info.audio.has_value()
             ? static_cast<jint>(info.audio->sample_rate)
             : 0;
@@ -698,12 +716,16 @@ public:
             language,
             static_cast<jint>(info.component_tag),
             static_cast<jlong>(info.timescale),
+            assetGroupIdentifications,
+            assetGroupSelectionLevels,
             audioLayout,
             audioSampleRate,
             audioMainComponent ? JNI_TRUE : JNI_FALSE,
             subtitleOperationMode,
             subtitleTimingMode);
         currentEnv_->DeleteLocalRef(language);
+        currentEnv_->DeleteLocalRef(assetGroupIdentifications);
+        currentEnv_->DeleteLocalRef(assetGroupSelectionLevels);
     }
 
     void onAccessUnit(aribtlv::AccessUnit&& unit) override {

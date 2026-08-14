@@ -23,6 +23,25 @@ private const val TAG = "TlvExtractor"
 private const val INPUT_BUFFER_SIZE = 512 * 1024
 private const val MMTS_CONTAINER_MIME_TYPE = "application/x-arib-mmts"
 
+private data class PendingAudioTrack(
+    val trackId: Long,
+    val contextId: Long,
+    val packetId: Int,
+    val language: String,
+    val channelLayout: Int,
+    val sampleRate: Int,
+    val mainComponent: Boolean,
+    val groupIdentifications: IntArray,
+    val selectionLevels: IntArray
+) {
+    fun assetGroupsDescription(): String = groupIdentifications.indices.joinToString(
+        prefix = "[",
+        postfix = "]"
+    ) { index ->
+        "${groupIdentifications[index]}:${selectionLevels.getOrElse(index) { -1 }}"
+    }
+}
+
 private fun subtitleTrackPriority(componentTag: Int): Int = when (componentTag) {
     in 0x30..0x37 -> 2 // programme caption
     in 0x38..0x3f -> 1 // superimpose
@@ -99,6 +118,8 @@ class TlvExtractor(
     private var nativeDemuxer: NativeTlvDemuxer? = null
     private var videoReader: H265Reader? = null
     private var videoTrackId: Long? = null
+    private var videoSelectionLevels: Set<Int>? = null
+    private val pendingAudioTracks = linkedMapOf<Long, PendingAudioTrack>()
     private var subtitleTrackId: Long? = null
     private var subtitleTrackPriority: Int = -1
     private var subtitleOperationMode: Int = 1
@@ -364,6 +385,8 @@ class TlvExtractor(
         language: String,
         componentTag: Int,
         timescale: Long,
+        assetGroupIdentifications: IntArray,
+        assetGroupSelectionLevels: IntArray,
         audioChannelLayout: Int,
         audioSampleRate: Int,
         audioMainComponent: Boolean,
@@ -376,33 +399,32 @@ class TlvExtractor(
             codec == CODEC_HEVC && videoReader == null &&
                 (preferredVideoPacketId == null || preferredVideoPacketId == packetId) -> {
                 videoTrackId = trackId
+                videoSelectionLevels = assetGroupSelectionLevels.toSet()
                 videoReader = H265Reader(
                     SeiReader(emptyList(), MMTS_CONTAINER_MIME_TYPE),
                     MMTS_CONTAINER_MIME_TYPE
                 ).also { it.createTracks(output, trackIdGenerator) }
-                Log.i(TAG, "MMTS video track: context=$contextId packetId=0x${packetId.toString(16)}")
-            }
-
-            codec == CODEC_AAC_LATM &&
-                audioChannelLayout != AUDIO_LAYOUT_22_2 &&
-                !audioReaders.containsKey(trackId) -> {
-                audioReaders[trackId] = LatmReader(
-                    language.ifBlank { null },
-                    0,
-                    MMTS_CONTAINER_MIME_TYPE
-                ).also { it.createTracks(output, trackIdGenerator) }
                 Log.i(
                     TAG,
-                    "MMTS audio track: context=$contextId packetId=0x${packetId.toString(16)} " +
-                        "language=$language layout=${audioLayoutName(audioChannelLayout)} " +
-                        "sampleRate=$audioSampleRate main=$audioMainComponent"
+                    "MMTS video track: context=$contextId packetId=0x${packetId.toString(16)} " +
+                        "selectionLevels=${videoSelectionLevels.orEmpty()}"
                 )
+                pendingAudioTracks.values.forEach(::addAudioTrackIfCompatible)
+                pendingAudioTracks.clear()
             }
 
-            codec == CODEC_AAC_LATM -> Log.i(
-                TAG,
-                "Ignoring unsupported MMTS audio track: packetId=0x${packetId.toString(16)} " +
-                    "layout=${audioLayoutName(audioChannelLayout)}"
+            codec == CODEC_AAC_LATM -> addAudioTrackIfCompatible(
+                PendingAudioTrack(
+                    trackId = trackId,
+                    contextId = contextId,
+                    packetId = packetId,
+                    language = language,
+                    channelLayout = audioChannelLayout,
+                    sampleRate = audioSampleRate,
+                    mainComponent = audioMainComponent,
+                    groupIdentifications = assetGroupIdentifications,
+                    selectionLevels = assetGroupSelectionLevels
+                )
             )
 
             codec == CODEC_TTML -> {
@@ -420,6 +442,48 @@ class TlvExtractor(
                 }
             }
         }
+    }
+
+    private fun addAudioTrackIfCompatible(track: PendingAudioTrack) {
+        if (track.channelLayout == AUDIO_LAYOUT_22_2) {
+            Log.i(
+                TAG,
+                "Ignoring unsupported MMTS audio track: " +
+                    "packetId=0x${track.packetId.toString(16)} " +
+                    "layout=${audioLayoutName(track.channelLayout)}"
+            )
+            return
+        }
+        val selectedLevels = videoSelectionLevels
+        if (selectedLevels == null) {
+            pendingAudioTracks[track.trackId] = track
+            return
+        }
+        if (!isAudioLayerCompatible(selectedLevels, track.selectionLevels)) {
+            Log.i(
+                TAG,
+                "Ignoring MMTS audio track from another video layer: " +
+                    "packetId=0x${track.packetId.toString(16)} " +
+                    "groups=${track.assetGroupsDescription()} " +
+                    "videoSelectionLevels=$selectedLevels"
+            )
+            return
+        }
+        if (audioReaders.containsKey(track.trackId)) return
+        val output = extractorOutput ?: return
+        audioReaders[track.trackId] = LatmReader(
+            track.language.ifBlank { null },
+            0,
+            MMTS_CONTAINER_MIME_TYPE
+        ).also { it.createTracks(output, trackIdGenerator) }
+        Log.i(
+            TAG,
+            "MMTS audio track: context=${track.contextId} " +
+                "packetId=0x${track.packetId.toString(16)} " +
+                "language=${track.language} layout=${audioLayoutName(track.channelLayout)} " +
+                "sampleRate=${track.sampleRate} main=${track.mainComponent} " +
+                "groups=${track.assetGroupsDescription()}"
+        )
     }
 
     override fun onAccessUnit(

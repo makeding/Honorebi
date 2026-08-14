@@ -25,6 +25,8 @@ class NativeTlvDemuxer(
             language: String,
             componentTag: Int,
             timescale: Long,
+            assetGroupIdentifications: IntArray,
+            assetGroupSelectionLevels: IntArray,
             audioChannelLayout: Int,
             audioSampleRate: Int,
             audioMainComponent: Boolean,
