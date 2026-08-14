@@ -1970,6 +1970,26 @@ fun VideoPlayerScreen(
                 color = Color.White
             )
 
+            AnimatedVisibility(
+                visible = !isPiPMode && vs.lCropMode != LCropMode.HIDDEN,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                VideoLCropOverlay(
+                    state = vs,
+                    onClose = {
+                        vs.lCropMode = LCropMode.HIDDEN
+                        if (!vs.lCropEnabled) {
+                            vs.lCropZoom = 100f; vs.lCropX = 0f; vs.lCropY = 0f
+                            vs.lCropOrigin = ZoomOrigin.TopRight
+                        }
+                        scope.launch {
+                            delay(200); mainFocusRequester.safeRequestFocus(TAG)
+                        }
+                    }
+                )
+            }
+
             val nextCountdownProgram = nextSeriesProgram
             val showManualCmSkipPrompt = manualCmSkipTargetMs(
                 mode = cmSkipMode,
