@@ -31,13 +31,8 @@ namespace {
 constexpr int ARIBCC_RENDER_FRAME_WIDTH = 1920;
 constexpr int ARIBCC_RENDER_FRAME_HEIGHT = 1080;
 
-int subtitleTrackPriority(const std::uint16_t componentTag) {
-    if (componentTag >= 0x30 && componentTag <= 0x37) return 2;
-    if (componentTag >= 0x38 && componentTag <= 0x3f) return 1;
-    return 0;
-}
-
 struct AribCaptionDecoderContext {
+    int captionType = 0;
     aribcc_context_t* context = nullptr;
     aribcc_decoder_t* decoder = nullptr;
     aribcc_renderer_t* renderer = nullptr;
@@ -244,7 +239,8 @@ jobject renderImagesToCue(
     uint32_t imageCount,
     ImageProvider imageProvider,
     int64_t fallbackPtsMs,
-    const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr
+    const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr,
+    int captionType = 0
 ) {
     pts = pts < 0 ? fallbackPtsMs : pts;
 
@@ -304,7 +300,7 @@ jobject renderImagesToCue(
     }
 
     jclass cueClass = env->FindClass("com/beeregg2001/komorebi/ui/subtitle/NativeCaptionCue");
-    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;I)V");
+    jmethodID cueCtor = env->GetMethodID(cueClass, "<init>", "(JJZIILjava/util/List;II)V");
     jobject cue = env->NewObject(
         cueClass,
         cueCtor,
@@ -314,7 +310,8 @@ jobject renderImagesToCue(
         static_cast<jint>(ARIBCC_RENDER_FRAME_WIDTH),
         static_cast<jint>(ARIBCC_RENDER_FRAME_HEIGHT),
         images,
-        0);
+        0,
+        static_cast<jint>(captionType));
 
     env->DeleteLocalRef(images);
     env->DeleteLocalRef(regionClass);
@@ -357,7 +354,8 @@ jobject renderB62ResultToCue(
     JNIEnv* env,
     aribcaption::RenderResult& result,
     int64_t fallbackPtsMs,
-    const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr
+    const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr,
+    int captionType = 0
 ) {
     const int64_t duration = result.duration == aribcaption::DURATION_INDEFINITE
         ? -1
@@ -379,7 +377,8 @@ jobject renderB62ResultToCue(
                 image.bitmap.size()};
         },
         fallbackPtsMs,
-        regionGeometries);
+        regionGeometries,
+        captionType);
 }
 
 } // namespace
@@ -497,17 +496,18 @@ public:
 class TlvDemuxContext final : public aribtlv::Sink {
 public:
     TlvDemuxContext(JNIEnv* env, jobject callback, const int preferredVideoPacketId,
-                    const bool buildRecordingIndex)
+                    const bool buildRecordingIndex, const bool exposeAllVideoTracks)
         : callback_(env->NewGlobalRef(callback)), demuxer_(*this),
           preferredVideoPacketId_(preferredVideoPacketId),
-          buildRecordingIndex_(buildRecordingIndex) {
+          buildRecordingIndex_(buildRecordingIndex),
+          exposeAllVideoTracks_(exposeAllVideoTracks) {
         if (buildRecordingIndex_) recordingIndex_.begin(false);
         jclass callbackClass = env->GetObjectClass(callback);
         onServiceMethod_ = env->GetMethodID(callbackClass, "onService", "(J[B)V");
         onTrackMethod_ = env->GetMethodID(
             callbackClass,
             "onTrack",
-            "(JJIIILjava/lang/String;IJ[I[IIIZII)V");
+            "(JJIIILjava/lang/String;IJ[I[IIIZIII)V");
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
@@ -580,8 +580,8 @@ public:
         selectedVideoTrackId_ = 0;
         audioTrackIds_.clear();
         playableAudioTrackIds_.clear();
-        selectedSubtitleTrackId_ = 0;
-        selectedSubtitleTrackPriority_ = -1;
+        selectedCaptionTrackId_ = 0;
+        selectedSuperimposeTrackId_ = 0;
         currentEnv_ = nullptr;
     }
 
@@ -647,10 +647,13 @@ public:
                 info.packet_id == preferredVideoPacketId_;
             if (selectedVideoTrackId_ == 0 && matchesPreferred) {
                 selectedVideoTrackId_ = info.track_id;
-                demuxer_.selectTrack(aribtlv::TrackKind::Video, info.track_id);
                 if (buildRecordingIndex_) recordingIndex_.selectVideoTrack(info.track_id);
+                if (!exposeAllVideoTracks_) {
+                    demuxer_.selectTrack(aribtlv::TrackKind::Video, info.track_id);
+                }
             }
-            if (selectedVideoTrackId_ == 0 || info.track_id != selectedVideoTrackId_) return;
+            if (!exposeAllVideoTracks_ &&
+                (selectedVideoTrackId_ == 0 || info.track_id != selectedVideoTrackId_)) return;
         }
         if (info.kind == aribtlv::TrackKind::Audio) {
             audioTrackIds_.insert(info.track_id);
@@ -664,13 +667,14 @@ public:
             playableAudioTrackIds_.insert(info.track_id);
         }
         if (info.kind == aribtlv::TrackKind::Subtitle) {
-            const int priority = subtitleTrackPriority(info.component_tag);
-            if (selectedSubtitleTrackId_ == 0 || priority > selectedSubtitleTrackPriority_) {
-                selectedSubtitleTrackId_ = info.track_id;
-                selectedSubtitleTrackPriority_ = priority;
-                demuxer_.selectTrack(aribtlv::TrackKind::Subtitle, info.track_id);
+            if (!info.subtitle.has_value() || info.subtitle->type > 1) return;
+            std::uint64_t& selectedTrackId = info.subtitle->type == 0
+                ? selectedCaptionTrackId_
+                : selectedSuperimposeTrackId_;
+            if (selectedTrackId == 0) {
+                selectedTrackId = info.track_id;
             }
-            if (info.track_id != selectedSubtitleTrackId_) return;
+            if (info.track_id != selectedTrackId) return;
         }
         if (!canCallback(onTrackMethod_)) return;
         jstring language = currentEnv_->NewStringUTF(info.language.c_str());
@@ -702,6 +706,9 @@ public:
         const auto subtitleOperationMode = info.subtitle.has_value()
             ? static_cast<jint>(info.subtitle->operation_mode)
             : -1;
+        const auto subtitleType = info.subtitle.has_value()
+            ? static_cast<jint>(info.subtitle->type)
+            : -1;
         const auto subtitleTimingMode = info.subtitle.has_value()
             ? static_cast<jint>(info.subtitle->timing_mode)
             : -1;
@@ -721,6 +728,7 @@ public:
             audioLayout,
             audioSampleRate,
             audioMainComponent ? JNI_TRUE : JNI_FALSE,
+            subtitleType,
             subtitleOperationMode,
             subtitleTimingMode);
         currentEnv_->DeleteLocalRef(language);
@@ -732,6 +740,11 @@ public:
         if (buildRecordingIndex_) recordingIndex_.observe(unit);
         if (audioTrackIds_.find(unit.track_id) != audioTrackIds_.end() &&
             playableAudioTrackIds_.find(unit.track_id) == playableAudioTrackIds_.end()) {
+            return;
+        }
+        if (unit.codec == aribtlv::Codec::Ttml &&
+            unit.track_id != selectedCaptionTrackId_ &&
+            unit.track_id != selectedSuperimposeTrackId_) {
             return;
         }
         if (!canCallback(onAccessUnitMethod_)) return;
@@ -999,11 +1012,12 @@ private:
     aribtlv::RecordingIndex recordingIndex_;
     int preferredVideoPacketId_ = -1;
     bool buildRecordingIndex_ = false;
+    bool exposeAllVideoTracks_ = false;
     std::uint64_t selectedVideoTrackId_ = 0;
     std::unordered_set<std::uint64_t> audioTrackIds_;
     std::unordered_set<std::uint64_t> playableAudioTrackIds_;
-    std::uint64_t selectedSubtitleTrackId_ = 0;
-    int selectedSubtitleTrackPriority_ = -1;
+    std::uint64_t selectedCaptionTrackId_ = 0;
+    std::uint64_t selectedSuperimposeTrackId_ = 0;
 };
 
 extern "C" {
@@ -1059,8 +1073,20 @@ Java_com_beeregg2001_komorebi_NativeLib_closeFilter(JNIEnv *env, jobject thiz, j
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject thiz) {
+Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(
+    JNIEnv *env,
+    jobject thiz,
+    jint captionType
+) {
+    if (captionType != 0 && captionType != 1) return 0;
+    const auto nativeCaptionType = captionType == 0
+        ? ARIBCC_CAPTIONTYPE_CAPTION
+        : ARIBCC_CAPTIONTYPE_SUPERIMPOSE;
+    const auto cppCaptionType = captionType == 0
+        ? aribcaption::CaptionType::kCaption
+        : aribcaption::CaptionType::kSuperimpose;
     auto* ctx = new AribCaptionDecoderContext();
+    ctx->captionType = captionType;
     ctx->context = aribcc_context_alloc();
     if (!ctx->context) {
         delete ctx;
@@ -1075,7 +1101,7 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject 
     if (!aribcc_decoder_initialize(
             ctx->decoder,
             ARIBCC_ENCODING_SCHEME_ARIB_STD_B24_JIS,
-            ARIBCC_CAPTIONTYPE_CAPTION,
+            nativeCaptionType,
             ARIBCC_PROFILE_A,
             ARIBCC_LANGUAGEID_FIRST)) {
         aribcc_decoder_free(ctx->decoder);
@@ -1092,7 +1118,7 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject 
     }
     if (!aribcc_renderer_initialize(
             ctx->renderer,
-            ARIBCC_CAPTIONTYPE_CAPTION,
+            nativeCaptionType,
             ARIBCC_FONTPROVIDER_TYPE_AUTO,
             ARIBCC_TEXTRENDERER_TYPE_AUTO)) {
         aribcc_renderer_free(ctx->renderer);
@@ -1110,10 +1136,12 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(JNIEnv *env, jobject 
 
     try {
         auto* cppContext = reinterpret_cast<aribcaption::Context*>(ctx->context);
-        ctx->b62Decoder = std::make_unique<aribcaption::B62Decoder>(*cppContext);
+        ctx->b62Decoder = std::make_unique<aribcaption::B62Decoder>(
+            *cppContext,
+            cppCaptionType);
         ctx->b62Renderer = std::make_unique<aribcaption::Renderer>(*cppContext);
         if (!ctx->b62Renderer->Initialize(
-                aribcaption::CaptionType::kCaption,
+                cppCaptionType,
                 aribcaption::FontProviderType::kAuto,
                 aribcaption::TextRendererType::kAuto)) {
             throw std::runtime_error("Failed to initialize B62 renderer");
@@ -1359,7 +1387,12 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
                 // Convert one result at a time. Keeping every native RenderResult until the
                 // whole document finished temporarily retained all RGBA buffers alongside
                 // their Java Bitmaps, which amplified memory peaks on low-memory TVs.
-                jobject cue = renderB62ResultToCue(env, result, ptsMs, &plan.regions);
+                jobject cue = renderB62ResultToCue(
+                    env,
+                    result,
+                    ptsMs,
+                    &plan.regions,
+                    ctx->captionType);
                 if (cue != nullptr) cues.push_back(cue);
             }
         }
@@ -1461,13 +1494,15 @@ Java_com_beeregg2001_komorebi_NativeLib_openTlvDemuxer(
     jobject thiz,
     jobject callback,
     jint preferredVideoPacketId,
-    jboolean buildRecordingIndex) {
+    jboolean buildRecordingIndex,
+    jboolean exposeAllVideoTracks) {
     if (callback == nullptr) return 0;
     return reinterpret_cast<jlong>(new TlvDemuxContext(
         env,
         callback,
         static_cast<int>(preferredVideoPacketId),
-        buildRecordingIndex == JNI_TRUE));
+        buildRecordingIndex == JNI_TRUE,
+        exposeAllVideoTracks == JNI_TRUE));
 }
 
 JNIEXPORT void JNICALL

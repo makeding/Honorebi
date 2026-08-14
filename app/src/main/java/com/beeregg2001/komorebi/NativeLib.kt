@@ -28,7 +28,7 @@ class NativeLib {
     external fun pushDataBuffer(handle: Long, inputBuffer: ByteBuffer, inputLength: Int)
     external fun popDataBuffer(handle: Long, outputBuffer: ByteBuffer, maxLen: Int): Int
 
-    external fun openCaptionDecoder(): Long
+    external fun openCaptionDecoder(captionType: Int): Long
     external fun decodeCaption(handle: Long, data: ByteArray, ptsMs: Long): NativeCaptionCue?
     external fun decodeB62Captions(
         handle: Long,
@@ -51,7 +51,8 @@ class NativeLib {
     external fun openTlvDemuxer(
         callback: NativeTlvDemuxer.Callback,
         preferredVideoPacketId: Int,
-        buildRecordingIndex: Boolean
+        buildRecordingIndex: Boolean,
+        exposeAllVideoTracks: Boolean
     ): Long
     external fun pushTlvData(handle: Long, data: ByteArray, length: Int)
     external fun flushTlvDemuxer(handle: Long)

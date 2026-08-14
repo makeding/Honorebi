@@ -46,10 +46,12 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
+import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.Collections
@@ -202,17 +204,51 @@ fun LivePlayerScreen(
     } else {
         mainSubtitleLanguages
     }
+    val mainCaptionEvents = remember(livePlayerViewModel) {
+        livePlayerViewModel.mainSubtitleEvents.filter {
+            it.type == NativeCaptionCue.TYPE_CAPTION
+        }
+    }
+    val mainSuperimposeEvents = remember(livePlayerViewModel) {
+        livePlayerViewModel.mainSubtitleEvents.filter {
+            it.type == NativeCaptionCue.TYPE_SUPERIMPOSE
+        }
+    }
+    val dualCaptionEvents = remember(livePlayerViewModel) {
+        livePlayerViewModel.dualSubtitleEvents.filter {
+            it.type == NativeCaptionCue.TYPE_CAPTION
+        }
+    }
+    val dualSuperimposeEvents = remember(livePlayerViewModel) {
+        livePlayerViewModel.dualSubtitleEvents.filter {
+            it.type == NativeCaptionCue.TYPE_SUPERIMPOSE
+        }
+    }
     val mainCaptionCue = rememberNativeCaptionCue(
-        events = livePlayerViewModel.mainSubtitleEvents,
+        events = mainCaptionEvents,
         enabled = isSubtitleEnabled,
         resetKey = currentChannelItem.id to currentSubtitleLanguageId,
         clockRunning = isMainPlaying,
         positionMsProvider = { mainPlayer?.currentPosition ?: 0L }
     )
     val dualCaptionCue = rememberNativeCaptionCue(
-        events = livePlayerViewModel.dualSubtitleEvents,
+        events = dualCaptionEvents,
         enabled = isSubtitleEnabled,
         resetKey = ps.dualRightChannel?.id to currentSubtitleLanguageId,
+        clockRunning = isDualPlaying,
+        positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
+    )
+    val mainSuperimposeCue = rememberNativeCaptionCue(
+        events = mainSuperimposeEvents,
+        enabled = true,
+        resetKey = currentChannelItem.id,
+        clockRunning = isMainPlaying,
+        positionMsProvider = { mainPlayer?.currentPosition ?: 0L }
+    )
+    val dualSuperimposeCue = rememberNativeCaptionCue(
+        events = dualSuperimposeEvents,
+        enabled = true,
+        resetKey = ps.dualRightChannel?.id,
         clockRunning = isDualPlaying,
         positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
     )
@@ -246,6 +282,11 @@ fun LivePlayerScreen(
     val isQualitiesLoaded by livePlayerViewModel.isQualitiesLoaded.collectAsState()
     val effectiveAvailableQualities = remember(availableQualities, currentChannelItem) {
         effectiveLiveQualities(availableQualities, currentChannelItem)
+    }
+    val streamRestartQualityKey = if (ps.currentQuality.isRawMmts) {
+        StreamQuality.RAW_MMTS_PRIMARY_VALUE
+    } else {
+        ps.currentQuality.value
     }
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
@@ -474,7 +515,7 @@ fun LivePlayerScreen(
         ps.currentStreamSource,
         ps.isEdcbDirect,
         ps.retryKey,
-        ps.currentQuality,
+        streamRestartQualityKey,
         isSourceInitialized,
         isQualitiesLoaded
     ) {
@@ -507,7 +548,7 @@ fun LivePlayerScreen(
         ps.isEdcbDirect,
         ps.isDualDisplayMode,
         ps.retryKey,
-        ps.currentQuality,
+        streamRestartQualityKey,
         isSourceInitialized,
         isQualitiesLoaded
     ) {
@@ -779,11 +820,13 @@ fun LivePlayerScreen(
                 mainVideoHeight = videoHeight,
                 mainPixelRatio = pixelWidthHeightRatio,
                 mainCaptionCue = mainCaptionCue.value,
+                mainSuperimposeCue = mainSuperimposeCue.value,
                 dualPlayer = dualPlayer,
                 dualVideoWidth = dualVideoWidth,
                 dualVideoHeight = dualVideoHeight,
                 dualPixelRatio = dualPixelWidthHeightRatio,
                 dualCaptionCue = dualCaptionCue.value,
+                dualSuperimposeCue = dualSuperimposeCue.value,
                 isSubtitleEnabled = isSubtitleEnabled
             )
         } else {
@@ -915,6 +958,15 @@ fun LivePlayerScreen(
                         commentOpacity,
                         commentMaxLines
                     ) { view -> danmakuViewRef.value = view; if (!ps.isPlayerPlaying) view.pause() }
+                }
+                if (isHeavyUiReady) {
+                    NativeCaptionOverlay(
+                        cue = mainSuperimposeCue.value,
+                        visible = !isSubtitleBlockingUiVisible,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(4f)
+                    )
                 }
             }
         }
@@ -1220,25 +1272,39 @@ fun LivePlayerScreen(
                     onSubMenuToggle(false)
                 },
                 onAudioToggle = {
-                    ps.currentAudioMode =
+                    val nextAudioMode =
                         if (ps.currentAudioMode == AudioMode.MAIN) AudioMode.SUB else AudioMode.MAIN
-                    mainPlayer?.let { player ->
-                        val tracks =
-                            player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-                        if (tracks.size >= 2) {
-                            player.trackSelectionParameters =
-                                player.trackSelectionParameters.buildUpon()
-                                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
-                                    .addOverride(
-                                        TrackSelectionOverride(
-                                            tracks[if (ps.currentAudioMode == AudioMode.SUB) 1 else 0].mediaTrackGroup,
-                                            0
+                    val switched = if (ps.currentQuality.isRawMmts) {
+                        livePlayerViewModel.switchMainRawMmtsAudio(
+                            mainAudio = nextAudioMode == AudioMode.MAIN
+                        )
+                    } else {
+                        mainPlayer?.let { player ->
+                            val tracks = player.currentTracks.groups
+                                .filter { it.type == C.TRACK_TYPE_AUDIO }
+                            if (tracks.size >= 2) {
+                                player.trackSelectionParameters =
+                                    player.trackSelectionParameters.buildUpon()
+                                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                        .addOverride(
+                                            TrackSelectionOverride(
+                                                tracks[if (nextAudioMode == AudioMode.SUB) 1 else 0].mediaTrackGroup,
+                                                0
+                                            )
                                         )
-                                    )
-                                    .build()
+                                        .build()
+                            }
                         }
+                        true
                     }
-                    onShowToast("音声: ${if (ps.currentAudioMode == AudioMode.MAIN) "主音声" else "副音声"}")
+                    if (switched) {
+                        ps.currentAudioMode = nextAudioMode
+                        onShowToast(
+                            "音声: ${if (nextAudioMode == AudioMode.MAIN) "主音声" else "副音声"}"
+                        )
+                    } else {
+                        onShowToast("選択した音声トラックはこの放送では利用できません")
+                    }
                 },
                 onSubtitleToggle = {
                     subtitleEnabledState.value = !subtitleEnabledState.value
@@ -1260,10 +1326,25 @@ fun LivePlayerScreen(
                 },
                 onQualitySelect = {
                     if (ps.currentQuality != it) {
-                        ps.currentQuality = it
-                        if (!it.isRawMmts) livePlayerViewModel.saveLiveQuality(it.value)
-                        ps.retryKey++
-                        onShowToast(String.format(AppStrings.TOAST_QUALITY_CHANGED, it.label))
+                        val switchedInPlace = ps.currentQuality.isRawMmts && it.isRawMmts &&
+                            livePlayerViewModel.switchRawMmtsLayer(
+                                quality = it,
+                                mainAudio = ps.currentAudioMode == AudioMode.MAIN
+                            )
+                        if (switchedInPlace || !ps.currentQuality.isRawMmts || !it.isRawMmts) {
+                            ps.currentQuality = it
+                            if (!it.isRawMmts) livePlayerViewModel.saveLiveQuality(it.value)
+                            if (!switchedInPlace) ps.retryKey++
+                            onShowToast(
+                                if (switchedInPlace) {
+                                    "${it.label}へ切り替えます"
+                                } else {
+                                    String.format(AppStrings.TOAST_QUALITY_CHANGED, it.label)
+                                }
+                            )
+                        } else {
+                            onShowToast("映像と音声の切替準備がまだ完了していません。しばらくして再試行してください")
+                        }
                     }
                     onSubMenuToggle(false)
                 },

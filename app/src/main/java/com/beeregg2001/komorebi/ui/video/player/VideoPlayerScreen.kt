@@ -98,6 +98,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -374,6 +375,12 @@ fun VideoPlayerScreen(
             extraBufferCapacity = 4,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
+    }
+    val captionEvents = remember(subtitleEvents) {
+        subtitleEvents.filter { it.type == NativeCaptionCue.TYPE_CAPTION }
+    }
+    val superimposeEvents = remember(subtitleEvents) {
+        subtitleEvents.filter { it.type == NativeCaptionCue.TYPE_SUPERIMPOSE }
     }
     var subtitleLanguages by remember(currentProgram.id) {
         mutableStateOf(emptyList<NativeCaptionLanguage>())
@@ -818,9 +825,16 @@ fun VideoPlayerScreen(
     }
 
     val subtitleCue = rememberNativeCaptionCue(
-        events = subtitleEvents,
+        events = captionEvents,
         enabled = vs.isSubtitleEnabled,
         resetKey = currentProgram.id to currentSubtitleLanguageId,
+        clockRunning = vs.isPlayerPlaying,
+        positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
+    )
+    val superimposeCue = rememberNativeCaptionCue(
+        events = superimposeEvents,
+        enabled = true,
+        resetKey = currentProgram.id,
         clockRunning = vs.isPlayerPlaying,
         positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
     )
@@ -1964,6 +1978,15 @@ fun VideoPlayerScreen(
                 subtitleLayer(); commentLayer()
             } else {
                 commentLayer(); subtitleLayer()
+            }
+            if (isHeavyUiReady) {
+                NativeCaptionOverlay(
+                    cue = superimposeCue.value,
+                    visible = !isSubtitleBlockingOverlayOpen,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(4f)
+                )
             }
             if (isBuffering) CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),

@@ -9,9 +9,13 @@ data class NativeCaptionCue(
     val planeWidth: Int,
     val planeHeight: Int,
     val images: List<NativeCaptionImage>,
-    val timelineCommand: Int = TIMELINE_COMMAND_NONE
+    val timelineCommand: Int = TIMELINE_COMMAND_NONE,
+    val type: Int = TYPE_CAPTION
 ) {
     companion object {
+        const val TYPE_CAPTION = 0
+        const val TYPE_SUPERIMPOSE = 1
+
         const val TIMELINE_COMMAND_NONE = 0
         const val TIMELINE_COMMAND_RESET = 1
         const val TIMELINE_COMMAND_REPLACE_FROM = 2

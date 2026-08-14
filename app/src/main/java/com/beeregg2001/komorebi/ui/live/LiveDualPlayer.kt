@@ -66,11 +66,13 @@ fun DualDisplayPlayer(
     mainVideoHeight: Int,
     mainPixelRatio: Float,
     mainCaptionCue: NativeCaptionCue?,
+    mainSuperimposeCue: NativeCaptionCue?,
     dualPlayer: ExoPlayer?,
     dualVideoWidth: Int,
     dualVideoHeight: Int,
     dualPixelRatio: Float,
     dualCaptionCue: NativeCaptionCue?,
+    dualSuperimposeCue: NativeCaptionCue?,
     isSubtitleEnabled: Boolean
 ) {
     val colors = KomorebiTheme.colors
@@ -213,6 +215,11 @@ fun DualDisplayPlayer(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+            NativeCaptionOverlay(
+                cue = mainSuperimposeCue,
+                visible = !isSubtitleBlockingUiVisible,
+                modifier = Modifier.fillMaxSize()
+            )
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = showInfo,
@@ -325,6 +332,11 @@ fun DualDisplayPlayer(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+                NativeCaptionOverlay(
+                    cue = dualSuperimposeCue,
+                    visible = !isSubtitleBlockingUiVisible,
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 androidx.compose.animation.AnimatedVisibility(
                     visible = showInfo,

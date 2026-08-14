@@ -42,15 +42,16 @@ private data class PendingAudioTrack(
     }
 }
 
-private fun subtitleTrackPriority(componentTag: Int): Int = when (componentTag) {
-    in 0x30..0x37 -> 2 // programme caption
-    in 0x38..0x3f -> 1 // superimpose
-    else -> 0
-}
+private data class PendingSubtitleTrack(
+    val type: Int,
+    val operationMode: Int,
+    val timingMode: Int
+)
 
 data class B62SubtitleSample(
     val timeUs: Long,
     val data: ByteArray,
+    val type: Int,
     val operationMode: Int,
     val timingMode: Int,
     val referenceStartTimeUs: Long?,
@@ -74,6 +75,7 @@ class TlvExtractorsFactory(
     private val growingDurationFallbackUsProvider: (() -> Long)? = null,
     private val sourceLengthProvider: (() -> Long)? = null,
     private val durationUs: Long = C.TIME_UNSET,
+    private val onTracksChanged: (List<TlvTrackInfo>) -> Unit = {},
     private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit = {},
     private val dataBroadcastingCallback: B60DataBroadcastingCallback? = null
 ) : ExtractorsFactory {
@@ -87,6 +89,7 @@ class TlvExtractorsFactory(
             growingDurationFallbackUsProvider,
             sourceLengthProvider,
             durationUs,
+            onTracksChanged,
             onSubtitleDataReceived,
             dataBroadcastingCallback
         )
@@ -106,24 +109,19 @@ class TlvExtractor(
     private val growingDurationFallbackUsProvider: (() -> Long)?,
     private val sourceLengthProvider: (() -> Long)?,
     private val durationUs: Long,
+    private val onTracksChanged: (List<TlvTrackInfo>) -> Unit,
     private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit,
     private val dataBroadcastingCallback: B60DataBroadcastingCallback?
 ) : Extractor, NativeTlvDemuxer.Callback {
 
     private val inputBuffer = ByteArray(INPUT_BUFFER_SIZE)
-    private val trackIdGenerator = TsPayloadReader.TrackIdGenerator(0, 1)
+    private val videoReaders = linkedMapOf<Long, H265Reader>()
     private val audioReaders = linkedMapOf<Long, LatmReader>()
+    private val trackInventory = linkedMapOf<Int, TlvTrackInfo>()
 
     private var extractorOutput: ExtractorOutput? = null
     private var nativeDemuxer: NativeTlvDemuxer? = null
-    private var videoReader: H265Reader? = null
-    private var videoTrackId: Long? = null
-    private var videoSelectionLevels: Set<Int>? = null
-    private val pendingAudioTracks = linkedMapOf<Long, PendingAudioTrack>()
-    private var subtitleTrackId: Long? = null
-    private var subtitleTrackPriority: Int = -1
-    private var subtitleOperationMode: Int = 1
-    private var subtitleTimingMode: Int = 3
+    private val subtitleTracks = linkedMapOf<Long, PendingSubtitleTrack>()
     private var tracksEnded = false
     private var fatalError: IOException? = null
     private var seekMapSent = false
@@ -145,7 +143,8 @@ class TlvExtractor(
         nativeDemuxer = NativeTlvDemuxer(
             callback = this,
             preferredVideoPacketId = preferredVideoPacketId,
-            buildRecordingIndex = enableSeeking
+            buildRecordingIndex = enableSeeking,
+            exposeAllVideoTracks = !enableSeeking
         )
     }
 
@@ -186,7 +185,7 @@ class TlvExtractor(
     override fun seek(position: Long, timeUs: Long) {
         fatalError = null
         nativeDemuxer?.reposition(position.coerceAtLeast(0L))
-        videoReader?.seek()
+        videoReaders.values.forEach { it.seek() }
         audioReaders.values.forEach { it.seek() }
     }
 
@@ -390,30 +389,38 @@ class TlvExtractor(
         audioChannelLayout: Int,
         audioSampleRate: Int,
         audioMainComponent: Boolean,
+        subtitleType: Int,
         subtitleOperationMode: Int,
         subtitleTimingMode: Int
     ) {
         if (tracksEnded && codec != CODEC_TTML) return
         val output = extractorOutput ?: return
         when {
-            codec == CODEC_HEVC && videoReader == null &&
-                (preferredVideoPacketId == null || preferredVideoPacketId == packetId) -> {
-                videoTrackId = trackId
-                videoSelectionLevels = assetGroupSelectionLevels.toSet()
-                videoReader = H265Reader(
+            codec == CODEC_HEVC && !videoReaders.containsKey(trackId) -> {
+                videoReaders[trackId] = H265Reader(
                     SeiReader(emptyList(), MMTS_CONTAINER_MIME_TYPE),
                     MMTS_CONTAINER_MIME_TYPE
-                ).also { it.createTracks(output, trackIdGenerator) }
+                ).also {
+                    it.createTracks(output, TsPayloadReader.TrackIdGenerator(packetId, 1))
+                }
+                publishTrack(
+                    TlvTrackInfo(
+                        packetId = packetId,
+                        kind = TlvTrackKind.VIDEO,
+                        assetGroups = assetGroups(
+                            assetGroupIdentifications,
+                            assetGroupSelectionLevels
+                        )
+                    )
+                )
                 Log.i(
                     TAG,
                     "MMTS video track: context=$contextId packetId=0x${packetId.toString(16)} " +
-                        "selectionLevels=${videoSelectionLevels.orEmpty()}"
+                        "groups=${assetGroupsDescription(assetGroupIdentifications, assetGroupSelectionLevels)}"
                 )
-                pendingAudioTracks.values.forEach(::addAudioTrackIfCompatible)
-                pendingAudioTracks.clear()
             }
 
-            codec == CODEC_AAC_LATM -> addAudioTrackIfCompatible(
+            codec == CODEC_AAC_LATM -> addAudioTrack(
                 PendingAudioTrack(
                     trackId = trackId,
                     contextId = contextId,
@@ -428,23 +435,22 @@ class TlvExtractor(
             )
 
             codec == CODEC_TTML -> {
-                val priority = subtitleTrackPriority(componentTag)
-                if (subtitleTrackId == null || priority > subtitleTrackPriority) {
-                    subtitleTrackId = trackId
-                    subtitleTrackPriority = priority
-                    this.subtitleOperationMode = subtitleOperationMode.takeIf { it >= 0 } ?: 1
-                    this.subtitleTimingMode = subtitleTimingMode.takeIf { it >= 0 } ?: 3
-                    Log.i(
-                        TAG,
-                        "MMTS subtitle track: packetId=0x${packetId.toString(16)} " +
-                            "componentTag=0x${componentTag.toString(16)} language=$language"
-                    )
-                }
+                if (subtitleType !in B62_SUBTITLE_TYPE_CAPTION..B62_SUBTITLE_TYPE_SUPERIMPOSE) return
+                subtitleTracks[trackId] = PendingSubtitleTrack(
+                    type = subtitleType,
+                    operationMode = subtitleOperationMode.takeIf { it >= 0 } ?: 1,
+                    timingMode = subtitleTimingMode.takeIf { it >= 0 } ?: 3
+                )
+                Log.i(
+                    TAG,
+                    "MMTS subtitle track: packetId=0x${packetId.toString(16)} " +
+                        "type=$subtitleType language=$language"
+                )
             }
         }
     }
 
-    private fun addAudioTrackIfCompatible(track: PendingAudioTrack) {
+    private fun addAudioTrack(track: PendingAudioTrack) {
         if (track.channelLayout == AUDIO_LAYOUT_22_2) {
             Log.i(
                 TAG,
@@ -454,28 +460,23 @@ class TlvExtractor(
             )
             return
         }
-        val selectedLevels = videoSelectionLevels
-        if (selectedLevels == null) {
-            pendingAudioTracks[track.trackId] = track
-            return
-        }
-        if (!isAudioLayerCompatible(selectedLevels, track.selectionLevels)) {
-            Log.i(
-                TAG,
-                "Ignoring MMTS audio track from another video layer: " +
-                    "packetId=0x${track.packetId.toString(16)} " +
-                    "groups=${track.assetGroupsDescription()} " +
-                    "videoSelectionLevels=$selectedLevels"
-            )
-            return
-        }
         if (audioReaders.containsKey(track.trackId)) return
         val output = extractorOutput ?: return
         audioReaders[track.trackId] = LatmReader(
             track.language.ifBlank { null },
             0,
             MMTS_CONTAINER_MIME_TYPE
-        ).also { it.createTracks(output, trackIdGenerator) }
+        ).also {
+            it.createTracks(output, TsPayloadReader.TrackIdGenerator(track.packetId, 1))
+        }
+        publishTrack(
+            TlvTrackInfo(
+                packetId = track.packetId,
+                kind = TlvTrackKind.AUDIO,
+                assetGroups = assetGroups(track.groupIdentifications, track.selectionLevels),
+                audioMainComponent = track.mainComponent
+            )
+        )
         Log.i(
             TAG,
             "MMTS audio track: context=${track.contextId} " +
@@ -484,6 +485,27 @@ class TlvExtractor(
                 "sampleRate=${track.sampleRate} main=${track.mainComponent} " +
                 "groups=${track.assetGroupsDescription()}"
         )
+    }
+
+    private fun publishTrack(track: TlvTrackInfo) {
+        trackInventory[track.packetId] = track
+        onTracksChanged(trackInventory.values.toList())
+    }
+
+    private fun assetGroups(
+        identifications: IntArray,
+        selectionLevels: IntArray
+    ): List<TlvAssetGroup> = identifications.indices.mapNotNull { index ->
+        selectionLevels.getOrNull(index)?.let { level ->
+            TlvAssetGroup(identifications[index], level)
+        }
+    }
+
+    private fun assetGroupsDescription(
+        identifications: IntArray,
+        selectionLevels: IntArray
+    ): String = identifications.indices.joinToString(prefix = "[", postfix = "]") { index ->
+        "${identifications[index]}:${selectionLevels.getOrElse(index) { -1 }}"
     }
 
     override fun onAccessUnit(
@@ -514,14 +536,11 @@ class TlvExtractor(
         val payload = ParsableByteArray(data, dataLength)
 
         when (codec) {
-            CODEC_HEVC -> {
-                if (trackId != videoTrackId) return
-                videoReader?.let { reader ->
+            CODEC_HEVC -> videoReaders[trackId]?.let { reader ->
                     if (discontinuity) reader.seek()
                     reader.packetStarted(timeUs, flags)
                     reader.consume(payload)
                     reader.packetFinished(false)
-                }
             }
 
             CODEC_AAC_LATM -> audioReaders[trackId]?.let { reader ->
@@ -532,14 +551,15 @@ class TlvExtractor(
             }
 
             CODEC_TTML -> {
-                if (trackId != subtitleTrackId) return
+                val subtitleTrack = subtitleTracks[trackId] ?: return
                 val subtitleData = if (dataLength == data.size) data else data.copyOf(dataLength)
                 onSubtitleDataReceived(
                     B62SubtitleSample(
                         timeUs = timeUs,
                         data = subtitleData,
-                        operationMode = subtitleOperationMode,
-                        timingMode = subtitleTimingMode,
+                        type = subtitleTrack.type,
+                        operationMode = subtitleTrack.operationMode,
+                        timingMode = subtitleTrack.timingMode,
                         referenceStartTimeUs = subtitleReferenceStartPtsValue
                             .takeIf { subtitleReferenceStartPtsTimescale > 0L }
                             ?.let { scaleToMicroseconds(it, subtitleReferenceStartPtsTimescale) },
@@ -682,7 +702,9 @@ class TlvExtractor(
 
     private fun ensureTracksEnded(inputOffset: Long) {
         if (tracksEnded) return
-        if (videoReader == null) {
+        val requestedVideoMissing = preferredVideoPacketId != null &&
+            trackInventory[preferredVideoPacketId]?.kind != TlvTrackKind.VIDEO
+        if (videoReaders.isEmpty() || requestedVideoMissing) {
             fatalError = IOException(
                 "Raw MMTS does not contain the requested HEVC track " +
                     "(packetId=${preferredVideoPacketId?.let { "0x${it.toString(16)}" } ?: "auto"}, offset=$inputOffset)"
@@ -774,6 +796,9 @@ class TlvExtractor(
     }
 
     companion object {
+        const val B62_SUBTITLE_TYPE_CAPTION = 0
+        const val B62_SUBTITLE_TYPE_SUPERIMPOSE = 1
+
         private const val CODEC_HEVC = 0
         private const val CODEC_AAC_LATM = 1
         private const val CODEC_TTML = 2

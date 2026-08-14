@@ -467,6 +467,9 @@ fun rememberManagedExoPlayer(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
     val captionDecoder = remember { NativeCaptionDecoder() }
+    val superimposeDecoder = remember {
+        NativeCaptionDecoder(captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE)
+    }
     val b62SubtitleSamples = remember {
         Channel<B62SubtitleSample>(
             capacity = 4,
@@ -484,9 +487,15 @@ fun rememberManagedExoPlayer(
     val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
     LaunchedEffect(captionDecoder, b62SubtitleSamples) {
         for (sample in b62SubtitleSamples) {
-            if (!vs.isSubtitleEnabled) continue
+            val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
+            if (isCaption && !vs.isSubtitleEnabled) continue
+            val decoder = when (sample.type) {
+                NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
+                NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
+                else -> continue
+            }
             val (decoded, languages) = withContext(Dispatchers.Default) {
-                captionDecoder.decodeB62(
+                decoder.decodeB62(
                     data = sample.data,
                     ptsMs = sample.timeUs / 1_000L,
                     operationMode = sample.operationMode,
@@ -495,15 +504,16 @@ fun rememberManagedExoPlayer(
                     mpuSequenceNumber = sample.mpuSequenceNumber,
                     resources = sample.resources,
                     discontinuity = sample.discontinuity
-                ) to captionDecoder.availableLanguages()
+                ) to decoder.availableLanguages()
             }
-            currentOnSubtitleLanguagesChanged.value(languages)
-            if (vs.isSubtitleEnabled) decoded.forEach(currentOnSubtitleCue.value)
+            if (isCaption) currentOnSubtitleLanguagesChanged.value(languages)
+            if (!isCaption || vs.isSubtitleEnabled) decoded.forEach(currentOnSubtitleCue.value)
         }
     }
     LaunchedEffect(program?.id) {
         while (b62SubtitleSamples.tryReceive().isSuccess) Unit
         captionDecoder.reset(subtitleLanguageId)
+        superimposeDecoder.reset()
         onSubtitleLanguagesChanged(emptyList())
     }
     LaunchedEffect(subtitleLanguageId) {
@@ -511,7 +521,6 @@ fun rememberManagedExoPlayer(
     }
     LaunchedEffect(vs.isSubtitleEnabled) {
         if (!vs.isSubtitleEnabled) {
-            while (b62SubtitleSamples.tryReceive().isSuccess) Unit
             captionDecoder.flush()
         }
     }
@@ -519,6 +528,7 @@ fun rememberManagedExoPlayer(
         onDispose {
             b62SubtitleSamples.close()
             captionDecoder.close()
+            superimposeDecoder.close()
         }
     }
 
@@ -790,9 +800,7 @@ fun rememberManagedExoPlayer(
                     },
                     sourceLengthProvider = { fileSizeBytesRef.get() },
                     onSubtitleDataReceived = { sample ->
-                        if (vs.isSubtitleEnabled) {
-                            b62SubtitleSamples.trySend(sample)
-                        }
+                        b62SubtitleSamples.trySend(sample)
                     },
                     dataBroadcastingCallback = dataBroadcastingCallback
                 ).createExtractors()

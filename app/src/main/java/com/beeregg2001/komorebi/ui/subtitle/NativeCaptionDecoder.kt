@@ -5,9 +5,10 @@ import com.beeregg2001.komorebi.NativeLib
 import com.beeregg2001.komorebi.util.mmts.B62SubtitleResource
 
 class NativeCaptionDecoder(
-    private val nativeLib: NativeLib = NativeLib()
+    private val nativeLib: NativeLib = NativeLib(),
+    private val captionType: Int = TYPE_CAPTION
 ) : AutoCloseable {
-    private var handle: Long = nativeLib.openCaptionDecoder()
+    private var handle: Long = nativeLib.openCaptionDecoder(captionType)
     private var languages: List<NativeCaptionLanguage> = emptyList()
 
     @Synchronized
@@ -81,7 +82,8 @@ class NativeCaptionDecoder(
                     NativeCaptionCue.TIMELINE_COMMAND_RESET
                 } else {
                     NativeCaptionCue.TIMELINE_COMMAND_REPLACE_FROM
-                }
+                },
+                type = captionType
             )
             val cues = listOf(timelineCommand) + decoded
             cues.also {
@@ -115,7 +117,7 @@ class NativeCaptionDecoder(
     fun reset(languageId: Int = 1) {
         val activeHandle = handle
         if (activeHandle != 0L) nativeLib.closeCaptionDecoder(activeHandle)
-        handle = nativeLib.openCaptionDecoder()
+        handle = nativeLib.openCaptionDecoder(captionType)
         languages = emptyList()
         if (handle != 0L && languageId != 1) {
             nativeLib.switchCaptionLanguage(handle, languageId)
@@ -137,6 +139,9 @@ class NativeCaptionDecoder(
     }
 
     companion object {
+        const val TYPE_CAPTION = NativeCaptionCue.TYPE_CAPTION
+        const val TYPE_SUPERIMPOSE = NativeCaptionCue.TYPE_SUPERIMPOSE
+
         private const val TAG = "NativeCaptionDecoder"
     }
 }

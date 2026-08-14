@@ -10,7 +10,8 @@ import java.io.Closeable
 class NativeTlvDemuxer(
     callback: Callback,
     preferredVideoPacketId: Int?,
-    buildRecordingIndex: Boolean
+    buildRecordingIndex: Boolean,
+    exposeAllVideoTracks: Boolean
 ) : Closeable {
 
     interface Callback {
@@ -30,6 +31,7 @@ class NativeTlvDemuxer(
             audioChannelLayout: Int,
             audioSampleRate: Int,
             audioMainComponent: Boolean,
+            subtitleType: Int,
             subtitleOperationMode: Int,
             subtitleTimingMode: Int
         )
@@ -114,7 +116,8 @@ class NativeTlvDemuxer(
     private var handle = nativeLib.openTlvDemuxer(
         callback,
         preferredVideoPacketId ?: -1,
-        buildRecordingIndex
+        buildRecordingIndex,
+        exposeAllVideoTracks
     )
 
     fun push(data: ByteArray, length: Int) {

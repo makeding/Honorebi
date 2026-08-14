@@ -39,6 +39,7 @@ import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import com.beeregg2001.komorebi.util.mmts.B62SubtitleSample
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
+import com.beeregg2001.komorebi.util.mmts.RawMmtsLayerController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.BufferOverflow
@@ -119,6 +120,8 @@ class LivePlayerViewModel @Inject constructor(
 
     private val mainTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
     private val dualTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
+    private val mainRawMmtsLayerController = RawMmtsLayerController()
+    private val dualRawMmtsLayerController = RawMmtsLayerController()
 
     val dataBroadcastingStore = B60DataBroadcastingStore()
 
@@ -188,7 +191,13 @@ class LivePlayerViewModel @Inject constructor(
 
     private var isSubtitleEnabled = false
     private val mainCaptionDecoder = NativeCaptionDecoder()
+    private val mainSuperimposeDecoder = NativeCaptionDecoder(
+        captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE
+    )
     private val dualCaptionDecoder = NativeCaptionDecoder()
+    private val dualSuperimposeDecoder = NativeCaptionDecoder(
+        captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE
+    )
     private val mainB62SubtitleSamples = CoroutineChannel<B62SubtitleSample>(
         capacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -234,7 +243,8 @@ class LivePlayerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.Default) {
             for (sample in mainB62SubtitleSamples) {
                 decodeB62Subtitle(
-                    decoder = mainCaptionDecoder,
+                    captionDecoder = mainCaptionDecoder,
+                    superimposeDecoder = mainSuperimposeDecoder,
                     sample = sample,
                     onLanguagesChanged = { _mainSubtitleLanguages.value = it },
                     onCue = { _mainSubtitleEvents.tryEmit(it) }
@@ -244,7 +254,8 @@ class LivePlayerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.Default) {
             for (sample in dualB62SubtitleSamples) {
                 decodeB62Subtitle(
-                    decoder = dualCaptionDecoder,
+                    captionDecoder = dualCaptionDecoder,
+                    superimposeDecoder = dualSuperimposeDecoder,
                     sample = sample,
                     onLanguagesChanged = { _dualSubtitleLanguages.value = it },
                     onCue = { _dualSubtitleEvents.tryEmit(it) }
@@ -400,12 +411,14 @@ class LivePlayerViewModel @Inject constructor(
         mainEventSource?.cancel(); mainEventSource = null
         mainB62SubtitleSamples.clearPending()
         mainCaptionDecoder.reset(_currentSubtitleLanguageId.value)
+        mainSuperimposeDecoder.reset()
         _mainSubtitleLanguages.value = emptyList()
 
         // ★ 修正: KonomiTV等でセッションが残らないよう、確実にstop()とclearMediaItems()を呼ぶ
         _mainPlayer.value?.stop()
         _mainPlayer.value?.clearMediaItems()
         _mainPlayer.value?.release(); _mainPlayer.value = null
+        mainRawMmtsLayerController.reset()
 
         _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
         liveJikkyoManager.stopJikkyo()
@@ -421,12 +434,14 @@ class LivePlayerViewModel @Inject constructor(
         dualEventSource?.cancel(); dualEventSource = null
         dualB62SubtitleSamples.clearPending()
         dualCaptionDecoder.reset(_currentSubtitleLanguageId.value)
+        dualSuperimposeDecoder.reset()
         _dualSubtitleLanguages.value = emptyList()
 
         // ★ 修正: サブプレイヤー側も同様に確実なクリーンアップを行う
         _dualPlayer.value?.stop()
         _dualPlayer.value?.clearMediaItems()
         _dualPlayer.value?.release(); _dualPlayer.value = null
+        dualRawMmtsLayerController.reset()
 
         _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
     }
@@ -445,10 +460,12 @@ class LivePlayerViewModel @Inject constructor(
         _mainPlayer.value?.stop()
         _mainPlayer.value?.clearMediaItems()
         _mainPlayer.value?.release(); _mainPlayer.value = null
+        mainRawMmtsLayerController.reset()
 
         _dualPlayer.value?.stop()
         _dualPlayer.value?.clearMediaItems()
         _dualPlayer.value?.release(); _dualPlayer.value = null
+        dualRawMmtsLayerController.reset()
 
         _mainSseStatus.value = "Standby"; _dualSseStatus.value = "Standby"
         liveJikkyoManager.stopJikkyo()
@@ -606,7 +623,8 @@ class LivePlayerViewModel @Inject constructor(
                             mainTsDataSourceFactory,
                             ::decodeAndEmitMainSubtitle,
                             ::decodeAndEmitMainB62Subtitle,
-                            dataBroadcastingStore
+                            dataBroadcastingStore,
+                            mainRawMmtsLayerController
                         )
                         liveJikkyoManager.startJikkyo(channel, request.source)
                     }
@@ -686,7 +704,8 @@ class LivePlayerViewModel @Inject constructor(
                             request,
                             dualTsDataSourceFactory,
                             ::decodeAndEmitDualSubtitle,
-                            ::decodeAndEmitDualB62Subtitle
+                            ::decodeAndEmitDualB62Subtitle,
+                            rawMmtsLayerController = dualRawMmtsLayerController
                         )
                     }
                 }
@@ -740,8 +759,6 @@ class LivePlayerViewModel @Inject constructor(
     fun setSubtitlesEnabled(enabled: Boolean) {
         this.isSubtitleEnabled = enabled
         if (!enabled) {
-            mainB62SubtitleSamples.clearPending()
-            dualB62SubtitleSamples.clearPending()
             mainCaptionDecoder.flush()
             dualCaptionDecoder.flush()
         }
@@ -767,20 +784,27 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     private fun decodeAndEmitMainB62Subtitle(sample: B62SubtitleSample) {
-        if (isSubtitleEnabled) mainB62SubtitleSamples.trySend(sample)
+        mainB62SubtitleSamples.trySend(sample)
     }
 
     private fun decodeAndEmitDualB62Subtitle(sample: B62SubtitleSample) {
-        if (isSubtitleEnabled) dualB62SubtitleSamples.trySend(sample)
+        dualB62SubtitleSamples.trySend(sample)
     }
 
     private suspend fun decodeB62Subtitle(
-        decoder: NativeCaptionDecoder,
+        captionDecoder: NativeCaptionDecoder,
+        superimposeDecoder: NativeCaptionDecoder,
         sample: B62SubtitleSample,
         onLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
         onCue: (NativeCaptionCue) -> Unit
     ) {
-        if (!isSubtitleEnabled) return
+        val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
+        if (isCaption && !isSubtitleEnabled) return
+        val decoder = when (sample.type) {
+            NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
+            NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
+            else -> return
+        }
         val decoded = decoder.decodeB62(
             data = sample.data,
             ptsMs = sample.timeUs / 1_000L,
@@ -793,8 +817,8 @@ class LivePlayerViewModel @Inject constructor(
         )
         val languages = decoder.availableLanguages()
         withContext(Dispatchers.Main.immediate) {
-            onLanguagesChanged(languages)
-            if (isSubtitleEnabled) decoded.forEach(onCue)
+            if (isCaption) onLanguagesChanged(languages)
+            if (!isCaption || isSubtitleEnabled) decoded.forEach(onCue)
         }
     }
 
@@ -804,6 +828,49 @@ class LivePlayerViewModel @Inject constructor(
 
     fun setVolumes(mainVolume: Float, dualVolume: Float) {
         _mainPlayer.value?.volume = mainVolume; _dualPlayer.value?.volume = dualVolume
+    }
+
+    fun switchRawMmtsLayer(quality: StreamQuality, mainAudio: Boolean): Boolean {
+        if (!quality.isRawMmts) return false
+        val mainPlayer = _mainPlayer.value ?: return false
+        val mainParameters = mainRawMmtsLayerController.buildLayerSelection(
+            mainPlayer,
+            quality.videoPacketId,
+            mainAudio
+        ) ?: return false
+        val dualPlayer = _dualPlayer.value
+        val dualUsesRawMmts = dualPlayer != null && dualCurrentQuality?.isRawMmts == true
+        val dualParameters = if (dualUsesRawMmts) {
+            dualRawMmtsLayerController.buildLayerSelection(
+                dualPlayer,
+                quality.videoPacketId,
+                mainAudio
+            )
+        } else {
+            null
+        }
+
+        mainPlayer.trackSelectionParameters = mainParameters
+        if (dualPlayer != null && dualParameters != null) {
+            dualPlayer.trackSelectionParameters = dualParameters
+            dualCurrentQuality = quality
+        }
+        mainCurrentQuality = quality
+        Log.i(
+            TAG,
+            "Raw MMTS layer switched in place: videoPacketId=" +
+                (quality.videoPacketId?.let { "0x${it.toString(16)}" } ?: "primary")
+        )
+        return true
+    }
+
+    fun switchMainRawMmtsAudio(mainAudio: Boolean): Boolean {
+        if (mainCurrentQuality?.isRawMmts != true) return false
+        val player = _mainPlayer.value ?: return false
+        val parameters = mainRawMmtsLayerController.buildAudioSelection(player, mainAudio)
+            ?: return false
+        player.trackSelectionParameters = parameters
+        return true
     }
 
     fun retry() {
@@ -934,11 +1001,13 @@ class LivePlayerViewModel @Inject constructor(
         factory: TsReadExDataSourceFactory,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
         onB62SubtitleDataReceived: (B62SubtitleSample) -> Unit,
-        dataBroadcastingCallback: B60DataBroadcastingCallback? = null
+        dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
+        rawMmtsLayerController: RawMmtsLayerController? = null
     ) {
         val mediaItem = MediaItem.fromUri(request.url)
         val mediaSource = when {
             request.quality.isRawMmts -> {
+                rawMmtsLayerController?.reset()
                 val httpDataSourceFactory = DefaultHttpDataSource.Factory()
                     .setAllowCrossProtocolRedirects(true)
                 if (request.source == StreamSource.MIRAKURUN) {
@@ -950,6 +1019,7 @@ class LivePlayerViewModel @Inject constructor(
                     httpDataSourceFactory,
                     TlvExtractorsFactory(
                         preferredVideoPacketId = request.quality.videoPacketId,
+                        onTracksChanged = { rawMmtsLayerController?.updateTracks(it) },
                         onSubtitleDataReceived = onB62SubtitleDataReceived,
                         dataBroadcastingCallback = dataBroadcastingCallback
                     )
@@ -985,6 +1055,19 @@ class LivePlayerViewModel @Inject constructor(
                     }
 
             else -> DefaultMediaSourceFactory(context).createMediaSource(mediaItem)
+        }
+        if (request.quality.isRawMmts && player != null && rawMmtsLayerController != null) {
+            player.addListener(object : Player.Listener {
+                override fun onTracksChanged(tracks: Tracks) {
+                    val parameters = rawMmtsLayerController.buildLayerSelection(
+                        player,
+                        request.quality.videoPacketId,
+                        mainAudio = true
+                    ) ?: return
+                    player.removeListener(this)
+                    player.trackSelectionParameters = parameters
+                }
+            })
         }
         player?.setMediaSource(mediaSource); player?.prepare(); player?.play()
     }
@@ -1216,7 +1299,9 @@ class LivePlayerViewModel @Inject constructor(
         super.onCleared()
         releasePlayers()
         mainCaptionDecoder.close()
+        mainSuperimposeDecoder.close()
         dualCaptionDecoder.close()
+        dualSuperimposeDecoder.close()
         // ★ 修正: 全通信機能を破壊する自爆スイッチ（shutdown）を撤去し、
         // プレイヤーの releasePlayers() でのクリーンアップに一任する
     }
