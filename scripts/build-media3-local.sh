@@ -31,7 +31,7 @@ temp_root="${TMPDIR:-/tmp}"
 work_root="$temp_root/komorebi-media3-build"
 source_dir="$work_root/androidx-media"
 staging_repo="$work_root/maven"
-work_budget_kib=$((1024 * 1024))
+work_budget_kib=$((1536 * 1024))
 monitor_pid=""
 cleanup() {
   if [[ -n "$monitor_pid" ]]; then
@@ -64,7 +64,7 @@ parent_pid="$$"
       continue
     fi
     if (( current_kib > work_budget_kib )); then
-      echo "Media3 build work directory exceeded 1 GiB: ${current_kib} KiB" >&2
+      echo "Media3 build work directory exceeded 1.5 GiB: ${current_kib} KiB" >&2
       kill -TERM "$parent_pid"
       exit 1
     fi

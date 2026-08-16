@@ -4,13 +4,13 @@ package com.beeregg2001.komorebi.ui.player
 
 import android.content.Context
 import android.os.Handler
-import androidx.media3.common.Renderer
 import androidx.media3.common.VideoGraph
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.DefaultVideoFrameProcessor
 import androidx.media3.effect.HlgToSdrColorLut
 import androidx.media3.effect.SingleInputVideoGraph
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.PlaybackVideoGraphWrapper

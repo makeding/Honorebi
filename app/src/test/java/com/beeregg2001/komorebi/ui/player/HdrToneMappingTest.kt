@@ -19,7 +19,9 @@ class HdrToneMappingTest {
     @Test
     fun findsARejectedRequestThroughWrappedCauses() {
         val rejection = HdrToneMappingRejectedException("GL extension unavailable")
-        assertTrue(HdrToneMapping.rejectionCause(IllegalStateException(rejection)) === rejection)
+        assertTrue(
+            HdrToneMapping.rejectionCause(IllegalStateException("wrapped", rejection)) === rejection
+        )
     }
 
     @Test

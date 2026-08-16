@@ -209,7 +209,6 @@ dependencies {
 //    implementation("com.github.ctiao:ndkbitmap-armv5:0.9.21")
 //    implementation("com.github.ctiao:ndkbitmap-x86:0.9.21")
 
-    compileOnly(libs.checker.qual)
 
     // Baseline Profiles のインストールを管理するライブラリ
     // Hilt Worker compiler must match the AndroidX Hilt runtime line.
