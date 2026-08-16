@@ -1997,9 +1997,7 @@ fun VideoPlayerScreen(
                 NativeCaptionOverlay(
                     cue = superimposeCue.value,
                     visible = !isSubtitleBlockingOverlayOpen,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(4f)
+                    modifier = Modifier.fillMaxSize()
                 )
             }
             if (isBuffering) CircularProgressIndicator(

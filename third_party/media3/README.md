@@ -9,7 +9,8 @@ The patches preserve broadcast-specific behavior:
 1. discard initial AAC/ADTS samples that arrive before the first PES timestamp;
 2. resynchronize large broadcast audio timestamp discontinuities without reporting an audio-sink error;
 3. avoid dropping late video frames or GOPs on the target Android TV and submit frames immediately.
-4. expose the configured codec input format so HDR tone-map requests can be verified.
+4. apply a caller-provided HLG-to-SDR LUT while sampling the decoder's external YUV texture,
+   before Media3 performs any built-in HDR transform.
 
 To bump Media3:
 
@@ -19,5 +20,7 @@ To bump Media3:
 4. run `scripts/build-media3-local.sh` to test and publish the patched modules;
 5. update the app's Media3 coordinate and run the Android/player test matrix.
 
-`--check` clones the pinned commit and applies every patch with `git apply --check`, without building
-or changing `local_repo`.
+`--check` uses a sparse checkout of the pinned commit and applies every patch with
+`git apply --check`, without building or changing `local_repo`. The build uses one deterministic
+system-temporary path, enforces a 1.5 GiB limit, and removes the checkout, caches, and staging
+repository on success, failure, or interruption.

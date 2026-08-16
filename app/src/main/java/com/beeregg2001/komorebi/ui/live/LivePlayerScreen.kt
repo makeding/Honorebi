@@ -967,9 +967,7 @@ fun LivePlayerScreen(
                     NativeCaptionOverlay(
                         cue = mainSuperimposeCue.value,
                         visible = !isSubtitleBlockingUiVisible,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .zIndex(4f)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
