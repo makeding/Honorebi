@@ -20,11 +20,11 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.metadata.id3.PrivFrame
 import com.beeregg2001.komorebi.data.model.LivePlayerConstants
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.player.LibaribtlvToneMappingRenderersFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -83,14 +83,10 @@ class LivePlayerFactory @Inject constructor(
         // レンダラーのファクトリ設定（デコーダーのフォールバック等を有効化）
         val enableHdrToSdrToneMapping =
             hdrRenderMode == HDR_RENDER_MODE_SDR && isHdrToSdrToneMappingSupported
-        val renderersFactory = object : DefaultRenderersFactory(context) {
-            override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
-                return HdrToneMapping.codecAdapterFactory(
-                    delegate = super.getCodecAdapterFactory(),
-                    enabled = enableHdrToSdrToneMapping
-                )
-            }
-
+        val renderersFactory = object : LibaribtlvToneMappingRenderersFactory(
+            context,
+            if (enableHdrToSdrToneMapping) HdrToneMapping.colorLut else null
+        ) {
             override fun buildAudioSink(
                 ctx: Context,
                 enableFloat: Boolean,
@@ -130,6 +126,9 @@ class LivePlayerFactory @Inject constructor(
             .setLoadControl(loadControl)
             .setLivePlaybackSpeedControl(livePlaybackSpeedControl)
             .build().apply {
+                if (enableHdrToSdrToneMapping) {
+                    setVideoEffects(emptyList())
+                }
                 // 自動フレームレート変更をオフにする（カクつき防止）
                 setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
 

@@ -27,17 +27,73 @@ elif [[ $# -ne 0 ]]; then
   exit 2
 fi
 
-work_root="$(mktemp -d "${TMPDIR:-/tmp}/komorebi-media3.XXXXXX")"
+temp_root="${TMPDIR:-/tmp}"
+work_root="$temp_root/komorebi-media3-build"
 source_dir="$work_root/androidx-media"
 staging_repo="$work_root/maven"
+work_budget_kib=$((1024 * 1024))
+monitor_pid=""
 cleanup() {
+  if [[ -n "$monitor_pid" ]]; then
+    kill "$monitor_pid" 2>/dev/null || true
+    wait "$monitor_pid" 2>/dev/null || true
+  fi
+  local removed_kib=0
+  if [[ -d "$work_root" ]]; then
+    removed_kib="$(du -sk "$work_root" | awk '{print $1}')"
+  fi
   rm -rf -- "$work_root"
+  [[ ! -e "$work_root" ]]
+  echo "Cleaned Media3 build work directory (${removed_kib} KiB): $work_root"
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM
 
-git clone --filter=blob:none --no-checkout https://github.com/androidx/media.git "$source_dir"
+if [[ -e "$work_root" ]]; then
+  rm -rf -- "$work_root"
+fi
+mkdir -p "$work_root"
+
+parent_pid="$$"
+(
+  trap - EXIT INT TERM
+  while kill -0 "$parent_pid" 2>/dev/null; do
+    current_kib="$(du -sk "$work_root" 2>/dev/null | awk '{print $1}' || true)"
+    if [[ -z "$current_kib" ]]; then
+      sleep 2
+      continue
+    fi
+    if (( current_kib > work_budget_kib )); then
+      echo "Media3 build work directory exceeded 1 GiB: ${current_kib} KiB" >&2
+      kill -TERM "$parent_pid"
+      exit 1
+    fi
+    sleep 2
+  done
+) &
+monitor_pid="$!"
+
+git clone --filter=blob:none --no-checkout --sparse https://github.com/androidx/media.git "$source_dir"
 git -C "$source_dir" fetch --depth 1 origin "$MEDIA3_UPSTREAM_COMMIT"
+git -C "$source_dir" sparse-checkout set \
+  buildSrc \
+  gradle \
+  libraries/common \
+  libraries/container \
+  libraries/database \
+  libraries/datasource \
+  libraries/decoder \
+  libraries/effect \
+  libraries/extractor \
+  libraries/exoplayer \
+  libraries/exoplayer_hls \
+  libraries/session \
+  libraries/ui
 git -C "$source_dir" checkout --detach "$MEDIA3_UPSTREAM_COMMIT"
+
+# The sources and API docs are already in the checkout. The smaller Gradle binary
+# distribution keeps this disposable build below its enforced disk budget.
+perl -pi -e 's/-all\.zip/-bin.zip/' "$source_dir/gradle/wrapper/gradle-wrapper.properties"
 
 actual_commit="$(git -C "$source_dir" rev-parse HEAD)"
 if [[ "$actual_commit" != "$MEDIA3_UPSTREAM_COMMIT" ]]; then

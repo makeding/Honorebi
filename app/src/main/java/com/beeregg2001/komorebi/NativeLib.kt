@@ -73,4 +73,7 @@ class NativeLib {
     ): Boolean
     external fun getTlvDurationProbeResult(handle: Long): LongArray
     external fun closeTlvDurationProbe(handle: Long)
+
+    /** Returns [cube size, bitmap width, bitmap height, ARGB pixels...]. */
+    external fun getHlgSdrPrototypeColorLut(): IntArray
 }

@@ -1,0 +1,383 @@
+diff --git a/libraries/effect/src/main/java/androidx/media3/effect/HlgToSdrColorLut.java b/libraries/effect/src/main/java/androidx/media3/effect/HlgToSdrColorLut.java
+new file mode 100644
+--- /dev/null
++++ b/libraries/effect/src/main/java/androidx/media3/effect/HlgToSdrColorLut.java
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2026 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package androidx.media3.effect;
++
++import static com.google.common.base.Preconditions.checkArgument;
++import static com.google.common.base.Preconditions.checkNotNull;
++
++import android.graphics.Bitmap;
++import androidx.media3.common.util.UnstableApi;
++
++/**
++ * A packed 3D LUT for input-stage HLG-to-SDR conversion.
++ *
++ * <p>The bitmap contains a grid of {@code size} square blue-channel slices. Red advances along a
++ * slice's x axis and green advances along its y axis. LUT output values are SDR electrical RGB.
++ */
++@UnstableApi
++public final class HlgToSdrColorLut {
++  private final Bitmap bitmap;
++  private final int size;
++
++  public HlgToSdrColorLut(Bitmap bitmap, int size) {
++    this.bitmap = checkNotNull(bitmap);
++    this.size = size;
++    checkArgument(!bitmap.isRecycled());
++    checkArgument(size >= 2);
++    checkArgument(bitmap.getWidth() % size == 0);
++    checkArgument(bitmap.getHeight() % size == 0);
++    checkArgument((bitmap.getWidth() / size) * (bitmap.getHeight() / size) >= size);
++  }
++
++  public Bitmap getBitmap() {
++    return bitmap;
++  }
++
++  public int getSize() {
++    return size;
++  }
++}
+diff --git a/libraries/effect/src/main/java/androidx/media3/effect/DefaultVideoFrameProcessor.java b/libraries/effect/src/main/java/androidx/media3/effect/DefaultVideoFrameProcessor.java
+--- a/libraries/effect/src/main/java/androidx/media3/effect/DefaultVideoFrameProcessor.java
++++ b/libraries/effect/src/main/java/androidx/media3/effect/DefaultVideoFrameProcessor.java
+@@ -155,6 +155,7 @@
+     /** A builder for {@link DefaultVideoFrameProcessor.Factory} instances. */
+     public static final class Builder {
+       private @WorkingColorSpace int sdrWorkingColorSpace;
++      @Nullable private HlgToSdrColorLut hlgToSdrColorLut;
+       @Nullable private ExecutorService executorService;
+       private @MonotonicNonNull GlObjectsProvider glObjectsProvider;
+       private GlTextureProducer.@MonotonicNonNull Listener textureOutputListener;
+@@ -174,6 +175,7 @@
+ 
+       private Builder(Factory factory) {
+         sdrWorkingColorSpace = factory.sdrWorkingColorSpace;
++        hlgToSdrColorLut = factory.hlgToSdrColorLut;
+         executorService = factory.executorService;
+         glObjectsProvider = factory.glObjectsProvider;
+         textureOutputListener = factory.textureOutputListener;
+@@ -198,6 +200,13 @@
+       @CanIgnoreReturnValue
+       public Builder setSdrWorkingColorSpace(@WorkingColorSpace int sdrWorkingColorSpace) {
+         this.sdrWorkingColorSpace = sdrWorkingColorSpace;
++        return this;
++      }
++
++      /** Sets the HLG-to-SDR color LUT applied while sampling decoder output. */
++      @CanIgnoreReturnValue
++      public Builder setHlgToSdrColorLut(HlgToSdrColorLut hlgToSdrColorLut) {
++        this.hlgToSdrColorLut = hlgToSdrColorLut;
+         return this;
+       }
+ 
+@@ -357,6 +366,7 @@
+       public DefaultVideoFrameProcessor.Factory build() {
+         return new DefaultVideoFrameProcessor.Factory(
+             sdrWorkingColorSpace,
++            hlgToSdrColorLut,
+             /* repeatLastRegisteredFrame= */ !requireRegisteringAllInputFrames,
+             glObjectsProvider,
+             executorService,
+@@ -369,6 +379,7 @@
+     }
+ 
+     private final @WorkingColorSpace int sdrWorkingColorSpace;
++    @Nullable private final HlgToSdrColorLut hlgToSdrColorLut;
+     private final boolean repeatLastRegisteredFrame;
+     @Nullable private final GlObjectsProvider glObjectsProvider;
+     @Nullable private final ExecutorService executorService;
+@@ -380,6 +391,7 @@
+ 
+     private Factory(
+         @WorkingColorSpace int sdrWorkingColorSpace,
++        @Nullable HlgToSdrColorLut hlgToSdrColorLut,
+         boolean repeatLastRegisteredFrame,
+         @Nullable GlObjectsProvider glObjectsProvider,
+         @Nullable ExecutorService executorService,
+@@ -389,6 +401,7 @@
+         boolean experimentalAdjustSurfaceTextureTransformationMatrix,
+         boolean experimentalRepeatInputBitmapWithoutResampling) {
+       this.sdrWorkingColorSpace = sdrWorkingColorSpace;
++      this.hlgToSdrColorLut = hlgToSdrColorLut;
+       this.repeatLastRegisteredFrame = repeatLastRegisteredFrame;
+       this.glObjectsProvider = glObjectsProvider;
+       this.executorService = executorService;
+@@ -457,6 +470,7 @@
+                       debugViewProvider,
+                       outputColorInfo,
+                       sdrWorkingColorSpace,
++                      hlgToSdrColorLut,
+                       renderFramesAutomatically,
+                       videoFrameProcessingTaskExecutor,
+                       listenerExecutor,
+@@ -938,6 +952,7 @@
+       DebugViewProvider debugViewProvider,
+       ColorInfo outputColorInfo,
+       @WorkingColorSpace int sdrWorkingColorSpace,
++      @Nullable HlgToSdrColorLut hlgToSdrColorLut,
+       boolean renderFramesAutomatically,
+       VideoFrameProcessingTaskExecutor videoFrameProcessingTaskExecutor,
+       Executor videoFrameProcessorListenerExecutor,
+@@ -981,6 +996,7 @@
+             /* errorListenerExecutor= */ videoFrameProcessorListenerExecutor,
+             /* samplingShaderProgramErrorListener= */ listener::onError,
+             sdrWorkingColorSpace,
++            hlgToSdrColorLut,
+             repeatLastRegisteredFrame,
+             experimentalAdjustSurfaceTextureTransformationMatrix,
+             experimentalRepeatInputBitmapWithoutResampling);
+diff --git a/libraries/effect/src/main/java/androidx/media3/effect/InputSwitcher.java b/libraries/effect/src/main/java/androidx/media3/effect/InputSwitcher.java
+--- a/libraries/effect/src/main/java/androidx/media3/effect/InputSwitcher.java
++++ b/libraries/effect/src/main/java/androidx/media3/effect/InputSwitcher.java
+@@ -53,6 +53,7 @@
+   private final Executor errorListenerExecutor;
+   private final SparseArray<Input> inputs;
+   private final @WorkingColorSpace int sdrWorkingColorSpace;
++  @Nullable private final HlgToSdrColorLut hlgToSdrColorLut;
+   private final boolean experimentalAdjustSurfaceTextureTransformationMatrix;
+ 
+   private @MonotonicNonNull GlShaderProgram downstreamShaderProgram;
+@@ -66,6 +67,7 @@
+       Executor errorListenerExecutor,
+       GlShaderProgram.ErrorListener samplingShaderProgramErrorListener,
+       @WorkingColorSpace int sdrWorkingColorSpace,
++      @Nullable HlgToSdrColorLut hlgToSdrColorLut,
+       boolean repeatLastRegisteredFrame,
+       boolean experimentalAdjustSurfaceTextureTransformationMatrix,
+       boolean experimentalRepeatInputBitmapWithoutResampling)
+@@ -78,6 +80,7 @@
+     this.samplingShaderProgramErrorListener = samplingShaderProgramErrorListener;
+     this.inputs = new SparseArray<>();
+     this.sdrWorkingColorSpace = sdrWorkingColorSpace;
++    this.hlgToSdrColorLut = hlgToSdrColorLut;
+     this.experimentalAdjustSurfaceTextureTransformationMatrix =
+         experimentalAdjustSurfaceTextureTransformationMatrix;
+ 
+@@ -117,7 +120,8 @@
+                 inputColorInfo,
+                 outputColorInfo,
+                 sdrWorkingColorSpace,
++                experimentalAdjustSurfaceTextureTransformationMatrix,
++                hlgToSdrColorLut);
+-                experimentalAdjustSurfaceTextureTransformationMatrix);
+         break;
+       case INPUT_TYPE_BITMAP:
+       case INPUT_TYPE_TEXTURE_ID:
+diff --git a/libraries/effect/src/main/java/androidx/media3/effect/DefaultShaderProgram.java b/libraries/effect/src/main/java/androidx/media3/effect/DefaultShaderProgram.java
+--- a/libraries/effect/src/main/java/androidx/media3/effect/DefaultShaderProgram.java
++++ b/libraries/effect/src/main/java/androidx/media3/effect/DefaultShaderProgram.java
+@@ -26,9 +26,11 @@
+ import static java.lang.Math.max;
+ 
+ import android.content.Context;
++import android.graphics.Bitmap;
+ import android.graphics.Gainmap;
+ import android.opengl.GLES20;
+ import android.opengl.Matrix;
++import androidx.annotation.Nullable;
+ import androidx.annotation.RequiresApi;
+ import androidx.annotation.RestrictTo;
+ import androidx.media3.common.C;
+@@ -138,6 +140,7 @@
+ 
+   private @MonotonicNonNull Gainmap lastGainmap;
+   private int gainmapTexId;
++  private int colorLutTexId;
+   private @C.ColorTransfer int outputColorTransfer;
+   private boolean shouldRepeatLastFrame;
+   private boolean isRepeatingFrameDrawn;
+@@ -282,6 +285,24 @@
+       ColorInfo outputColorInfo,
+       @WorkingColorSpace int sdrWorkingColorSpace,
+       boolean sampleWithNearest)
++      throws VideoFrameProcessingException {
++    return createWithExternalSampler(
++        context,
++        inputColorInfo,
++        outputColorInfo,
++        sdrWorkingColorSpace,
++        sampleWithNearest,
++        /* hlgToSdrColorLut= */ null);
++  }
++
++  /** Creates an external sampler with an optional input-stage HLG-to-SDR LUT. */
++  public static DefaultShaderProgram createWithExternalSampler(
++      Context context,
++      ColorInfo inputColorInfo,
++      ColorInfo outputColorInfo,
++      @WorkingColorSpace int sdrWorkingColorSpace,
++      boolean sampleWithNearest,
++      @Nullable HlgToSdrColorLut hlgToSdrColorLut)
+       throws VideoFrameProcessingException {
+     boolean isInputTransferHdr = ColorInfo.isTransferHdr(inputColorInfo);
+     int vertexShaderResId =
+@@ -290,7 +311,9 @@
+             : R.raw.vertex_shader_transformation_es2;
+     int fragmentShaderResId =
+         isInputTransferHdr
++            ? hlgToSdrColorLut != null
++                ? R.raw.fragment_shader_transformation_external_yuv_hlg_lut_es3
++                : R.raw.fragment_shader_transformation_external_yuv_es3
+-            ? R.raw.fragment_shader_transformation_external_yuv_es3
+             : R.raw.fragment_shader_transformation_sdr_external_es2;
+     GlProgram glProgram = createGlProgram(context, vertexShaderResId, fragmentShaderResId);
+     if (isInputTransferHdr) {
+@@ -304,19 +327,29 @@
+           inputColorInfo.colorRange == C.COLOR_RANGE_FULL
+               ? BT2020_FULL_RANGE_YUV_TO_RGB_COLOR_TRANSFORM_MATRIX
+               : BT2020_LIMITED_RANGE_YUV_TO_RGB_COLOR_TRANSFORM_MATRIX);
++      if (hlgToSdrColorLut == null) {
++        glProgram.setIntUniform("uInputColorTransfer", inputColorInfo.colorTransfer);
++        glProgram.setIntUniform(
++            "uApplyHdrToSdrToneMapping",
++            outputColorInfo.colorSpace != C.COLOR_SPACE_BT2020 ? GL_TRUE : GL_FALSE);
++      } else if (inputColorInfo.colorTransfer != C.COLOR_TRANSFER_HLG) {
++        throw new VideoFrameProcessingException(
++            "HLG_TO_SDR_LUT_UNSUPPORTED: the input transfer must be HLG");
++      }
+-      glProgram.setIntUniform("uInputColorTransfer", inputColorInfo.colorTransfer);
+-      glProgram.setIntUniform(
+-          "uApplyHdrToSdrToneMapping",
+-          outputColorInfo.colorSpace != C.COLOR_SPACE_BT2020 ? GL_TRUE : GL_FALSE);
+     }
+     glProgram.setExternalTexturesRequireNearestSampling(sampleWithNearest);
+ 
++    DefaultShaderProgram shaderProgram =
++        createWithSampler(
++            glProgram,
++            inputColorInfo,
++            outputColorInfo,
++            sdrWorkingColorSpace,
++            /* matrixTransformations= */ ImmutableList.of());
++    if (isInputTransferHdr && hlgToSdrColorLut != null) {
++      shaderProgram.setHlgToSdrColorLut(hlgToSdrColorLut);
++    }
++    return shaderProgram;
+-    return createWithSampler(
+-        glProgram,
+-        inputColorInfo,
+-        outputColorInfo,
+-        sdrWorkingColorSpace,
+-        /* matrixTransformations= */ ImmutableList.of());
+   }
+ 
+   /**
+@@ -465,6 +498,7 @@
+     tempResultMatrix = new float[16];
+     visiblePolygon = NDC_SQUARE;
+     gainmapTexId = C.INDEX_UNSET;
++    colorLutTexId = C.INDEX_UNSET;
+ 
+     // When multiple matrix transformations are applied in a single shader program, use the highest
+     // quality resampling algorithm requested.
+@@ -544,9 +578,27 @@
+       glProgram.delete();
+       if (gainmapTexId != C.INDEX_UNSET) {
+         GlUtil.deleteTexture(gainmapTexId);
++      }
++      if (colorLutTexId != C.INDEX_UNSET) {
++        GlUtil.deleteTexture(colorLutTexId);
+       }
+     } catch (GlUtil.GlException e) {
+       throw new VideoFrameProcessingException(e);
++    }
++  }
++
++  private void setHlgToSdrColorLut(HlgToSdrColorLut colorLut)
++      throws VideoFrameProcessingException {
++    try {
++      Bitmap bitmap = colorLut.getBitmap();
++      colorLutTexId = GlUtil.createTexture(bitmap);
++      glProgram.setSamplerTexIdUniform("uColorLut", colorLutTexId, /* texUnitIndex= */ 1);
++      glProgram.setFloatUniform("uColorLutSize", colorLut.getSize());
++      glProgram.setFloatsUniform(
++          "uColorLutTextureSize", new float[] {bitmap.getWidth(), bitmap.getHeight()});
++    } catch (GlUtil.GlException e) {
++      throw new VideoFrameProcessingException(
++          "HLG_TO_SDR_LUT_UNSUPPORTED: the LUT texture could not be created", e);
+     }
+   }
+ 
+diff --git a/libraries/effect/src/main/res/raw/fragment_shader_transformation_external_yuv_hlg_lut_es3.glsl b/libraries/effect/src/main/res/raw/fragment_shader_transformation_external_yuv_hlg_lut_es3.glsl
+new file mode 100644
+--- /dev/null
++++ b/libraries/effect/src/main/res/raw/fragment_shader_transformation_external_yuv_hlg_lut_es3.glsl
+@@ -0,0 +1,59 @@
++#version 300 es
++// Copyright 2026 The Android Open Source Project
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//      http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#extension GL_OES_EGL_image_external : require
++#extension GL_EXT_YUV_target : require
++precision highp float;
++uniform __samplerExternal2DY2YEXT uTexSampler;
++uniform mat3 uYuvToRgbColorTransform;
++uniform sampler2D uColorLut;
++uniform float uColorLutSize;
++uniform vec2 uColorLutTextureSize;
++uniform int uOutputColorTransfer;
++in vec2 vTexSamplingCoord;
++out vec4 outColor;
++
++const int COLOR_TRANSFER_GAMMA_2_2 = 10;
++
++vec3 yuvToRgb(vec3 yuv) {
++  const vec3 yuvOffset = vec3(0.0625, 0.5, 0.5);
++  return clamp(uYuvToRgbColorTransform * (yuv - yuvOffset), 0.0, 1.0);
++}
++
++vec3 sampleColorLut(vec3 color) {
++  float maximum = uColorLutSize - 1.0;
++  vec3 coordinate = clamp(color, 0.0, 1.0) * maximum;
++  float lowerBlue = floor(coordinate.b);
++  float upperBlue = min(lowerBlue + 1.0, maximum);
++  float columns = uColorLutTextureSize.x / uColorLutSize;
++  vec2 lowerSlice = vec2(mod(lowerBlue, columns), floor(lowerBlue / columns));
++  vec2 upperSlice = vec2(mod(upperBlue, columns), floor(upperBlue / columns));
++  vec2 lowerUv =
++      (lowerSlice * uColorLutSize + coordinate.rg + vec2(0.5)) / uColorLutTextureSize;
++  vec2 upperUv =
++      (upperSlice * uColorLutSize + coordinate.rg + vec2(0.5)) / uColorLutTextureSize;
++  return mix(
++      texture(uColorLut, lowerUv).rgb,
++      texture(uColorLut, upperUv).rgb,
++      fract(coordinate.b));
++}
++
++void main() {
++  vec3 mapped = sampleColorLut(yuvToRgb(texture(uTexSampler, vTexSamplingCoord).xyz));
++  if (uOutputColorTransfer != COLOR_TRANSFER_GAMMA_2_2) {
++    mapped = vec3(1.0, 0.0, 0.0);
++  }
++  outColor = vec4(mapped, 1.0);
++}
+

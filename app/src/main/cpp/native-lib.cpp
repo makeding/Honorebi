@@ -18,6 +18,7 @@
 #include <aribcaption/renderer.hpp>
 #include <aribtlv/demuxer.hpp>
 #include <aribtlv/duration_probe.hpp>
+#include <aribtlv/hlg_sdr_tone_mapping.hpp>
 #include <aribtlv/recording.hpp>
 
 // tsreadex コアヘッダ
@@ -1021,6 +1022,54 @@ private:
 };
 
 extern "C" {
+
+JNIEXPORT jintArray JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_getHlgSdrPrototypeColorLut(
+    JNIEnv* env,
+    jobject thiz) {
+    try {
+        const auto lut = aribtlv::hlg_sdr_prototype_color_lut();
+        const auto pixel_count = lut.width * lut.height;
+        if (pixel_count > static_cast<size_t>(std::numeric_limits<jsize>::max() - 3)) {
+            return nullptr;
+        }
+
+        jintArray result = env->NewIntArray(static_cast<jsize>(pixel_count + 3));
+        if (result == nullptr) return nullptr;
+
+        const jint header[] = {
+            static_cast<jint>(lut.size),
+            static_cast<jint>(lut.width),
+            static_cast<jint>(lut.height),
+        };
+        env->SetIntArrayRegion(result, 0, 3, header);
+
+        constexpr size_t kChunkPixels = 4096;
+        std::array<jint, kChunkPixels> pixels{};
+        for (size_t start = 0; start < pixel_count; start += kChunkPixels) {
+            const size_t count = std::min(kChunkPixels, pixel_count - start);
+            for (size_t index = 0; index < count; ++index) {
+                const size_t offset = (start + index) * 4;
+                pixels[index] =
+                    (static_cast<jint>(lut.rgba[offset + 3]) << 24) |
+                    (static_cast<jint>(lut.rgba[offset]) << 16) |
+                    (static_cast<jint>(lut.rgba[offset + 1]) << 8) |
+                    static_cast<jint>(lut.rgba[offset + 2]);
+            }
+            env->SetIntArrayRegion(
+                result,
+                static_cast<jsize>(start + 3),
+                static_cast<jsize>(count),
+                pixels.data());
+            if (env->ExceptionCheck()) return nullptr;
+        }
+        return result;
+    } catch (const std::bad_alloc&) {
+        return nullptr;
+    } catch (...) {
+        return nullptr;
+    }
+}
 
 JNIEXPORT jlong JNICALL
 Java_com_beeregg2001_komorebi_NativeLib_openFilter(JNIEnv *env, jobject thiz, jobjectArray args) {

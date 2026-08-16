@@ -60,6 +60,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.live.RawAribSubtitlePayloadReaderFactory
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.player.LibaribtlvToneMappingRenderersFactory
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadDataType
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryPolicy
@@ -617,12 +618,10 @@ fun rememberManagedExoPlayer(
         dataBroadcastingCallback,
     ) {
         Log.i(TAG, "Building recorded ExoPlayer: $constructionKey")
-        val renderersFactory = object : DefaultRenderersFactory(context) {
-            override fun getCodecAdapterFactory() = HdrToneMapping.codecAdapterFactory(
-                delegate = super.getCodecAdapterFactory(),
-                enabled = enableHdrToSdrToneMapping
-            )
-        }.apply {
+        val renderersFactory = LibaribtlvToneMappingRenderersFactory(
+            context,
+            if (enableHdrToSdrToneMapping) HdrToneMapping.colorLut else null
+        ).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
         }
@@ -958,6 +957,9 @@ fun rememberManagedExoPlayer(
             .setLoadControl(loadControl)
             .setLivePlaybackSpeedControl(livePlaybackSpeedControl)
             .build().apply {
+                if (enableHdrToSdrToneMapping) {
+                    setVideoEffects(emptyList())
+                }
                 setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
                 setAudioAttributes(
                     AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
