@@ -31,6 +31,7 @@ import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.data.repository.LiveProvider
 import com.beeregg2001.komorebi.data.repository.RecordProvider
+import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
@@ -71,6 +72,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -130,6 +132,9 @@ class LivePlayerViewModel @Inject constructor(
     private val _mainPlayerErrorIsCapabilityRelated = MutableStateFlow(false)
     val mainPlayerErrorIsCapabilityRelated: StateFlow<Boolean> =
         _mainPlayerErrorIsCapabilityRelated.asStateFlow()
+
+    private val _playbackNotices = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val playbackNotices: SharedFlow<String> = _playbackNotices.asSharedFlow()
 
     private val _mainSseStatus = MutableStateFlow("Standby")
     val mainSseStatus: StateFlow<String> = _mainSseStatus.asStateFlow()
@@ -213,6 +218,7 @@ class LivePlayerViewModel @Inject constructor(
 
     private val mainPlaybackMutex = Mutex()
     private val dualPlaybackMutex = Mutex()
+    private val hdrToneMappingRecoveryRunning = AtomicBoolean(false)
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -472,6 +478,10 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     private fun handleMainError(uiContext: Context, error: PlaybackException) {
+        if (HdrToneMapping.rejectionCause(error) != null) {
+            recoverRejectedHdrToneMapping(uiContext)
+            return
+        }
         viewModelScope.launch {
             val cause = error.cause
             val is404 =
@@ -510,6 +520,10 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     private fun handleDualError(uiContext: Context, error: PlaybackException) {
+        if (HdrToneMapping.rejectionCause(error) != null) {
+            recoverRejectedHdrToneMapping(uiContext)
+            return
+        }
         viewModelScope.launch {
             val cause = error.cause
             val is404 =
@@ -541,6 +555,49 @@ class LivePlayerViewModel @Inject constructor(
             } else {
                 _dualSseStatus.value = "Error"; _dualSseDetail.value = errorMsg
                 stopDualPlaybackSafely("dual_player_error_exhausted")
+            }
+        }
+    }
+
+    private fun recoverRejectedHdrToneMapping(uiContext: Context) {
+        if (!hdrToneMappingRecoveryRunning.compareAndSet(false, true)) return
+        viewModelScope.launch {
+            try {
+                settingsRepository.saveString(
+                    SettingsRepository.HDR_RENDER_MODE,
+                    HdrToneMapping.RENDER_MODE_ORIGINAL
+                )
+                _playbackNotices.emit(
+                    "SDR 変換に失敗しました（HDR_TONE_MAPPING_UNSUPPORTED）。" +
+                        "テレビのデコーダーが変換要求を受け付けなかったため、" +
+                        "HLG そのままに戻して再生します。"
+                )
+                mainCurrentChannel?.let { channel ->
+                    mainCurrentQuality?.let { quality ->
+                        playMainChannel(
+                            uiContext,
+                            channel,
+                            mainCurrentSource,
+                            mainIsEdcbDirect,
+                            quality,
+                            true
+                        )
+                    }
+                }
+                dualCurrentChannel?.let { channel ->
+                    dualCurrentQuality?.let { quality ->
+                        playDualChannel(
+                            uiContext,
+                            channel,
+                            dualCurrentSource,
+                            dualIsEdcbDirect,
+                            quality,
+                            true
+                        )
+                    }
+                }
+            } finally {
+                hdrToneMappingRecoveryRunning.set(false)
             }
         }
     }

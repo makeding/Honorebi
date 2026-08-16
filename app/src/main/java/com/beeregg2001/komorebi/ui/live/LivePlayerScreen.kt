@@ -272,6 +272,10 @@ fun LivePlayerScreen(
 
     val mainError by livePlayerViewModel.mainPlayerError.collectAsState()
     val mainErrorIsCapabilityRelated by livePlayerViewModel.mainPlayerErrorIsCapabilityRelated.collectAsState()
+
+    LaunchedEffect(livePlayerViewModel) {
+        livePlayerViewModel.playbackNotices.collect(onShowToast)
+    }
     val mainStatus by livePlayerViewModel.mainSseStatus.collectAsState()
     val mainDetail by livePlayerViewModel.mainSseDetail.collectAsState()
     val mainSignal by livePlayerViewModel.mainSignalInfo.collectAsState()
@@ -1252,7 +1256,7 @@ fun LivePlayerScreen(
                     livePlayerViewModel.setHdrRenderMode(uiContext, nextMode)
                     onShowToast(
                         if (nextMode == "SDR_TONE_MAP") {
-                            "HDR 表示：ハードウェア SDR 変換"
+                            "HDR 表示：ハードウェア SDR 変換を確認中"
                         } else {
                             "HDR 表示：HLG そのまま"
                         }

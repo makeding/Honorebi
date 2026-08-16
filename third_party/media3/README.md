@@ -9,6 +9,7 @@ The patches preserve broadcast-specific behavior:
 1. discard initial AAC/ADTS samples that arrive before the first PES timestamp;
 2. resynchronize large broadcast audio timestamp discontinuities without reporting an audio-sink error;
 3. avoid dropping late video frames or GOPs on the target Android TV and submit frames immediately.
+4. expose the configured codec input format so HDR tone-map requests can be verified.
 
 To bump Media3:
 

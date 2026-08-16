@@ -1,0 +1,58 @@
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/MediaCodecAdapter.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/MediaCodecAdapter.java
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/MediaCodecAdapter.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/MediaCodecAdapter.java
+@@ -170,6 +170,9 @@ public interface MediaCodecAdapter {
+    */
+   int dequeueOutputBufferIndex(MediaCodec.BufferInfo bufferInfo);
+ 
++  /** Gets the input format reported by the configured {@link MediaCodec}. */
++  MediaFormat getInputFormat();
++
+   /**
+    * Gets the {@link MediaFormat} that was output from the {@link MediaCodec}.
+    *
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/AsynchronousMediaCodecAdapter.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/AsynchronousMediaCodecAdapter.java
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/AsynchronousMediaCodecAdapter.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/AsynchronousMediaCodecAdapter.java
+@@ -257,6 +257,11 @@ final class AsynchronousMediaCodecAdapter implements MediaCodecAdapter {
+     return asynchronousMediaCodecCallback.dequeueOutputBufferIndex(bufferInfo);
+   }
+ 
++  @Override
++  public MediaFormat getInputFormat() {
++    return codec.getInputFormat();
++  }
++
+   @Override
+   public MediaFormat getOutputFormat() {
+     return asynchronousMediaCodecCallback.getOutputFormat();
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/ForwardingMediaCodecAdapter.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/ForwardingMediaCodecAdapter.java
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/ForwardingMediaCodecAdapter.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/ForwardingMediaCodecAdapter.java
+@@ -50,6 +50,11 @@ public class ForwardingMediaCodecAdapter implements MediaCodecAdapter {
+     return delegate.dequeueOutputBufferIndex(bufferInfo);
+   }
+ 
++  @Override
++  public MediaFormat getInputFormat() {
++    return delegate.getInputFormat();
++  }
++
+   @Override
+   public MediaFormat getOutputFormat() {
+     return delegate.getOutputFormat();
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/SynchronousMediaCodecAdapter.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/SynchronousMediaCodecAdapter.java
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/SynchronousMediaCodecAdapter.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/mediacodec/SynchronousMediaCodecAdapter.java
+@@ -115,6 +115,11 @@ public final class SynchronousMediaCodecAdapter implements MediaCodecAdapter {
+     return index;
+   }
+ 
++  @Override
++  public MediaFormat getInputFormat() {
++    return codec.getInputFormat();
++  }
++
+   @Override
+   public MediaFormat getOutputFormat() {
+     return codec.getOutputFormat();

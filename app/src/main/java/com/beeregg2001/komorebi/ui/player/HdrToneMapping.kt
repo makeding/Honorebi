@@ -10,6 +10,20 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
+import java.io.IOException
+
+class HdrToneMappingRejectedException(
+    val codecName: String,
+    val acceptedTransfer: Int?,
+    cause: Throwable? = null
+) : IOException(
+    "HDR_TONE_MAPPING_UNSUPPORTED: codec=$codecName requested=" +
+        "${MediaFormat.COLOR_TRANSFER_SDR_VIDEO} accepted=${acceptedTransfer ?: "unavailable"}",
+    cause
+)
+
+internal fun isHdrToneMappingRequestAccepted(acceptedTransfer: Int?): Boolean =
+    acceptedTransfer == MediaFormat.COLOR_TRANSFER_SDR_VIDEO
 
 object HdrToneMapping {
     const val RENDER_MODE_ORIGINAL = "ORIGINAL"
@@ -81,11 +95,41 @@ object HdrToneMapping {
                         "Requesting hardware HDR-to-SDR tone mapping: " +
                             "codec=${configuration.codecInfo.name}, transfer=$colorTransfer"
                     )
+
+                    val adapter = delegate.createAdapter(configuration)
+                    val acceptedTransferResult = runCatching {
+                        val inputFormat = adapter.inputFormat
+                        if (inputFormat.containsKey(MediaFormat.KEY_COLOR_TRANSFER_REQUEST)) {
+                            inputFormat.getInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST)
+                        } else {
+                            null
+                        }
+                    }
+                    val acceptedTransfer = acceptedTransferResult.getOrNull()
+                    if (!isHdrToneMappingRequestAccepted(acceptedTransfer)) {
+                        runCatching { adapter.release() }
+                        throw HdrToneMappingRejectedException(
+                            codecName = configuration.codecInfo.name,
+                            acceptedTransfer = acceptedTransfer,
+                            cause = acceptedTransferResult.exceptionOrNull()
+                        )
+                    }
+                    Log.i(
+                        TAG,
+                        "Hardware HDR-to-SDR tone mapping accepted: " +
+                            "codec=${configuration.codecInfo.name}"
+                    )
+                    return adapter
                 }
             }
             return delegate.createAdapter(configuration)
         }
     }
+
+    fun rejectionCause(error: Throwable): HdrToneMappingRejectedException? =
+        generateSequence(error as Throwable?) { it.cause }
+            .filterIsInstance<HdrToneMappingRejectedException>()
+            .firstOrNull()
 
     private const val TAG = "HdrToneMapping"
 }

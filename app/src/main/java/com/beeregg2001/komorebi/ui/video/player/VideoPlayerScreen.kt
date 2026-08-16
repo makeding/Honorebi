@@ -691,6 +691,20 @@ fun VideoPlayerScreen(
         isNetworkAvailable = networkAvailableRef::get,
         onStreamSessionExpired = recoverExpiredStreamSession,
         onPlayerErrorRecovery = { player, error ->
+            if (HdrToneMapping.rejectionCause(error) != null) {
+                val currentPosition = player.currentPosition
+                    .takeUnless { it == C.TIME_UNSET || it < 0L }
+                    ?: playbackPositionMs
+                hdrModeResumePositionMs = currentPosition
+                playbackPositionMs = currentPosition
+                videoPlayerViewModel.setHdrRenderMode(HdrToneMapping.RENDER_MODE_ORIGINAL)
+                onShowToast(
+                    "SDR 変換に失敗しました（HDR_TONE_MAPPING_UNSUPPORTED）。" +
+                        "テレビのデコーダーが変換要求を受け付けなかったため、" +
+                        "HLG そのままに戻して再生します。"
+                )
+                return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
+            }
             val networkRetry = if (smbItem == null) {
                 RecordedNetworkRetry.RenewStreamSession
             } else {
@@ -2387,7 +2401,7 @@ fun VideoPlayerScreen(
                         videoPlayerViewModel.setHdrRenderMode(nextMode)
                         onShowToast(
                             if (nextMode == HdrToneMapping.RENDER_MODE_SDR) {
-                                "HDR 表示：ハードウェア SDR 変換"
+                                "HDR 表示：ハードウェア SDR 変換を確認中"
                             } else {
                                 "HDR 表示：HLG そのまま"
                             }

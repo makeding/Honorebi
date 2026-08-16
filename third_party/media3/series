@@ -1,3 +1,4 @@
 0001-drop-adts-samples-without-pts.patch
 0002-resync-broadcast-audio-discontinuities.patch
 0003-preserve-broadcast-video-frames.patch
+0004-expose-codec-input-format.patch
