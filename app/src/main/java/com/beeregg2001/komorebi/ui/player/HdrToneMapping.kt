@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import java.io.IOException
 
 class HdrToneMappingRejectedException(
@@ -126,10 +127,21 @@ object HdrToneMapping {
         }
     }
 
-    fun rejectionCause(error: Throwable): HdrToneMappingRejectedException? =
-        generateSequence(error as Throwable?) { it.cause }
-            .filterIsInstance<HdrToneMappingRejectedException>()
-            .firstOrNull()
+    fun rejectionCause(error: Throwable): HdrToneMappingRejectedException? {
+        val pending = ArrayDeque<Throwable>()
+        pending.add(error)
+        while (pending.isNotEmpty()) {
+            val current = pending.removeFirst()
+            when (current) {
+                is HdrToneMappingRejectedException -> return current
+                is MediaCodecRenderer.DecoderInitializationException -> {
+                    current.fallbackDecoderInitializationException?.let(pending::add)
+                }
+            }
+            current.cause?.let(pending::add)
+        }
+        return null
+    }
 
     private const val TAG = "HdrToneMapping"
 }

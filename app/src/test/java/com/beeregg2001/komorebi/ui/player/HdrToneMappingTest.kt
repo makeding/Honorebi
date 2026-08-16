@@ -13,4 +13,10 @@ class HdrToneMappingTest {
         assertFalse(isHdrToneMappingRequestAccepted(0))
         assertFalse(isHdrToneMappingRequestAccepted(MediaFormat.COLOR_TRANSFER_HLG))
     }
+
+    @Test
+    fun findsARejectedRequestThroughWrappedCauses() {
+        val rejection = HdrToneMappingRejectedException("decoder", 0)
+        assertTrue(HdrToneMapping.rejectionCause(IllegalStateException(rejection)) === rejection)
+    }
 }

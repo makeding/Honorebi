@@ -563,6 +563,9 @@ class LivePlayerViewModel @Inject constructor(
         if (!hdrToneMappingRecoveryRunning.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
+                if (settingsRepository.hdrRenderMode.first() != HdrToneMapping.RENDER_MODE_SDR) {
+                    return@launch
+                }
                 settingsRepository.saveString(
                     SettingsRepository.HDR_RENDER_MODE,
                     HdrToneMapping.RENDER_MODE_ORIGINAL
