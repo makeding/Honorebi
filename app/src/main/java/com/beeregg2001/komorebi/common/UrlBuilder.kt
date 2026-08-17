@@ -9,19 +9,36 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 object UrlBuilder {
 
     /**
-     * ベースURLを組み立てる
+     * ホストとポートからベースURLを組み立てる。
+     *
+     * スキーム付きの入力 (例: https://example.com) はそのまま維持する。
+     * URL側にポートが明示されている場合は設定欄のポートより優先し、
+     * ポートがないスキーム付きURLは http/https の標準ポートを使用する。
      */
     fun formatBaseUrl(ip: String, port: String, defaultProtocol: String): String {
         val cleanIp = ip.trim().removeSuffix("/")
-        val configured = cleanIp.let {
-            if (it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true)) it else "$defaultProtocol://$it"
+        val normalized = if (
+            cleanIp.startsWith("http://", ignoreCase = true) ||
+            cleanIp.startsWith("https://", ignoreCase = true)
+        ) {
+            cleanIp
+        } else {
+            "$defaultProtocol://$cleanIp"
         }
-        return runCatching {
-            val uri = java.net.URI(configured)
-            val effectivePort = if (uri.port >= 0) uri.port else port.toInt()
-            java.net.URI(uri.scheme.lowercase(), null, requireNotNull(uri.host), effectivePort,
-                uri.path, null, null).toASCIIString().removeSuffix("/")
-        }.getOrDefault(configured)
+
+        val parsed = normalized.toHttpUrlOrNull() ?: return "$normalized:$port"
+        val hasExplicitScheme = cleanIp.startsWith("http://", ignoreCase = true) ||
+            cleanIp.startsWith("https://", ignoreCase = true)
+        val hasExplicitPort = Regex("^https?://(?:\\[[^]]+\\]|[^/:]+):\\d+(?:/|$)", RegexOption.IGNORE_CASE)
+            .containsMatchIn(normalized)
+        if (hasExplicitPort) return parsed.toString().removeSuffix("/")
+
+        val configuredPort = if (hasExplicitScheme) {
+            if (parsed.scheme.equals("https", ignoreCase = true)) 443 else 80
+        } else {
+            port.toIntOrNull()?.takeIf { it in 1..65535 } ?: return parsed.toString()
+        }
+        return parsed.newBuilder().port(configuredPort).build().toString().removeSuffix("/")
     }
 
     /** EDCBのTCP直接接続用に、入力からホスト名/IPだけを取り出す。 */
