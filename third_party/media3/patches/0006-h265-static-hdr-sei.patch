@@ -56,7 +56,7 @@ index 1baf852c53..93b1b9a10f 100644
        seiWrapper.reset(suffixSei.nalData, unescapedLength);
  
        // Skip the NAL prefix and type.
-@@ -241,6 +251,87 @@ public final class H265Reader implements ElementaryStreamReader {
+@@ -241,6 +251,105 @@ public final class H265Reader implements ElementaryStreamReader {
      }
    }
  
@@ -69,54 +69,50 @@ index 1baf852c53..93b1b9a10f 100644
 +      if (pos == limit - 1 && (data[pos] & 0xFF) == 0x80) {
 +        break;
 +      }
-+      int type = 0;
++      long type = 0;
 +      int value;
 +      do {
++        if (pos == limit) {
++          return;
++        }
 +        value = data[pos++] & 0xFF;
 +        type += value;
-+      } while (value == 255 && pos < limit);
-+      int size = 0;
++      } while (value == 255);
++      long size = 0;
 +      do {
-+        if (pos >= limit) {
++        if (pos == limit) {
 +          return;
 +        }
 +        value = data[pos++] & 0xFF;
 +        size += value;
-+      } while (value == 255 && pos < limit);
++      } while (value == 255);
 +      if (size > limit - pos) {
 +        return;
 +      }
 +      if (type == 137 && size >= 24) {
-+        for (int i = 0; i < 16; i += 2) {
-+          hdrStaticInfo[1 + i] = data[pos + i + 1];
-+          hdrStaticInfo[2 + i] = data[pos + i];
-+        }
-+        int maxLuminance =
-+            ((data[pos + 16] & 255) << 24)
-+                | ((data[pos + 17] & 255) << 16)
-+                | ((data[pos + 18] & 255) << 8)
-+                | (data[pos + 19] & 255);
-+        int minLuminance =
-+            ((data[pos + 20] & 255) << 24)
-+                | ((data[pos + 21] & 255) << 16)
-+                | ((data[pos + 22] & 255) << 8)
-+                | (data[pos + 23] & 255);
-+        maxLuminance /= 10000;
-+        hdrStaticInfo[17] = (byte) maxLuminance;
-+        hdrStaticInfo[18] = (byte) (maxLuminance >>> 8);
-+        hdrStaticInfo[19] = (byte) minLuminance;
-+        hdrStaticInfo[20] = (byte) (minLuminance >>> 8);
++        changed |= setUnsignedShort(hdrStaticInfo, 1, readUnsignedShort(data, pos + 8));
++        changed |= setUnsignedShort(hdrStaticInfo, 3, readUnsignedShort(data, pos + 10));
++        changed |= setUnsignedShort(hdrStaticInfo, 5, readUnsignedShort(data, pos));
++        changed |= setUnsignedShort(hdrStaticInfo, 7, readUnsignedShort(data, pos + 2));
++        changed |= setUnsignedShort(hdrStaticInfo, 9, readUnsignedShort(data, pos + 4));
++        changed |= setUnsignedShort(hdrStaticInfo, 11, readUnsignedShort(data, pos + 6));
++        changed |= setUnsignedShort(hdrStaticInfo, 13, readUnsignedShort(data, pos + 12));
++        changed |= setUnsignedShort(hdrStaticInfo, 15, readUnsignedShort(data, pos + 14));
++        changed |=
++            setUnsignedShort(
++                hdrStaticInfo, 17, Math.min(readUnsignedInt(data, pos + 16), 0xFFFF));
++        changed |=
++            setUnsignedShort(
++                hdrStaticInfo, 19, Math.min(readUnsignedInt(data, pos + 20), 0xFFFF));
++        changed |= !hasMasteringDisplayInfo;
 +        hasMasteringDisplayInfo = true;
-+        changed = true;
 +      } else if (type == 144 && size >= 4) {
-+        hdrStaticInfo[21] = data[pos + 1];
-+        hdrStaticInfo[22] = data[pos];
-+        hdrStaticInfo[23] = data[pos + 3];
-+        hdrStaticInfo[24] = data[pos + 2];
++        changed |= setUnsignedShort(hdrStaticInfo, 21, readUnsignedShort(data, pos));
++        changed |= setUnsignedShort(hdrStaticInfo, 23, readUnsignedShort(data, pos + 2));
++        changed |= !hasContentLightInfo;
 +        hasContentLightInfo = true;
-+        changed = true;
 +      }
-+      pos += size;
++      pos += (int) size;
 +    }
 +    if (changed && outputFormat != null) {
 +      Format updatedFormat = addHdrStaticInfo(outputFormat);
@@ -125,6 +121,28 @@ index 1baf852c53..93b1b9a10f 100644
 +        output.format(outputFormat);
 +      }
 +    }
++  }
++
++  private static int readUnsignedShort(byte[] data, int offset) {
++    return ((data[offset] & 0xFF) << 8) | (data[offset + 1] & 0xFF);
++  }
++
++  private static long readUnsignedInt(byte[] data, int offset) {
++    return ((long) (data[offset] & 0xFF) << 24)
++        | ((long) (data[offset + 1] & 0xFF) << 16)
++        | ((long) (data[offset + 2] & 0xFF) << 8)
++        | (data[offset + 3] & 0xFF);
++  }
++
++  private static boolean setUnsignedShort(byte[] data, int offset, long value) {
++    byte high = (byte) (value >>> 8);
++    byte low = (byte) value;
++    if (data[offset] == high && data[offset + 1] == low) {
++      return false;
++    }
++    data[offset] = high;
++    data[offset + 1] = low;
++    return true;
 +  }
 +
 +  private Format addHdrStaticInfo(Format format) {

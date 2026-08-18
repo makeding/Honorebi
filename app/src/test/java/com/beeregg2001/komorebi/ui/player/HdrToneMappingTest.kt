@@ -29,4 +29,10 @@ class HdrToneMappingTest {
         val rejection = IllegalStateException("$ERROR_CODE: only HLG input is supported")
         assertTrue(HdrToneMapping.rejectionCause(rejection) === rejection)
     }
+
+    @Test
+    fun rendererModeKeepsOriginalAndSdrLutBranchesExplicit() {
+        assertEquals(TONE_MAPPING_MODE_ORIGINAL, toneMappingMode(hasColorLut = false))
+        assertEquals(TONE_MAPPING_MODE_SDR_LUT, toneMappingMode(hasColorLut = true))
+    }
 }

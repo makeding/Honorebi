@@ -4,6 +4,7 @@ package com.beeregg2001.komorebi.ui.player
 
 import android.content.Context
 import android.os.Handler
+import android.util.Log
 import androidx.media3.common.VideoGraph
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.DefaultVideoFrameProcessor
@@ -43,6 +44,8 @@ open class LibaribtlvToneMappingRenderersFactory(
             allowedVideoJoiningTimeMs,
             out
         )
+        val mode = toneMappingMode(colorLut != null)
+        Log.i(TAG, "Video renderer mode=$mode")
         val lut = colorLut ?: return
         val rendererIndex = (firstNewRenderer until out.size)
             .first { out[it]::class.java == MediaCodecVideoRenderer::class.java }
@@ -59,6 +62,14 @@ open class LibaribtlvToneMappingRenderersFactory(
         )
     }
 }
+
+internal const val TONE_MAPPING_MODE_ORIGINAL = "ORIGINAL"
+internal const val TONE_MAPPING_MODE_SDR_LUT = "SDR_LUT"
+
+internal fun toneMappingMode(hasColorLut: Boolean): String =
+    if (hasColorLut) TONE_MAPPING_MODE_SDR_LUT else TONE_MAPPING_MODE_ORIGINAL
+
+private const val TAG = "LibaribtlvRenderers"
 
 private class LibaribtlvToneMappingVideoRenderer(
     builder: MediaCodecVideoRenderer.Builder,

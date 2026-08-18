@@ -1,13 +1,13 @@
 package com.beeregg2001.komorebi.ui.setting
 
 import android.content.Context
-import android.hardware.display.DisplayManager
 import android.media.AudioManager
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.view.Display
+import android.view.WindowManager
 
 data class DeviceCapabilityReport(
     val deviceName: String,
@@ -79,25 +79,11 @@ object DeviceCapabilityDetector {
             capabilities.profileLevels.any { it.profile in main10Profiles }
         }
 
-        val hdrTypes: List<String> = try {
-            val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-            val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
-            val supportedHdrTypes = display?.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
-            buildList {
-                supportedHdrTypes.forEach { hdrType ->
-                    val label = when (hdrType) {
-                    Display.HdrCapabilities.HDR_TYPE_HLG -> "HLG"
-                    Display.HdrCapabilities.HDR_TYPE_HDR10 -> "HDR10"
-                    Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> "HDR10+"
-                    Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> "Dolby Vision"
-                    else -> null
-                    }
-                    if (label != null && label !in this) add(label)
-                }
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
+        val hdrTypes = runCatching {
+            displayFor(context)?.hdrCapabilities?.supportedHdrTypes
+                ?.let(::hdrTypeLabels)
+                .orEmpty()
+        }.getOrDefault(emptyList())
 
         val maxAudioChannels = runCatching {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -124,5 +110,28 @@ object DeviceCapabilityDetector {
             hdrTypes = hdrTypes,
             maxReportedAudioChannels = maxAudioChannels
         )
+    }
+
+    private fun displayFor(context: Context): Display? {
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display
+        } else {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
+        }
+        return display?.takeIf(Display::isValid)
+    }
+
+    internal fun hdrTypeLabels(supportedHdrTypes: IntArray): List<String> = buildList {
+        supportedHdrTypes.forEach { hdrType ->
+            val label = when (hdrType) {
+                Display.HdrCapabilities.HDR_TYPE_HLG -> "HLG"
+                Display.HdrCapabilities.HDR_TYPE_HDR10 -> "HDR10"
+                Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> "HDR10+"
+                Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> "Dolby Vision"
+                else -> null
+            }
+            if (label != null && label !in this) add(label)
+        }
     }
 }
