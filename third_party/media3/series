@@ -2,3 +2,4 @@
 0002-resync-broadcast-audio-discontinuities.patch
 0003-preserve-broadcast-video-frames.patch
 0004-hlg-to-sdr-input-lut.patch
+0005-h265-vps-vui-color-info.patch
