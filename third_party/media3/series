@@ -3,3 +3,4 @@
 0003-preserve-broadcast-video-frames.patch
 0004-hlg-to-sdr-input-lut.patch
 0005-h265-vps-vui-color-info.patch
+0006-h265-static-hdr-sei.patch

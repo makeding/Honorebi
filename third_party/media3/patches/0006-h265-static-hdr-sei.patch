@@ -1,0 +1,146 @@
+diff --git a/libraries/extractor/src/main/java/androidx/media3/extractor/ts/H265Reader.java b/libraries/extractor/src/main/java/androidx/media3/extractor/ts/H265Reader.java
+index 1baf852c53..93b1b9a10f 100644
+--- a/libraries/extractor/src/main/java/androidx/media3/extractor/ts/H265Reader.java
++++ b/libraries/extractor/src/main/java/androidx/media3/extractor/ts/H265Reader.java
+@@ -31,6 +31,7 @@ import androidx.media3.container.NalUnitUtil;
+ import androidx.media3.extractor.ExtractorOutput;
+ import androidx.media3.extractor.TrackOutput;
+ import androidx.media3.extractor.ts.TsPayloadReader.TrackIdGenerator;
++import java.util.Arrays;
+ import java.util.Collections;
+ import org.checkerframework.checker.nullness.qual.EnsuresNonNull;
+ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
+@@ -46,6 +47,10 @@ public final class H265Reader implements ElementaryStreamReader {
+   private @MonotonicNonNull String formatId;
+   private @MonotonicNonNull TrackOutput output;
+   private @MonotonicNonNull SampleReader sampleReader;
++  private @MonotonicNonNull Format outputFormat;
++  private final byte[] hdrStaticInfo;
++  private boolean hasMasteringDisplayInfo;
++  private boolean hasContentLightInfo;
+ 
+   // State that should not be reset on seek.
+   private boolean hasOutputFormat;
+@@ -78,6 +83,8 @@ public final class H265Reader implements ElementaryStreamReader {
+     pps = new NalUnitTargetBuffer(NalUnitUtil.H265_NAL_UNIT_TYPE_PPS, 128);
+     prefixSei = new NalUnitTargetBuffer(NalUnitUtil.H265_NAL_UNIT_TYPE_PREFIX_SEI, 128);
+     suffixSei = new NalUnitTargetBuffer(NalUnitUtil.H265_NAL_UNIT_TYPE_SUFFIX_SEI, 128);
++    hdrStaticInfo = new byte[25];
++    hdrStaticInfo[0] = 0;
+     pesTimeUs = C.TIME_UNSET;
+     seiWrapper = new ParsableByteArray();
+   }
+@@ -217,7 +224,8 @@ public final class H265Reader implements ElementaryStreamReader {
+       pps.endNalUnit(discardPadding);
+       if (vps.isCompleted() && sps.isCompleted() && pps.isCompleted()) {
+         Format format = parseMediaFormat(formatId, vps, sps, pps, containerMimeType);
+-        output.format(format);
++        outputFormat = addHdrStaticInfo(format);
++        output.format(outputFormat);
+         checkState(format.maxNumReorderSamples != Format.NO_VALUE);
+         seiReader.setReorderingQueueSize(format.maxNumReorderSamples);
+         hasOutputFormat = true;
+@@ -225,6 +233,7 @@ public final class H265Reader implements ElementaryStreamReader {
+     }
+     if (prefixSei.endNalUnit(discardPadding)) {
+       int unescapedLength = NalUnitUtil.unescapeStream(prefixSei.nalData, prefixSei.nalLength);
++      updateHdrStaticInfo(prefixSei.nalData, unescapedLength);
+       seiWrapper.reset(prefixSei.nalData, unescapedLength);
+ 
+       // Skip the NAL prefix and type.
+@@ -233,6 +242,7 @@ public final class H265Reader implements ElementaryStreamReader {
+     }
+     if (suffixSei.endNalUnit(discardPadding)) {
+       int unescapedLength = NalUnitUtil.unescapeStream(suffixSei.nalData, suffixSei.nalLength);
++      updateHdrStaticInfo(suffixSei.nalData, unescapedLength);
+       seiWrapper.reset(suffixSei.nalData, unescapedLength);
+ 
+       // Skip the NAL prefix and type.
+@@ -241,6 +251,87 @@ public final class H265Reader implements ElementaryStreamReader {
+     }
+   }
+ 
++  /** Reads HEVC static HDR SEI into CTA-861.3 metadata. */
++  @RequiresNonNull("output")
++  private void updateHdrStaticInfo(byte[] data, int limit) {
++    int pos = 5;
++    boolean changed = false;
++    while (pos < limit) {
++      if (pos == limit - 1 && (data[pos] & 0xFF) == 0x80) {
++        break;
++      }
++      int type = 0;
++      int value;
++      do {
++        value = data[pos++] & 0xFF;
++        type += value;
++      } while (value == 255 && pos < limit);
++      int size = 0;
++      do {
++        if (pos >= limit) {
++          return;
++        }
++        value = data[pos++] & 0xFF;
++        size += value;
++      } while (value == 255 && pos < limit);
++      if (size > limit - pos) {
++        return;
++      }
++      if (type == 137 && size >= 24) {
++        for (int i = 0; i < 16; i += 2) {
++          hdrStaticInfo[1 + i] = data[pos + i + 1];
++          hdrStaticInfo[2 + i] = data[pos + i];
++        }
++        int maxLuminance =
++            ((data[pos + 16] & 255) << 24)
++                | ((data[pos + 17] & 255) << 16)
++                | ((data[pos + 18] & 255) << 8)
++                | (data[pos + 19] & 255);
++        int minLuminance =
++            ((data[pos + 20] & 255) << 24)
++                | ((data[pos + 21] & 255) << 16)
++                | ((data[pos + 22] & 255) << 8)
++                | (data[pos + 23] & 255);
++        maxLuminance /= 10000;
++        hdrStaticInfo[17] = (byte) maxLuminance;
++        hdrStaticInfo[18] = (byte) (maxLuminance >>> 8);
++        hdrStaticInfo[19] = (byte) minLuminance;
++        hdrStaticInfo[20] = (byte) (minLuminance >>> 8);
++        hasMasteringDisplayInfo = true;
++        changed = true;
++      } else if (type == 144 && size >= 4) {
++        hdrStaticInfo[21] = data[pos + 1];
++        hdrStaticInfo[22] = data[pos];
++        hdrStaticInfo[23] = data[pos + 3];
++        hdrStaticInfo[24] = data[pos + 2];
++        hasContentLightInfo = true;
++        changed = true;
++      }
++      pos += size;
++    }
++    if (changed && outputFormat != null) {
++      Format updatedFormat = addHdrStaticInfo(outputFormat);
++      if (updatedFormat != outputFormat) {
++        outputFormat = updatedFormat;
++        output.format(outputFormat);
++      }
++    }
++  }
++
++  private Format addHdrStaticInfo(Format format) {
++    if ((!hasMasteringDisplayInfo && !hasContentLightInfo) || format.colorInfo == null) {
++      return format;
++    }
++    return format
++        .buildUpon()
++        .setColorInfo(
++            format.colorInfo
++                .buildUpon()
++                .setHdrStaticInfo(Arrays.copyOf(hdrStaticInfo, 25))
++                .build())
++        .build();
++  }
++
+   private static Format parseMediaFormat(
+       @Nullable String formatId,
+       NalUnitTargetBuffer vps,

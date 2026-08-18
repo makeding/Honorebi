@@ -28,6 +28,8 @@ add_subdirectory(third_party/tlvdemux EXCLUDE_FROM_ALL)
 # Its optional MSE remux sources still target the pre-0.5.0 video-color header,
 # so keep that browser output slice out of this native elementary-stream path.
 set_property(TARGET tlvdemux PROPERTY SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/hevc_metadata.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/mse/hevc_parser.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback_damage.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback_timing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback.cpp"
