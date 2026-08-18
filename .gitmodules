@@ -4,3 +4,6 @@
 [submodule "app/src/main/cpp/third_party/libaribtlv"]
 	path = app/src/main/cpp/third_party/libaribtlv
 	url = https://github.com/makeding/libaribtlv.git
+[submodule "app/src/main/cpp/third_party/tlvdemux"]
+	path = app/src/main/cpp/third_party/tlvdemux
+	url = https://github.com/makeding/tlvdemux.git

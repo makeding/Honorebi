@@ -97,7 +97,8 @@ class TlvExtractorsFactory(
 }
 
 /**
- * Raw ARIB MMT/TLV を libtlvdemux.so で Access Unit に分解し、Media3 の既存 ElementaryStreamReader
+ * Raw ARIB MMT/TLV を libaribtlv で Access Unit に分解し、tlvdemux の playback helper を通して
+ * Media3 の既存 ElementaryStreamReader
  * へ渡す Extractor。ARIB STD-B62 TTML は PTS とともにプレイヤー層へ直接通知する。
  */
 class TlvExtractor(
@@ -135,6 +136,7 @@ class TlvExtractor(
     private var knownInputLength = C.LENGTH_UNSET.toLong()
     private var recordingSeekMap: RecordingSeekMap? = null
     private var lastPublishedGrowingDurationUs = C.TIME_UNSET
+    private var pendingRecoveryOffset: Long? = null
 
     override fun sniff(input: ExtractorInput): Boolean = true
 
@@ -150,6 +152,11 @@ class TlvExtractor(
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
         fatalError?.let { throw it }
+        pendingRecoveryOffset?.let { recoveryOffset ->
+            pendingRecoveryOffset = null
+            seekPosition.position = recoveryOffset
+            return Extractor.RESULT_SEEK
+        }
         updateKnownInputLength(input.length)
         if (!seekMapSent) {
             readDurationProbe(input, seekPosition)?.let { return it }
@@ -184,6 +191,7 @@ class TlvExtractor(
 
     override fun seek(position: Long, timeUs: Long) {
         fatalError = null
+        pendingRecoveryOffset = null
         nativeDemuxer?.reposition(position.coerceAtLeast(0L))
         videoReaders.values.forEach { it.seek() }
         audioReaders.values.forEach { it.seek() }
@@ -600,6 +608,34 @@ class TlvExtractor(
                 discontinuity = discontinuity
             )
         )
+    }
+
+    override fun onPlaybackDamage(
+        trackId: Long,
+        startTimeUs: Long,
+        endTimeUs: Long,
+        recoveryTimeUs: Long,
+        startInputOffset: Long,
+        endInputOffset: Long,
+        recoveryInputOffset: Long,
+        recoveryRestartOffset: Long,
+        severity: Int,
+        action: Int
+    ) {
+        Log.w(
+            TAG,
+            "MMTS playback damage: track=$trackId start_us=$startTimeUs " +
+                "end_us=$endTimeUs recovery_us=$recoveryTimeUs " +
+                "start_offset=$startInputOffset end_offset=$endInputOffset " +
+                "recovery_offset=$recoveryInputOffset restart_offset=$recoveryRestartOffset " +
+                "severity=$severity action=$action"
+        )
+        if (
+            action == NativeTlvDemuxer.PLAYBACK_RECOVERY_SEEK &&
+            recoveryRestartOffset >= 0L
+        ) {
+            pendingRecoveryOffset = recoveryRestartOffset
+        }
     }
 
     override fun onEventInfo(

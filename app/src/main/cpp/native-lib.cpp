@@ -11,6 +11,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <optional>
 #include <stdexcept>
 
 #include <aribcaption/aribcaption.h>
@@ -20,6 +21,7 @@
 #include <aribtlv/duration_probe.hpp>
 #include <aribtlv/hlg_sdr_tone_mapping.hpp>
 #include <aribtlv/recording.hpp>
+#include <tlvdemux/playback_damage.hpp>
 
 // tsreadex コアヘッダ
 #include "servicefilter.hpp"
@@ -517,6 +519,10 @@ public:
             callbackClass,
             "onBroadcastClock",
             "(JJJJJZ)V");
+        onPlaybackDamageMethod_ = env->GetMethodID(
+            callbackClass,
+            "onPlaybackDamage",
+            "(JJJJJJJJII)V");
         onEventInfoMethod_ = env->GetMethodID(
             callbackClass,
             "onEventInfo",
@@ -579,6 +585,7 @@ public:
             recordingIndex_.begin(false);
         }
         selectedVideoTrackId_ = 0;
+        playbackDamageAdvisor_.selectVideoTrack(std::nullopt);
         audioTrackIds_.clear();
         playableAudioTrackIds_.clear();
         selectedCaptionTrackId_ = 0;
@@ -648,6 +655,7 @@ public:
                 info.packet_id == preferredVideoPacketId_;
             if (selectedVideoTrackId_ == 0 && matchesPreferred) {
                 selectedVideoTrackId_ = info.track_id;
+                playbackDamageAdvisor_.selectVideoTrack(selectedVideoTrackId_);
                 if (buildRecordingIndex_) recordingIndex_.selectVideoTrack(info.track_id);
                 if (!exposeAllVideoTracks_) {
                     demuxer_.selectTrack(aribtlv::TrackKind::Video, info.track_id);
@@ -827,6 +835,31 @@ public:
             clock.discontinuity ? JNI_TRUE : JNI_FALSE);
     }
 
+    void onDamage(const aribtlv::DamageSpan& damage) override {
+        const auto playbackDamage = playbackDamageAdvisor_.observe(damage);
+        if (!playbackDamage.has_value() ||
+            !canCallback(onPlaybackDamageMethod_)) {
+            return;
+        }
+        currentEnv_->CallVoidMethod(
+            callback_,
+            onPlaybackDamageMethod_,
+            static_cast<jlong>(playbackDamage->video_track_id),
+            playbackDamage->start_time_us
+                ? static_cast<jlong>(*playbackDamage->start_time_us)
+                : static_cast<jlong>(-1),
+            static_cast<jlong>(playbackDamage->end_time_us),
+            playbackDamage->recovery_time_us
+                ? static_cast<jlong>(*playbackDamage->recovery_time_us)
+                : static_cast<jlong>(-1),
+            static_cast<jlong>(playbackDamage->start_input_offset),
+            static_cast<jlong>(playbackDamage->end_input_offset),
+            static_cast<jlong>(playbackDamage->recovery_input_offset),
+            static_cast<jlong>(playbackDamage->recovery_restart_offset),
+            static_cast<jint>(playbackDamage->severity),
+            static_cast<jint>(playbackDamage->action));
+    }
+
     void onEventInfo(const aribtlv::EventInfo& event) override {
         if (!canCallback(onEventInfoMethod_)) return;
         jstring language = currentEnv_->NewStringUTF(event.language.c_str());
@@ -1003,6 +1036,7 @@ private:
     jmethodID onTrackMethod_ = nullptr;
     jmethodID onAccessUnitMethod_ = nullptr;
     jmethodID onBroadcastClockMethod_ = nullptr;
+    jmethodID onPlaybackDamageMethod_ = nullptr;
     jmethodID onEventInfoMethod_ = nullptr;
     jmethodID onLayoutConfigurationMethod_ = nullptr;
     jmethodID onApplicationStateMethod_ = nullptr;
@@ -1011,6 +1045,7 @@ private:
     jmethodID onErrorMethod_ = nullptr;
     aribtlv::Demuxer demuxer_;
     aribtlv::RecordingIndex recordingIndex_;
+    tlvdemux::PlaybackDamageAdvisor playbackDamageAdvisor_;
     int preferredVideoPacketId_ = -1;
     bool buildRecordingIndex_ = false;
     bool exposeAllVideoTracks_ = false;

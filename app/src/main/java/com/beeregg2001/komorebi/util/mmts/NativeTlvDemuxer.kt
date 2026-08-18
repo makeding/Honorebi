@@ -4,8 +4,9 @@ import com.beeregg2001.komorebi.NativeLib
 import java.io.Closeable
 
 /**
- * libtlvdemux.so の C++ API を Komorebi の Extractor スレッドから利用するための薄い JNI ラッパー。
- * callback は push()/flush() を呼び出した同じスレッド上で同期的に実行される。
+ * libaribtlv の demux API と tlvdemux の playback helper を Komorebi の Extractor
+ * スレッドから利用するための薄い JNI ラッパー。callback は push()/flush() を呼び出した
+ * 同じスレッド上で同期的に実行される。
  */
 class NativeTlvDemuxer(
     callback: Callback,
@@ -63,6 +64,19 @@ class NativeTlvDemuxer(
             broadcastTimeTimescale: Long,
             inputOffset: Long,
             discontinuity: Boolean
+        )
+
+        fun onPlaybackDamage(
+            trackId: Long,
+            startTimeUs: Long,
+            endTimeUs: Long,
+            recoveryTimeUs: Long,
+            startInputOffset: Long,
+            endInputOffset: Long,
+            recoveryInputOffset: Long,
+            recoveryRestartOffset: Long,
+            severity: Int,
+            action: Int
         )
 
         fun onEventInfo(
@@ -146,5 +160,13 @@ class NativeTlvDemuxer(
         if (handle == 0L) return
         nativeLib.closeTlvDemuxer(handle)
         handle = 0L
+    }
+
+    companion object {
+        const val PLAYBACK_DAMAGE_WARNING = 0
+        const val PLAYBACK_DAMAGE_SEVERE = 1
+        const val PLAYBACK_RECOVERY_NONE = 0
+        const val PLAYBACK_RECOVERY_SEEK = 1
+        const val PLAYBACK_RECOVERY_WAIT_FOR_RECOVERY = 2
     }
 }

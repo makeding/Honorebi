@@ -16,7 +16,7 @@ data class TlvDurationProbeResult(
     val transferredBytes: Long
 )
 
-/** Thin JNI wrapper around tlvdemux::DurationProbe. */
+/** Thin JNI wrapper around libaribtlv::DurationProbe. */
 class NativeTlvDurationProbe(
     sourceSize: Long,
     preferredVideoPacketId: Int?

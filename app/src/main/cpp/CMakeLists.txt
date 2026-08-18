@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(komorebi-native)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(ARIBCC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -13,11 +13,25 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 
 add_subdirectory(third_party/libaribcaption EXCLUDE_FROM_ALL)
 
-# libaribtlv は Android APK に独立した libaribtlv.so として同梱する。
-# libaribcaption は静的リンクのまま維持したいため、追加後に BUILD_SHARED_LIBS を切り替える。
+# tlvdemux は playback helper を提供し、同じ libaribtlv source checkout を
+# 内部でビルドする。libaribcaption は静的リンクのまま維持したいため、
+# 追加後に BUILD_SHARED_LIBS を切り替える。
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/libaribtlv EXCLUDE_FROM_ALL)
+set(TLVDEMUX_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(TLVDEMUX_BUILD_WASM_BINDINGS OFF CACHE BOOL "" FORCE)
+set(TLVDEMUX_LIBARIBTLV_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libaribtlv"
+    CACHE PATH "" FORCE)
+add_subdirectory(third_party/tlvdemux EXCLUDE_FROM_ALL)
+# The Android integration consumes tlvdemux's playback state/damage helpers.
+# Its optional MSE remux sources still target the pre-0.5.0 video-color header,
+# so keep that browser output slice out of this native elementary-stream path.
+set_property(TARGET tlvdemux PROPERTY SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback_damage.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback_timing.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback.cpp"
+)
 
 # 1. tsreadex のコアロジック（ソースファイル群）を定義
 set(TSREADEX_CORE_SRC
@@ -46,7 +60,7 @@ target_link_libraries(
     ${log-lib}
     ${jnigraphics-lib}
     aribcaption::aribcaption
-    aribtlv::aribtlv
+    tlvdemux::tlvdemux
 )
 
 # インクルードディレクトリの設定（カレントディレクトリを参照）
