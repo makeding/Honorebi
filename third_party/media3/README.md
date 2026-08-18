@@ -8,7 +8,8 @@ The patches preserve broadcast-specific behavior:
 
 1. discard initial AAC/ADTS samples that arrive before the first PES timestamp;
 2. resynchronize large broadcast audio timestamp discontinuities without reporting an audio-sink error;
-3. avoid dropping late video frames or GOPs on the target Android TV and submit frames immediately.
+3. avoid dropping late video frames or GOPs on the target Android TV, submitting direct output
+   immediately while preserving timestamped release into a video graph;
 4. apply a caller-provided HLG-to-SDR LUT while sampling the decoder's external YUV texture,
    before Media3 performs any built-in HDR transform.
 

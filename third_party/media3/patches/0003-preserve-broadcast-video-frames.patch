@@ -22,13 +22,18 @@ index dabfc2f..142b40a 100644
    }
  
    /**
-@@ -2366,7 +2368,8 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
+@@ -2366,7 +2368,13 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
    protected void renderOutputBufferV21(
        MediaCodecAdapter codec, int index, long presentationTimeUs, long releaseTimeNs) {
      TraceUtil.beginSection("releaseOutputBuffer");
 -    codec.releaseOutputBuffer(index, releaseTimeNs);
-+    // Render immediately; scheduled release is unreliable on the target TV under broadcast jitter.
-+    codec.releaseOutputBuffer(index, true);
++    if (videoSink != null) {
++      // Video sinks use this timestamp to consume decoder frames with bounded backpressure.
++      codec.releaseOutputBuffer(index, releaseTimeNs);
++    } else {
++      // Scheduled direct rendering is unreliable on the target TV under broadcast jitter.
++      codec.releaseOutputBuffer(index, true);
++    }
      TraceUtil.endSection();
      decoderCounters.renderedOutputBufferCount++;
      consecutiveDroppedFrameCount = 0;
