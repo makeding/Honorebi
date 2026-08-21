@@ -1,86 +1,55 @@
-@file:OptIn(UnstableApi::class, ExperimentalAnimationApi::class, ExperimentalComposeUiApi::class)
+@file:OptIn(UnstableApi::class, ExperimentalComposeUiApi::class)
 
 package com.beeregg2001.komorebi.ui.video.player
 
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
-import android.view.SurfaceView
-import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
 import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.RecordedProgram
-import com.beeregg2001.komorebi.data.model.Program
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.ArchivedComment
-import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
-import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.main.RecordedPlaybackToken
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
-import com.beeregg2001.komorebi.ui.live.B60_INITIAL_MEDIA_PLANE
 import com.beeregg2001.komorebi.ui.live.B60MediaPlane
 import com.beeregg2001.komorebi.ui.live.DataBroadcastingColorKey
-import com.beeregg2001.komorebi.ui.live.DataBroadcastingColorSelectorOverlay
 import com.beeregg2001.komorebi.ui.live.DataBroadcastingRemoteCommand
-import com.beeregg2001.komorebi.ui.live.DataBroadcastingWebViewOverlay
-import com.beeregg2001.komorebi.ui.live.b60MediaPlane
-import com.beeregg2001.komorebi.ui.live.isDataBroadcastingToggleKeyEvent
 import com.beeregg2001.komorebi.ui.live.rememberLivePlayerState
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
-import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.ui.video.player.policy.NEXT_EPISODE_COUNTDOWN_WINDOW_MS
 import com.beeregg2001.komorebi.ui.video.player.policy.calculateNextEpisodeCountdownStartMs
 import com.beeregg2001.komorebi.ui.video.player.policy.isNextEpisodeLandingEligible
-import com.beeregg2001.komorebi.ui.video.player.policy.normalizeQuickSeriesKey
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureBudget
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
@@ -90,7 +59,6 @@ import com.beeregg2001.komorebi.ui.video.player.policy.isBangumiPlaybackProgress
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
-import com.beeregg2001.komorebi.util.TitleNormalizer
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel as CommentChannel
@@ -101,28 +69,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.time.OffsetDateTime
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
 private const val TAG = "VideoPlayerScreen"
-private const val PLAYBACK_END_FALLBACK_WINDOW_MS = 10_000L
-private const val PLAYBACK_END_FALLBACK_GRACE_MS = 750L
-private const val CHASE_PLAYBACK_TARGET_LIVE_OFFSET_MS = 30_000L
-private const val CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS = 20_000L
-private const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
-private const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 45_000L
-private const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
-private const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
-private const val CHASE_COMMENT_QUEUE_CAPACITY = 256
-private const val ACTIVE_PLAYBACK_STATE_POLL_MS = 250L
-private const val IDLE_PLAYBACK_STATE_POLL_MS = 1_000L
-private const val WATCH_HISTORY_CHECKPOINT_INTERVAL_MS = 15_000L
-private const val RAW_MMTS_SEEK_DEBOUNCE_MS = 300L
-private const val RAW_MMTS_SEEK_MIN_SETTLE_MS = 150L
-private const val RAW_MMTS_SEEK_SETTLE_TIMEOUT_MS = 15_000L
 private const val PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
 private val PLAYER_CONTROLS_SUBTITLE_OFFSET = 96.dp
 
@@ -130,11 +81,41 @@ private val PLAYER_CONTROLS_SUBTITLE_OFFSET = 96.dp
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun VideoPlayerScreen(
-    program: RecordedProgram, smbItem: SmbItem? = null, initialPositionMs: Long = 0, initialQuality: String = "1080p-60fps", isNetworkAvailable: Boolean = true, showControls: Boolean, onShowControlsChange: (Boolean) -> Unit, isSubMenuOpen: Boolean, onSubMenuToggle: (Boolean) -> Unit, isSceneSearchOpen: Boolean, onSceneSearchToggle: (Boolean) -> Unit, recentRecordings: List<RecordedProgram> = emptyList(), animeChannels: List<Channel> = emptyList(), onProgramSelect: (RecordedProgram, RecordedProgramSelectionReason) -> Unit = { _, _ -> }, recordedPlaybackToken: RecordedPlaybackToken? = null, isCurrentRecordedPlayback: (RecordedPlaybackToken) -> Boolean = { true }, isRecordedSwitching: Boolean = false, onProgramReady: (programId: Int, token: RecordedPlaybackToken) -> Unit = { _, _ -> }, onRecordedSwitchTerminalFailure: (RecordedPlaybackToken, RecordedSwitchTerminalFailure) -> Unit = { _, _ -> }, shouldPersistWatchHistory: () -> Boolean = { true }, onChannelSelect: (Channel) -> Unit = {}, onPlaybackEnded: () -> Unit = {}, onBackPressed: () -> Unit, onShowToast: (String) -> Unit, isPiPMode: Boolean = false, onPiPRequested: () -> Unit = {}, videoPlayerViewModel: VideoPlayerViewModel = hiltViewModel(), settingsViewModel: SettingsViewModel = hiltViewModel()
+    program: RecordedProgram,
+    smbItem: SmbItem? = null,
+    initialPositionMs: Long = 0,
+    initialQuality: String = "1080p-60fps",
+    isNetworkAvailable: Boolean = true,
+    showControls: Boolean,
+    onShowControlsChange: (Boolean) -> Unit,
+    isSubMenuOpen: Boolean,
+    onSubMenuToggle: (Boolean) -> Unit,
+    isSceneSearchOpen: Boolean,
+    onSceneSearchToggle: (Boolean) -> Unit,
+    recentRecordings: List<RecordedProgram> = emptyList(),
+    animeChannels: List<Channel> = emptyList(),
+    onProgramSelect: (RecordedProgram, RecordedProgramSelectionReason) -> Unit = { _, _ -> },
+    recordedPlaybackToken: RecordedPlaybackToken? = null,
+    isCurrentRecordedPlayback: (RecordedPlaybackToken) -> Boolean = { true },
+    isRecordedSwitching: Boolean = false,
+    onProgramReady: (programId: Int, token: RecordedPlaybackToken) -> Unit = { _, _ -> },
+    onRecordedSwitchTerminalFailure: (RecordedPlaybackToken, RecordedSwitchTerminalFailure) -> Unit = { _, _ -> },
+    shouldPersistWatchHistory: () -> Boolean = { true },
+    onChannelSelect: (Channel) -> Unit = {},
+    onPlaybackEnded: () -> Unit = {},
+    onBackPressed: () -> Unit,
+    onShowToast: (String) -> Unit,
+    isPiPMode: Boolean = false,
+    onPiPRequested: () -> Unit = {},
+    videoPlayerViewModel: VideoPlayerViewModel = hiltViewModel(),
+    settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val recordedPlaybackFence = remember(recordedPlaybackToken, smbItem?.path) {
         RecordedPlaybackFence(
-            token = recordedPlaybackToken, isCurrent = isCurrentRecordedPlayback, identity = recordedPlaybackToken ?: "smb:${smbItem?.path.orEmpty()}:${program.id}", )
+            token = recordedPlaybackToken,
+            isCurrent = isCurrentRecordedPlayback,
+            identity = recordedPlaybackToken ?: "smb:${smbItem?.path.orEmpty()}:${program.id}",
+        )
     }
     val scope = rememberCoroutineScope()
 
@@ -174,7 +155,10 @@ fun VideoPlayerScreen(
     val isRecordingChasePlayback =
         currentProgram.isRecording || currentProgram.recordedVideo.status == "Recording"
     val effectiveInitialPositionMs = remember(
-        currentProgram.id, currentProgram.recordingStartMargin, isRecordingChasePlayback, initialPositionMs
+        currentProgram.id,
+        currentProgram.recordingStartMargin,
+        isRecordingChasePlayback,
+        initialPositionMs
     ) {
         if (isRecordingChasePlayback && initialPositionMs <= 0L) {
             ((currentProgram.recordingStartMargin + 2.0).coerceAtLeast(0.0) * 1000.0).toLong()
@@ -228,18 +212,12 @@ fun VideoPlayerScreen(
     val dispatchDataBroadcastingRemoteKey: (String) -> Unit = { key ->
         dataBroadcastingRemoteSequence += 1L
         dataBroadcastingRemoteCommand = DataBroadcastingRemoteCommand(
-            id = dataBroadcastingRemoteSequence, key = key
+            id = dataBroadcastingRemoteSequence,
+            key = key
         )
     }
     val dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = { colorKey ->
-        dispatchDataBroadcastingRemoteKey(
-            when (colorKey) {
-                DataBroadcastingColorKey.Blue -> "blue"
-                DataBroadcastingColorKey.Red -> "red"
-                DataBroadcastingColorKey.Green -> "green"
-                DataBroadcastingColorKey.Yellow -> "yellow"
-            }
-        )
+        dispatchDataBroadcastingRemoteKey(recordedDataBroadcastingRemoteKey(colorKey))
     }
     val closeDataBroadcasting: () -> Unit = {
         isDataBroadcastingMode = false
@@ -268,7 +246,11 @@ fun VideoPlayerScreen(
     val cmSkipMode = CmSkipMode.fromPreference(autoCmSkipStr)
 
     LaunchedEffect(
-        availableQualities, isQualitiesLoaded, currentVideoQualityStr, preferOriginalMpegTs, requiresRawMmtsPlayback
+        availableQualities,
+        isQualitiesLoaded,
+        currentVideoQualityStr,
+        preferOriginalMpegTs,
+        requiresRawMmtsPlayback
     ) {
         if (isQualitiesLoaded && availableQualities.isNotEmpty()) {
             val preferredOriginal = if (preferOriginalMpegTs == "ON") {
@@ -332,7 +314,8 @@ fun VideoPlayerScreen(
     }
     val pendingWebSocketComments = remember(recordedPlaybackToken) {
         CommentChannel<ArchivedComment>(
-            capacity = CHASE_COMMENT_QUEUE_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST
+            capacity = CHASE_COMMENT_QUEUE_CAPACITY,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
     }
     val isEmulator =
@@ -343,7 +326,8 @@ fun VideoPlayerScreen(
     val currentStreamUrlRef = remember(recordedPlaybackToken) { AtomicReference<String?>(null) }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
-            extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST
+            extraBufferCapacity = 4,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
     }
     val captionEvents = remember(subtitleEvents) {
@@ -398,7 +382,9 @@ fun VideoPlayerScreen(
             PLAYER_CONTROLS_SUBTITLE_OFFSET
         } else {
             0.dp
-        }, animationSpec = tween(durationMillis = 180), label = "playerControlsSubtitleOffset"
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "playerControlsSubtitleOffset"
     )
 
     val buildVideoMediaItem: (String) -> MediaItem = { url ->
@@ -415,7 +401,13 @@ fun VideoPlayerScreen(
             mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
             if (isRecordingChasePlayback) {
                 mediaItemBuilder.setLiveConfiguration(
-                    MediaItem.LiveConfiguration.Builder().setTargetOffsetMs(CHASE_PLAYBACK_TARGET_LIVE_OFFSET_MS).setMinOffsetMs(CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS).setMaxOffsetMs(CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS).setMinPlaybackSpeed(1f).setMaxPlaybackSpeed(1f).build()
+                    MediaItem.LiveConfiguration.Builder()
+                        .setTargetOffsetMs(CHASE_PLAYBACK_TARGET_LIVE_OFFSET_MS)
+                        .setMinOffsetMs(CHASE_PLAYBACK_MIN_LIVE_OFFSET_MS)
+                        .setMaxOffsetMs(CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS)
+                        .setMinPlaybackSpeed(1f)
+                        .setMaxPlaybackSpeed(1f)
+                        .build()
                 )
             }
         }
@@ -437,7 +429,8 @@ fun VideoPlayerScreen(
             allComments.clear()
             commentKeys.clear()
             Log.i(
-                TAG, "Reset chase comments for new video. [video=${currentProgram.recordedVideo.id}]"
+                TAG,
+                "Reset chase comments for new video. [video=${currentProgram.recordedVideo.id}]"
             )
         }
 
@@ -457,7 +450,8 @@ fun VideoPlayerScreen(
             appendUniqueArchivedComments(allComments, commentKeys, fetchedComments)
         }
         Log.i(
-            TAG, "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
+            TAG,
+            "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
         )
     }
 
@@ -480,7 +474,8 @@ fun VideoPlayerScreen(
                 val addedCount = allComments.size - oldSize
                 if (addedCount > 0) {
                     Log.i(
-                        TAG, "Merged chase websocket batch. [video=${currentProgram.recordedVideo.id}, " +
+                        TAG,
+                        "Merged chase websocket batch. [video=${currentProgram.recordedVideo.id}, " +
                             "received=${batch.size}, added=$addedCount, total=${allComments.size}]"
                     )
                 }
@@ -511,11 +506,13 @@ fun VideoPlayerScreen(
 
                 if (pendingWebSocketComments.trySend(comment).isFailure) {
                     Log.w(
-                        TAG, "Dropped chase websocket comment because the queue is closed. [video=${currentProgram.recordedVideo.id}]"
+                        TAG,
+                        "Dropped chase websocket comment because the queue is closed. [video=${currentProgram.recordedVideo.id}]"
                     )
                 } else if (receivedCommentCount <= 3 || receivedCommentCount % 50 == 0) {
                     Log.i(
-                        TAG, "Queued chase websocket comment. [video=${currentProgram.recordedVideo.id}, " +
+                        TAG,
+                        "Queued chase websocket comment. [video=${currentProgram.recordedVideo.id}, " +
                             "received=$receivedCommentCount, time=${comment.time}]"
                     )
                 }
@@ -595,7 +592,9 @@ fun VideoPlayerScreen(
             vs.playbackOffsetMs = resumePositionMs
             isBuffering = true
             val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                currentProgram.id, vs.currentQuality.value, newSessionId, resumePositionMs / 1000.0, isRecordingChasePlayback, )
+                currentProgram.id, vs.currentQuality.value, newSessionId,
+                resumePositionMs / 1000.0, isRecordingChasePlayback,
+            )
             if (!currentPlaybackFence.accepts() || newUrl.isEmpty()) {
                 false
             } else {
@@ -616,7 +615,9 @@ fun VideoPlayerScreen(
     val recoverExpiredStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
         if (
             networkRecoveryGate.onFailure(
-                RecordedNetworkRetry.RenewStreamSession, networkAvailableRef.get(), ) == RecordedNetworkRecoveryDecision.WaitForNetwork
+                RecordedNetworkRetry.RenewStreamSession,
+                networkAvailableRef.get(),
+            ) == RecordedNetworkRecoveryDecision.WaitForNetwork
         ) {
             isWaitingForNetworkRecovery = true
             true
@@ -624,16 +625,39 @@ fun VideoPlayerScreen(
             renewStreamSession(player)
         }
     }
+    val dataBroadcastingCallback = remember(
+        dataBroadcastingStore,
+        recordedPlaybackFence.identity
+    ) {
+        FencedB60DataBroadcastingCallback(dataBroadcastingStore, recordedPlaybackFence)
+    }
     val exoPlayer = rememberManagedExoPlayer(
-        program = currentProgram, recordedPlaybackFence = recordedPlaybackFence, vs = vs, isLiveStream = isLiveStream, scope = scope, onSubtitleCue = { subtitleEvents.tryEmit(it) }, subtitleLanguageId = currentSubtitleLanguageId, onSubtitleLanguagesChanged = { subtitleLanguages = it }, onVideoSizeChanged = { w, h, ratio ->
+        program = currentProgram,
+        recordedPlaybackFence = recordedPlaybackFence,
+        vs = vs,
+        isLiveStream = isLiveStream,
+        scope = scope,
+        onSubtitleCue = { subtitleEvents.tryEmit(it) },
+        subtitleLanguageId = currentSubtitleLanguageId,
+        onSubtitleLanguagesChanged = { subtitleLanguages = it },
+        onVideoSizeChanged = { w, h, ratio ->
             videoWidth = w
             videoHeight = h
             pixelWidthHeightRatio = ratio
-        }, onBufferingChanged = { isBuffering = it }, onDurationChanged = { smbDurationMs = it }, onPlaybackEnded = {
+        },
+        onBufferingChanged = { isBuffering = it },
+        onDurationChanged = { smbDurationMs = it },
+        onPlaybackEnded = {
             handlePlaybackEnded()
-        }, dataBroadcastingCallback = FencedB60DataBroadcastingCallback(dataBroadcastingStore, recordedPlaybackFence), enableHdrToSdrToneMapping = enableHdrToSdrToneMapping, isNetworkAvailable = networkAvailableRef::get, onStreamSessionExpired = recoverExpiredStreamSession, onPlayerErrorRecovery = { player, error ->
+        },
+        dataBroadcastingCallback = dataBroadcastingCallback,
+        enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
+        isNetworkAvailable = networkAvailableRef::get,
+        onStreamSessionExpired = recoverExpiredStreamSession,
+        onPlayerErrorRecovery = { player, error ->
             if (HdrToneMapping.rejectionCause(error) != null) {
-                val currentPosition = player.currentPosition.takeUnless { it == C.TIME_UNSET || it < 0L }
+                val currentPosition = player.currentPosition
+                    .takeUnless { it == C.TIME_UNSET || it < 0L }
                     ?: playbackPositionMs
                 hdrModeResumePositionMs = currentPosition
                 playbackPositionMs = currentPosition
@@ -678,7 +702,8 @@ fun VideoPlayerScreen(
                 }
                 RecordedSwitchFailureDecision.RetryInitialUrl -> PlayerErrorRecovery.Handled
             }
-        }, onStopOrDispose = { player ->
+        },
+        onStopOrDispose = { player ->
             val pendingPositionMs = vs.pendingSeekPositionMs
             // 画質の初期化中に作られた空の Player は、Raw MMTS Player への
             // 再構築時に dispose される。未準備の0秒でレジューム位置を消さず、
@@ -686,7 +711,13 @@ fun VideoPlayerScreen(
             if (shouldPersistWatchHistory() && smbItem == null && (player.mediaItemCount > 0 || pendingPositionMs != null)) {
                 val rawPosition = player.currentPosition
                 val posMs = resolvePersistablePlaybackPositionMs(
-                    pendingSeekPositionMs = pendingPositionMs, rawPlayerPositionMs = rawPosition.takeUnless { it == C.TIME_UNSET }, fallbackPositionMs = playbackPositionMs, isPlayerReady = player.playbackState == Player.STATE_READY, isLiveStream = isLiveStream, isRecordingChasePlayback = isRecordingChasePlayback, playbackOffsetMs = vs.playbackOffsetMs
+                    pendingSeekPositionMs = pendingPositionMs,
+                    rawPlayerPositionMs = rawPosition.takeUnless { it == C.TIME_UNSET },
+                    fallbackPositionMs = playbackPositionMs,
+                    isPlayerReady = player.playbackState == Player.STATE_READY,
+                    isLiveStream = isLiveStream,
+                    isRecordingChasePlayback = isRecordingChasePlayback,
+                    playbackOffsetMs = vs.playbackOffsetMs
                 )
                 // A legitimate renderer/source reconstruction must resume the
                 // old instance's last UI/pending position instead of asking
@@ -720,12 +751,15 @@ fun VideoPlayerScreen(
                     if (!renewed) {
                         if (!networkAvailableRef.get()) {
                             networkRecoveryGate.onFailure(
-                                RecordedNetworkRetry.RenewStreamSession, networkAvailable = false, )
+                                RecordedNetworkRetry.RenewStreamSession,
+                                networkAvailable = false,
+                            )
                         } else {
                             isWaitingForNetworkRecovery = false
                             currentPlaybackFence.tokenOrNull()?.let { token ->
                                 if (currentPlaybackFence.accepts()) currentTerminalSwitchFailure(
-                                    token, RecordedSwitchTerminalFailure.SessionRenewalFailed, )
+                                    token, RecordedSwitchTerminalFailure.SessionRenewalFailed,
+                                )
                             }
                         }
                     } else {
@@ -769,10 +803,18 @@ fun VideoPlayerScreen(
     }
 
     val subtitleCue = rememberNativeCaptionCue(
-        events = captionEvents, enabled = vs.isSubtitleEnabled, resetKey = currentProgram.id to currentSubtitleLanguageId, clockRunning = vs.isPlayerPlaying, positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
+        events = captionEvents,
+        enabled = vs.isSubtitleEnabled,
+        resetKey = currentProgram.id to currentSubtitleLanguageId,
+        clockRunning = vs.isPlayerPlaying,
+        positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
     )
     val superimposeCue = rememberNativeCaptionCue(
-        events = superimposeEvents, enabled = true, resetKey = currentProgram.id, clockRunning = vs.isPlayerPlaying, positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
+        events = superimposeEvents,
+        enabled = true,
+        resetKey = currentProgram.id,
+        clockRunning = vs.isPlayerPlaying,
+        positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
     )
 
     val getCurrentPositionMs: () -> Long = {
@@ -799,7 +841,11 @@ fun VideoPlayerScreen(
         IDLE_PLAYBACK_STATE_POLL_MS
     }
     LaunchedEffect(
-        exoPlayer, currentProgram.id, isLiveStream, isRecordingChasePlayback, playbackStatePollIntervalMs
+        exoPlayer,
+        currentProgram.id,
+        isLiveStream,
+        isRecordingChasePlayback,
+        playbackStatePollIntervalMs
     ) {
         while (isActive) {
             val currentPosition = getCurrentPositionMs()
@@ -836,14 +882,23 @@ fun VideoPlayerScreen(
     val isEdcbDirect = (backendType == "EDCB" && edcbPlayMethod == "DIRECT")
 
     val systemArtworkUrl = remember(
-        currentProgram.id, currentProgram.directThumbnailUrl, currentProgram.apiThumbnailUrl, smbItem?.thumbnailUrl, backendType, konomiIp, konomiPort
+        currentProgram.id,
+        currentProgram.directThumbnailUrl,
+        currentProgram.apiThumbnailUrl,
+        smbItem?.thumbnailUrl,
+        backendType,
+        konomiIp,
+        konomiPort
     ) {
         smbItem?.thumbnailUrl
             ?: currentProgram.directThumbnailUrl
             ?: currentProgram.apiThumbnailUrl
             ?: if (smbItem == null && currentProgram.id != 0) {
                 UrlBuilder.getThumbnailUrl(
-                    backendType, konomiIp, konomiPort, currentProgram.id.toString()
+                    backendType,
+                    konomiIp,
+                    konomiPort,
+                    currentProgram.id.toString()
                 )
             } else null
     }
@@ -915,20 +970,32 @@ fun VideoPlayerScreen(
             smbDurationMs.coerceAtLeast(0L)
         } else if (isRecordingChasePlayback) {
             maxOf(
-                currentProgram.chaseElapsedDurationMs(), playbackDurationMs, playbackPositionMs, bufferedPositionMs
+                currentProgram.chaseElapsedDurationMs(),
+                playbackDurationMs,
+                playbackPositionMs,
+                bufferedPositionMs
             ).coerceAtLeast(0L)
         } else {
             resolveCompletedRecordingTimelineDurationMs(
-                isRawMmtsPlayback = usesSerializedRawMmtsSeek, konomiReportedDurationMs =
-                    (currentProgram.recordedVideo.duration * 1000).toLong(), nativePlayerDurationMs = playbackDurationMs, playbackPositionMs = playbackPositionMs, bufferedPositionMs = bufferedPositionMs, )
+                isRawMmtsPlayback = usesSerializedRawMmtsSeek,
+                konomiReportedDurationMs =
+                    (currentProgram.recordedVideo.duration * 1000).toLong(),
+                nativePlayerDurationMs = playbackDurationMs,
+                playbackPositionMs = playbackPositionMs,
+                bufferedPositionMs = bufferedPositionMs,
+            )
         }
     val trustedPlaybackEndDurationMs =
         if (smbItem != null || isRecordingChasePlayback) {
             0L
         } else {
             resolveCompletedRecordingAutomationDurationMs(
-                requiresRawMmtsPlayback = requiresRawMmtsPlayback, isRawMmtsPlayback = usesSerializedRawMmtsSeek, konomiReportedDurationMs =
-                    (currentProgram.recordedVideo.duration * 1000).toLong(), nativePlayerDurationMs = playbackDurationMs, )
+                requiresRawMmtsPlayback = requiresRawMmtsPlayback,
+                isRawMmtsPlayback = usesSerializedRawMmtsSeek,
+                konomiReportedDurationMs =
+                    (currentProgram.recordedVideo.duration * 1000).toLong(),
+                nativePlayerDurationMs = playbackDurationMs,
+            )
         }
 
     LaunchedEffect(currentProgram.id, trustedPlaybackEndDurationMs, playbackPositionMs) {
@@ -938,7 +1005,10 @@ fun VideoPlayerScreen(
             isBangumiPlaybackProgressEligible(playbackPositionMs, trustedPlaybackEndDurationMs)
         ) {
             videoPlayerViewModel.reportBangumiPlaybackProgress(
-                currentProgram.id, playbackPositionMs, trustedPlaybackEndDurationMs, )
+                currentProgram.id,
+                playbackPositionMs,
+                trustedPlaybackEndDurationMs,
+            )
         }
     }
 
@@ -981,7 +1051,8 @@ fun VideoPlayerScreen(
             return@seek
         }
         val safeTarget = targetMs.coerceIn(
-            0L, if (totalDurationForControls > 0) totalDurationForControls else Long.MAX_VALUE
+            0L,
+            if (totalDurationForControls > 0) totalDurationForControls else Long.MAX_VALUE
         )
         // 一瞬だけpendingSeekに記録してUI表示をサクサク進める
         vs.pendingSeekPositionMs = safeTarget
@@ -1001,7 +1072,11 @@ fun VideoPlayerScreen(
                 vs.playbackOffsetMs = safeTarget
                 val newOffsetSec = safeTarget / 1000.0
                 val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                    currentProgram.id, vs.currentQuality.value, currentSessionId, newOffsetSec, isRecordingChasePlayback
+                    currentProgram.id,
+                    vs.currentQuality.value,
+                    currentSessionId,
+                    newOffsetSec,
+                    isRecordingChasePlayback
                 )
                 if (newUrl.isNotEmpty()) {
                     currentStreamUrlRef.set(newUrl)
@@ -1017,7 +1092,8 @@ fun VideoPlayerScreen(
                 exoPlayer.seekTo(safeTarget)
                 if (smbItem == null && currentProgram.id != 0) {
                     videoPlayerViewModel.updateWatchHistory(
-                        currentProgram, safeTarget / 1_000.0
+                        currentProgram,
+                        safeTarget / 1_000.0
                     )
                 }
             }
@@ -1027,7 +1103,8 @@ fun VideoPlayerScreen(
                     // Player がまだ旧位置で BUFFERING 中でも、退出時に失わないよう
                     // 最終 UI 目標を先にチェックポイントする。
                     videoPlayerViewModel.updateWatchHistory(
-                        currentProgram, safeTarget / 1_000.0
+                        currentProgram,
+                        safeTarget / 1_000.0
                     )
                 }
                 scheduleRawMmtsSeekCommit()
@@ -1087,7 +1164,9 @@ fun VideoPlayerScreen(
     var isFirstLoad by remember { mutableStateOf(true) }
     var preparedPlaybackKey by remember { mutableStateOf<String?>(null) }
     var lastChasePlaylistRefreshAt by remember(
-        currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback
+        currentProgram.id,
+        vs.currentQuality.value,
+        isRecordingChasePlayback
     ) {
         mutableLongStateOf(System.currentTimeMillis())
     }
@@ -1108,7 +1187,16 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(
-        exoPlayer, currentProgram.id, smbItem?.path, vs.currentQuality.value, qualityOptionsKey, isQualitiesLoaded, isRecordingChasePlayback, initialUrlRetryNonce, recordedPlaybackToken, ) {
+        exoPlayer,
+        currentProgram.id,
+        smbItem?.path,
+        vs.currentQuality.value,
+        qualityOptionsKey,
+        isQualitiesLoaded,
+        isRecordingChasePlayback,
+        initialUrlRetryNonce,
+        recordedPlaybackToken,
+    ) {
         val playbackKey = if (smbItem != null) {
             "smb:${smbItem.path}"
         } else {
@@ -1120,7 +1208,9 @@ fun VideoPlayerScreen(
 
         if (
             networkRecoveryGate.onFailure(
-                RecordedNetworkRetry.ResolveInitialUrl, networkAvailableRef.get(), ) == RecordedNetworkRecoveryDecision.WaitForNetwork
+                RecordedNetworkRetry.ResolveInitialUrl,
+                networkAvailableRef.get(),
+            ) == RecordedNetworkRecoveryDecision.WaitForNetwork
         ) {
             isBuffering = true
             isWaitingForNetworkRecovery = true
@@ -1151,7 +1241,10 @@ fun VideoPlayerScreen(
 
         isBuffering = true
         val resumePositionMs = resolveRecreatedPlayerStartPositionMs(
-            explicitResumePositionMs = hdrModeResumePositionMs, isFirstLoad = isFirstLoad, retainedPlaybackPositionMs = playbackPositionMs, )
+            explicitResumePositionMs = hdrModeResumePositionMs,
+            isFirstLoad = isFirstLoad,
+            retainedPlaybackPositionMs = playbackPositionMs,
+        )
         val offsetPositionMs = when {
             resumePositionMs != null -> resumePositionMs
             isFirstLoad && effectiveInitialPositionMs > 0 -> effectiveInitialPositionMs
@@ -1162,7 +1255,11 @@ fun VideoPlayerScreen(
 
         val requestToken = recordedPlaybackToken
         val url = videoPlayerViewModel.resolveStreamUrl(
-            currentProgram.id, vs.currentQuality.value, currentSessionId, offsetSec, isRecordingChasePlayback
+            currentProgram.id,
+            vs.currentQuality.value,
+            currentSessionId,
+            offsetSec,
+            isRecordingChasePlayback
         )
 
                     if (!currentPlaybackFence.accepts()) return@LaunchedEffect
@@ -1193,7 +1290,9 @@ fun VideoPlayerScreen(
         } else {
             if (
                 networkRecoveryGate.onFailure(
-                    RecordedNetworkRetry.ResolveInitialUrl, networkAvailableRef.get(), ) == RecordedNetworkRecoveryDecision.WaitForNetwork
+                    RecordedNetworkRetry.ResolveInitialUrl,
+                    networkAvailableRef.get(),
+                ) == RecordedNetworkRecoveryDecision.WaitForNetwork
             ) {
                 isWaitingForNetworkRecovery = true
                 return@LaunchedEffect
@@ -1218,7 +1317,14 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(
-        exoPlayer, currentProgram.id, smbItem, vs.currentQuality.value, currentSessionId, isRecordingChasePlayback, recordedPlaybackToken, ) {
+        exoPlayer,
+        currentProgram.id,
+        smbItem,
+        vs.currentQuality.value,
+        currentSessionId,
+        isRecordingChasePlayback,
+        recordedPlaybackToken,
+    ) {
         if (
             smbItem != null ||
             !isRecordingChasePlayback ||
@@ -1252,12 +1358,17 @@ fun VideoPlayerScreen(
 
             lastChasePlaylistRefreshAt = now
             val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                currentProgram.id, vs.currentQuality.value, currentSessionId, currentPos / 1000.0, isRecordingChasePlayback
+                currentProgram.id,
+                vs.currentQuality.value,
+                currentSessionId,
+                currentPos / 1000.0,
+                isRecordingChasePlayback
             )
             if (!currentPlaybackFence.accepts()) return@LaunchedEffect
             if (newUrl.isNotEmpty()) {
                 Log.i(
-                    TAG, "Refreshing chase playback playlist. [video=${currentProgram.id}, position_ms=$currentPos]"
+                    TAG,
+                    "Refreshing chase playback playlist. [video=${currentProgram.id}, position_ms=$currentPos]"
                 )
                 isBuffering = true
                 currentStreamUrlRef.set(newUrl)
@@ -1304,7 +1415,10 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(
-        isDataBroadcastingAvailable, isDataBroadcastingActive, isDataBroadcastingBlank, isPiPMode
+        isDataBroadcastingAvailable,
+        isDataBroadcastingActive,
+        isDataBroadcastingBlank,
+        isPiPMode
     ) {
         if ((!isDataBroadcastingAvailable || isPiPMode) && isDataBroadcastingMode) {
             closeDataBroadcasting()
@@ -1314,7 +1428,9 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(
-        isDataBroadcastingActive, dataBroadcastingInput.isDataBroadcastingColorSelectorVisible, dataBroadcastingInput.selectedDataBroadcastingColorKey
+        isDataBroadcastingActive,
+        dataBroadcastingInput.isDataBroadcastingColorSelectorVisible,
+        dataBroadcastingInput.selectedDataBroadcastingColorKey
     ) {
         if (
             isDataBroadcastingActive &&
@@ -1326,7 +1442,13 @@ fun VideoPlayerScreen(
     }
 
     DisposableEffect(
-        currentProgram.recordedVideo.id, vs.currentQuality.value, currentSessionId, smbItem, isNetworkAvailable, isWaitingForNetworkRecovery, ) {
+        currentProgram.recordedVideo.id,
+        vs.currentQuality.value,
+        currentSessionId,
+        smbItem,
+        isNetworkAvailable,
+        isWaitingForNetworkRecovery,
+    ) {
         if (
             isNetworkAvailable &&
             !isWaitingForNetworkRecovery &&
@@ -1335,23 +1457,41 @@ fun VideoPlayerScreen(
             vs.currentQuality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
         ) {
             videoPlayerViewModel.startStreamMaintenance(
-                currentProgram, vs.currentQuality.value, currentSessionId
+                currentProgram,
+                vs.currentQuality.value,
+                currentSessionId
             ) { currentStreamUrlRef.get() }
         }
         onDispose { if (smbItem == null) videoPlayerViewModel.stopStreamMaintenance() }
     }
 
     LaunchedEffect(
-        showControls, isSubMenuOpen, isSceneSearchOpen, isChapterListOpen, isProgramInfoOpen, isModernSettingsOpen, vs.lCropMode, vs.lastInteractionTime, vs.isSeekBarFocused
+        showControls,
+        isSubMenuOpen,
+        isSceneSearchOpen,
+        isChapterListOpen,
+        isProgramInfoOpen,
+        isModernSettingsOpen,
+        vs.lCropMode,
+        vs.lastInteractionTime,
+        vs.isSeekBarFocused
     ) {
-        if (showControls && !isSubMenuOpen && !isSceneSearchOpen && !isChapterListOpen && !isProgramInfoOpen && !isModernSettingsOpen && !vs.isSeekBarFocused && vs.lCropMode == LCropMode.HIDDEN) {
+        if (showControls && !isSubMenuOpen && !isSceneSearchOpen && !isChapterListOpen &&
+            !isProgramInfoOpen && !isModernSettingsOpen && !vs.isSeekBarFocused &&
+            vs.lCropMode == LCropMode.HIDDEN
+        ) {
             delay(5000); onShowControlsChange(false)
         }
     }
 
     var wasControlsVisible by remember { mutableStateOf(false) }
     LaunchedEffect(
-        isSubMenuOpen, isSceneSearchOpen, isChapterListOpen, isProgramInfoOpen, isModernSettingsOpen, showControls
+        isSubMenuOpen,
+        isSceneSearchOpen,
+        isChapterListOpen,
+        isProgramInfoOpen,
+        isModernSettingsOpen,
+        showControls
     ) {
         if (isPiPMode) return@LaunchedEffect
         delay(150)
@@ -1369,71 +1509,54 @@ fun VideoPlayerScreen(
         wasControlsVisible = showControls
     }
 
-    val safeHouseFocusRequester = remember { FocusRequester() }
-    val sceneSearchFocusRequester = remember { FocusRequester() }
-    var isLongPressHandled by remember { mutableStateOf(false) }
-    val seriesQuickPrograms = remember(
-        currentProgram.id, currentProgram.title, currentProgram.seriesName, recentRecordings
-    ) {
-        val seriesName = currentProgram.seriesName?.trim().orEmpty()
-        val displayTitle = seriesName.ifBlank { TitleNormalizer.extractDisplayTitle(currentProgram.title) }
-        val normalizedSeries = normalizeQuickSeriesKey(displayTitle)
-        val candidates = (listOf(currentProgram) + recentRecordings).distinctBy { it.id }
-        candidates.filter { candidate ->
-                val candidateSeries = candidate.seriesName?.trim().orEmpty()
-                val candidateDisplay =
-                    candidateSeries.ifBlank { TitleNormalizer.extractDisplayTitle(candidate.title) }
-                normalizeQuickSeriesKey(candidateDisplay) == normalizedSeries ||
-                        (displayTitle.isNotBlank() && candidate.title.contains(displayTitle))
-            }.distinctBy { it.id }.sortedByDescending { it.startTime }.take(24)
+    val seriesQuickPrograms = remember(currentProgram, recentRecordings) {
+        buildRecordedSeriesQuickPrograms(currentProgram, recentRecordings)
     }
-    val recentQuickPrograms = remember(currentProgram.id, recentRecordings) {
-        (listOf(currentProgram) + recentRecordings).distinctBy { it.id }.sortedByDescending { it.startTime }.take(24)
+    val recentQuickPrograms = remember(currentProgram, recentRecordings) {
+        buildRecordedRecentQuickPrograms(currentProgram, recentRecordings)
     }
     val quickMenuSeriesPrograms = remember(
-        currentProgram.id, seriesQuickPrograms, quickVideoCandidates
+        currentProgram.id,
+        seriesQuickPrograms,
+        quickVideoCandidates
     ) {
-        if (
-            quickVideoCandidates.sourceProgramId == currentProgram.id &&
-            quickVideoCandidates.seriesPrograms.isNotEmpty()
-        ) {
-            quickVideoCandidates.seriesPrograms
-        } else {
-            seriesQuickPrograms
-        }
+        chooseRecordedQuickPrograms(
+            currentProgramId = currentProgram.id,
+            fetchedSourceProgramId = quickVideoCandidates.sourceProgramId,
+            fetchedPrograms = quickVideoCandidates.seriesPrograms,
+            fallbackPrograms = seriesQuickPrograms
+        )
     }
     val quickMenuRecentPrograms = remember(
-        currentProgram.id, recentQuickPrograms, quickVideoCandidates
+        currentProgram.id,
+        recentQuickPrograms,
+        quickVideoCandidates
     ) {
-        if (
-            quickVideoCandidates.sourceProgramId == currentProgram.id &&
-            quickVideoCandidates.recentPrograms.isNotEmpty()
-        ) {
-            quickVideoCandidates.recentPrograms
-        } else {
-            recentQuickPrograms
-        }
+        chooseRecordedQuickPrograms(
+            currentProgramId = currentProgram.id,
+            fetchedSourceProgramId = quickVideoCandidates.sourceProgramId,
+            fetchedPrograms = quickVideoCandidates.recentPrograms,
+            fallbackPrograms = recentQuickPrograms
+        )
     }
     val nextSeriesProgram = remember(currentProgram.id, quickMenuSeriesPrograms) {
-        val newestFirst = quickMenuSeriesPrograms.distinctBy { it.id }.sortedByDescending { it.startTime }
-        val currentIndex = newestFirst.indexOfFirst { it.id == currentProgram.id }
-        if (currentIndex > 0) newestFirst[currentIndex - 1] else null
+        nextRecordedSeriesProgram(currentProgram.id, quickMenuSeriesPrograms)
     }
     val previousSeriesProgram = remember(currentProgram.id, quickMenuSeriesPrograms) {
-        val newestFirst = quickMenuSeriesPrograms.distinctBy { it.id }.sortedByDescending { it.startTime }
-        val currentIndex = newestFirst.indexOfFirst { it.id == currentProgram.id }
-        if (currentIndex >= 0 && currentIndex + 1 < newestFirst.size) {
-            newestFirst[currentIndex + 1]
-        } else null
+        previousRecordedSeriesProgram(currentProgram.id, quickMenuSeriesPrograms)
     }
-    SystemMediaSession(
-        player = exoPlayer, title = smbItem?.name ?: currentProgram.title, subtitle = currentProgram.channel?.name, artworkUrl = systemArtworkUrl, mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW, isLoading = isBuffering, onPrevious = previousSeriesProgram?.let { target ->
-            { onProgramSelect(target, RecordedProgramSelectionReason.PreviousEpisode) }
-        }, onNext = nextSeriesProgram?.let { target ->
-            { onProgramSelect(target, RecordedProgramSelectionReason.NextEpisode) }
-        }, onSeekRelative = { deltaMilliseconds ->
-            performSeek(getEffectivePositionMs() + deltaMilliseconds)
-        }, onStop = onBackPressed
+    RecordedSystemMediaSession(
+        player = exoPlayer,
+        program = currentProgram,
+        smbTitle = smbItem?.name,
+        artworkUrl = systemArtworkUrl,
+        isLoading = isBuffering,
+        previousProgram = previousSeriesProgram,
+        nextProgram = nextSeriesProgram,
+        onProgramSelect = onProgramSelect,
+        currentPositionMs = getEffectivePositionMs,
+        performSeek = performSeek,
+        onStop = onBackPressed
     )
     LaunchedEffect(nextSeriesProgram?.id) {
         nextEpisodeProgramForEnd = nextSeriesProgram
@@ -1457,14 +1580,21 @@ fun VideoPlayerScreen(
     }
 
     val nextEpisodeCountdownStartMs = remember(
-        currentProgram.id, currentProgram.channel, trustedPlaybackEndDurationMs, allComments.size
+        currentProgram.id,
+        currentProgram.channel,
+        trustedPlaybackEndDurationMs,
+        allComments.size
     ) {
         calculateNextEpisodeCountdownStartMs(
-            program = currentProgram, comments = allComments, totalDurationMs = trustedPlaybackEndDurationMs
+            program = currentProgram,
+            comments = allComments,
+            totalDurationMs = trustedPlaybackEndDurationMs
         )
     }
     val nextEpisodeCountdownEndMs =
-        (nextEpisodeCountdownStartMs + NEXT_EPISODE_COUNTDOWN_WINDOW_MS).coerceAtMost(trustedPlaybackEndDurationMs).coerceAtLeast(nextEpisodeCountdownStartMs)
+        (nextEpisodeCountdownStartMs + NEXT_EPISODE_COUNTDOWN_WINDOW_MS)
+            .coerceAtMost(trustedPlaybackEndDurationMs)
+            .coerceAtLeast(nextEpisodeCountdownStartMs)
     val nextEpisodeCountdownRemainingMs =
         (nextEpisodeCountdownEndMs - getEffectivePositionMs()).coerceAtLeast(0L)
     val showNextEpisodeCountdown =
@@ -1476,15 +1606,11 @@ fun VideoPlayerScreen(
                 trustedPlaybackEndDurationMs > NEXT_EPISODE_COUNTDOWN_WINDOW_MS &&
                 exoPlayer.playbackState == Player.STATE_READY &&
                 getEffectivePositionMs() >= nextEpisodeCountdownStartMs
-    val nextEpisodeCountdownProgress =
-        if (nextEpisodeCountdownEndMs <= nextEpisodeCountdownStartMs) {
-            1f
-        } else {
-            1f - (
-                    nextEpisodeCountdownRemainingMs.toFloat() /
-                            (nextEpisodeCountdownEndMs - nextEpisodeCountdownStartMs).toFloat()
-                    )
-        }.coerceIn(0f, 1f)
+    val nextEpisodeCountdownProgress = recordedCountdownProgress(
+        nextEpisodeCountdownStartMs,
+        nextEpisodeCountdownEndMs,
+        nextEpisodeCountdownRemainingMs
+    )
 
     LaunchedEffect(showNextEpisodeCountdown, nextEpisodeCountdownRemainingMs, nextSeriesProgram?.id) {
         val nextEpisode = nextSeriesProgram
@@ -1535,433 +1661,334 @@ fun VideoPlayerScreen(
         }
     }
 
+    val toggleAudio: () -> Unit = {
+        toggleRecordedAudio(vs, onShowToast)
+    }
+    val toggleSpeed: () -> Unit = {
+        cycleRecordedPlaybackSpeed(vs, exoPlayer, onShowToast)
+    }
+    val toggleSubtitle: () -> Unit = {
+        toggleRecordedSubtitle(vs, onShowToast)
+    }
+    val toggleSubtitleLanguage: () -> Unit = {
+        val (languageId, message) = nextRecordedSubtitleLanguage(
+            currentSubtitleLanguageId,
+            subtitleLanguages
+        )
+        currentSubtitleLanguageId = languageId
+        onShowToast(message)
+    }
+    val selectQuality: (StreamQuality) -> Unit = selectQuality@ { quality ->
+        if (smbItem != null) {
+            onShowToast("SMB再生中は画質の変更はできません")
+            isModernSettingsOpen = false
+            onSubMenuToggle(false)
+            return@selectQuality
+        }
+        if (vs.currentQuality != quality) {
+            vs.playbackOffsetMs = getCurrentPositionMs()
+            vs.currentQuality = quality
+            if (
+                !quality.isRawMmts &&
+                quality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+            ) {
+                videoPlayerViewModel.saveVideoQuality(quality.value)
+            }
+            val player = exoPlayer
+            val currentPosition = getCurrentPositionMs()
+            if (!isEdcbDirect) {
+                vs.playbackOffsetMs = currentPosition - effectiveInitialPositionMs
+            }
+            scope.launch {
+                val actionFence = recordedPlaybackFence
+                isBuffering = true
+                val newUrl = videoPlayerViewModel.resolveStreamUrl(
+                    currentProgram.id,
+                    quality.value,
+                    currentSessionId,
+                    if (isEdcbDirect) 0.0 else currentPosition / 1000.0,
+                    isRecordingChasePlayback
+                )
+                if (!actionFence.accepts()) return@launch
+                currentStreamUrlRef.set(newUrl)
+                player.setMediaItem(buildVideoMediaItem(newUrl))
+                player.prepare()
+                if (
+                    isEdcbDirect ||
+                    quality.isRawMmts ||
+                    quality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
+                    isRecordingChasePlayback
+                ) {
+                    player.seekTo(currentPosition)
+                }
+                player.play()
+            }
+            onShowToast("画質を ${quality.label} に変更しました")
+        }
+        isModernSettingsOpen = false
+        onSubMenuToggle(false)
+        vs.lastInteractionTime = System.currentTimeMillis()
+    }
+    val toggleComment: () -> Unit = {
+        toggleRecordedComment(vs, onShowToast)
+    }
+    val toggleLCrop: () -> Unit = {
+        toggleRecordedLCrop(vs) {
+            onSubMenuToggle(false)
+            onShowControlsChange(false)
+        }
+    }
+    val toggleCmSkipMode: () -> Unit = {
+        val nextMode = cmSkipMode.next()
+        settingsViewModel.setCmSkipMode(nextMode)
+        onShowToast("CMスキップ: ${nextMode.displayLabel}")
+    }
+    val toggleHdrRenderMode: () -> Unit = {
+        val nextMode = nextRecordedHdrRenderMode(hdrRenderMode)
+        hdrModeResumePositionMs = getCurrentPositionMs()
+        playbackPositionMs = hdrModeResumePositionMs ?: playbackPositionMs
+        videoPlayerViewModel.setHdrRenderMode(nextMode)
+        onShowToast(recordedHdrRenderModeMessage(nextMode))
+    }
+
     BackHandler(enabled = isPiPMode) {}
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { keyEvent ->
-                if (isPiPMode) return@onPreviewKeyEvent false
-                if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
-                    dataBroadcastingInput.resetDataBroadcastingInput()
-                    if (!isDataBroadcastingAvailable) {
-                        onShowToast("録画データ放送は Raw MMT/TLV の BS4K/BS8K で利用できます")
-                    } else if (!isDataBroadcastingActive) {
-                        openDataBroadcasting()
-                    } else {
-                        dispatchDataBroadcastingRemoteKey("data")
-                    }
-                    return@onPreviewKeyEvent true
-                }
-
-                if (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_INFO) {
-                    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP) {
-                        if (isProgramInfoOpen) closeProgramInfo() else openProgramInfo()
-                    }
-                    return@onPreviewKeyEvent true
-                }
-
-                if (isSubOverlayOpen) {
-                    return@onPreviewKeyEvent false
-                }
-
-                if (isDataBroadcastingActive && !isDataBroadcastingBlank) {
-                    if (dataBroadcastingInput.handleDataBroadcastingRemoteKeyEvent(
-                            keyEvent = keyEvent, scope = scope, onDataBroadcastingBack = {
-                                dispatchDataBroadcastingRemoteKey("back")
-                            }, onDataBroadcastingBlank = {
-                                dispatchDataBroadcastingRemoteKey("data")
-                            }, onDataBroadcastingColorKey = dispatchDataBroadcastingColorKey, onDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey
-                        )
-                    ) {
-                        return@onPreviewKeyEvent true
-                    }
-                }
-
-                // ★ UIのボタンにフォーカスがある場合に操作していてもUIが消えてしまう問題の修正
-                // キー操作が行われるたびに最終インタラクション時間を更新し、非表示タイマーをリセットする
-                if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
-                    vs.lastInteractionTime = System.currentTimeMillis()
-                }
-
-                val isConfirmKey = keyEvent.nativeKeyEvent.keyCode in listOf(
-                    android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER
-                )
-                val manualSkipTargetMs = manualCmSkipTargetMs(
-                    mode = cmSkipMode, currentPositionMs = getEffectivePositionMs(), chapters = chapters, interactionBlocked = showControls ||
-                        isSubOverlayOpen ||
-                        isDataBroadcastingActive ||
-                        showNextEpisodeCountdown ||
-                        vs.lCropMode != LCropMode.HIDDEN
-                )
-                if (isConfirmKey) {
-                    if (
-                        keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                        manualSkipTargetMs != null
-                    ) {
-                        armedManualCmSkipTargetMs = manualSkipTargetMs
-                        return@onPreviewKeyEvent true
-                    }
-                    if (
-                        keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP &&
-                        armedManualCmSkipTargetMs != null
-                    ) {
-                        val targetMs = armedManualCmSkipTargetMs
-                        armedManualCmSkipTargetMs = null
-                        performSeek(targetMs!!)
-                        onShowToast("CMをスキップしました")
-                        return@onPreviewKeyEvent true
-                    }
-                }
-
-                vs.handleKeyEvent(
-                    keyEvent = keyEvent, isPiPMode = isPiPMode, isModern = isModern, showControls = showControls, isSubOverlayOpen = isSubOverlayOpen, chapters = chapters, canOpenSceneSearch = canOpenSceneSearch, totalDurationMs = totalDurationForControls, getCurrentPositionMs = getCurrentPositionMs, performSeek = performSeek, triggerSeekingPreview = triggerSeekingPreview, onShowControlsChange = onShowControlsChange, onPiPRequested = onPiPRequested, onBackPressed = onBackPressed, onSceneSearchToggle = { onSceneSearchToggle(it) }, onSettingsMenuToggle = {
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .onPreviewKeyEvent { keyEvent ->
+                handleRecordedPlayerKeyEvent(
+                    keyEvent = keyEvent,
+                    isPiPMode = isPiPMode,
+                    isDataBroadcastingAvailable = isDataBroadcastingAvailable,
+                    isDataBroadcastingActive = isDataBroadcastingActive,
+                    isDataBroadcastingBlank = isDataBroadcastingBlank,
+                    dataBroadcastingInput = dataBroadcastingInput,
+                    scope = scope,
+                    dispatchDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey,
+                    dispatchDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
+                    openDataBroadcasting = openDataBroadcasting,
+                    onShowToast = onShowToast,
+                    isProgramInfoOpen = isProgramInfoOpen,
+                    openProgramInfo = openProgramInfo,
+                    closeProgramInfo = closeProgramInfo,
+                    isSubOverlayOpen = isSubOverlayOpen,
+                    state = vs,
+                    cmSkipMode = cmSkipMode,
+                    currentPositionMs = getCurrentPositionMs,
+                    chapters = chapters,
+                    showControls = showControls,
+                    showNextEpisodeCountdown = showNextEpisodeCountdown,
+                    armedManualCmSkipTargetMs = armedManualCmSkipTargetMs,
+                    onArmedManualCmSkipTargetChange = {
+                        armedManualCmSkipTargetMs = it
+                    },
+                    performSeek = performSeek,
+                    isModern = isModern,
+                    canOpenSceneSearch = canOpenSceneSearch,
+                    totalDurationMs = totalDurationForControls,
+                    triggerSeekingPreview = triggerSeekingPreview,
+                    onShowControlsChange = onShowControlsChange,
+                    onPiPRequested = onPiPRequested,
+                    onBackPressed = onBackPressed,
+                    onSceneSearchToggle = onSceneSearchToggle,
+                    onSettingsMenuToggle = {
                         isModernSettingsOpen = true
                         onShowControlsChange(true)
-                    }, onChapterListToggle = { isChapterListOpen = it }, onSubMenuToggle = onSubMenuToggle, onQuickMenuRequested = refreshQuickMenuVideos, exoPlayerIsPlaying = exoPlayer.playWhenReady, onPause = { exoPlayer.pause() }, onPlay = { exoPlayer.play() }
+                    },
+                    onChapterListToggle = { isChapterListOpen = it },
+                    onSubMenuToggle = onSubMenuToggle,
+                    onQuickMenuRequested = refreshQuickMenuVideos,
+                    exoPlayerIsPlaying = exoPlayer.playWhenReady,
+                    onPause = exoPlayer::pause,
+                    onPlay = exoPlayer::play
                 )
             }
     ) {
         RecordedMediaSurface(
-            isDataBroadcastingActive = isDataBroadcastingActive, dataBroadcastingStore = dataBroadcastingStore, dataBroadcastingChannel = dataBroadcastingChannel, exoPlayer = exoPlayer, dataBroadcastingRemoteCommand = dataBroadcastingRemoteCommand, onRemoteCommandConsumed = { consumedId ->
-                if (dataBroadcastingRemoteCommand?.id == consumedId) dataBroadcastingRemoteCommand = null
-            }, onMediaPlane = { dataBroadcastingMediaPlane = it }, onBlankModeChanged = { isDataBroadcastingBlank = it }, closeDataBroadcasting = closeDataBroadcasting, dataBroadcastingMediaPlane = dataBroadcastingMediaPlane, isDataBroadcastingBlank = isDataBroadcastingBlank, videoWidth = videoWidth, videoHeight = videoHeight, pixelWidthHeightRatio = pixelWidthHeightRatio, state = vs, renderedFrameGeneration = renderedFrameGeneration, mainFocusRequester = mainFocusRequester, isPiPMode = isPiPMode, isSubOverlayOpen = isSubOverlayOpen, )
+            isDataBroadcastingActive = isDataBroadcastingActive,
+            dataBroadcastingStore = dataBroadcastingStore,
+            dataBroadcastingChannel = dataBroadcastingChannel,
+            exoPlayer = exoPlayer,
+            dataBroadcastingRemoteCommand = dataBroadcastingRemoteCommand,
+            onRemoteCommandConsumed = { consumedId ->
+                if (dataBroadcastingRemoteCommand?.id == consumedId) {
+                    dataBroadcastingRemoteCommand = null
+                }
+            },
+            onMediaPlane = { dataBroadcastingMediaPlane = it },
+            onBlankModeChanged = { isDataBroadcastingBlank = it },
+            closeDataBroadcasting = closeDataBroadcasting,
+            dataBroadcastingMediaPlane = dataBroadcastingMediaPlane,
+            isDataBroadcastingBlank = isDataBroadcastingBlank,
+            videoWidth = videoWidth,
+            videoHeight = videoHeight,
+            pixelWidthHeightRatio = pixelWidthHeightRatio,
+            state = vs,
+            renderedFrameGeneration = renderedFrameGeneration,
+            mainFocusRequester = mainFocusRequester,
+            isPiPMode = isPiPMode,
+            isSubOverlayOpen = isSubOverlayOpen
+        )
 
         if (!isPiPMode) {
-            val commentLayer = @Composable {
-                if (isHeavyUiReady && vs.isCommentEnabled) {
-                    ArchivedCommentOverlay(
-                        Modifier.fillMaxSize(), allComments, { getCurrentPositionMs() }, vs.isPlayerPlaying, vs.isCommentEnabled, commentSpeed, commentFontSizeScale, commentOpacity, commentMaxLines, isEmulator, recordedPlaybackFence = recordedPlaybackFence, )
-                }
-            }
-            val subtitleLayer = @Composable {
-                if (isHeavyUiReady) {
-                    NativeCaptionOverlay(
-                        cue = subtitleCue.value, visible = vs.isSubtitleEnabled && !isSubtitleBlockingOverlayOpen, modifier = Modifier.fillMaxSize(), bottomAvoidanceOffset = subtitleOffset, bottomAvoidanceStartFraction = PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION
-                    )
-                }
-            }
-
-            if (subtitleCommentLayer == "CommentOnTop") {
-                subtitleLayer(); commentLayer()
-            } else {
-                commentLayer(); subtitleLayer()
-            }
-            if (isHeavyUiReady) {
-                NativeCaptionOverlay(
-                    cue = superimposeCue.value, visible = !isSubtitleBlockingOverlayOpen, modifier = Modifier.fillMaxSize()
-                )
-            }
-            if (isBuffering) CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center), color = Color.White
-            )
-
-            AnimatedVisibility(
-                visible = !isPiPMode && vs.lCropMode != LCropMode.HIDDEN, enter = fadeIn(), exit = fadeOut()
-            ) {
-                VideoLCropOverlay(
-                    state = vs, onClose = {
-                        vs.lCropMode = LCropMode.HIDDEN
-                        if (!vs.lCropEnabled) {
-                            vs.lCropZoom = 100f; vs.lCropX = 0f; vs.lCropY = 0f
-                            vs.lCropOrigin = ZoomOrigin.TopRight
-                        }
-                        scope.launch {
-                            delay(200); mainFocusRequester.safeRequestFocus(TAG)
-                        }
+            RecordedPlaybackOverlays(
+                isHeavyUiReady = isHeavyUiReady,
+                state = vs,
+                comments = allComments,
+                currentPositionMs = getEffectivePositionMs,
+                commentPositionMs = getCurrentPositionMs,
+                commentSpeed = commentSpeed,
+                commentFontSizeScale = commentFontSizeScale,
+                commentOpacity = commentOpacity,
+                commentMaxLines = commentMaxLines,
+                isEmulator = isEmulator,
+                recordedPlaybackFence = recordedPlaybackFence,
+                subtitleCue = subtitleCue.value,
+                superimposeCue = superimposeCue.value,
+                isSubtitleBlockingOverlayOpen = isSubtitleBlockingOverlayOpen,
+                subtitleOffset = subtitleOffset,
+                subtitleAvoidanceStartFraction =
+                    PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION,
+                subtitleCommentLayer = subtitleCommentLayer,
+                isBuffering = isBuffering,
+                onLCropClose = {
+                    closeRecordedLCrop(vs)
+                    scope.launch {
+                        delay(200)
+                        mainFocusRequester.safeRequestFocus(TAG)
                     }
-                )
-            }
-
-            val nextCountdownProgram = nextSeriesProgram
-            val showManualCmSkipPrompt = manualCmSkipTargetMs(
-                mode = cmSkipMode, currentPositionMs = getEffectivePositionMs(), chapters = chapters, interactionBlocked = showControls ||
-                    isSubOverlayOpen ||
-                    isDataBroadcastingActive ||
-                    showNextEpisodeCountdown ||
-                    vs.lCropMode != LCropMode.HIDDEN
-            ) != null
-            AnimatedVisibility(
-                visible = showManualCmSkipPrompt, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomEnd)
-            ) {
-                ManualCmSkipPrompt()
-            }
-
-            if (nextCountdownProgram != null) {
-                AnimatedVisibility(
-                    visible = showNextEpisodeCountdown && !isSubOverlayOpen, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomEnd)
-                ) {
-                    NextEpisodeCountdownOverlay(
-                        program = nextCountdownProgram, progress = nextEpisodeCountdownProgress, onPlayNow = playNextEpisodeNow, onCancel = cancelNextEpisodeCountdown
-                    )
-                }
-            }
-
-            PlayerControls(
-                program = currentProgram, timeFormat = timeFormat, tiledThumbnailUrl = tiledThumbnailUrl, allComments = allComments, isVisible = showControls && !isSubOverlayOpen && vs.lCropMode == LCropMode.HIDDEN, isSeekingPreviewVisible = isSeekingPreviewVisible, isModernUi = isModern, isPlaying = exoPlayer.playWhenReady, hasChapters = chapters.isNotEmpty(), externalChapters = chapters, currentPositionMs = getEffectivePositionMs(), totalDurationMs = totalDurationForControls, bufferedPositionMs = bufferedPositionMs, controlsFocusRequester = playerControlsFocusRequester, onSeekBarFocusChanged = { vs.isSeekBarFocused = it }, onPlayPauseToggle = {
+                },
+                cmSkipMode = cmSkipMode,
+                isDataBroadcastingActive = isDataBroadcastingActive,
+                nextCountdownProgram = nextSeriesProgram,
+                showNextEpisodeCountdown = showNextEpisodeCountdown,
+                nextEpisodeCountdownProgress = nextEpisodeCountdownProgress,
+                onPlayNextEpisodeNow = playNextEpisodeNow,
+                onCancelNextEpisodeCountdown = cancelNextEpisodeCountdown,
+                program = currentProgram,
+                timeFormat = timeFormat,
+                tiledThumbnailUrl = tiledThumbnailUrl,
+                showControls = showControls,
+                isSubOverlayOpen = isSubOverlayOpen,
+                isSeekingPreviewVisible = isSeekingPreviewVisible,
+                isModern = isModern,
+                isPlaying = exoPlayer.playWhenReady,
+                chapters = chapters,
+                totalDurationMs = totalDurationForControls,
+                bufferedPositionMs = bufferedPositionMs,
+                playerControlsFocusRequester = playerControlsFocusRequester,
+                onSeekBarFocusChanged = { vs.isSeekBarFocused = it },
+                onPlayPauseToggle = {
                     vs.lastInteractionTime = System.currentTimeMillis()
                     vs.togglePlayPause(exoPlayer.playWhenReady)
                     if (exoPlayer.playWhenReady) exoPlayer.pause() else exoPlayer.play()
-                }, onSeekBack = {
+                },
+                onSeekBack = {
                     vs.lastInteractionTime = System.currentTimeMillis()
-                    val basePos = getEffectivePositionMs()
-                    performSeek((basePos - 10_000).coerceAtLeast(0L))
-                }, onSeekForward = {
+                    performSeek((getEffectivePositionMs() - 10_000).coerceAtLeast(0L))
+                },
+                onSeekForward = {
                     vs.lastInteractionTime = System.currentTimeMillis()
-                    val basePos = getEffectivePositionMs()
-                    performSeek((basePos + 30_000).coerceAtMost(totalDurationForControls))
-                }, onSeekRequested = { performSeek(it) }, // ★ 追加: シークバー操作によるシーク実行
+                    performSeek(
+                        (getEffectivePositionMs() + 30_000)
+                            .coerceAtMost(totalDurationForControls)
+                    )
+                },
+                onSeekRequested = performSeek,
                 onSkipPreviousChapter = {
                     vs.lastInteractionTime = System.currentTimeMillis()
                     skipToPreviousChapter()
-                }, onSkipNextChapter = {
+                },
+                onSkipNextChapter = {
                     vs.lastInteractionTime = System.currentTimeMillis()
                     skipToNextChapter()
-                }, canOpenKeyframeGrid = canOpenSceneSearch, onKeyframeGridToggle = openKeyframeGrid, onChapterListToggle = { isChapterListOpen = true; onShowControlsChange(true) }, onInfoToggle = openProgramInfo, onSettingsToggle = {
-                    if (isModern) isModernSettingsOpen = true else onSubMenuToggle(
-                        true
-                    )
-                }
+                },
+                canOpenKeyframeGrid = canOpenSceneSearch,
+                onOpenKeyframeGrid = openKeyframeGrid,
+                onOpenChapterList = {
+                    isChapterListOpen = true
+                    onShowControlsChange(true)
+                },
+                onOpenProgramInfo = openProgramInfo,
+                onOpenSettings = {
+                    if (isModern) {
+                        isModernSettingsOpen = true
+                    } else {
+                        onSubMenuToggle(true)
+                    }
+                },
+                isProgramInfoOpen = isProgramInfoOpen,
+                onCloseProgramInfo = closeProgramInfo,
+                isSceneSearchOpen = isSceneSearchOpen,
+                onCloseSceneSearch = { onSceneSearchToggle(false) },
+                isChapterListOpen = isChapterListOpen,
+                onCloseChapterList = { isChapterListOpen = false },
+                isKeyframeGridOpen = isKeyframeGridOpen,
+                onCloseKeyframeGrid = { isKeyframeGridOpen = false }
             )
 
-            AnimatedVisibility(visible = isProgramInfoOpen, enter = fadeIn(), exit = fadeOut()) {
-                ProgramInfoOverlay(
-                    program = currentProgram, timeFormat = timeFormat, onClose = closeProgramInfo
-                )
-            }
-
-            AnimatedVisibility(
-                isSceneSearchOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                SceneSearchOverlay(
-                    program = currentProgram, tiledThumbnailUrl = tiledThumbnailUrl, currentPositionMs = getEffectivePositionMs(), onSeekRequested = { performSeek(it); onSceneSearchToggle(false) }, onClose = { onSceneSearchToggle(false) })
-            }
-
-            AnimatedVisibility(
-                isChapterListOpen, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-                ChapterListOverlay(
-                    program = currentProgram, chapters = chapters, tiledThumbnailUrl = tiledThumbnailUrl, currentPositionMs = getEffectivePositionMs(), onSeekRequested = { performSeek(it); isChapterListOpen = false }, onClose = { isChapterListOpen = false })
-            }
-
-            AnimatedVisibility(
-                isKeyframeGridOpen, enter = fadeIn(), exit = fadeOut()) {
-                KeyframeGridOverlay(
-                    program = currentProgram, tiledThumbnailUrl = tiledThumbnailUrl, currentPositionMs = getEffectivePositionMs(), onSeekRequested = { performSeek(it); isKeyframeGridOpen = false }, onClose = { isKeyframeGridOpen = false })
-            }
-
-            AnimatedVisibility(visible = isModernSettingsOpen, enter = fadeIn(), exit = fadeOut()) {
-                ModernVideoSettingsOverlay(
-                    currentAudioMode = vs.currentAudioMode, currentSpeed = vs.currentSpeed, isSubtitleEnabled = vs.isSubtitleEnabled, currentQuality = vs.currentQuality, isCommentEnabled = vs.isCommentEnabled, isLCropEnabled = vs.lCropEnabled, cmSkipMode = cmSkipMode, availableQualities = availableQualities, onAudioToggle = {
-                        // Stateを変更するだけ。実際の適用は VideoPlayerManager の LaunchedEffect が検知して行います。
-                        vs.currentAudioMode =
-                            if (vs.currentAudioMode == AudioMode.MAIN) AudioMode.SUB else AudioMode.MAIN
-                        onShowToast("音声: ${if (vs.currentAudioMode == AudioMode.MAIN) "主音声" else "副音声"}")
-                    }, onSpeedToggle = {
-                        val speeds = listOf(1.0f, 1.5f, 2.0f, 0.8f); vs.currentSpeed =
-                        speeds[(speeds.indexOf(vs.currentSpeed) + 1) % speeds.size]; exoPlayer.setPlaybackSpeed(
-                        vs.currentSpeed
-                    ); onShowToast("速度: ${vs.currentSpeed}x")
-                    }, onSubtitleToggle = {
-                        vs.isSubtitleEnabled =
-                            !vs.isSubtitleEnabled; onShowToast("字幕: ${if (vs.isSubtitleEnabled) "表示" else "非表示"}")
-                    }, onQualitySelect = {
-                        if (smbItem != null) {
-                            onShowToast("SMB再生中は画質の変更はできません")
-                            isModernSettingsOpen = false
-                            return@ModernVideoSettingsOverlay
-                        }
-                        if (vs.currentQuality != it) {
-                            vs.playbackOffsetMs = getCurrentPositionMs()
-                            vs.currentQuality = it
-                            if (
-                                !it.isRawMmts &&
-                                it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
-                            ) {
-                                videoPlayerViewModel.saveVideoQuality(it.value)
-                            }
-                            val player = exoPlayer
-                            val currentPos = getCurrentPositionMs()
-                            if (isEdcbDirect) {
-                                scope.launch {
-                                    val actionFence = recordedPlaybackFence
-                                    isBuffering = true;
-                                    val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        currentProgram.id, it.value, currentSessionId, 0.0, isRecordingChasePlayback
-                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
-                                    currentPos
-                                ); player.play()
-                                }
-                            } else {
-                                vs.playbackOffsetMs =
-                                    currentPos - effectiveInitialPositionMs
-                                scope.launch {
-                                    val actionFence = recordedPlaybackFence
-                                    isBuffering = true;
-                                    val offsetSec = currentPos / 1000.0;
-                                    val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        currentProgram.id, it.value, currentSessionId, offsetSec, isRecordingChasePlayback
-                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
-                                    if (
-                                        it.isRawMmts ||
-                                        it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
-                                        isRecordingChasePlayback
-                                    ) {
-                                        player.seekTo(currentPos)
-                                    }
-                                    player.play()
-                                }
-                            }
-                            onShowToast("画質を ${it.label} に変更しました")
-                        }
-                        isModernSettingsOpen = false; vs.lastInteractionTime =
-                        System.currentTimeMillis()
-                    }, onCommentToggle = {
-                        vs.isCommentEnabled =
-                            !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
-                    }, onLCropToggle = {
-                        vs.lCropEnabled = !vs.lCropEnabled
-                        if (vs.lCropEnabled) {
-                            vs.lCropMode =
-                                LCropMode.MENU; onSubMenuToggle(false); onShowControlsChange(false)
-                        } else {
-                            vs.lCropMode = LCropMode.HIDDEN; vs.lCropZoom = 100f; vs.lCropX =
-                                0f; vs.lCropY = 0f; vs.lCropOrigin = ZoomOrigin.TopRight
-                        }
-                    }, onCmSkipModeToggle = {
-                        val nextMode = cmSkipMode.next()
-                        settingsViewModel.setCmSkipMode(nextMode)
-                        onShowToast("CMスキップ: ${nextMode.displayLabel}")
-                    }, onClose = { isModernSettingsOpen = false }
-                )
-            }
-
-            Box(modifier = Modifier.fillMaxSize()) {
-                VideoTopSubMenuUI(
-                    currentProgram = currentProgram, seriesPrograms = quickMenuSeriesPrograms, quickPrograms = quickMenuRecentPrograms, animeChannels = animeChannels, backendType = backendType, konomiIp = konomiIp, konomiPort = konomiPort, currentAudioMode = vs.currentAudioMode, currentSpeed = vs.currentSpeed, isSubtitleEnabled = vs.isSubtitleEnabled, subtitleLanguages = subtitleLanguages, currentSubtitleLanguageId = currentSubtitleLanguageId, currentQuality = vs.currentQuality, isCommentEnabled = vs.isCommentEnabled, isLCropEnabled = vs.lCropEnabled, cmSkipMode = cmSkipMode, hdrRenderMode = hdrRenderMode, isHdrRenderModeSupported = isHdrRenderModeSupported, isDataBroadcastingAvailable = isDataBroadcastingAvailable, isDataBroadcastingActive = isDataBroadcastingActive, availableQualities = availableQualities, focusRequester = subMenuFocusRequester, onAudioToggle = {
-                        // Stateを変更するだけ。実際の適用は VideoPlayerManager の LaunchedEffect が検知して行います。
-                        vs.currentAudioMode =
-                            if (vs.currentAudioMode == AudioMode.MAIN) AudioMode.SUB else AudioMode.MAIN
-                        onShowToast("音声: ${if (vs.currentAudioMode == AudioMode.MAIN) "主音声" else "副音声"}")
-                    }, onSpeedToggle = {
-                        val speeds = listOf(1.0f, 1.5f, 2.0f, 0.8f); vs.currentSpeed =
-                        speeds[(speeds.indexOf(vs.currentSpeed) + 1) % speeds.size]; exoPlayer.setPlaybackSpeed(
-                        vs.currentSpeed
-                    ); onShowToast("速度: ${vs.currentSpeed}x")
-                    }, onSubtitleToggle = {
-                        vs.isSubtitleEnabled =
-                            !vs.isSubtitleEnabled; onShowToast("字幕: ${if (vs.isSubtitleEnabled) "表示" else "非表示"}")
-                    }, onSubtitleLanguageToggle = {
-                        currentSubtitleLanguageId = if (currentSubtitleLanguageId == 1) 2 else 1
-                        val selectedLanguage = subtitleLanguages.firstOrNull { it.id == currentSubtitleLanguageId }
-                        onShowToast(
-                            "字幕言語: 第${currentSubtitleLanguageId}言語" +
-                                (selectedLanguage?.let { "・${it.displayName}" } ?: "")
+            RecordedPlayerMenus(
+                isModernSettingsOpen = isModernSettingsOpen,
+                program = currentProgram,
+                seriesPrograms = quickMenuSeriesPrograms,
+                quickPrograms = quickMenuRecentPrograms,
+                animeChannels = animeChannels,
+                backendType = backendType,
+                konomiIp = konomiIp,
+                konomiPort = konomiPort,
+                state = vs,
+                subtitleLanguages = subtitleLanguages,
+                currentSubtitleLanguageId = currentSubtitleLanguageId,
+                cmSkipMode = cmSkipMode,
+                hdrRenderMode = hdrRenderMode,
+                isHdrRenderModeSupported = isHdrRenderModeSupported,
+                isDataBroadcastingAvailable = isDataBroadcastingAvailable,
+                isDataBroadcastingActive = isDataBroadcastingActive,
+                availableQualities = availableQualities,
+                subMenuFocusRequester = subMenuFocusRequester,
+                onAudioToggle = toggleAudio,
+                onSpeedToggle = toggleSpeed,
+                onSubtitleToggle = toggleSubtitle,
+                onSubtitleLanguageToggle = toggleSubtitleLanguage,
+                onQualitySelect = selectQuality,
+                onCommentToggle = toggleComment,
+                onLCropToggle = toggleLCrop,
+                onCmSkipModeToggle = toggleCmSkipMode,
+                onHdrRenderModeToggle = toggleHdrRenderMode,
+                onDataBroadcastingToggle = openDataBroadcasting,
+                onVideoSelect = { selectedProgram ->
+                    if (selectedProgram.id != currentProgram.id) {
+                        onProgramSelect(
+                            selectedProgram,
+                            RecordedProgramSelectionReason.QuickSelect
                         )
-                    }, onQualitySelect = {
-                        if (smbItem != null) {
-                            onShowToast("SMB再生中は画質の変更はできません")
-                            onSubMenuToggle(false)
-                            return@VideoTopSubMenuUI
-                        }
-                        if (vs.currentQuality != it) {
-                            vs.playbackOffsetMs = getCurrentPositionMs()
-                            vs.currentQuality = it
-                            if (
-                                !it.isRawMmts &&
-                                it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
-                            ) {
-                                videoPlayerViewModel.saveVideoQuality(it.value)
-                            }
-                            val player = exoPlayer
-                            val currentPos = getCurrentPositionMs()
-                            if (isEdcbDirect) {
-                                scope.launch {
-                                    val actionFence = recordedPlaybackFence
-                                    isBuffering = true;
-                                    val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        currentProgram.id, it.value, currentSessionId, 0.0, isRecordingChasePlayback
-                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
-                                    currentPos
-                                ); player.play()
-                                }
-                            } else {
-                                vs.playbackOffsetMs =
-                                    currentPos - effectiveInitialPositionMs
-                                scope.launch {
-                                    val actionFence = recordedPlaybackFence
-                                    isBuffering = true;
-                                    val offsetSec = currentPos / 1000.0;
-                                    val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                                        currentProgram.id, it.value, currentSessionId, offsetSec, isRecordingChasePlayback
-                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
-                                    if (
-                                        it.isRawMmts ||
-                                        it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
-                                        isRecordingChasePlayback
-                                    ) {
-                                        player.seekTo(currentPos)
-                                    }
-                                    player.play()
-                                }
-                            }
-                            onShowToast("画質を ${it.label} に変更しました")
-                        }
-                        onSubMenuToggle(false); vs.lastInteractionTime = System.currentTimeMillis()
-                    }, onCommentToggle = {
-                        vs.isCommentEnabled =
-                            !vs.isCommentEnabled; onShowToast("実況: ${if (vs.isCommentEnabled) "表示" else "非表示"}")
-                    }, onLCropToggle = {
-                        vs.lCropEnabled = !vs.lCropEnabled
-                        if (vs.lCropEnabled) {
-                            vs.lCropMode =
-                                LCropMode.MENU; onSubMenuToggle(false); onShowControlsChange(false)
-                        } else {
-                            vs.lCropMode = LCropMode.HIDDEN; vs.lCropZoom = 100f; vs.lCropX =
-                                0f; vs.lCropY = 0f; vs.lCropOrigin = ZoomOrigin.TopRight
-                        }
-                    }, onCmSkipModeToggle = {
-                        val nextMode = cmSkipMode.next()
-                        settingsViewModel.setCmSkipMode(nextMode)
-                        onShowToast("CMスキップ: ${nextMode.displayLabel}")
-                    }, onHdrRenderModeToggle = {
-                        val nextMode = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
-                            HdrToneMapping.RENDER_MODE_ORIGINAL
-                        } else {
-                            HdrToneMapping.RENDER_MODE_SDR
-                        }
-                        hdrModeResumePositionMs = getCurrentPositionMs()
-                        playbackPositionMs = hdrModeResumePositionMs ?: playbackPositionMs
-                        videoPlayerViewModel.setHdrRenderMode(nextMode)
-                        onShowToast(
-                            if (nextMode == HdrToneMapping.RENDER_MODE_SDR) {
-                                "HDR 表示：ハードウェア SDR 変換を確認中"
-                            } else {
-                                "HDR 表示：HLG そのまま"
-                            }
-                        )
-                    }, onDataBroadcastingToggle = {
-                        openDataBroadcasting()
-                    }, onVideoSelect = {
-                        if (it.id != currentProgram.id) {
-                            onProgramSelect(it, RecordedProgramSelectionReason.QuickSelect)
-                        }
-                    }, onChannelSelect = onChannelSelect, canOpenKeyframeGrid = canOpenSceneSearch, onKeyframeGridToggle = openKeyframeGrid, openQuickVideosInitially = openQuickVideosOnSubMenuOpen, isVisible = isSubMenuOpen, onCloseMenu = { onSubMenuToggle(false) }, )
-            }
-
-            if (!isModern) {
-                PlaybackIndicator(vs.indicatorState)
-            }
+                    }
+                },
+                onChannelSelect = onChannelSelect,
+                canOpenKeyframeGrid = canOpenSceneSearch,
+                onOpenKeyframeGrid = openKeyframeGrid,
+                openQuickVideosInitially = openQuickVideosOnSubMenuOpen,
+                isSubMenuOpen = isSubMenuOpen,
+                onCloseModernSettings = { isModernSettingsOpen = false },
+                onCloseSubMenu = { onSubMenuToggle(false) },
+                isModern = isModern
+            )
         }
 
-        AnimatedVisibility(
+        RecordedDataBroadcastingColorSelector(
             visible = !isPiPMode &&
                 isDataBroadcastingActive &&
-                dataBroadcastingInput.isDataBroadcastingColorSelectorVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.zIndex(10f)
-        ) {
-            DataBroadcastingColorSelectorOverlay(
-                selectedKey = dataBroadcastingInput.selectedDataBroadcastingColorKey, onColorSelected = { colorKey ->
-                    dataBroadcastingInput.dispatchDataBroadcastingColorKey(
-                        colorKey, dispatchDataBroadcastingColorKey
-                    )
-                }, onDismiss = dataBroadcastingInput::closeDataBroadcastingColorSelector
-            )
-        }
+                dataBroadcastingInput.isDataBroadcastingColorSelectorVisible,
+            selectedKey = dataBroadcastingInput.selectedDataBroadcastingColorKey,
+            onColorSelected = { colorKey ->
+                dataBroadcastingInput.dispatchDataBroadcastingColorKey(
+                    colorKey,
+                    dispatchDataBroadcastingColorKey
+                )
+            },
+            onDismiss = dataBroadcastingInput::closeDataBroadcastingColorSelector
+        )
     }
 }
