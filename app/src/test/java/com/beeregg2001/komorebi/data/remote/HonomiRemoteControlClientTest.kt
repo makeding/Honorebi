@@ -28,6 +28,18 @@ class HonomiRemoteControlClientTest {
             HonomiRemoteCommand.Pause,
             parseHonomiRemoteCommand(gson, """{"type":"Command","command":{"type":"Pause"}}"""),
         )
+        assertEquals(
+            HonomiRemoteCommand.VolumeUp,
+            parseHonomiRemoteCommand(gson, """{"type":"Command","command":{"type":"VolumeUp"}}"""),
+        )
+        assertEquals(
+            HonomiRemoteCommand.VolumeDown,
+            parseHonomiRemoteCommand(gson, """{"type":"Command","command":{"type":"VolumeDown"}}"""),
+        )
+        assertEquals(
+            HonomiRemoteCommand.VolumeMute,
+            parseHonomiRemoteCommand(gson, """{"type":"Command","command":{"type":"VolumeMute"}}"""),
+        )
         assertNull(parseHonomiRemoteCommand(gson, """{"type":"Unknown"}"""))
     }
 

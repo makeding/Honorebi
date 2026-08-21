@@ -104,7 +104,10 @@ fun MainRootScreen(
                 HonomiRemoteCommand.Play,
                 HonomiRemoteCommand.Pause,
                 HonomiRemoteCommand.Stop,
-                is HonomiRemoteCommand.SeekRelative -> Unit
+                is HonomiRemoteCommand.SeekRelative,
+                HonomiRemoteCommand.VolumeUp,
+                HonomiRemoteCommand.VolumeDown,
+                HonomiRemoteCommand.VolumeMute -> Unit
             }
         }
     }

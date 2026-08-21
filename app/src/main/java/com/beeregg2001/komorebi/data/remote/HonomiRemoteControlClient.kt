@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.data.remote
 
+import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
 import androidx.media3.common.util.Log
@@ -33,6 +34,9 @@ sealed interface HonomiRemoteCommand {
     data object Pause : HonomiRemoteCommand
     data object Stop : HonomiRemoteCommand
     data class SeekRelative(val deltaSeconds: Double) : HonomiRemoteCommand
+    data object VolumeUp : HonomiRemoteCommand
+    data object VolumeDown : HonomiRemoteCommand
+    data object VolumeMute : HonomiRemoteCommand
 }
 
 internal sealed interface HonomiRemoteServerEvent {
@@ -54,6 +58,9 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
         "Pause" -> HonomiRemoteCommand.Pause
         "Stop" -> HonomiRemoteCommand.Stop
         "SeekRelative" -> HonomiRemoteCommand.SeekRelative(command.get("delta_seconds").asDouble)
+        "VolumeUp" -> HonomiRemoteCommand.VolumeUp
+        "VolumeDown" -> HonomiRemoteCommand.VolumeDown
+        "VolumeMute" -> HonomiRemoteCommand.VolumeMute
         else -> null
     }
 }.getOrNull()
@@ -105,6 +112,10 @@ class HonomiRemoteControlClient @Inject constructor(
             addProperty("is_playing", isPlaying)
             addProperty("is_buffering", isBuffering)
             addProperty("can_seek", canSeek)
+            addProperty(
+                "can_adjust_volume",
+                !context.getSystemService(AudioManager::class.java).isVolumeFixed,
+            )
             positionSeconds?.let { addProperty("position_seconds", it) }
             durationSeconds?.let { addProperty("duration_seconds", it) }
         }

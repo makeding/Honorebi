@@ -26,4 +26,11 @@ class RemoteTransportGateTest {
         assertFalse(shouldDispatchRemoteTransport(HonomiRemoteCommand.OpenLive("gr011"), "Live", false))
         assertFalse(shouldDispatchRemoteTransport(HonomiRemoteCommand.OpenRecording(42, 0.0), "Recorded", false))
     }
+
+    @Test
+    fun volumeControlsAreAlwaysAvailable() {
+        assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeUp, "Idle", false))
+        assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeDown, "Live", true))
+        assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeMute, "Recorded", true))
+    }
 }

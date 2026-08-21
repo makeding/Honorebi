@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.media
 
+import android.media.AudioManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -25,6 +26,9 @@ internal fun shouldDispatchRemoteTransport(
     HonomiRemoteCommand.Play,
     HonomiRemoteCommand.Pause -> !isPlaybackSwitching
     is HonomiRemoteCommand.SeekRelative -> !isPlaybackSwitching && remoteContentType == "Recorded"
+    HonomiRemoteCommand.VolumeUp,
+    HonomiRemoteCommand.VolumeDown,
+    HonomiRemoteCommand.VolumeMute -> true
     is HonomiRemoteCommand.OpenLive,
     is HonomiRemoteCommand.OpenRecording -> false
 }
@@ -40,6 +44,7 @@ fun RootSystemMediaSessionHost(
 ) {
     val context = LocalContext.current.applicationContext
     val controller = remember(context) { SystemMediaSessionController(context) }
+    val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val currentContentType by rememberUpdatedState(remoteContentType)
     val currentPlaybackSwitching by rememberUpdatedState(isPlaybackSwitching)
 
@@ -70,6 +75,21 @@ fun RootSystemMediaSessionHost(
                         controller.seekRelative((command.deltaSeconds * 1_000).toLong())
                     }
                 }
+                HonomiRemoteCommand.VolumeUp -> audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_RAISE,
+                    AudioManager.FLAG_SHOW_UI,
+                )
+                HonomiRemoteCommand.VolumeDown -> audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_LOWER,
+                    AudioManager.FLAG_SHOW_UI,
+                )
+                HonomiRemoteCommand.VolumeMute -> audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_TOGGLE_MUTE,
+                    AudioManager.FLAG_SHOW_UI,
+                )
                 is HonomiRemoteCommand.OpenLive,
                 is HonomiRemoteCommand.OpenRecording -> Unit
             }
