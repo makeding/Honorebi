@@ -8,7 +8,9 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,7 +28,8 @@ data class LiveComment(
     val text: String,
     val color: String,
     val position: String,
-    val size: String
+    val size: String,
+    val sessionToken: LiveChannelSessionToken
 )
 
 /**
@@ -58,32 +61,60 @@ class LiveJikkyoManager @Inject constructor(
     private val _liveComments = MutableSharedFlow<LiveComment>(extraBufferCapacity = 100)
     val liveComments: SharedFlow<LiveComment> = _liveComments.asSharedFlow()
 
-    private val _clearCommentsEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val clearCommentsEvent: SharedFlow<Unit> = _clearCommentsEvent.asSharedFlow()
-
     private var jikkyoClient: JikkyoClient? = null
+    private var jikkyoStartJob: Job? = null
+    private var currentToken: LiveChannelSessionToken? = null
+    private val sessionLock = Any()
     private val processedCommentIds = Collections.synchronizedSet(LinkedHashSet<String>())
     private var jikkyoChannelsCache: JSONArray? = null
 
-    fun startJikkyo(channel: Channel, source: StreamSource) {
-        stopJikkyo()
+    fun startJikkyo(
+        channel: Channel,
+        source: StreamSource,
+        token: LiveChannelSessionToken,
+        isCurrent: (LiveChannelSessionToken) -> Boolean
+    ) {
+        val startJob = synchronized(sessionLock) {
+            if (!isCurrent(token)) return
+            jikkyoStartJob?.cancel()
+            jikkyoClient?.stop()
+            jikkyoClient = null
+            processedCommentIds.clear()
+            currentToken = token
+            managerScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                val watchUrl = getJikkyoWatchSessionUrl(channel, source)
+                if (!isActive(token, isCurrent) || watchUrl.isNullOrEmpty()) return@launch
 
-        managerScope.launch(Dispatchers.IO) {
-            _clearCommentsEvent.emit(Unit)
-            val watchUrl = getJikkyoWatchSessionUrl(channel, source)
-            if (watchUrl.isNullOrEmpty()) return@launch
-
-            jikkyoClient = JikkyoClient(watchUrl)
-            jikkyoClient?.start { jsonText ->
-                parseAndEmitComment(jsonText)
-            }
+                val client = JikkyoClient(watchUrl)
+                val assigned = synchronized(sessionLock) {
+                    if (currentToken != token || !isCurrent(token)) false else {
+                        jikkyoClient = client
+                        true
+                    }
+                }
+                if (!assigned) {
+                    client.stop()
+                    return@launch
+                }
+                client.start { jsonText ->
+                    if (isActive(token, isCurrent)) {
+                        parseAndEmitComment(jsonText, token, isCurrent)
+                    }
+                }
+            }.also { jikkyoStartJob = it }
         }
+        startJob.start()
     }
 
     fun stopJikkyo() {
-        jikkyoClient?.stop()
-        jikkyoClient = null
-        processedCommentIds.clear()
+        synchronized(sessionLock) {
+            jikkyoStartJob?.cancel()
+            jikkyoStartJob = null
+            jikkyoClient?.stop()
+            jikkyoClient = null
+            currentToken = null
+            processedCommentIds.clear()
+        }
     }
 
     private suspend fun getJikkyoWatchSessionUrl(channel: Channel, source: StreamSource): String? {
@@ -163,7 +194,11 @@ class LiveJikkyoManager @Inject constructor(
         return null
     }
 
-    private fun parseAndEmitComment(jsonText: String) {
+    private fun parseAndEmitComment(
+        jsonText: String,
+        token: LiveChannelSessionToken,
+        isCurrent: (LiveChannelSessionToken) -> Boolean
+    ) {
         try {
             val json = JSONObject(jsonText)
             val chat = json.optJSONObject("chat") ?: return
@@ -176,7 +211,7 @@ class LiveJikkyoManager @Inject constructor(
                 if (chat.optString("premium") == "3") return
             }
 
-            val commentId = chat.optString("no", "") + "_" + content
+            val commentId = "${token.epoch}_${chat.optString("no", "")}_$content"
             if (!processedCommentIds.add(commentId)) return
             if (processedCommentIds.size > 2000) processedCommentIds.clear()
 
@@ -192,13 +227,20 @@ class LiveJikkyoManager @Inject constructor(
             }
 
             managerScope.launch(Dispatchers.Main) {
-                _liveComments.emit(LiveComment(content, color, position, size))
+                if (isActive(token, isCurrent)) {
+                    _liveComments.emit(LiveComment(content, color, position, size, token))
+                }
             }
 
         } catch (e: Exception) {
             // Ignore parsing errors
         }
     }
+
+    private fun isActive(
+        token: LiveChannelSessionToken,
+        isCurrent: (LiveChannelSessionToken) -> Boolean
+    ): Boolean = synchronized(sessionLock) { currentToken == token } && isCurrent(token)
 
     private fun getCommentColor(color: String): String? {
         if (color.matches(Regex("^#[0-9A-Fa-f]{6}$"))) return color

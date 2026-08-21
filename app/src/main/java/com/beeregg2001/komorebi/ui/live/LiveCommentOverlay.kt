@@ -27,6 +27,7 @@ fun LiveCommentOverlay(
     speed: Float = 1.0f,
     opacity: Float = 1.0f,
     maxLines: Int = 0,
+    sessionToken: LiveChannelSessionToken? = null,
     onViewCreated: (IDanmakuView) -> Unit
 ) {
     val context = LocalContext.current
@@ -37,7 +38,7 @@ fun LiveCommentOverlay(
         }.getOrDefault(Typeface.create("sans-serif", Typeface.BOLD))
     }
 
-    val danmakuContext = remember {
+    val danmakuContext = remember(sessionToken) {
         DanmakuContext.create().apply {
             setDanmakuStyle(1, 8.0f)
             setTypeface(customTypeface)
@@ -63,13 +64,13 @@ fun LiveCommentOverlay(
         }
     }
 
-    val parser = remember {
+    val parser = remember(sessionToken) {
         object : BaseDanmakuParser() {
             override fun parse(): IDanmakus = Danmakus()
         }
     }
 
-    LaunchedEffect(speed, opacity, maxLines) {
+    LaunchedEffect(danmakuContext, speed, opacity, maxLines) {
         val speedFactor = if (speed > 0f) 1.0f / speed else 1.0f
         danmakuContext.setScrollSpeedFactor(speedFactor)
         danmakuContext.setDanmakuTransparency(opacity)
@@ -82,10 +83,11 @@ fun LiveCommentOverlay(
         }
     }
 
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            DanmakuView(ctx).apply {
+    key(sessionToken) {
+        AndroidView(
+            modifier = modifier,
+            factory = { ctx ->
+                DanmakuView(ctx).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -112,22 +114,23 @@ fun LiveCommentOverlay(
                 })
 
                 post {
-                    prepare(parser, danmakuContext)
+                    if (isAttachedToWindow) prepare(parser, danmakuContext)
                 }
 
-                onViewCreated(this)
+                    onViewCreated(this)
+                }
+            },
+            update = { view ->
+                val targetType =
+                    if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
+                if (view.layerType != targetType) {
+                    view.setLayerType(targetType, null)
+                }
+            },
+            onRelease = { view ->
+                view.stop()
+                view.release()
             }
-        },
-        update = { view ->
-            val targetType =
-                if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
-            if (view.layerType != targetType) {
-                view.setLayerType(targetType, null)
-            }
-        },
-        onRelease = { view ->
-            view.stop()
-            view.release()
-        }
-    )
+        )
+    }
 }

@@ -193,6 +193,8 @@ fun LivePlayerScreen(
     var isDualPlaying by remember { mutableStateOf(false) }
     val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
+    val mainSessionToken by livePlayerViewModel.mainSessionToken.collectAsState()
+    val dualSessionToken by livePlayerViewModel.dualSessionToken.collectAsState()
     val mainSubtitleLanguages by livePlayerViewModel.mainSubtitleLanguages.collectAsState()
     val dualSubtitleLanguages by livePlayerViewModel.dualSubtitleLanguages.collectAsState()
     val currentSubtitleLanguageId by livePlayerViewModel.currentSubtitleLanguageId.collectAsState()
@@ -227,28 +229,28 @@ fun LivePlayerScreen(
     val mainCaptionCue = rememberNativeCaptionCue(
         events = mainCaptionEvents,
         enabled = isSubtitleEnabled,
-        resetKey = currentChannelItem.id to currentSubtitleLanguageId,
+        resetKey = mainSessionToken to currentSubtitleLanguageId,
         clockRunning = isMainPlaying,
         positionMsProvider = { mainPlayer?.currentPosition ?: 0L }
     )
     val dualCaptionCue = rememberNativeCaptionCue(
         events = dualCaptionEvents,
         enabled = isSubtitleEnabled,
-        resetKey = ps.dualRightChannel?.id to currentSubtitleLanguageId,
+        resetKey = dualSessionToken to currentSubtitleLanguageId,
         clockRunning = isDualPlaying,
         positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
     )
     val mainSuperimposeCue = rememberNativeCaptionCue(
         events = mainSuperimposeEvents,
         enabled = true,
-        resetKey = currentChannelItem.id,
+        resetKey = mainSessionToken,
         clockRunning = isMainPlaying,
         positionMsProvider = { mainPlayer?.currentPosition ?: 0L }
     )
     val dualSuperimposeCue = rememberNativeCaptionCue(
         events = dualSuperimposeEvents,
         enabled = true,
-        resetKey = ps.dualRightChannel?.id,
+        resetKey = dualSessionToken,
         clockRunning = isDualPlaying,
         positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
     )
@@ -585,19 +587,15 @@ fun LivePlayerScreen(
         livePlayerViewModel.setSubtitlesEnabled(isSubtitleEnabled)
     }
 
-    LaunchedEffect(Unit) {
-        livePlayerViewModel.clearCommentsEvent.collect {
-            danmakuViewRef.value?.removeAllDanmakus(true)
-        }
-    }
-
-    LaunchedEffect(Unit) {
+    LaunchedEffect(mainSessionToken) {
+        danmakuViewRef.value?.removeAllDanmakus(true)
         var rateWindowStartMs = System.currentTimeMillis()
         var scrollDanmakuCount = 0
         var fixedDanmakuCount = 0
         val colorCache = HashMap<String, Int>()
 
         livePlayerViewModel.liveComments.collect { comment ->
+            if (comment.sessionToken != mainSessionToken) return@collect
             if (!isCommentEnabled || !isHeavyUiReady || ps.isDualDisplayMode) return@collect
 
             val nowMs = System.currentTimeMillis()
@@ -622,6 +620,10 @@ fun LivePlayerScreen(
 
             danmakuViewRef.value?.let { view ->
                 (view as? android.view.View)?.post {
+                    if (comment.sessionToken != mainSessionToken ||
+                        danmakuViewRef.value !== view || !isCommentEnabled ||
+                        !isHeavyUiReady || ps.isDualDisplayMode
+                    ) return@post
                     if (!view.isPrepared) return@post
 
                     val danmaku =
@@ -960,8 +962,12 @@ fun LivePlayerScreen(
                         isEmulator,
                         commentSpeed,
                         commentOpacity,
-                        commentMaxLines
-                    ) { view -> danmakuViewRef.value = view; if (!ps.isPlayerPlaying) view.pause() }
+                        commentMaxLines,
+                        mainSessionToken
+                    ) { view ->
+                        if (mainSessionToken != null) danmakuViewRef.value = view
+                        if (!ps.isPlayerPlaying) view.pause()
+                    }
                 }
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(

@@ -87,6 +87,11 @@ private data class LivePlaybackRequest(
         get() = if (quality.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else quality.value
 }
 
+private data class SessionB62SubtitleSample(
+    val token: LiveChannelSessionToken,
+    val sample: B62SubtitleSample
+)
+
 @RequiresApi(Build.VERSION_CODES.O)
 @HiltViewModel
 class LivePlayerViewModel @Inject constructor(
@@ -108,6 +113,8 @@ class LivePlayerViewModel @Inject constructor(
 
     private val _mainPlayer = MutableStateFlow<ExoPlayer?>(null)
     val mainPlayer: StateFlow<ExoPlayer?> = _mainPlayer.asStateFlow()
+    private val _mainSessionToken = MutableStateFlow<LiveChannelSessionToken?>(null)
+    val mainSessionToken: StateFlow<LiveChannelSessionToken?> = _mainSessionToken.asStateFlow()
 
     val hdrRenderMode: StateFlow<String> = settingsRepository.hdrRenderMode.stateIn(
         viewModelScope,
@@ -119,6 +126,8 @@ class LivePlayerViewModel @Inject constructor(
 
     private val _dualPlayer = MutableStateFlow<ExoPlayer?>(null)
     val dualPlayer: StateFlow<ExoPlayer?> = _dualPlayer.asStateFlow()
+    private val _dualSessionToken = MutableStateFlow<LiveChannelSessionToken?>(null)
+    val dualSessionToken: StateFlow<LiveChannelSessionToken?> = _dualSessionToken.asStateFlow()
 
     private val mainTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
     private val dualTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
@@ -126,6 +135,25 @@ class LivePlayerViewModel @Inject constructor(
     private val dualRawMmtsLayerController = RawMmtsLayerController()
 
     val dataBroadcastingStore = B60DataBroadcastingStore()
+    private val channelSessions = LiveChannelSessionCoordinator()
+
+    private fun beginChannelSession(
+        slot: LivePlaybackSlot,
+        channelId: String
+    ): LiveChannelSessionToken = channelSessions.begin(slot, channelId).also { token ->
+        when (slot) {
+            LivePlaybackSlot.MAIN -> _mainSessionToken.value = token
+            LivePlaybackSlot.DUAL -> _dualSessionToken.value = token
+        }
+    }
+
+    private fun endChannelSession(slot: LivePlaybackSlot) {
+        channelSessions.end(slot)
+        when (slot) {
+            LivePlaybackSlot.MAIN -> _mainSessionToken.value = null
+            LivePlaybackSlot.DUAL -> _dualSessionToken.value = null
+        }
+    }
 
     private val _mainPlayerError = MutableStateFlow<String?>(null)
     val mainPlayerError: StateFlow<String?> = _mainPlayerError.asStateFlow()
@@ -189,7 +217,6 @@ class LivePlayerViewModel @Inject constructor(
     val shouldCropLogo: StateFlow<Boolean> = _shouldCropLogo.asStateFlow()
 
     val liveComments: SharedFlow<LiveComment> = liveJikkyoManager.liveComments
-    val clearCommentsEvent: SharedFlow<Unit> = liveJikkyoManager.clearCommentsEvent
 
     private val _mainBackendType = MutableStateFlow("KONOMITV")
     val mainBackendType: StateFlow<String> = _mainBackendType.asStateFlow()
@@ -203,11 +230,11 @@ class LivePlayerViewModel @Inject constructor(
     private val dualSuperimposeDecoder = NativeCaptionDecoder(
         captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE
     )
-    private val mainB62SubtitleSamples = CoroutineChannel<B62SubtitleSample>(
+    private val mainB62SubtitleSamples = CoroutineChannel<SessionB62SubtitleSample>(
         capacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    private val dualB62SubtitleSamples = CoroutineChannel<B62SubtitleSample>(
+    private val dualB62SubtitleSamples = CoroutineChannel<SessionB62SubtitleSample>(
         capacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
@@ -248,10 +275,12 @@ class LivePlayerViewModel @Inject constructor(
         }
         viewModelScope.launch(Dispatchers.Default) {
             for (sample in mainB62SubtitleSamples) {
+                if (!channelSessions.isCurrent(sample.token)) continue
                 decodeB62Subtitle(
                     captionDecoder = mainCaptionDecoder,
                     superimposeDecoder = mainSuperimposeDecoder,
-                    sample = sample,
+                    sample = sample.sample,
+                    isCurrent = { channelSessions.isCurrent(sample.token) },
                     onLanguagesChanged = { _mainSubtitleLanguages.value = it },
                     onCue = { _mainSubtitleEvents.tryEmit(it) }
                 )
@@ -259,10 +288,12 @@ class LivePlayerViewModel @Inject constructor(
         }
         viewModelScope.launch(Dispatchers.Default) {
             for (sample in dualB62SubtitleSamples) {
+                if (!channelSessions.isCurrent(sample.token)) continue
                 decodeB62Subtitle(
                     captionDecoder = dualCaptionDecoder,
                     superimposeDecoder = dualSuperimposeDecoder,
-                    sample = sample,
+                    sample = sample.sample,
+                    isCurrent = { channelSessions.isCurrent(sample.token) },
                     onLanguagesChanged = { _dualSubtitleLanguages.value = it },
                     onCue = { _dualSubtitleEvents.tryEmit(it) }
                 )
@@ -407,7 +438,7 @@ class LivePlayerViewModel @Inject constructor(
         return sources.first()
     }
 
-    private fun stopMainPlaybackSafely(reason: String = "unspecified") {
+    private fun stopMainPlaybackSafely(reason: String = "unspecified", endSession: Boolean = true) {
         Log.w(
             TAG,
             "Stopping main playback: reason=$reason, " +
@@ -428,9 +459,12 @@ class LivePlayerViewModel @Inject constructor(
 
         _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
         liveJikkyoManager.stopJikkyo()
+        if (endSession) {
+            endChannelSession(LivePlaybackSlot.MAIN)
+        }
     }
 
-    private fun stopDualPlaybackSafely(reason: String = "unspecified") {
+    private fun stopDualPlaybackSafely(reason: String = "unspecified", endSession: Boolean = true) {
         Log.w(
             TAG,
             "Stopping dual playback: reason=$reason, " +
@@ -450,6 +484,9 @@ class LivePlayerViewModel @Inject constructor(
         dualRawMmtsLayerController.reset()
 
         _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
+        if (endSession) {
+            endChannelSession(LivePlaybackSlot.DUAL)
+        }
     }
 
     fun releasePlayers(reason: String = "unspecified") {
@@ -459,6 +496,8 @@ class LivePlayerViewModel @Inject constructor(
                 "main=${_mainPlayer.value != null}, dual=${_dualPlayer.value != null}, " +
                 "mainChannel=${mainCurrentChannel?.displayChannelId}, dualChannel=${dualCurrentChannel?.displayChannelId}"
         )
+        endChannelSession(LivePlaybackSlot.MAIN)
+        endChannelSession(LivePlaybackSlot.DUAL)
         mainPlaybackJob?.cancel(); dualPlaybackJob?.cancel()
         mainEventSource?.cancel(); dualEventSource?.cancel()
 
@@ -477,12 +516,16 @@ class LivePlayerViewModel @Inject constructor(
         liveJikkyoManager.stopJikkyo()
     }
 
-    private fun handleMainError(uiContext: Context, error: PlaybackException) {
+    private fun handleMainError(
+        uiContext: Context, error: PlaybackException, token: LiveChannelSessionToken
+    ) {
+        if (!channelSessions.isCurrent(token)) return
         if (HdrToneMapping.rejectionCause(error) != null) {
-            recoverRejectedHdrToneMapping(uiContext)
+            recoverRejectedHdrToneMapping(uiContext, token)
             return
         }
         viewModelScope.launch {
+            if (!channelSessions.isCurrent(token)) return@launch
             val cause = error.cause
             val is404 =
                 cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 404
@@ -492,7 +535,11 @@ class LivePlayerViewModel @Inject constructor(
                 mainAutoRetryCount++
                 Log.w(TAG, "EDCB HLS 404: Retrying prepare... ($mainAutoRetryCount/5)")
                 _mainSseDetail.value = "セグメント生成待機中... ($mainAutoRetryCount/5)"
-                delay(2500); _mainPlayer.value?.prepare(); _mainPlayer.value?.play()
+                delay(2500)
+                if (channelSessions.isCurrent(token)) {
+                    _mainPlayer.value?.prepare()
+                    _mainPlayer.value?.play()
+                }
                 return@launch
             }
 
@@ -500,7 +547,8 @@ class LivePlayerViewModel @Inject constructor(
             if (mainAutoRetryCount < MAX_AUTO_RETRY) {
                 mainAutoRetryCount++; _mainSseDetail.value =
                     "通信復旧中... ($mainAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopMainPlaybackSafely("main_player_error_retry"); delay(2000)
+                stopMainPlaybackSafely("main_player_error_retry", endSession = false); delay(2000)
+                if (!channelSessions.isCurrent(token)) return@launch
                 if (mainCurrentChannel != null && mainCurrentQuality != null) {
                     playMainChannel(
                         uiContext,
@@ -519,12 +567,16 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
-    private fun handleDualError(uiContext: Context, error: PlaybackException) {
+    private fun handleDualError(
+        uiContext: Context, error: PlaybackException, token: LiveChannelSessionToken
+    ) {
+        if (!channelSessions.isCurrent(token)) return
         if (HdrToneMapping.rejectionCause(error) != null) {
-            recoverRejectedHdrToneMapping(uiContext)
+            recoverRejectedHdrToneMapping(uiContext, token)
             return
         }
         viewModelScope.launch {
+            if (!channelSessions.isCurrent(token)) return@launch
             val cause = error.cause
             val is404 =
                 cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 404
@@ -533,7 +585,11 @@ class LivePlayerViewModel @Inject constructor(
             if (isEdcbTranscode && is404 && dualAutoRetryCount < 5) {
                 dualAutoRetryCount++; _dualSseDetail.value =
                     "セグメント生成待機中... ($dualAutoRetryCount/5)"
-                delay(2500); _dualPlayer.value?.prepare(); _dualPlayer.value?.play()
+                delay(2500)
+                if (channelSessions.isCurrent(token)) {
+                    _dualPlayer.value?.prepare()
+                    _dualPlayer.value?.play()
+                }
                 return@launch
             }
 
@@ -541,7 +597,8 @@ class LivePlayerViewModel @Inject constructor(
             if (dualAutoRetryCount < MAX_AUTO_RETRY) {
                 dualAutoRetryCount++; _dualSseDetail.value =
                     "通信復旧中... ($dualAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopDualPlaybackSafely("dual_player_error_retry"); delay(2000)
+                stopDualPlaybackSafely("dual_player_error_retry", endSession = false); delay(2000)
+                if (!channelSessions.isCurrent(token)) return@launch
                 if (dualCurrentChannel != null && dualCurrentQuality != null) {
                     playDualChannel(
                         uiContext,
@@ -559,10 +616,11 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
-    private fun recoverRejectedHdrToneMapping(uiContext: Context) {
+    private fun recoverRejectedHdrToneMapping(uiContext: Context, token: LiveChannelSessionToken) {
         if (!hdrToneMappingRecoveryRunning.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
+                if (!channelSessions.isCurrent(token)) return@launch
                 if (settingsRepository.hdrRenderMode.first() != HdrToneMapping.RENDER_MODE_SDR) {
                     return@launch
                 }
@@ -575,6 +633,7 @@ class LivePlayerViewModel @Inject constructor(
                         "テレビのデコーダーが変換要求を受け付けなかったため、" +
                         "HLG そのままに戻して再生します。"
                 )
+                if (!channelSessions.isCurrent(token)) return@launch
                 mainCurrentChannel?.let { channel ->
                     mainCurrentQuality?.let { quality ->
                         playMainChannel(
@@ -611,6 +670,7 @@ class LivePlayerViewModel @Inject constructor(
         onPlaybackRequestCommitted: (Channel) -> Unit = {}
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
+        val token = beginChannelSession(LivePlaybackSlot.MAIN, channel.id)
         if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
         if (!isAutoRetry) {
             mainAutoRetryCount = 0
@@ -620,7 +680,10 @@ class LivePlayerViewModel @Inject constructor(
         mainCurrentChannel = channel
         dataBroadcastingStore.beginSession(channel.id)
 
-        viewModelScope.launch { _currentLogoUrl.value = liveProvider.getChannelLogoUrl(channel.id) }
+        viewModelScope.launch {
+            val logoUrl = liveProvider.getChannelLogoUrl(channel.id)
+            if (channelSessions.isCurrent(token)) _currentLogoUrl.value = logoUrl
+        }
 
         mainPlaybackJob?.cancel()
         mainPlaybackJob = viewModelScope.launch(Dispatchers.IO) {
@@ -628,14 +691,16 @@ class LivePlayerViewModel @Inject constructor(
                 // チャンネル名は UI 側で即時更新し、ストリームだけを短くデバウンスする。
                 // 連続切替ではこの Job がキャンセルされるため、最後のチャンネルだけを要求する。
                 if (!isAutoRetry) delay(CHANNEL_SWITCH_STREAM_DEBOUNCE_MS)
+                if (!channelSessions.isCurrent(token)) return@launch
                 if (!isAutoRetry) {
                     withContext(Dispatchers.Main.immediate) {
-                        onPlaybackRequestCommitted(channel)
+                        if (channelSessions.isCurrent(token)) onPlaybackRequestCommitted(channel)
                     }
                 }
                 mainPlaybackMutex.withLock {
                     withContext(Dispatchers.Main) {
-                        stopMainPlaybackSafely(); _mainSseStatus.value =
+                        if (!channelSessions.isCurrent(token)) return@withContext
+                        stopMainPlaybackSafely(endSession = false); _mainSseStatus.value =
                         "Standby"; _mainSseDetail.value = "ストリームを準備中..."
                     }
 
@@ -647,26 +712,30 @@ class LivePlayerViewModel @Inject constructor(
                         streamNumber = 0,
                         factory = mainTsDataSourceFactory
                     )
+                    if (!channelSessions.isCurrent(token)) return@withLock
                     mainCurrentSource = request.source
                     mainIsEdcbDirect = request.isEdcbDirect
                     mainCurrentQuality = request.quality
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val hdrRenderMode = settingsRepository.hdrRenderMode.first()
-                    val newPlayer = withContext(Dispatchers.Main) {
-                        livePlayerFactory.createExoPlayer(
+                    if (!channelSessions.isCurrent(token)) return@withLock
+                    withContext(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) return@withContext
+                        val newPlayer = livePlayerFactory.createExoPlayer(
                             audioOutputMode = audioOutputMode,
                             hdrRenderMode = hdrRenderMode,
-                            isKonomiTvSource = { mainCurrentSource == StreamSource.KONOMITV },
+                            isKonomiTvSource = { request.source == StreamSource.KONOMITV },
                             onSubtitleDataReceived = { pts, data ->
-                                decodeAndEmitMainSubtitle(pts, data)
+                                decodeAndEmitMainSubtitle(token, pts, data)
                             },
-                            onError = { error -> handleMainError(uiContext, error) }
+                            onError = { error -> handleMainError(uiContext, error, token) }
                         )
-                    }
-                    _mainPlayer.value = newPlayer
-
-                    withContext(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) {
+                            newPlayer.release()
+                            return@withContext
+                        }
+                        _mainPlayer.value = newPlayer
                         if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _mainSseStatus.value = "ONAir"; _mainSseDetail.value = ""
                         } else if (request.config is BackendConfig.KonomiTv) {
@@ -674,19 +743,25 @@ class LivePlayerViewModel @Inject constructor(
                                 uiContext,
                                 channel.displayChannelId,
                                 request.apiQuality,
-                                request.config
+                                request.config,
+                                token
                             )
                         }
                         startPlayback(
                             newPlayer,
                             request,
                             mainTsDataSourceFactory,
-                            ::decodeAndEmitMainSubtitle,
-                            ::decodeAndEmitMainB62Subtitle,
-                            dataBroadcastingStore,
-                            mainRawMmtsLayerController
+                            { pts, data -> decodeAndEmitMainSubtitle(token, pts, data) },
+                            { sample -> decodeAndEmitMainB62Subtitle(token, sample) },
+                            LiveSessionDataBroadcastingCallback(
+                                token,
+                                channelSessions,
+                                dataBroadcastingStore
+                            ),
+                            mainRawMmtsLayerController,
+                            token
                         )
-                        liveJikkyoManager.startJikkyo(channel, request.source)
+                        liveJikkyoManager.startJikkyo(channel, request.source, token, channelSessions::isCurrent)
                     }
                 }
             } catch (e: CancellationException) {
@@ -694,9 +769,10 @@ class LivePlayerViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "playMainChannel: Failed", e)
                 withContext(Dispatchers.Main) {
+                    if (!channelSessions.isCurrent(token)) return@withContext
                     handleMainError(
                         uiContext,
-                        PlaybackException(e.message, e, PlaybackException.ERROR_CODE_UNSPECIFIED)
+                        PlaybackException(e.message, e, PlaybackException.ERROR_CODE_UNSPECIFIED), token
                     )
                 }
             }
@@ -708,6 +784,7 @@ class LivePlayerViewModel @Inject constructor(
         isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
+        val token = beginChannelSession(LivePlaybackSlot.DUAL, channel.id)
         if (!isAutoRetry) dualAutoRetryCount = 0
         dualCurrentChannel = channel
 
@@ -716,10 +793,12 @@ class LivePlayerViewModel @Inject constructor(
             try {
                 dualPlaybackMutex.withLock {
                     withContext(Dispatchers.Main) {
-                        stopDualPlaybackSafely(); _dualSseStatus.value =
+                        if (!channelSessions.isCurrent(token)) return@withContext
+                        stopDualPlaybackSafely(endSession = false); _dualSseStatus.value =
                         "Standby"; _dualSseDetail.value = "ストリームを準備中..."
                     }
                     delay(if (isAutoRetry) 0 else 600)
+                    if (!channelSessions.isCurrent(token)) return@withLock
 
                     val request = resolvePlaybackRequest(
                         channel = channel,
@@ -729,26 +808,30 @@ class LivePlayerViewModel @Inject constructor(
                         streamNumber = 1,
                         factory = dualTsDataSourceFactory
                     )
+                    if (!channelSessions.isCurrent(token)) return@withLock
                     dualCurrentSource = request.source
                     dualIsEdcbDirect = request.isEdcbDirect
                     dualCurrentQuality = request.quality
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val hdrRenderMode = settingsRepository.hdrRenderMode.first()
-                    val newDualPlayer = withContext(Dispatchers.Main) {
-                        livePlayerFactory.createExoPlayer(
+                    if (!channelSessions.isCurrent(token)) return@withLock
+                    withContext(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) return@withContext
+                        val newDualPlayer = livePlayerFactory.createExoPlayer(
                             audioOutputMode = audioOutputMode,
                             hdrRenderMode = hdrRenderMode,
-                            isKonomiTvSource = { dualCurrentSource == StreamSource.KONOMITV },
+                            isKonomiTvSource = { request.source == StreamSource.KONOMITV },
                             onSubtitleDataReceived = { pts, data ->
-                                decodeAndEmitDualSubtitle(pts, data)
+                                decodeAndEmitDualSubtitle(token, pts, data)
                             },
-                            onError = { error -> handleDualError(uiContext, error) }
+                            onError = { error -> handleDualError(uiContext, error, token) }
                         )
-                    }
-                    _dualPlayer.value = newDualPlayer
-
-                    withContext(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) {
+                            newDualPlayer.release()
+                            return@withContext
+                        }
+                        _dualPlayer.value = newDualPlayer
                         if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _dualSseStatus.value = "ONAir"; _dualSseDetail.value = ""
                         } else if (request.config is BackendConfig.KonomiTv) {
@@ -756,16 +839,18 @@ class LivePlayerViewModel @Inject constructor(
                                 uiContext,
                                 channel.displayChannelId,
                                 request.apiQuality,
-                                request.config
+                                request.config,
+                                token
                             )
                         }
                         startPlayback(
                             newDualPlayer,
                             request,
                             dualTsDataSourceFactory,
-                            ::decodeAndEmitDualSubtitle,
-                            ::decodeAndEmitDualB62Subtitle,
-                            rawMmtsLayerController = dualRawMmtsLayerController
+                            { pts, data -> decodeAndEmitDualSubtitle(token, pts, data) },
+                            { sample -> decodeAndEmitDualB62Subtitle(token, sample) },
+                            rawMmtsLayerController = dualRawMmtsLayerController,
+                            sessionToken = token
                         )
                     }
                 }
@@ -774,9 +859,10 @@ class LivePlayerViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "playDualChannel: Failed", e)
                 withContext(Dispatchers.Main) {
+                    if (!channelSessions.isCurrent(token)) return@withContext
                     handleDualError(
                         uiContext,
-                        PlaybackException(e.message, e, PlaybackException.ERROR_CODE_UNSPECIFIED)
+                        PlaybackException(e.message, e, PlaybackException.ERROR_CODE_UNSPECIFIED), token
                     )
                 }
             }
@@ -784,10 +870,12 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     fun stopAllPlayers() {
+        endChannelSession(LivePlaybackSlot.MAIN)
+        endChannelSession(LivePlaybackSlot.DUAL)
         mainPlaybackJob?.cancel(); dualPlaybackJob?.cancel()
         viewModelScope.launch {
-            mainPlaybackMutex.withLock { stopMainPlaybackSafely() }
-            dualPlaybackMutex.withLock { stopDualPlaybackSafely() }
+            mainPlaybackMutex.withLock { stopMainPlaybackSafely(endSession = false) }
+            dualPlaybackMutex.withLock { stopDualPlaybackSafely(endSession = false) }
         }
     }
 
@@ -812,8 +900,11 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     fun stopDualPlayer() {
+        endChannelSession(LivePlaybackSlot.DUAL)
         dualPlaybackJob?.cancel()
-        viewModelScope.launch { dualPlaybackMutex.withLock { stopDualPlaybackSafely() } }
+        viewModelScope.launch {
+            dualPlaybackMutex.withLock { stopDualPlaybackSafely(endSession = false) }
+        }
     }
 
     fun setSubtitlesEnabled(enabled: Boolean) {
@@ -831,33 +922,43 @@ class LivePlayerViewModel @Inject constructor(
         dualCaptionDecoder.switchLanguage(languageId)
     }
 
-    private fun decodeAndEmitMainSubtitle(ptsMs: Long, data: ByteArray) {
+    private fun decodeAndEmitMainSubtitle(
+        token: LiveChannelSessionToken, ptsMs: Long, data: ByteArray
+    ) {
+        if (!channelSessions.isCurrent(token)) return
         val cue = mainCaptionDecoder.decode(data, ptsMs, renderCaptions = isSubtitleEnabled)
+        if (!channelSessions.isCurrent(token)) return
         _mainSubtitleLanguages.value = mainCaptionDecoder.availableLanguages()
         if (isSubtitleEnabled && cue != null) _mainSubtitleEvents.tryEmit(cue)
     }
 
-    private fun decodeAndEmitDualSubtitle(ptsMs: Long, data: ByteArray) {
+    private fun decodeAndEmitDualSubtitle(
+        token: LiveChannelSessionToken, ptsMs: Long, data: ByteArray
+    ) {
+        if (!channelSessions.isCurrent(token)) return
         val cue = dualCaptionDecoder.decode(data, ptsMs, renderCaptions = isSubtitleEnabled)
+        if (!channelSessions.isCurrent(token)) return
         _dualSubtitleLanguages.value = dualCaptionDecoder.availableLanguages()
         if (isSubtitleEnabled && cue != null) _dualSubtitleEvents.tryEmit(cue)
     }
 
-    private fun decodeAndEmitMainB62Subtitle(sample: B62SubtitleSample) {
-        mainB62SubtitleSamples.trySend(sample)
+    private fun decodeAndEmitMainB62Subtitle(token: LiveChannelSessionToken, sample: B62SubtitleSample) {
+        if (channelSessions.isCurrent(token)) mainB62SubtitleSamples.trySend(SessionB62SubtitleSample(token, sample))
     }
 
-    private fun decodeAndEmitDualB62Subtitle(sample: B62SubtitleSample) {
-        dualB62SubtitleSamples.trySend(sample)
+    private fun decodeAndEmitDualB62Subtitle(token: LiveChannelSessionToken, sample: B62SubtitleSample) {
+        if (channelSessions.isCurrent(token)) dualB62SubtitleSamples.trySend(SessionB62SubtitleSample(token, sample))
     }
 
     private suspend fun decodeB62Subtitle(
         captionDecoder: NativeCaptionDecoder,
         superimposeDecoder: NativeCaptionDecoder,
         sample: B62SubtitleSample,
+        isCurrent: () -> Boolean,
         onLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
         onCue: (NativeCaptionCue) -> Unit
     ) {
+        if (!isCurrent()) return
         val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
         if (isCaption && !isSubtitleEnabled) return
         val decoder = when (sample.type) {
@@ -875,14 +976,16 @@ class LivePlayerViewModel @Inject constructor(
             resources = sample.resources,
             discontinuity = sample.discontinuity
         )
+        if (!isCurrent()) return
         val languages = decoder.availableLanguages()
         withContext(Dispatchers.Main.immediate) {
+            if (!isCurrent()) return@withContext
             if (isCaption) onLanguagesChanged(languages)
             if (!isCaption || isSubtitleEnabled) decoded.forEach(onCue)
         }
     }
 
-    private fun CoroutineChannel<B62SubtitleSample>.clearPending() {
+    private fun CoroutineChannel<SessionB62SubtitleSample>.clearPending() {
         while (tryReceive().isSuccess) Unit
     }
 
@@ -1062,7 +1165,8 @@ class LivePlayerViewModel @Inject constructor(
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
         onB62SubtitleDataReceived: (B62SubtitleSample) -> Unit,
         dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
-        rawMmtsLayerController: RawMmtsLayerController? = null
+        rawMmtsLayerController: RawMmtsLayerController? = null,
+        sessionToken: LiveChannelSessionToken? = null
     ) {
         val mediaItem = MediaItem.fromUri(request.url)
         val mediaSource = when {
@@ -1079,7 +1183,11 @@ class LivePlayerViewModel @Inject constructor(
                     httpDataSourceFactory,
                     TlvExtractorsFactory(
                         preferredVideoPacketId = request.quality.videoPacketId,
-                        onTracksChanged = { rawMmtsLayerController?.updateTracks(it) },
+                        onTracksChanged = {
+                            if (sessionToken == null || channelSessions.isCurrent(sessionToken)) {
+                                rawMmtsLayerController?.updateTracks(it)
+                            }
+                        },
                         onSubtitleDataReceived = onB62SubtitleDataReceived,
                         dataBroadcastingCallback = dataBroadcastingCallback
                     )
@@ -1119,6 +1227,7 @@ class LivePlayerViewModel @Inject constructor(
         if (request.quality.isRawMmts && player != null && rawMmtsLayerController != null) {
             player.addListener(object : Player.Listener {
                 override fun onTracksChanged(tracks: Tracks) {
+                    if (sessionToken != null && !channelSessions.isCurrent(sessionToken)) return
                     val parameters = rawMmtsLayerController.buildLayerSelection(
                         player,
                         request.quality.videoPacketId,
@@ -1129,14 +1238,17 @@ class LivePlayerViewModel @Inject constructor(
                 }
             })
         }
-        player?.setMediaSource(mediaSource); player?.prepare(); player?.play()
+        if (sessionToken == null || channelSessions.isCurrent(sessionToken)) {
+            player?.setMediaSource(mediaSource); player?.prepare(); player?.play()
+        }
     }
 
     private fun startMainSse(
         uiContext: Context,
         channelId: String,
         quality: String,
-        config: BackendConfig.KonomiTv
+        config: BackendConfig.KonomiTv,
+        token: LiveChannelSessionToken
     ) {
         val eventUrl =
             UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality)
@@ -1149,12 +1261,14 @@ class LivePlayerViewModel @Inject constructor(
                     t: Throwable?,
                     response: Response?
                 ) {
-                    if (t is java.io.IOException && t.message == "Canceled") return
                     response?.close()
+                    if (!channelSessions.isCurrent(token)) return
+                    if (t is java.io.IOException && t.message == "Canceled") return
                     viewModelScope.launch(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) return@launch
                         if (response != null && response.code !in 200..299) handleMainError(
                             uiContext,
-                            PlaybackException("KonomiTV HTTP Error", null, response.code)
+                            PlaybackException("KonomiTV HTTP Error", null, response.code), token
                         )
                     }
                 }
@@ -1165,7 +1279,9 @@ class LivePlayerViewModel @Inject constructor(
                     type: String?,
                     data: String
                 ) {
+                    if (!channelSessions.isCurrent(token)) return
                     viewModelScope.launch(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) return@launch
                         try {
                             val json = JSONObject(data)
                             val status = json.optString("status", "Unknown")
@@ -1182,7 +1298,7 @@ class LivePlayerViewModel @Inject constructor(
                                         _mainSseDetail.value.ifEmpty { AppStrings.ERR_TUNER_START_FAILED },
                                         null,
                                         PlaybackException.ERROR_CODE_UNSPECIFIED
-                                    )
+                                    ), token
                                 )
                                 return@launch
                             }
@@ -1209,7 +1325,8 @@ class LivePlayerViewModel @Inject constructor(
         uiContext: Context,
         channelId: String,
         quality: String,
-        config: BackendConfig.KonomiTv
+        config: BackendConfig.KonomiTv,
+        token: LiveChannelSessionToken
     ) {
         val eventUrl =
             UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality)
@@ -1222,12 +1339,14 @@ class LivePlayerViewModel @Inject constructor(
                     t: Throwable?,
                     response: Response?
                 ) {
-                    if (t is java.io.IOException && t.message == "Canceled") return
                     response?.close()
+                    if (!channelSessions.isCurrent(token)) return
+                    if (t is java.io.IOException && t.message == "Canceled") return
                     viewModelScope.launch(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) return@launch
                         if (response != null && response.code !in 200..299) handleDualError(
                             uiContext,
-                            PlaybackException("HTTP Error", null, response.code)
+                            PlaybackException("HTTP Error", null, response.code), token
                         )
                     }
                 }
@@ -1238,7 +1357,9 @@ class LivePlayerViewModel @Inject constructor(
                     type: String?,
                     data: String
                 ) {
+                    if (!channelSessions.isCurrent(token)) return
                     viewModelScope.launch(Dispatchers.Main) {
+                        if (!channelSessions.isCurrent(token)) return@launch
                         try {
                             val json = JSONObject(data)
                             val status = json.optString("status", "Unknown")
@@ -1255,7 +1376,7 @@ class LivePlayerViewModel @Inject constructor(
                                         dualSseDetail.value.ifEmpty { "エラーが発生しました" },
                                         null,
                                         PlaybackException.ERROR_CODE_UNSPECIFIED
-                                    )
+                                    ), token
                                 )
                                 return@launch
                             }
