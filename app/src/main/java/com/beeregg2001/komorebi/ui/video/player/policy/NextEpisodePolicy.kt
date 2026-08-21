@@ -77,8 +77,8 @@ fun selectPreferredEpisodeRecording(
     ),
 )
 
-fun isBangumiPlaybackProgressEligible(positionMs: Long, trustedDurationMs: Long): Boolean =
-    trustedDurationMs > 0L && positionMs >= trustedDurationMs * 9L / 10L
+fun isBangumiPlaybackProgressEligible(positionMs: Long, completionThresholdMs: Long): Boolean =
+    completionThresholdMs > 0L && positionMs >= completionThresholdMs
 
 private fun parsePrimaryEpisodeNumber(value: String?): Double? =
     value

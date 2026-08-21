@@ -998,11 +998,16 @@ fun VideoPlayerScreen(
             )
         }
 
-    LaunchedEffect(currentProgram.id, trustedPlaybackEndDurationMs, playbackPositionMs) {
+    val bangumiPlaybackCompletionThresholdMs = if (currentProgram.recordedVideo.cmSections.isNullOrEmpty().not()) {
+        (currentProgram.recordedVideo.playbackCompletionThreshold * 1000.0).toLong()
+    } else {
+        trustedPlaybackEndDurationMs * 9L / 10L
+    }
+    LaunchedEffect(currentProgram.id, bangumiPlaybackCompletionThresholdMs, playbackPositionMs) {
         if (
             smbItem == null &&
             !isRecordingChasePlayback &&
-            isBangumiPlaybackProgressEligible(playbackPositionMs, trustedPlaybackEndDurationMs)
+            isBangumiPlaybackProgressEligible(playbackPositionMs, bangumiPlaybackCompletionThresholdMs)
         ) {
             videoPlayerViewModel.reportBangumiPlaybackProgress(
                 currentProgram.id,

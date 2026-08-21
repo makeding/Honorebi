@@ -59,17 +59,15 @@ class KonomiRepository @Inject constructor(
      * HonomiTV に実再生位置を送り、連携済みの Bangumi エピソードを視聴済みにします。
      * 連携状態・90% 判定・重複排除は HonomiTV が一元管理します。
      */
-    suspend fun updateBangumiPlaybackProgress(videoId: Int, positionSeconds: Double, durationSeconds: Double) {
-        val response = apiService.updateBangumiPlaybackProgress(
+    suspend fun updateBangumiPlaybackProgress(
+        videoId: Int,
+        positionSeconds: Double,
+        durationSeconds: Double,
+    ): BangumiPlaybackProgressResponse =
+        apiService.updateBangumiPlaybackProgress(
             videoId,
             BangumiPlaybackProgressRequest(positionSeconds, durationSeconds),
         )
-        // 422 は Bangumi 未連携または同期対象外なので、この再生中は終端として扱う。
-        // 一時的なサーバーエラーだけ例外にし、プレイヤーの次回更新で再送できるようにする。
-        if (response.isSuccessful.not() && response.code() != 422) {
-            error("Bangumi playback progress update failed (HTTP ${response.code()})")
-        }
-    }
 
     // ==========================================
     // チャンネル・録画リスト取得

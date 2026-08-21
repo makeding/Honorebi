@@ -110,11 +110,15 @@ class VideoPlayerViewModel @Inject constructor(
         bangumiProgressReportedProgramId = programId
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                konomiRepository.updateBangumiPlaybackProgress(
+                val response = konomiRepository.updateBangumiPlaybackProgress(
                     programId,
                     positionMs / 1000.0,
                     durationMs / 1000.0,
                 )
+                if (response.status == "Pending" && bangumiProgressReportedProgramId == programId) {
+                    delay(30_000L)
+                    bangumiProgressReportedProgramId = null
+                }
             }.onFailure { error ->
                 if (bangumiProgressReportedProgramId == programId) {
                     bangumiProgressReportedProgramId = null

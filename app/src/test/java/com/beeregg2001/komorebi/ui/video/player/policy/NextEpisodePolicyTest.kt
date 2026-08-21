@@ -93,8 +93,8 @@ class NextEpisodePolicyTest {
     @Test
     fun bangumiProgressRequiresTrustedDurationAndNinetyPercentPlayback() {
         assertFalse(isBangumiPlaybackProgressEligible(1_000L, 0L))
-        assertFalse(isBangumiPlaybackProgressEligible(899_999L, 1_000_000L))
-        assertTrue(isBangumiPlaybackProgressEligible(900_000L, 1_000_000L))
+        assertFalse(isBangumiPlaybackProgressEligible(899_999L, 900_000L))
+        assertTrue(isBangumiPlaybackProgressEligible(900_000L, 900_000L))
     }
 
     @Test

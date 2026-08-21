@@ -20,7 +20,7 @@ interface KonomiApi {
     suspend fun updateBangumiPlaybackProgress(
         @Path("videoId") videoId: Int,
         @Body request: BangumiPlaybackProgressRequest,
-    ): Response<Unit>
+    ): BangumiPlaybackProgressResponse
 
     // --- チャンネル ---
     @GET("api/channels")

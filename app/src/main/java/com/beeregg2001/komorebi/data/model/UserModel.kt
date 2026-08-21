@@ -16,6 +16,10 @@ data class BangumiPlaybackProgressRequest(
     val duration: Double,
 )
 
+data class BangumiPlaybackProgressResponse(
+    val status: String,
+)
+
 data class UserAccessToken(
     @com.google.gson.annotations.SerializedName("access_token") val accessToken: String,
     @com.google.gson.annotations.SerializedName("token_type") val tokenType: String,
