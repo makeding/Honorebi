@@ -89,14 +89,14 @@ data class RecordedVideo(
     @SerializedName("recording_start_time") val recordingStartTime: String? = null,
     @SerializedName("recording_end_time") val recordingEndTime: String? = null,
     val duration: Double,
-    @SerializedName("playback_completion_threshold") val playbackCompletionThreshold: Double = 0.0,
     @SerializedName("container_format") val containerFormat: String,
     @SerializedName("video_codec") val videoCodec: String,
     @SerializedName(value = "primary_audio_codec", alternate = ["audio_codec"])
     val audioCodec: String,
     @SerializedName("has_key_frames") val hasKeyFrames: Boolean? = true,
     @SerializedName("thumbnail_info") val thumbnailInfo: ThumbnailInfo? = null,
-    @SerializedName("cm_sections") val cmSections: List<CmSection>? = null
+    @SerializedName("cm_sections") val cmSections: List<CmSection>? = null,
+    @SerializedName("playback_completion_threshold") val playbackCompletionThreshold: Double = 0.0
 )
 
 data class ThumbnailInfo(

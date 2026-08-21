@@ -57,7 +57,7 @@ class KonomiRepository @Inject constructor(
 
     /**
      * HonomiTV に実再生位置を送り、連携済みの Bangumi エピソードを視聴済みにします。
-     * 連携状態・90% 判定・重複排除は HonomiTV が一元管理します。
+     * 連携状態・CM 区間を考慮した完了判定・重複排除は HonomiTV が一元管理します。
      */
     suspend fun updateBangumiPlaybackProgress(
         videoId: Int,

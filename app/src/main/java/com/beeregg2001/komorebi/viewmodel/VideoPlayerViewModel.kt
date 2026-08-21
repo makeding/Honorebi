@@ -121,6 +121,7 @@ class VideoPlayerViewModel @Inject constructor(
                 }
             }.onFailure { error ->
                 if (bangumiProgressReportedProgramId == programId) {
+                    delay(30_000L)
                     bangumiProgressReportedProgramId = null
                 }
                 Log.w(TAG, "Failed to update Bangumi playback progress. [video_id=$programId]", error)
