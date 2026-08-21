@@ -152,8 +152,12 @@ fun MainRootPlaybackHost(
 
             is PlaybackTarget.Recorded -> {
                 val selectedProgram = target.program
-                val switchToken = state.recordedSwitchToken
-                androidx.compose.runtime.key(selectedProgram.id) {
+                val playbackToken = state.recordedPlaybackToken
+                // Capture commitment for this player instance: its disposal still persists A
+                // while B is being prepared, but an uncommitted B never writes history.
+                val shouldPersistSelectedProgram =
+                    (state.playbackTarget as? PlaybackTarget.Recorded)?.program?.id == selectedProgram.id
+                androidx.compose.runtime.key(playbackToken) {
                     VideoPlayerScreen(
                         program = selectedProgram,
                         initialPositionMs = state.renderInitialPlaybackPositionMs,
@@ -177,14 +181,16 @@ fun MainRootPlaybackHost(
                             }
                             state.beginRecordedSwitch(program = program, reason = switchReason)
                         },
-                        recordedSwitchToken = switchToken,
+                        recordedPlaybackToken = playbackToken,
+                        isCurrentRecordedPlayback = state::isCurrentRecordedPlayback,
+                        isRecordedSwitching = state.playbackPhase is PlaybackPhase.Switching,
                         onProgramReady = { readyProgramId, token ->
-                            if (token != null && token.toProgramId == readyProgramId) {
+                            if (token.programId == readyProgramId && state.isCurrentRecordedPlayback(token)) {
                                 state.commitRecordedSwitch(token)
                             }
                         },
                         onRecordedSwitchTerminalFailure = { token, failure ->
-                            if (state.failRecordedSwitch(token)) {
+                            if (state.isCurrentRecordedPlayback(token) && state.failRecordedSwitch(token)) {
                                 state.toastMessage = when (failure) {
                                     com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.InitialUrlUnavailable ->
                                         "次の番組のストリームURLを取得できませんでした"
@@ -195,10 +201,7 @@ fun MainRootPlaybackHost(
                                 }
                             }
                         },
-                        shouldPersistWatchHistory = {
-                            val committed = state.playbackTarget as? PlaybackTarget.Recorded
-                            switchToken == null || committed?.program?.id == selectedProgram.id
-                        },
+                        shouldPersistWatchHistory = { shouldPersistSelectedProgram },
                         onChannelSelect = { channel ->
                             state.isPlayerSubMenuOpen = false
                             state.isPlayerSceneSearchOpen = false

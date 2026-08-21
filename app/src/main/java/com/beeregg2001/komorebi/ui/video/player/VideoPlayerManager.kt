@@ -447,6 +447,7 @@ private fun IOException.isHttpResponseCode(responseCode: Int): Boolean {
 @androidx.annotation.OptIn(UnstableApi::class)
 fun rememberManagedExoPlayer(
     program: RecordedProgram?,
+    recordedPlaybackFence: RecordedPlaybackFence,
     isLiveStream: Boolean,
     vs: VideoPlayerState,
     scope: CoroutineScope,
@@ -471,8 +472,8 @@ fun rememberManagedExoPlayer(
     val superimposeDecoder = remember {
         NativeCaptionDecoder(captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE)
     }
-    val b62SubtitleSamples = remember {
-        Channel<B62SubtitleSample>(
+    val b62SubtitleSamples = remember(recordedPlaybackFence.identity) {
+        Channel<FencedB62SubtitleSample>(
             capacity = 4,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
@@ -486,8 +487,10 @@ fun rememberManagedExoPlayer(
     val currentOnStreamSessionExpired = rememberUpdatedState(onStreamSessionExpired)
     val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
     val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
-    LaunchedEffect(captionDecoder, b62SubtitleSamples) {
-        for (sample in b62SubtitleSamples) {
+    LaunchedEffect(captionDecoder, b62SubtitleSamples, recordedPlaybackFence.identity) {
+        for (fencedSample in b62SubtitleSamples) {
+            if (!recordedPlaybackFence.accepts(fencedSample.token)) continue
+            val sample = fencedSample.sample
             val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
             if (isCaption && !vs.isSubtitleEnabled) continue
             val decoder = when (sample.type) {
@@ -507,18 +510,27 @@ fun rememberManagedExoPlayer(
                     discontinuity = sample.discontinuity
                 ) to decoder.availableLanguages()
             }
+            if (!recordedPlaybackFence.accepts(fencedSample.token)) continue
             if (isCaption) currentOnSubtitleLanguagesChanged.value(languages)
-            if (!isCaption || vs.isSubtitleEnabled) decoded.forEach(currentOnSubtitleCue.value)
+            if (!isCaption || vs.isSubtitleEnabled) {
+                decoded.forEach { cue ->
+                    if (recordedPlaybackFence.accepts(fencedSample.token)) {
+                        currentOnSubtitleCue.value(cue)
+                    }
+                }
+            }
         }
     }
-    LaunchedEffect(program?.id) {
+    LaunchedEffect(recordedPlaybackFence.identity) {
         while (b62SubtitleSamples.tryReceive().isSuccess) Unit
         captionDecoder.reset(subtitleLanguageId)
         superimposeDecoder.reset()
         onSubtitleLanguagesChanged(emptyList())
     }
-    LaunchedEffect(subtitleLanguageId) {
-        captionDecoder.switchLanguage(subtitleLanguageId)
+    LaunchedEffect(subtitleLanguageId, recordedPlaybackFence.identity) {
+        if (recordedPlaybackFence.accepts()) {
+            captionDecoder.switchLanguage(subtitleLanguageId)
+        }
     }
     LaunchedEffect(vs.isSubtitleEnabled) {
         if (!vs.isSubtitleEnabled) {
@@ -613,6 +625,7 @@ fun rememberManagedExoPlayer(
     }
 
     val exoPlayer = remember(
+        recordedPlaybackFence.identity,
         constructionKey,
         smbServerList,
         dataBroadcastingCallback,
@@ -799,7 +812,11 @@ fun rememberManagedExoPlayer(
                     },
                     sourceLengthProvider = { fileSizeBytesRef.get() },
                     onSubtitleDataReceived = { sample ->
-                        b62SubtitleSamples.trySend(sample)
+                        if (recordedPlaybackFence.accepts()) {
+                            b62SubtitleSamples.trySend(
+                                FencedB62SubtitleSample(recordedPlaybackFence.tokenOrNull(), sample)
+                            )
+                        }
                     },
                     dataBroadcastingCallback = dataBroadcastingCallback
                 ).createExtractors()
@@ -970,6 +987,7 @@ fun rememberManagedExoPlayer(
                     private var wasBuffering = false
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
+                        if (!recordedPlaybackFence.accepts()) return
                         currentOnVideoSizeChanged.value(
                             videoSize.width,
                             videoSize.height,
@@ -978,14 +996,17 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onIsPlayingChanged(playing: Boolean) {
+                        if (!recordedPlaybackFence.accepts()) return
                         vs.isPlayerPlaying = playing
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
+                        if (!recordedPlaybackFence.accepts()) return
                         applyAudioSelectionAndMatrix(vs.currentAudioMode, this@apply)
                     }
 
                     override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (!recordedPlaybackFence.accepts()) return
                         val isBuffering = playbackState == Player.STATE_BUFFERING
                         currentOnBufferingChanged.value(isBuffering)
                         if (isBuffering && !wasBuffering) {
@@ -1008,12 +1029,14 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
+                        if (!recordedPlaybackFence.accepts()) return
                         Log.e(TAG, "ExoPlayer Source Error: ${error.message}", error)
                         if (!isPlaybackRecoveryRunning.compareAndSet(false, true)) {
                             return
                         }
                         scope.launch {
                             try {
+                                if (!recordedPlaybackFence.accepts()) return@launch
                                 when (currentOnPlayerErrorRecovery.value(this@apply, error)) {
                                     PlayerErrorRecovery.Handled -> return@launch
                                     PlayerErrorRecovery.Reprepare -> Unit
@@ -1028,6 +1051,7 @@ fun rememberManagedExoPlayer(
                                 }
                                 currentOnBufferingChanged.value(true)
                                 delay(3000L)
+                                if (!recordedPlaybackFence.accepts()) return@launch
                                 prepare()
                                 playWhenReady = true
                             } finally {
@@ -1037,6 +1061,7 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onMetadata(metadata: Metadata) {
+                        if (!recordedPlaybackFence.accepts()) return
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry !is PrivFrame) continue
@@ -1048,8 +1073,11 @@ fun rememberManagedExoPlayer(
                                     currentPosition,
                                     renderCaptions = vs.isSubtitleEnabled
                                 )
+                                if (!recordedPlaybackFence.accepts()) continue
                                 onSubtitleLanguagesChanged(captionDecoder.availableLanguages())
-                                if (vs.isSubtitleEnabled && cue != null) onSubtitleCue(cue)
+                                if (vs.isSubtitleEnabled && cue != null &&
+                                    recordedPlaybackFence.accepts()
+                                ) onSubtitleCue(cue)
                             }
                         }
                     }

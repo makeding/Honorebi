@@ -61,7 +61,7 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.media.SystemMediaSession
-import com.beeregg2001.komorebi.ui.main.RecordedSwitchToken
+import com.beeregg2001.komorebi.ui.main.RecordedPlaybackToken
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.live.B60_INITIAL_MEDIA_PLANE
 import com.beeregg2001.komorebi.ui.live.B60MediaPlane
@@ -144,9 +144,11 @@ fun VideoPlayerScreen(
     recentRecordings: List<RecordedProgram> = emptyList(),
     animeChannels: List<Channel> = emptyList(),
     onProgramSelect: (RecordedProgram, RecordedProgramSelectionReason) -> Unit = { _, _ -> },
-    recordedSwitchToken: RecordedSwitchToken? = null,
-    onProgramReady: (programId: Int, token: RecordedSwitchToken?) -> Unit = { _, _ -> },
-    onRecordedSwitchTerminalFailure: (RecordedSwitchToken, RecordedSwitchTerminalFailure) -> Unit = { _, _ -> },
+    recordedPlaybackToken: RecordedPlaybackToken? = null,
+    isCurrentRecordedPlayback: (RecordedPlaybackToken) -> Boolean = { true },
+    isRecordedSwitching: Boolean = false,
+    onProgramReady: (programId: Int, token: RecordedPlaybackToken) -> Unit = { _, _ -> },
+    onRecordedSwitchTerminalFailure: (RecordedPlaybackToken, RecordedSwitchTerminalFailure) -> Unit = { _, _ -> },
     shouldPersistWatchHistory: () -> Boolean = { true },
     onChannelSelect: (Channel) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
@@ -157,6 +159,13 @@ fun VideoPlayerScreen(
     videoPlayerViewModel: VideoPlayerViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val recordedPlaybackFence = remember(recordedPlaybackToken, smbItem?.path) {
+        RecordedPlaybackFence(
+            token = recordedPlaybackToken,
+            isCurrent = isCurrentRecordedPlayback,
+            identity = recordedPlaybackToken ?: "smb:${smbItem?.path.orEmpty()}:${program.id}",
+        )
+    }
     val scope = rememberCoroutineScope()
 
     var currentProgram by remember { mutableStateOf(program) }
@@ -176,7 +185,8 @@ fun VideoPlayerScreen(
     val isModern = false
     var isBuffering by remember { mutableStateOf(true) }
 
-    LaunchedEffect(program.id) {
+    LaunchedEffect(program.id, recordedPlaybackToken) {
+        if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
         currentProgram = program
         if (smbItem == null) {
             videoPlayerViewModel.fetchProgramDetail(program.id)
@@ -184,8 +194,8 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(fetchedDetail) {
-        if (fetchedDetail != null && fetchedDetail?.id == program.id) {
+    LaunchedEffect(fetchedDetail, recordedPlaybackToken) {
+        if (recordedPlaybackFence.accepts() && fetchedDetail != null && fetchedDetail?.id == program.id) {
             currentProgram = fetchedDetail!!
             if (smbItem == null) videoPlayerViewModel.fetchAvailableQualities(fetchedDetail)
         }
@@ -355,10 +365,10 @@ fun VideoPlayerScreen(
     LaunchedEffect(Unit) { delay(800); isHeavyUiReady = true }
 
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
-    val commentKeys = remember(currentProgram.id, isRecordingChasePlayback) {
+    val commentKeys = remember(recordedPlaybackToken) {
         HashSet<String>()
     }
-    val pendingWebSocketComments = remember(currentProgram.id, isRecordingChasePlayback) {
+    val pendingWebSocketComments = remember(recordedPlaybackToken) {
         CommentChannel<ArchivedComment>(
             capacity = CHASE_COMMENT_QUEUE_CAPACITY,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
@@ -366,10 +376,10 @@ fun VideoPlayerScreen(
     }
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
-    var currentSessionId by remember(currentProgram.id, vs.currentQuality.value, isRecordingChasePlayback) {
+    var currentSessionId by remember(recordedPlaybackToken, vs.currentQuality.value, isRecordingChasePlayback) {
         mutableStateOf(UUID.randomUUID().toString())
     }
-    val currentStreamUrlRef = remember(currentProgram.id) { AtomicReference<String?>(null) }
+    val currentStreamUrlRef = remember(recordedPlaybackToken) { AtomicReference<String?>(null) }
     val subtitleEvents = remember {
         MutableSharedFlow<NativeCaptionCue>(
             extraBufferCapacity = 4,
@@ -382,10 +392,10 @@ fun VideoPlayerScreen(
     val superimposeEvents = remember(subtitleEvents) {
         subtitleEvents.filter { it.type == NativeCaptionCue.TYPE_SUPERIMPOSE }
     }
-    var subtitleLanguages by remember(currentProgram.id) {
+    var subtitleLanguages by remember(recordedPlaybackToken) {
         mutableStateOf(emptyList<NativeCaptionLanguage>())
     }
-    var currentSubtitleLanguageId by remember(currentProgram.id) { mutableIntStateOf(1) }
+    var currentSubtitleLanguageId by remember(recordedPlaybackToken) { mutableIntStateOf(1) }
     val mainFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }
     val playerControlsFocusRequester = remember { FocusRequester() }
@@ -466,7 +476,7 @@ fun VideoPlayerScreen(
         seekingPreviewJob = scope.launch { delay(2000); isSeekingPreviewVisible = false }
     }
 
-    LaunchedEffect(currentProgram.recordedVideo.id, smbItem, isRecordingChasePlayback) {
+    LaunchedEffect(currentProgram.recordedVideo.id, smbItem, isRecordingChasePlayback, recordedPlaybackToken) {
         if (smbItem != null) {
             return@LaunchedEffect
         }
@@ -485,6 +495,7 @@ fun VideoPlayerScreen(
         } else {
             videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
         }
+        if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
         if (!isRecordingChasePlayback) {
             allComments.clear()
             commentKeys.clear()
@@ -500,7 +511,7 @@ fun VideoPlayerScreen(
         )
     }
 
-    LaunchedEffect(pendingWebSocketComments) {
+    LaunchedEffect(pendingWebSocketComments, recordedPlaybackToken) {
         try {
             while (isActive) {
                 val firstComment = pendingWebSocketComments.receiveCatching().getOrNull()
@@ -513,6 +524,7 @@ fun VideoPlayerScreen(
                     batch.add(nextComment)
                 }
 
+                if (!recordedPlaybackFence.accepts()) continue
                 val oldSize = allComments.size
                 appendUniqueArchivedComments(allComments, commentKeys, batch)
                 val addedCount = allComments.size - oldSize
@@ -529,17 +541,19 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(currentProgram.id, smbItem, isRecordingChasePlayback) {
+    LaunchedEffect(currentProgram.id, smbItem, isRecordingChasePlayback, recordedPlaybackToken) {
         if (smbItem != null || !isRecordingChasePlayback) return@LaunchedEffect
         val programStartUnix = currentProgram.programStartUnixOrNull() ?: return@LaunchedEffect
         val watchSessionUrl = videoPlayerViewModel.getChaseJikkyoWatchSessionUrl(currentProgram)
             ?: return@LaunchedEffect
+        if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
         val processedCommentKeys = mutableSetOf<String>()
         var receivedCommentCount = 0
         val client = JikkyoClient(watchSessionUrl)
 
         try {
             client.start { jsonText ->
+                if (!recordedPlaybackFence.accepts()) return@start
                 val comment = parseChaseWsArchivedComment(jsonText, programStartUnix) ?: return@start
                 receivedCommentCount++
                 val key = comment.stableCommentKey()
@@ -600,25 +614,24 @@ fun VideoPlayerScreen(
         }
     }
 
-    val switchFailureBudget = remember(recordedSwitchToken) {
-        recordedSwitchToken?.let { RecordedSwitchFailureBudget() }
+    val switchFailureBudget = remember(recordedPlaybackToken, isRecordedSwitching) {
+        RecordedSwitchFailureBudget().takeIf { isRecordedSwitching }
     }
     val networkAvailableRef = remember { AtomicBoolean(isNetworkAvailable) }
     SideEffect { networkAvailableRef.set(isNetworkAvailable) }
-    // The token becomes null at READY without replacing the ExoPlayer. Keep
-    // connectivity ownership keyed to that player/program lifetime so its
-    // error callback and its online-edge effect always share the same gate.
+    // Connectivity ownership follows the player/program lifetime so error
+    // callbacks and the online-edge effect share one recovery gate.
     val networkRecoveryGate = remember(currentProgram.id, smbItem?.path) {
         RecordedNetworkRecoveryGate(initiallyAvailable = isNetworkAvailable)
     }
     var isWaitingForNetworkRecovery by remember(currentProgram.id, smbItem?.path) {
         mutableStateOf(false)
     }
-    var initialUrlRetryNonce by remember(recordedSwitchToken) { mutableIntStateOf(0) }
-    val currentSwitchToken by rememberUpdatedState(recordedSwitchToken)
+    var initialUrlRetryNonce by remember(recordedPlaybackToken) { mutableIntStateOf(0) }
+    val currentPlaybackFence by rememberUpdatedState(recordedPlaybackFence)
     val currentTerminalSwitchFailure by rememberUpdatedState(onRecordedSwitchTerminalFailure)
     val renewStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
-        if (smbItem != null || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
+        if (!currentPlaybackFence.accepts() || smbItem != null || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
             false
         } else {
             val rawPosition = player.currentPosition
@@ -638,7 +651,7 @@ fun VideoPlayerScreen(
                 currentProgram.id, vs.currentQuality.value, newSessionId,
                 resumePositionMs / 1000.0, isRecordingChasePlayback,
             )
-            if (newUrl.isEmpty()) {
+            if (!currentPlaybackFence.accepts() || newUrl.isEmpty()) {
                 false
             } else {
                 Log.i(TAG, "Recovered expired stream session for video=${currentProgram.id}, quality=${vs.currentQuality.value}")
@@ -670,6 +683,7 @@ fun VideoPlayerScreen(
     }
     val exoPlayer = rememberManagedExoPlayer(
         program = currentProgram,
+        recordedPlaybackFence = recordedPlaybackFence,
         vs = vs,
         isLiveStream = isLiveStream,
         scope = scope,
@@ -686,7 +700,7 @@ fun VideoPlayerScreen(
         onPlaybackEnded = {
             handlePlaybackEnded()
         },
-        dataBroadcastingCallback = dataBroadcastingStore,
+        dataBroadcastingCallback = FencedB60DataBroadcastingCallback(dataBroadcastingStore, recordedPlaybackFence),
         enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
         isNetworkAvailable = networkAvailableRef::get,
         onStreamSessionExpired = recoverExpiredStreamSession,
@@ -717,8 +731,10 @@ fun VideoPlayerScreen(
                 isWaitingForNetworkRecovery = true
                 return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
             }
-            val token = currentSwitchToken ?: return@rememberManagedExoPlayer PlayerErrorRecovery.UseDefault
-            val budget = switchFailureBudget ?: return@rememberManagedExoPlayer PlayerErrorRecovery.UseDefault
+            val token = currentPlaybackFence.tokenOrNull()
+            if (!currentPlaybackFence.accepts() || token == null) return@rememberManagedExoPlayer PlayerErrorRecovery.UseDefault
+            val budget = switchFailureBudget
+                ?: return@rememberManagedExoPlayer PlayerErrorRecovery.UseDefault
             val decision = if (error.hasHttpResponseCode(422)) budget.onHttp422() else budget.onPlaybackError()
             when (decision) {
                 RecordedSwitchFailureDecision.RenewSession -> {
@@ -762,12 +778,13 @@ fun VideoPlayerScreen(
         }
     )
 
-    LaunchedEffect(isNetworkAvailable, exoPlayer, networkRecoveryGate) {
+    LaunchedEffect(isNetworkAvailable, exoPlayer, networkRecoveryGate, recordedPlaybackToken) {
         when (val decision = networkRecoveryGate.onNetworkChanged(isNetworkAvailable)) {
             is RecordedNetworkRecoveryDecision.Retry -> when (decision.operation) {
                 RecordedNetworkRetry.ResolveInitialUrl -> initialUrlRetryNonce++
                 RecordedNetworkRetry.RepreparePlayer -> {
                     delay(500L)
+                    if (!currentPlaybackFence.accepts()) return@LaunchedEffect
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
                     isWaitingForNetworkRecovery = false
@@ -789,14 +806,10 @@ fun VideoPlayerScreen(
                             )
                         } else {
                             isWaitingForNetworkRecovery = false
-                            val token = currentSwitchToken
-                            if (token != null) {
-                                currentTerminalSwitchFailure(
-                                    token,
-                                    RecordedSwitchTerminalFailure.SessionRenewalFailed,
+                            currentPlaybackFence.tokenOrNull()?.let { token ->
+                                if (currentPlaybackFence.accepts()) currentTerminalSwitchFailure(
+                                    token, RecordedSwitchTerminalFailure.SessionRenewalFailed,
                                 )
-                            } else {
-                                onShowToast("ネットワーク復帰後の再生再開に失敗しました")
                             }
                         }
                     } else {
@@ -812,15 +825,16 @@ fun VideoPlayerScreen(
     // renewing a stream. Root only needs the first READY for this program to
     // commit a pending A -> B handoff, so report it exactly once.
     val currentOnProgramReady by rememberUpdatedState(onProgramReady)
-    var hasReportedProgramReady by remember(currentProgram.id) { mutableStateOf(false) }
-    var renderedFrameGeneration by remember(exoPlayer, currentProgram.id) { mutableIntStateOf(0) }
-    DisposableEffect(exoPlayer, currentProgram.id) {
+    var hasReportedProgramReady by remember(recordedPlaybackToken) { mutableStateOf(false) }
+    var renderedFrameGeneration by remember(exoPlayer, recordedPlaybackToken) { mutableIntStateOf(0) }
+    DisposableEffect(exoPlayer, recordedPlaybackToken) {
         fun reportReadyOnce() {
-            if (!hasReportedProgramReady) {
+            val token = currentPlaybackFence.tokenOrNull()
+            if (!hasReportedProgramReady && token != null && currentPlaybackFence.accepts()) {
                 hasReportedProgramReady = true
                 networkRecoveryGate.onReady()
                 isWaitingForNetworkRecovery = false
-                currentOnProgramReady(currentProgram.id, recordedSwitchToken)
+                currentOnProgramReady(currentProgram.id, token)
             }
         }
 
@@ -1210,7 +1224,7 @@ fun VideoPlayerScreen(
         availableQualities.joinToString(separator = "|") { it.value }
     }
 
-    LaunchedEffect(currentProgram.id, smbItem?.path) {
+    LaunchedEffect(currentProgram.id, smbItem?.path, recordedPlaybackToken) {
         isFirstLoad = true
         preparedPlaybackKey = null
         currentStreamUrlRef.set(null)
@@ -1231,6 +1245,7 @@ fun VideoPlayerScreen(
         isQualitiesLoaded,
         isRecordingChasePlayback,
         initialUrlRetryNonce,
+        recordedPlaybackToken,
     ) {
         val playbackKey = if (smbItem != null) {
             "smb:${smbItem.path}"
@@ -1288,6 +1303,7 @@ fun VideoPlayerScreen(
         vs.playbackOffsetMs = offsetPositionMs
         val offsetSec = offsetPositionMs / 1000.0
 
+        val requestToken = recordedPlaybackToken
         val url = videoPlayerViewModel.resolveStreamUrl(
             currentProgram.id,
             vs.currentQuality.value,
@@ -1296,6 +1312,7 @@ fun VideoPlayerScreen(
             isRecordingChasePlayback
         )
 
+                    if (!currentPlaybackFence.accepts()) return@LaunchedEffect
         if (url.isNotEmpty()) {
             isWaitingForNetworkRecovery = false
             currentStreamUrlRef.set(url)
@@ -1330,7 +1347,7 @@ fun VideoPlayerScreen(
                 isWaitingForNetworkRecovery = true
                 return@LaunchedEffect
             }
-            val token = currentSwitchToken
+            val token = requestToken
             val decision = switchFailureBudget?.onInitialUrlUnavailable()
             when (decision) {
                 RecordedSwitchFailureDecision.RetryInitialUrl -> {
@@ -1338,10 +1355,10 @@ fun VideoPlayerScreen(
                     // URL minting. Retry just once; ordinary enter keeps its
                     // existing non-terminal behavior because it has no budget.
                     delay(1_000L)
-                    initialUrlRetryNonce++
+                    if (currentPlaybackFence.accepts()) initialUrlRetryNonce++
                 }
                 is RecordedSwitchFailureDecision.Terminal -> {
-                    if (token != null) currentTerminalSwitchFailure(token, decision.failure)
+                    if (token != null && currentPlaybackFence.accepts()) currentTerminalSwitchFailure(token, decision.failure)
                 }
                 null -> if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
                 else -> Unit
@@ -1355,7 +1372,8 @@ fun VideoPlayerScreen(
         smbItem,
         vs.currentQuality.value,
         currentSessionId,
-        isRecordingChasePlayback
+        isRecordingChasePlayback,
+        recordedPlaybackToken,
     ) {
         if (
             smbItem != null ||
@@ -1396,6 +1414,7 @@ fun VideoPlayerScreen(
                 currentPos / 1000.0,
                 isRecordingChasePlayback
             )
+            if (!currentPlaybackFence.accepts()) return@LaunchedEffect
             if (newUrl.isNotEmpty()) {
                 Log.i(
                     TAG,
@@ -1972,7 +1991,8 @@ fun VideoPlayerScreen(
                     ArchivedCommentOverlay(
                         Modifier.fillMaxSize(), allComments, { getCurrentPositionMs() },
                         vs.isPlayerPlaying, vs.isCommentEnabled, commentSpeed,
-                        commentFontSizeScale, commentOpacity, commentMaxLines, isEmulator
+                        commentFontSizeScale, commentOpacity, commentMaxLines, isEmulator,
+                        recordedPlaybackFence = recordedPlaybackFence,
                     )
                 }
             }
@@ -2202,6 +2222,7 @@ fun VideoPlayerScreen(
                             val currentPos = getCurrentPositionMs()
                             if (isEdcbDirect) {
                                 scope.launch {
+                                    val actionFence = recordedPlaybackFence
                                     isBuffering = true;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
                                         currentProgram.id,
@@ -2209,7 +2230,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         0.0,
                                         isRecordingChasePlayback
-                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
+                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
@@ -2217,6 +2238,7 @@ fun VideoPlayerScreen(
                                 vs.playbackOffsetMs =
                                     currentPos - effectiveInitialPositionMs
                                 scope.launch {
+                                    val actionFence = recordedPlaybackFence
                                     isBuffering = true;
                                     val offsetSec = currentPos / 1000.0;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
@@ -2225,7 +2247,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
+                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
                                     if (
                                         it.isRawMmts ||
                                         it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
@@ -2331,6 +2353,7 @@ fun VideoPlayerScreen(
                             val currentPos = getCurrentPositionMs()
                             if (isEdcbDirect) {
                                 scope.launch {
+                                    val actionFence = recordedPlaybackFence
                                     isBuffering = true;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
                                         currentProgram.id,
@@ -2338,7 +2361,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         0.0,
                                         isRecordingChasePlayback
-                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
+                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare(); player.seekTo(
                                     currentPos
                                 ); player.play()
                                 }
@@ -2346,6 +2369,7 @@ fun VideoPlayerScreen(
                                 vs.playbackOffsetMs =
                                     currentPos - effectiveInitialPositionMs
                                 scope.launch {
+                                    val actionFence = recordedPlaybackFence
                                     isBuffering = true;
                                     val offsetSec = currentPos / 1000.0;
                                     val newUrl = videoPlayerViewModel.resolveStreamUrl(
@@ -2354,7 +2378,7 @@ fun VideoPlayerScreen(
                                         currentSessionId,
                                         offsetSec,
                                         isRecordingChasePlayback
-                                    ); currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
+                                    ); if (!actionFence.accepts()) return@launch; currentStreamUrlRef.set(newUrl); player.setMediaItem(buildVideoMediaItem(newUrl)); player.prepare()
                                     if (
                                         it.isRawMmts ||
                                         it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
@@ -2588,93 +2612,4 @@ private fun getCommentSize(command: String): String? = when (command) {
     "medium" -> "medium"
     "small" -> "small"
     else -> null
-}
-
-@Composable
-private fun NextEpisodeCountdownOverlay(
-    program: RecordedProgram,
-    progress: Float,
-    onPlayNow: () -> Unit,
-    onCancel: () -> Unit
-) {
-    val playNowRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        delay(50)
-        playNowRequester.safeRequestFocus(TAG)
-    }
-
-    Box(
-        modifier = Modifier
-            .padding(end = 48.dp, bottom = 64.dp)
-            .width(420.dp)
-            .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(8.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
-            .padding(18.dp)
-            .onPreviewKeyEvent { event ->
-                if (
-                    event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Back || event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE)
-                ) {
-                    onCancel()
-                    true
-                } else {
-                    false
-                }
-            }
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                text = "次のエピソードを再生します",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = program.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.86f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp),
-                color = Color.White,
-                trackColor = Color.White.copy(alpha = 0.24f)
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onPlayNow,
-                    modifier = Modifier.focusRequester(playNowRequester),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
-                    )
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("今すぐ")
-                }
-                Button(
-                    onClick = onCancel,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White.copy(alpha = 0.14f),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("キャンセル")
-                }
-            }
-        }
-    }
 }

@@ -64,27 +64,41 @@ fun MainRootScreen(
         remoteControlViewModel.client.commands.collect { command ->
             when (command) {
                 is HonomiRemoteCommand.OpenLive -> {
-                    val findChannel = {
-                        channelViewModel.groupedChannels.value.values.flatten()
-                            .firstOrNull { it.displayChannelId == command.displayChannelId }
-                    }
-                    val channel = findChannel() ?: run {
-                        channelViewModel.fetchChannels()
-                        withTimeoutOrNull(10_000) {
-                            while (findChannel() == null) delay(100)
-                            findChannel()
+                    val intent = state.beginPlaybackOpenIntent()
+                    scope.launch {
+                        val findChannel = {
+                            channelViewModel.groupedChannels.value.values.flatten()
+                                .firstOrNull { it.displayChannelId == command.displayChannelId }
                         }
-                    }
-                    channel?.let {
-                        onRemotePlaybackOpened()
-                        state.enterLive(it)
-                        homeViewModel.saveLastChannel(it)
+                        val channel = findChannel() ?: run {
+                            channelViewModel.fetchChannels()
+                            withTimeoutOrNull(10_000) {
+                                while (findChannel() == null) delay(100)
+                                findChannel()
+                            }
+                        }
+                        if (channel != null && state.completePlaybackOpenIntent(intent)) {
+                            onRemotePlaybackOpened()
+                            state.enterLive(channel)
+                            homeViewModel.saveLastChannel(channel)
+                        } else if (channel == null && state.failPlaybackOpenIntent(intent)) {
+                            state.toastMessage = "リモートで指定されたチャンネルを開けませんでした"
+                        }
                     }
                 }
                 is HonomiRemoteCommand.OpenRecording -> {
-                    recordViewModel.getRemoteProgram(command.recordedProgramId)?.let { program ->
-                        onRemotePlaybackOpened()
-                        state.enterRecorded(program, (command.positionSeconds * 1_000).toLong())
+                    val intent = state.beginPlaybackOpenIntent()
+                    scope.launch {
+                        val program = recordViewModel.getRemoteProgram(command.recordedProgramId)
+                        if (program != null && state.completePlaybackOpenIntent(intent)) {
+                            onRemotePlaybackOpened()
+                            val positionMs = (command.positionSeconds * 1_000).toLong()
+                            if (!state.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {
+                                state.enterRecorded(program, positionMs)
+                            }
+                        } else if (program == null && state.failPlaybackOpenIntent(intent)) {
+                            state.toastMessage = "リモートで指定された録画を開けませんでした"
+                        }
                     }
                 }
                 HonomiRemoteCommand.Play,
@@ -617,6 +631,7 @@ fun MainRootScreen(
                 state.recordedPlayback != null -> "Recorded"
                 else -> "Idle"
             },
+            isPlaybackSwitching = state.playbackPhase is PlaybackPhase.Switching,
             remoteControlClient = remoteControlViewModel.client,
         ) {
             val colors = KomorebiTheme.colors

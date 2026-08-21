@@ -38,7 +38,7 @@ class MainRootState {
     val renderPlaybackTarget: PlaybackTarget get() = playbackState.renderPlaybackTarget
     val renderInitialPlaybackPositionMs: Long get() = playbackState.renderInitialPlaybackPositionMs
     val playbackPhase: PlaybackPhase get() = playbackState.playbackPhase
-    val recordedSwitchToken: RecordedSwitchToken? get() = playbackState.recordedSwitchToken
+    val recordedPlaybackToken: RecordedPlaybackToken get() = playbackState.recordedPlaybackToken
     val playbackSession: PlaybackSession? get() = playbackState.playbackSession
     val playbackSessionEpoch: Long? get() = playbackState.playbackSessionEpoch
     var initialPlaybackPositionMs: Long
@@ -168,9 +168,19 @@ class MainRootState {
         reason: PlaybackSwitchReason,
     ): Boolean = playbackState.beginRecordedSwitch(program, initialPositionMs, reason)
 
-    fun commitRecordedSwitch(token: RecordedSwitchToken): Boolean = playbackState.commitRecordedSwitch(token)
+    fun commitRecordedSwitch(token: RecordedPlaybackToken): Boolean = playbackState.commitRecordedSwitch(token)
 
-    fun failRecordedSwitch(token: RecordedSwitchToken): Boolean = playbackState.failRecordedSwitch(token)
+    fun failRecordedSwitch(token: RecordedPlaybackToken): Boolean = playbackState.failRecordedSwitch(token)
+
+    fun isCurrentRecordedPlayback(token: RecordedPlaybackToken): Boolean = playbackState.isCurrentRecordedPlayback(token)
+
+    fun beginPlaybackOpenIntent(): PlaybackOpenIntentToken = playbackState.beginPlaybackOpenIntent()
+
+    fun completePlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = playbackState.completePlaybackOpenIntent(token)
+
+    fun failPlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = playbackState.failPlaybackOpenIntent(token)
+
+    fun isCurrentPlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = playbackState.isCurrentPlaybackOpenIntent(token)
 
     fun enterMiniPlayer(): Boolean {
         return playbackState.enterMiniPlayer()

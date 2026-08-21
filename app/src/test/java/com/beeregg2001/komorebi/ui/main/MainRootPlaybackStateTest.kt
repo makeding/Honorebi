@@ -81,11 +81,11 @@ class MainRootPlaybackStateTest {
                 to = PlaybackTarget.Recorded(next),
                 reason = PlaybackSwitchReason.NextEpisode,
                 initialPositionMs = 2_000L,
-                token = requireNotNull(state.recordedSwitchToken),
+                token = state.recordedPlaybackToken,
             ),
             state.playbackPhase,
         )
-        assertTrue(state.commitRecordedSwitch(requireNotNull(state.recordedSwitchToken)))
+        assertTrue(state.commitRecordedSwitch(state.recordedPlaybackToken))
         assertEquals(PlaybackTarget.Recorded(next), state.playbackTarget)
         assertEquals(PlaybackPhase.Playing(PlaybackTarget.Recorded(next)), state.playbackPhase)
         assertSame(session, state.playbackSession)
@@ -100,7 +100,7 @@ class MainRootPlaybackStateTest {
         val session = requireNotNull(state.playbackSession)
 
         assertTrue(state.beginRecordedSwitch(recording(id = 43), initialPositionMs = 2_000L, reason = PlaybackSwitchReason.QuickSelect))
-        assertTrue(state.failRecordedSwitch(requireNotNull(state.recordedSwitchToken)))
+        assertTrue(state.failRecordedSwitch(state.recordedPlaybackToken))
 
         assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
         assertEquals(PlaybackTarget.Recorded(first), state.renderPlaybackTarget)
@@ -131,7 +131,7 @@ class MainRootPlaybackStateTest {
         val first = recording(id = 42)
         state.enterRecorded(first)
         assertTrue(state.beginRecordedSwitch(recording(id = 43), reason = PlaybackSwitchReason.NextEpisode))
-        val token = requireNotNull(state.recordedSwitchToken)
+        val token = state.recordedPlaybackToken
         val staleAttempt = token.copy(attemptId = token.attemptId - 1)
         val staleEpoch = token.copy(sessionEpoch = token.sessionEpoch + 1)
 
@@ -152,6 +152,58 @@ class MainRootPlaybackStateTest {
         assertEquals(PlaybackTarget.None, state.playbackTarget)
         assertEquals(PlaybackPhase.Idle, state.playbackPhase)
         assertNull(state.playbackSession)
+    }
+
+    @Test
+    fun recordedSwitch_isLatestWinsAndRejectsSupersededCallbacks() {
+        val state = MainRootPlaybackState()
+        val first = recording(id = 42)
+        state.enterRecorded(first)
+        val firstToken = state.recordedPlaybackToken
+
+        assertTrue(state.beginRecordedSwitch(recording(id = 43), reason = PlaybackSwitchReason.NextEpisode))
+        val secondToken = state.recordedPlaybackToken
+        assertTrue(state.beginRecordedSwitch(recording(id = 44), reason = PlaybackSwitchReason.QuickSelect))
+        val thirdToken = state.recordedPlaybackToken
+
+        assertFalse(state.isCurrentRecordedPlayback(firstToken))
+        assertFalse(state.commitRecordedSwitch(secondToken))
+        assertFalse(state.failRecordedSwitch(secondToken))
+        assertTrue(state.commitRecordedSwitch(thirdToken))
+        assertEquals(44, state.recordedPlayback?.program?.id)
+    }
+
+    @Test
+    fun failedRecordedSwitch_issuesANewTokenForTheRollbackProgram() {
+        val state = MainRootPlaybackState()
+        val first = recording(id = 42)
+        state.enterRecorded(first)
+        val originalToken = state.recordedPlaybackToken
+        assertTrue(state.beginRecordedSwitch(recording(id = 43), reason = PlaybackSwitchReason.NextEpisode))
+        val failedToken = state.recordedPlaybackToken
+
+        assertTrue(state.failRecordedSwitch(failedToken))
+
+        assertEquals(first.id, state.recordedPlaybackToken.programId)
+        assertFalse(state.isCurrentRecordedPlayback(originalToken))
+        assertFalse(state.isCurrentRecordedPlayback(failedToken))
+    }
+
+    @Test
+    fun playbackOpenIntent_crossTypeRequestsAreLatestWinsAndLocalPlaybackInvalidatesIt() {
+        val state = MainRootPlaybackState()
+        val recordingIntent = state.beginPlaybackOpenIntent()
+        val liveIntent = state.beginPlaybackOpenIntent()
+
+        assertFalse(state.completePlaybackOpenIntent(recordingIntent))
+        assertTrue(state.completePlaybackOpenIntent(liveIntent))
+        val liveThenRecording = state.beginPlaybackOpenIntent()
+        state.beginPlaybackOpenIntent()
+        assertFalse(state.completePlaybackOpenIntent(liveThenRecording))
+
+        val pending = state.beginPlaybackOpenIntent()
+        state.enterLive(channel())
+        assertFalse(state.completePlaybackOpenIntent(pending))
     }
 
     @Test

@@ -29,7 +29,8 @@ fun ArchivedCommentOverlay(
     commentFontSizeScale: Float,
     commentOpacity: Float,
     commentMaxLines: Int,
-    useSoftwareRendering: Boolean = false
+    useSoftwareRendering: Boolean = false,
+    recordedPlaybackFence: RecordedPlaybackFence,
 ) {
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
 
@@ -38,7 +39,8 @@ fun ArchivedCommentOverlay(
     val density = remember(context) { context.resources.displayMetrics.density }
     val colorCache = remember { HashMap<String, Int>() }
 
-    LaunchedEffect(isPlaying, isCommentEnabled) {
+    LaunchedEffect(isPlaying, isCommentEnabled, recordedPlaybackFence.identity) {
+        if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
         danmakuViewRef.value?.let { view ->
             if (view.isPrepared) {
                 if (isPlaying && isCommentEnabled) {
@@ -54,14 +56,14 @@ fun ArchivedCommentOverlay(
     val latestIsCommentEnabled by rememberUpdatedState(isCommentEnabled)
 
     // コメント同期・描画予約ロジック
-    LaunchedEffect(Unit) {
+    LaunchedEffect(recordedPlaybackFence.identity) {
 
         var currentIndex = 0
         var lastPlayerSec = withContext(Dispatchers.Main) { currentPositionProvider() / 1000.0 }
         val lookAheadSec = 2.0 // 2秒先まで先読みして描画予約する
 
         while (isActive) {
-            if (latestIsPlaying && latestIsCommentEnabled) {
+            if (latestIsPlaying && latestIsCommentEnabled && recordedPlaybackFence.accepts()) {
                 // ★ 修正1: ExoPlayerへのアクセス(currentPositionProvider)は必ずメインスレッドで行う
                 val currentSec =
                     withContext(Dispatchers.Main) { currentPositionProvider() / 1000.0 }
@@ -71,7 +73,9 @@ fun ArchivedCommentOverlay(
                 withContext(Dispatchers.Default) {
                     // シーク検知: 現在位置と最後に処理した時間が1.5秒以上乖離している場合
                     if (abs(currentSec - lastPlayerSec) > 1.5) {
-                        danmakuViewRef.value?.removeAllDanmakus(true)
+                        if (recordedPlaybackFence.accepts()) {
+                            danmakuViewRef.value?.removeAllDanmakus(true)
+                        }
                         currentIndex = commentsSnapshot.findFirstIndexAtOrAfter(currentSec)
                         Log.i(
                             TAG,
@@ -115,7 +119,12 @@ fun ArchivedCommentOverlay(
                             }
 
                             // コメントの追加(addDanmaku)は内部的にスレッドセーフなのでバックグラウンドから呼んでもOK
-                            danmakusToAdd.forEach { view.addDanmaku(it) }
+                            danmakusToAdd.forEach { danmaku ->
+                                if (
+                                    recordedPlaybackFence.accepts() &&
+                                    danmakuViewRef.value === view
+                                ) view.addDanmaku(danmaku)
+                            }
                             if (eligibleCommentCount > 0) {
                                 Log.i(
                                     TAG,
@@ -141,8 +150,10 @@ fun ArchivedCommentOverlay(
         opacity = commentOpacity,
         maxLines = commentMaxLines,
         onViewCreated = { view ->
-            danmakuViewRef.value = view
-            if (!isPlaying || !isCommentEnabled) view.pause()
+            if (recordedPlaybackFence.accepts()) {
+                danmakuViewRef.value = view
+                if (!isPlaying || !isCommentEnabled) view.pause()
+            }
         }
     )
 }

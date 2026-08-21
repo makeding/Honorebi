@@ -124,7 +124,7 @@ class MainRootStateTest {
         assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
         assertEquals(PlaybackTarget.Recorded(next), state.renderPlaybackTarget)
         assertEquals(PlaybackPhase.Switching::class, state.playbackPhase::class)
-        assertTrue(state.commitRecordedSwitch(requireNotNull(state.recordedSwitchToken)))
+        assertTrue(state.commitRecordedSwitch(state.recordedPlaybackToken))
 
         assertEquals(PlaybackTarget.Recorded(next), state.playbackTarget)
         assertEquals(session, state.playbackSession)

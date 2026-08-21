@@ -34,7 +34,7 @@ sealed interface PlaybackPhase {
         val to: PlaybackTarget.Recorded,
         val reason: PlaybackSwitchReason,
         val initialPositionMs: Long,
-        val token: RecordedSwitchToken,
+        val token: RecordedPlaybackToken,
     ) : PlaybackPhase
 }
 
@@ -43,17 +43,21 @@ enum class PlaybackSwitchReason {
     NextEpisode,
     PreviousEpisode,
     QuickSelect,
+    RemoteOpen,
 }
 
 /** Stable identity of a root-owned playback session (and its Cast lease). */
 data class PlaybackSession(val epoch: Long)
 
 /** Identifies one concrete A -> B attempt inside a root playback session. */
-data class RecordedSwitchToken(
+data class RecordedPlaybackToken(
     val sessionEpoch: Long,
     val attemptId: Long,
-    val toProgramId: Int,
+    val programId: Int,
 )
+
+/** Identifies a latest-wins remote playback open request. */
+data class PlaybackOpenIntentToken(val id: Long)
 
 /**
  * State and transitions that belong to playback, rather than to the launcher.
@@ -73,8 +77,11 @@ class MainRootPlaybackState {
     var initialPlaybackPositionMs by mutableLongStateOf(0L)
 
     private var nextPlaybackSessionEpoch = 0L
-    private var nextRecordedSwitchAttemptId = 0L
+    private var nextRecordedPlaybackAttemptId = 0L
     private var switchRollbackPositionMs = 0L
+    @Volatile private var activeRecordedPlaybackToken: RecordedPlaybackToken? = null
+    @Volatile private var currentPlaybackOpenIntent: PlaybackOpenIntentToken? = null
+    private var nextPlaybackOpenIntentId = 0L
 
     // Player overlays
     var isPlayerMiniListOpen by mutableStateOf(false)
@@ -110,8 +117,8 @@ class MainRootPlaybackState {
     val renderInitialPlaybackPositionMs: Long
         get() = (playbackPhase as? PlaybackPhase.Switching)?.initialPositionMs
             ?: initialPlaybackPositionMs
-    val recordedSwitchToken: RecordedSwitchToken?
-        get() = (playbackPhase as? PlaybackPhase.Switching)?.token
+    val recordedPlaybackToken: RecordedPlaybackToken
+        get() = requireNotNull(activeRecordedPlaybackToken) { "Recorded playback must have a token" }
     val livePlayback: PlaybackTarget.Live? get() = playbackTarget as? PlaybackTarget.Live
     val recordedPlayback: PlaybackTarget.Recorded? get() = playbackTarget as? PlaybackTarget.Recorded
     val smbPlayback: PlaybackTarget.Smb? get() = playbackTarget as? PlaybackTarget.Smb
@@ -120,6 +127,7 @@ class MainRootPlaybackState {
         channel: Channel,
         exitMiniPlayer: Boolean = true,
     ) {
+        invalidatePlaybackOpenIntents()
         startPlayback(PlaybackTarget.Live(channel), initialPlaybackPositionMs)
         lastSelectedChannelId = channel.id
         lastSelectedProgramId = null
@@ -128,6 +136,7 @@ class MainRootPlaybackState {
     }
 
     fun enterRecorded(program: RecordedProgram, initialPositionMs: Long = 0L) {
+        invalidatePlaybackOpenIntents()
         startPlayback(PlaybackTarget.Recorded(program), initialPositionMs)
         lastSelectedProgramId = program.id.toString()
         lastSelectedChannelId = null
@@ -138,6 +147,7 @@ class MainRootPlaybackState {
     }
 
     fun enterSmb(item: SmbItem, initialPositionMs: Long = 0L) {
+        invalidatePlaybackOpenIntents()
         startPlayback(PlaybackTarget.Smb(item), initialPositionMs)
         lastPlayedSmbPath = item.path
         showPlayerControls = true
@@ -165,16 +175,15 @@ class MainRootPlaybackState {
         initialPositionMs: Long = 0L,
         reason: PlaybackSwitchReason,
     ): Boolean {
+        invalidatePlaybackOpenIntents()
         val from = playbackTarget as? PlaybackTarget.Recorded ?: return false
-        if (playbackPhase !is PlaybackPhase.Playing || playbackSession == null) return false
-        if (from.program.id == program.id) return false
+        if (playbackPhase !is PlaybackPhase.Playing && playbackPhase !is PlaybackPhase.Switching) return false
+        if (playbackSession == null) return false
+        if (from.program.id == program.id && reason != PlaybackSwitchReason.RemoteOpen) return false
 
-        switchRollbackPositionMs = this.initialPlaybackPositionMs
-        val token = RecordedSwitchToken(
-            sessionEpoch = requireNotNull(playbackSession).epoch,
-            attemptId = ++nextRecordedSwitchAttemptId,
-            toProgramId = program.id,
-        )
+        if (playbackPhase !is PlaybackPhase.Switching) switchRollbackPositionMs = this.initialPlaybackPositionMs
+        val token = newRecordedPlaybackToken(program.id)
+        activeRecordedPlaybackToken = token
         playbackPhase = PlaybackPhase.Switching(
             from = from,
             to = PlaybackTarget.Recorded(program),
@@ -186,7 +195,7 @@ class MainRootPlaybackState {
     }
 
     /** Applies a successful recorded-item handoff without replacing the playback session. */
-    fun commitRecordedSwitch(token: RecordedSwitchToken): Boolean {
+    fun commitRecordedSwitch(token: RecordedPlaybackToken): Boolean {
         val transition = playbackPhase as? PlaybackPhase.Switching ?: return false
         if (transition.token != token) return false
         playbackTarget = transition.to
@@ -201,9 +210,10 @@ class MainRootPlaybackState {
     }
 
     /** Restores the previously playing recording when its replacement cannot be prepared. */
-    fun failRecordedSwitch(token: RecordedSwitchToken): Boolean {
+    fun failRecordedSwitch(token: RecordedPlaybackToken): Boolean {
         val transition = playbackPhase as? PlaybackPhase.Switching ?: return false
         if (transition.token != token) return false
+        activeRecordedPlaybackToken = newRecordedPlaybackToken(transition.from.program.id)
         playbackTarget = transition.from
         initialPlaybackPositionMs = switchRollbackPositionMs
         playbackPhase = PlaybackPhase.Playing(transition.from)
@@ -211,6 +221,7 @@ class MainRootPlaybackState {
     }
 
     fun leavePlayback(returningFromPlayer: Boolean = true) {
+        invalidatePlaybackOpenIntents()
         endPlaybackSession()
         isMiniPlayerMode = false
         showPlayerControls = true
@@ -218,6 +229,7 @@ class MainRootPlaybackState {
     }
 
     fun resetPlayback() {
+        invalidatePlaybackOpenIntents()
         endPlaybackSession()
         initialPlaybackPositionMs = 0L
         isMiniPlayerMode = false
@@ -232,16 +244,51 @@ class MainRootPlaybackState {
         isReturningFromPlayer = false
     }
 
+    /** The token fence is always published before UI state exposes its target. */
     private fun startPlayback(target: PlaybackTarget, initialPositionMs: Long = 0L) {
-        playbackTarget = target
-        this.initialPlaybackPositionMs = initialPositionMs
         if (playbackSession == null) {
             playbackSession = PlaybackSession(epoch = ++nextPlaybackSessionEpoch)
         }
+        activeRecordedPlaybackToken = (target as? PlaybackTarget.Recorded)
+            ?.let { newRecordedPlaybackToken(it.program.id) }
+        playbackTarget = target
+        this.initialPlaybackPositionMs = initialPositionMs
         playbackPhase = PlaybackPhase.Playing(target)
     }
 
+    @Synchronized
+    fun beginPlaybackOpenIntent(): PlaybackOpenIntentToken {
+        return PlaybackOpenIntentToken(++nextPlaybackOpenIntentId).also { currentPlaybackOpenIntent = it }
+    }
+
+    @Synchronized
+    fun completePlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean {
+        if (currentPlaybackOpenIntent != token) return false
+        currentPlaybackOpenIntent = null
+        return true
+    }
+
+    fun failPlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = completePlaybackOpenIntent(token)
+
+    fun isCurrentPlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = currentPlaybackOpenIntent == token
+
+    fun isCurrentRecordedPlayback(token: RecordedPlaybackToken): Boolean {
+        return activeRecordedPlaybackToken == token
+    }
+
+    @Synchronized
+    private fun invalidatePlaybackOpenIntents() {
+        currentPlaybackOpenIntent = null
+    }
+
+    private fun newRecordedPlaybackToken(programId: Int): RecordedPlaybackToken = RecordedPlaybackToken(
+        sessionEpoch = requireNotNull(playbackSession).epoch,
+        attemptId = ++nextRecordedPlaybackAttemptId,
+        programId = programId,
+    )
+
     private fun endPlaybackSession() {
+        activeRecordedPlaybackToken = null
         playbackTarget = PlaybackTarget.None
         playbackPhase = PlaybackPhase.Idle
         playbackSession = null
