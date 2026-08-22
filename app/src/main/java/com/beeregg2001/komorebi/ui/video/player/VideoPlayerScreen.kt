@@ -1496,7 +1496,9 @@ fun VideoPlayerScreen(
         isChapterListOpen,
         isProgramInfoOpen,
         isModernSettingsOpen,
-        showControls
+        showControls,
+        recordedPlaybackFence.identity,
+        vs.lCropMode
     ) {
         if (isPiPMode) return@LaunchedEffect
         delay(150)
@@ -1507,7 +1509,7 @@ fun VideoPlayerScreen(
             if (!wasControlsVisible) {
                 playerControlsFocusRequester.safeRequestFocus(TAG)
             }
-        } else if (!showControls && vs.lCropMode == LCropMode.HIDDEN) {
+        } else if (!isSubOverlayOpen && vs.lCropMode == LCropMode.HIDDEN) {
             mainFocusRequester.safeRequestFocus(TAG)
         }
 

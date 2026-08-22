@@ -548,14 +548,14 @@ class TlvExtractor(
                     if (discontinuity) reader.seek()
                     reader.packetStarted(timeUs, flags)
                     reader.consume(payload)
-                    reader.packetFinished(false)
+                    reader.packetFinished()
             }
 
             CODEC_AAC_LATM -> audioReaders[trackId]?.let { reader ->
                 if (discontinuity) reader.seek()
                 reader.packetStarted(timeUs, flags)
                 reader.consume(payload)
-                reader.packetFinished(false)
+                reader.packetFinished()
             }
 
             CODEC_TTML -> {

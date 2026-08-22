@@ -488,11 +488,13 @@ fun rememberManagedExoPlayer(
     val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
     val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
     LaunchedEffect(captionDecoder, b62SubtitleSamples, recordedPlaybackFence.identity) {
+        captionDecoder.reset(subtitleLanguageId)
+        superimposeDecoder.reset()
+        currentOnSubtitleLanguagesChanged.value(emptyList())
         for (fencedSample in b62SubtitleSamples) {
             if (!recordedPlaybackFence.accepts(fencedSample.token)) continue
             val sample = fencedSample.sample
             val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
-            if (isCaption && !vs.isSubtitleEnabled) continue
             val decoder = when (sample.type) {
                 NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
                 NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
@@ -521,20 +523,9 @@ fun rememberManagedExoPlayer(
             }
         }
     }
-    LaunchedEffect(recordedPlaybackFence.identity) {
-        while (b62SubtitleSamples.tryReceive().isSuccess) Unit
-        captionDecoder.reset(subtitleLanguageId)
-        superimposeDecoder.reset()
-        onSubtitleLanguagesChanged(emptyList())
-    }
     LaunchedEffect(subtitleLanguageId, recordedPlaybackFence.identity) {
         if (recordedPlaybackFence.accepts()) {
             captionDecoder.switchLanguage(subtitleLanguageId)
-        }
-    }
-    LaunchedEffect(vs.isSubtitleEnabled) {
-        if (!vs.isSubtitleEnabled) {
-            captionDecoder.flush()
         }
     }
     DisposableEffect(Unit) {
