@@ -76,20 +76,39 @@ monitor_pid="$!"
 git clone --filter=blob:none --no-checkout --sparse https://github.com/androidx/media.git "$source_dir"
 git -C "$source_dir" fetch --depth 1 origin "$MEDIA3_UPSTREAM_COMMIT"
 git -C "$source_dir" sparse-checkout set \
+  build.gradle.kts \
+  build-logic \
+  build-logic-settings \
   buildSrc \
   gradle \
+  gradle.properties \
+  settings.gradle.kts \
   libraries/common \
   libraries/container \
   libraries/database \
   libraries/datasource \
   libraries/decoder \
   libraries/effect \
+  libraries/effect_ndk \
   libraries/extractor \
   libraries/exoplayer \
+  libraries/exoplayer_dash \
   libraries/exoplayer_hls \
   libraries/session \
-  libraries/ui
+  libraries/ui \
+  libraries/inspector \
+  libraries/inspector_frame \
+  libraries/transformer \
+  libraries/muxer \
+  libraries/test_data \
+  libraries/test_utils \
+  libraries/test_utils_robolectric
 git -C "$source_dir" checkout --detach "$MEDIA3_UPSTREAM_COMMIT"
+
+# Media3 1.11 registers every external module from build logic. Keep this
+# disposable publisher limited to the modules Komorebi actually consumes.
+media3_modules_file="$source_dir/build-logic-settings/src/main/kotlin/androidx/media3/buildlogic/Media3Modules.kt"
+perl -0pi -e 's/\n    \)\n\}/\n    ).filterKeys { it in setOf("lib-common", "lib-container", "lib-database", "lib-datasource", "lib-decoder", "lib-effect", "lib-effect-ndk", "lib-extractor", "lib-exoplayer", "lib-exoplayer-dash", "lib-exoplayer-hls", "lib-session", "lib-ui", "lib-inspector", "lib-inspector-frame", "lib-transformer", "lib-muxer", "test-data", "test-utils", "test-utils-robolectric") }\n}/' "$media3_modules_file"
 
 # The sources and API docs are already in the checkout. The smaller Gradle binary
 # distribution keeps this disposable build below its enforced disk budget.
@@ -109,16 +128,16 @@ while IFS= read -r patch_name; do
   git -C "$source_dir" apply "$patch_path"
 done < "$media3_dir/series"
 
-upstream_version_line="    releaseVersion = '$MEDIA3_UPSTREAM_VERSION'"
-local_version_line="    releaseVersion = '$MEDIA3_LOCAL_VERSION'"
-if ! grep -Fqx "$upstream_version_line" "$source_dir/constants.gradle"; then
-  echo "Unable to locate the upstream releaseVersion in constants.gradle" >&2
+upstream_version_line="releaseVersion = \"$MEDIA3_UPSTREAM_VERSION\""
+local_version_line="releaseVersion = \"$MEDIA3_LOCAL_VERSION\""
+if ! grep -Fqx "$upstream_version_line" "$source_dir/gradle/libs.versions.toml"; then
+  echo "Unable to locate the upstream releaseVersion in gradle/libs.versions.toml" >&2
   exit 1
 fi
 sed "s/^${upstream_version_line}$/${local_version_line}/" \
-  "$source_dir/constants.gradle" > "$work_root/constants.gradle"
-mv "$work_root/constants.gradle" "$source_dir/constants.gradle"
-grep -Fqx "$local_version_line" "$source_dir/constants.gradle"
+  "$source_dir/gradle/libs.versions.toml" > "$work_root/libs.versions.toml"
+mv "$work_root/libs.versions.toml" "$source_dir/gradle/libs.versions.toml"
+grep -Fqx "$local_version_line" "$source_dir/gradle/libs.versions.toml"
 
 if $check_only; then
   echo "Media3 $MEDIA3_UPSTREAM_VERSION patch stack applies cleanly."
