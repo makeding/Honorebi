@@ -9,7 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.*
-import androidx.lifecycle.Lifecycle
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.components.ExitDialog
@@ -61,7 +60,7 @@ class MainActivity : ComponentActivity() {
                         homeViewModel = homeViewModel,
                         recordViewModel = recordViewModel,
                         homeIntentVersion = homeIntentVersion,
-                        onRemotePlaybackOpened = ::bringTaskToForegroundIfBackground,
+                        onRemotePlaybackOpened = ::showRemotePlayback,
                         onExitApp = { showExitDialog = true }
                     )
 
@@ -76,8 +75,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun bringTaskToForegroundIfBackground() {
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+    private fun showRemotePlayback() {
         getSystemService(ActivityManager::class.java).moveTaskToFront(taskId, 0)
     }
 
