@@ -222,13 +222,15 @@ class LivePlayerViewModel @Inject constructor(
     val mainBackendType: StateFlow<String> = _mainBackendType.asStateFlow()
 
     private var isSubtitleEnabled = false
-    private val mainCaptionDecoder = NativeCaptionDecoder()
+    private val mainCaptionDecoder = NativeCaptionDecoder(context)
     private val mainSuperimposeDecoder = NativeCaptionDecoder(
-        captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE
+        captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE,
+        context = context
     )
-    private val dualCaptionDecoder = NativeCaptionDecoder()
+    private val dualCaptionDecoder = NativeCaptionDecoder(context)
     private val dualSuperimposeDecoder = NativeCaptionDecoder(
-        captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE
+        captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE,
+        context = context
     )
     private val mainB62SubtitleSamples = CoroutineChannel<SessionB62SubtitleSample>(
         capacity = 4,

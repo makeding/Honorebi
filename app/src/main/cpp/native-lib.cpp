@@ -1160,9 +1160,16 @@ JNIEXPORT jlong JNICALL
 Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(
     JNIEnv *env,
     jobject thiz,
-    jint captionType
+    jint captionType,
+    jstring fontPath
 ) {
-    if (captionType != 0 && captionType != 1) return 0;
+    if ((captionType != 0 && captionType != 1) || !fontPath) return 0;
+    const char* fontPathChars = env->GetStringUTFChars(fontPath, nullptr);
+    if (!fontPathChars) return 0;
+    const std::string captionFontPath(fontPathChars);
+    env->ReleaseStringUTFChars(fontPath, fontPathChars);
+    if (captionFontPath.empty()) return 0;
+
     const auto nativeCaptionType = captionType == 0
         ? ARIBCC_CAPTIONTYPE_CAPTION
         : ARIBCC_CAPTIONTYPE_SUPERIMPOSE;
@@ -1217,6 +1224,8 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(
     aribcc_renderer_set_force_stroke_text(ctx->renderer, true);
     aribcc_renderer_set_replace_drcs(ctx->renderer, true);
     aribcc_renderer_set_merge_region_images(ctx->renderer, false);
+    const char* captionFontFamilies[] = {captionFontPath.c_str(), "sans-serif"};
+    aribcc_renderer_set_default_font_family(ctx->renderer, captionFontFamilies, 2, true);
 
     try {
         auto* cppContext = reinterpret_cast<aribcaption::Context*>(ctx->context);
@@ -1245,6 +1254,7 @@ Java_com_beeregg2001_komorebi_NativeLib_openCaptionDecoder(
     ctx->b62Renderer->SetForceStrokeText(true);
     ctx->b62Renderer->SetReplaceDRCS(true);
     ctx->b62Renderer->SetMergeRegionImages(true);
+    ctx->b62Renderer->SetDefaultFontFamily({captionFontPath, "sans-serif"}, true);
     return reinterpret_cast<jlong>(ctx);
 }
 

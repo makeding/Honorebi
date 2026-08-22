@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.EpgProgram
-import com.beeregg2001.komorebi.ui.theme.NotoSansJP
+import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.reserve.EpgReserveDialog
@@ -180,7 +180,7 @@ fun ProgramDetailScreen(
                         ) {
                             Text(
                                 "予約設定変更",
-                                fontFamily = NotoSansJP,
+                                fontFamily = SystemFontFamily,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -195,7 +195,7 @@ fun ProgramDetailScreen(
                         ) {
                             Text(
                                 "予約を削除",
-                                fontFamily = NotoSansJP,
+                                fontFamily = SystemFontFamily,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -213,7 +213,7 @@ fun ProgramDetailScreen(
                             ) {
                                 Text(
                                     "視聴する",
-                                    fontFamily = NotoSansJP,
+                                    fontFamily = SystemFontFamily,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -229,7 +229,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "予約設定変更",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -243,7 +243,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "予約を削除",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -258,7 +258,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "録画する",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -274,7 +274,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "EPG予約する",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -285,7 +285,7 @@ fun ProgramDetailScreen(
                                         contentColor = Color.White
                                     ),
                                     modifier = Modifier.fillMaxWidth()
-                                ) { Text("録画する（詳細設定）", fontFamily = NotoSansJP) }
+                                ) { Text("録画する（詳細設定）", fontFamily = SystemFontFamily) }
                             }
 
                         } else if (isFuture) {
@@ -302,7 +302,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "予約設定変更",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -316,7 +316,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "予約を削除",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -333,7 +333,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "録画予約する",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -349,7 +349,7 @@ fun ProgramDetailScreen(
                                 ) {
                                     Text(
                                         "EPG予約する",
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -360,7 +360,7 @@ fun ProgramDetailScreen(
                                         contentColor = Color.White
                                     ),
                                     modifier = Modifier.fillMaxWidth()
-                                ) { Text("録画予約（詳細設定）", fontFamily = NotoSansJP) }
+                                ) { Text("録画予約（詳細設定）", fontFamily = SystemFontFamily) }
                             }
                         } else {
                             Button(
@@ -376,7 +376,7 @@ fun ProgramDetailScreen(
                             ) {
                                 Text(
                                     "終了した番組",
-                                    fontFamily = NotoSansJP,
+                                    fontFamily = SystemFontFamily,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -403,7 +403,7 @@ fun ProgramDetailScreen(
                         border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.5f))),
                         focusedBorder = Border(BorderStroke(2.dp, colors.accent))
                     )
-                ) { Text("戻る", fontFamily = NotoSansJP) }
+                ) { Text("戻る", fontFamily = SystemFontFamily) }
             }
 
             Spacer(modifier = Modifier.width(56.dp))
@@ -443,7 +443,7 @@ fun ProgramDetailScreen(
                     text = "${startTime.format(formatter)} ～ ${endTime.format(endFormatter)}",
                     style = MaterialTheme.typography.labelLarge,
                     color = colors.textSecondary,
-                    fontFamily = NotoSansJP
+                    fontFamily = SystemFontFamily
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
@@ -452,14 +452,14 @@ fun ProgramDetailScreen(
                         fontWeight = FontWeight.Bold,
                         lineHeight = 46.sp
                     ),
-                    color = colors.textPrimary, fontFamily = NotoSansJP
+                    color = colors.textPrimary, fontFamily = SystemFontFamily
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
                     "番組概要",
                     style = MaterialTheme.typography.titleMedium,
                     color = colors.textPrimary,
-                    fontFamily = NotoSansJP,
+                    fontFamily = SystemFontFamily,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -467,7 +467,7 @@ fun ProgramDetailScreen(
                     text = safeProgram.description ?: "説明はありません。",
                     style = MaterialTheme.typography.bodyLarge,
                     color = colors.textSecondary,
-                    fontFamily = NotoSansJP,
+                    fontFamily = SystemFontFamily,
                     lineHeight = 28.sp
                 )
 
@@ -527,7 +527,7 @@ fun ProgramDetailedInfo(program: EpgProgram) {
                     text = label,
                     style = MaterialTheme.typography.titleMedium,
                     color = colors.textPrimary,
-                    fontFamily = NotoSansJP,
+                    fontFamily = SystemFontFamily,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -535,7 +535,7 @@ fun ProgramDetailedInfo(program: EpgProgram) {
                     text = content,
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
-                    fontFamily = NotoSansJP,
+                    fontFamily = SystemFontFamily,
                     lineHeight = 24.sp
                 )
             }

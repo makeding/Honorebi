@@ -151,32 +151,16 @@ Komorebiの視聴体験を最大化するため、以下のツールを同梱し
 ---
 
 ## ビルド方法
-※v0.4.0-betaからFFMpeg関連のバイナリを使用しないように変更しています。0.4.0-beta以降の場合はフォントファイルの追加のみでビルドできると思います。それ以前のバージョンをビルドする際は以下を参考にしてください。
+
+UI は Android のシステムフォントを使用します。字幕用の Kosugi Maru はリポジトリに同梱されているため、フォントを別途追加する必要はありません。
 
 ## ビルド前の準備
 
-フォントファイルと FFmpeg のバイナリは `.gitignore` に含まれているため、ビルド前に手動での準備が必要です。
-
-### 1. フォントファイルの準備
-
-フォントファイルは、手動でのダウンロードが必要です。
-
-```sh
-FONT_CSS=$(curl -fsSL "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;300;400;500;600;700" -A "Mozilla/5.0")
-URLS=($(echo "$FONT_CSS" | grep -oP 'url\(\K[^)]+'))
-curl -fsSL "${URLS[0]}" -o app/src/main/res/font/notosansjp_thin.ttf
-curl -fsSL "${URLS[1]}" -o app/src/main/res/font/notosansjp_light.ttf
-curl -fsSL "${URLS[2]}" -o app/src/main/res/font/notosansjp_regular.ttf
-curl -fsSL "${URLS[3]}" -o app/src/main/res/font/notosansjp_medium.ttf
-curl -fsSL "${URLS[4]}" -o app/src/main/res/font/notosansjp_semibold.ttf
-curl -fsSL "${URLS[5]}" -o app/src/main/res/font/notosansjp_bold.ttf
-```
-
-### 2. media-decoder-ffmpeg のセットアップ
+### 1. media-decoder-ffmpeg のセットアップ
 
 FFmpeg デコーダーは以下の手順での準備が必要です。プロジェクトルート直下の `media/` に配置します（`.gitignore` に含まれています）。
 
-#### 2.1 AndroidX Media3 のクローン
+#### 1.1 AndroidX Media3 のクローン
 
 プロジェクトのルートディレクトリで実行してください。
 
@@ -184,7 +168,7 @@ FFmpeg デコーダーは以下の手順での準備が必要です。プロジ�
 git clone --branch 1.4.1 --depth 1 https://github.com/androidx/media.git media
 ```
 
-#### 2.2 Media3 1.4.1 の不足ファイルを補完
+#### 1.2 Media3 1.4.1 の不足ファイルを補完
 
 Media3 1.4.1 にはいくつかのファイルが欠落しているため、スタブを作成します。
 
@@ -198,7 +182,7 @@ for dir in media/libraries/*/; do
 done
 ```
 
-#### 2.3 FFmpeg のクロスコンパイル
+#### 1.3 FFmpeg のクロスコンパイル
 
 NDK のパスは環境によって異なります。Android Studio の場合は SDK Manager > SDK Tools > NDK (Side by side) からインストールでき、インストール先は以下が一般的です。
 
@@ -240,6 +224,7 @@ bash "${MODULE_PATH}/jni/build_ffmpeg.sh" \
 * **[KonomiTV](https://github.com/tsukumijima/KonomiTV)**: 強力な API バックエンドおよび配信プラットフォーム。
 * **[Mirakurun](https://github.com/Chinachu/Mirakurun)**: チューナー管理および配信 API。
 * **[DanmakuFlameMaster](https://github.com/bilibili/DanmakuFlameMaster)**: ニコニコ実況およびNX-Jikkyoのコメント表示。|-> 作者の方は逝去されています。長年の貢献に感謝し、心よりご冥福をお祈りいたします。R.I.P.
+* **[Kosugi Maru](https://github.com/googlefonts/kosugi-maru)**: ARIB 字幕表示用の丸ゴシック体。
 
 
 ---

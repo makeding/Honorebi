@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
-import com.beeregg2001.komorebi.ui.theme.NotoSansJP
+import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -341,7 +341,7 @@ fun ConditionEditDialog(
                                         .fillMaxWidth()
                                         .focusRequester(textFieldFocusRequester),
                                     textStyle = androidx.compose.ui.text.TextStyle(
-                                        fontFamily = NotoSansJP,
+                                        fontFamily = SystemFontFamily,
                                         fontSize = MaterialTheme.typography.bodyLarge.fontSize,
                                         color = colors.textPrimary
                                     ),
@@ -388,7 +388,7 @@ fun ConditionEditDialog(
                                         Text(
                                             text = keyword,
                                             style = MaterialTheme.typography.bodyLarge,
-                                            fontFamily = NotoSansJP,
+                                            fontFamily = SystemFontFamily,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )

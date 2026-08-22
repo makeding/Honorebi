@@ -32,7 +32,7 @@ import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.ReserveRecordSettings
 import com.beeregg2001.komorebi.ui.setting.SelectionDialog
-import com.beeregg2001.komorebi.ui.theme.NotoSansJP
+import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.PostRecordingBatch
 import com.google.gson.Gson
@@ -133,7 +133,7 @@ fun ReserveSettingsDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     color = colors.textPrimary,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = NotoSansJP,
+                    fontFamily = SystemFontFamily,
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
                 Text(

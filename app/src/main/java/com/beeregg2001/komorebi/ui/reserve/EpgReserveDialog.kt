@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
-import com.beeregg2001.komorebi.ui.theme.NotoSansJP
+import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -197,7 +197,7 @@ fun EpgReserveDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     color = colors.textPrimary,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = NotoSansJP
+                    fontFamily = SystemFontFamily
                 )
 
                 Divider(color = colors.textPrimary.copy(alpha = 0.1f))
@@ -219,7 +219,7 @@ fun EpgReserveDialog(
                                 .fillMaxWidth()
                                 .focusRequester(textFieldFocusRequester),
                             textStyle = androidx.compose.ui.text.TextStyle(
-                                fontFamily = NotoSansJP,
+                                fontFamily = SystemFontFamily,
                                 fontSize = MaterialTheme.typography.bodyLarge.fontSize,
                                 color = colors.textPrimary
                             ),
@@ -271,7 +271,7 @@ fun EpgReserveDialog(
                                 Text(
                                     text = keyword,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    fontFamily = NotoSansJP
+                                    fontFamily = SystemFontFamily
                                 )
                             }
                         }

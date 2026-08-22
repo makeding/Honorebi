@@ -36,7 +36,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.beeregg2001.komorebi.data.model.EpgProgram
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.viewmodel.EpgUiState
-import com.beeregg2001.komorebi.ui.theme.NotoSansJP
+import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.TextStyle as JavaTextStyle
@@ -92,13 +92,13 @@ fun ModernEpgCanvasEngine_NoAnime(
     // --- スタイル定義 ---
     val styles = remember {
         object {
-            val title = TextStyle(fontFamily = NotoSansJP, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, lineHeight = 14.sp)
-            val desc = TextStyle(fontFamily = NotoSansJP, color = Color.LightGray, fontSize = 10.sp, fontWeight = FontWeight.Normal, lineHeight = 13.sp)
-            val chNum = TextStyle(fontFamily = NotoSansJP, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
-            val chName = TextStyle(fontFamily = NotoSansJP, color = Color.LightGray, fontSize = 10.sp)
-            val time = TextStyle(fontFamily = NotoSansJP, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            val amPm = TextStyle(fontFamily = NotoSansJP, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            val dateLabel = TextStyle(fontFamily = NotoSansJP, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            val title = TextStyle(fontFamily = SystemFontFamily, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, lineHeight = 14.sp)
+            val desc = TextStyle(fontFamily = SystemFontFamily, color = Color.LightGray, fontSize = 10.sp, fontWeight = FontWeight.Normal, lineHeight = 13.sp)
+            val chNum = TextStyle(fontFamily = SystemFontFamily, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
+            val chName = TextStyle(fontFamily = SystemFontFamily, color = Color.LightGray, fontSize = 10.sp)
+            val time = TextStyle(fontFamily = SystemFontFamily, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            val amPm = TextStyle(fontFamily = SystemFontFamily, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            val dateLabel = TextStyle(fontFamily = SystemFontFamily, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 

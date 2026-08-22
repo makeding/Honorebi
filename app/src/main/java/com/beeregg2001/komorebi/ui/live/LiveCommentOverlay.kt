@@ -6,7 +6,6 @@ import android.view.ViewGroup
 import android.graphics.Color as AndroidColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import master.flame.danmaku.controller.DrawHandler
 import master.flame.danmaku.controller.IDanmakuView
@@ -30,18 +29,10 @@ fun LiveCommentOverlay(
     sessionToken: LiveChannelSessionToken? = null,
     onViewCreated: (IDanmakuView) -> Unit
 ) {
-    val context = LocalContext.current
-
-    val customTypeface = remember {
-        runCatching {
-            Typeface.createFromAsset(context.assets, "fonts/notosansjp_bold.ttf")
-        }.getOrDefault(Typeface.create("sans-serif", Typeface.BOLD))
-    }
-
     val danmakuContext = remember(sessionToken) {
         DanmakuContext.create().apply {
             setDanmakuStyle(1, 8.0f)
-            setTypeface(customTypeface)
+            setTypeface(Typeface.DEFAULT_BOLD)
             setDanmakuBold(true)
             setDuplicateMergingEnabled(false)
 

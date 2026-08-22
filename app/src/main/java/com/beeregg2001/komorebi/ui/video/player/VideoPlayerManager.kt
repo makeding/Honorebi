@@ -468,9 +468,13 @@ fun rememberManagedExoPlayer(
     onStopOrDispose: (ExoPlayer) -> Unit,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
-    val captionDecoder = remember { NativeCaptionDecoder() }
+    val context = LocalContext.current
+    val captionDecoder = remember { NativeCaptionDecoder(context) }
     val superimposeDecoder = remember {
-        NativeCaptionDecoder(captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE)
+        NativeCaptionDecoder(
+            captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE,
+            context = context
+        )
     }
     val b62SubtitleSamples = remember(recordedPlaybackFence.identity) {
         Channel<FencedB62SubtitleSample>(
@@ -536,7 +540,6 @@ fun rememberManagedExoPlayer(
         }
     }
 
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val backendType by settingsViewModel.backendType.collectAsState()

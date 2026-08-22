@@ -28,7 +28,7 @@ class NativeLib {
     external fun pushDataBuffer(handle: Long, inputBuffer: ByteBuffer, inputLength: Int)
     external fun popDataBuffer(handle: Long, outputBuffer: ByteBuffer, maxLen: Int): Int
 
-    external fun openCaptionDecoder(captionType: Int): Long
+    external fun openCaptionDecoder(captionType: Int, fontPath: String): Long
     external fun decodeCaption(handle: Long, data: ByteArray, ptsMs: Long): NativeCaptionCue?
     external fun decodeB62Captions(
         handle: Long,

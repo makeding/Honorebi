@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.beeregg2001.komorebi.ui.theme.NotoSansJP
+import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiColors
 
 // ★ 修正: hideSubChannels をコンストラクタの引数に追加
@@ -67,44 +67,44 @@ class EpgConfig(
 
     // --- テキストスタイル ---
     val styleTitle = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textPrimary,
         fontSize = (11 * fontSizeScale).sp,
         fontWeight = FontWeight.Bold,
         lineHeight = (14 * fontSizeScale).sp
     )
     val styleDesc = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textSecondary,
         fontSize = (10 * fontSizeScale).sp,
         fontWeight = FontWeight.Normal,
         lineHeight = (13 * fontSizeScale).sp
     )
     val styleChNum = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textPrimary,
         fontSize = 14.sp,
         fontWeight = FontWeight.Black
     )
     val styleChName = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textSecondary,
         fontSize = (10 * fontSizeScale).sp
     )
     val styleTime = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textPrimary,
         fontSize = 20.sp,
         fontWeight = FontWeight.Bold
     )
     val styleAmPm = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textSecondary.copy(alpha = 0.8f),
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold
     )
     val styleDateLabel = TextStyle(
-        fontFamily = NotoSansJP,
+        fontFamily = SystemFontFamily,
         color = colors.textPrimary,
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold
