@@ -44,6 +44,7 @@ import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
 import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
 import com.beeregg2001.komorebi.ui.main.NetworkTransport
+import com.beeregg2001.komorebi.ui.main.NETWORK_STATUS_BUTTON_WIDTH_DP
 import com.beeregg2001.komorebi.ui.reserve.ReserveListScreen
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -126,61 +127,43 @@ private fun NetworkStatusButton(
     onClick: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
-    val (icon, description) = when (status.transport) {
-        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi設定"
-        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "ネットワーク設定"
-        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
-        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "Wi-Fi設定"
+    val (icon, label) = when (status.transport) {
+        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi"
+        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線"
+        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク"
+        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "オフライン"
     }
-    if (status.isAvailable) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(48.dp)
-                .focusRequester(focusRequester)
-                .focusProperties {
-                    left = leftFocusRequester
-                    right = rightFocusRequester
-                    up = FocusRequester.Cancel
-                    canFocus = canTakeFocus
-                },
-            colors = IconButtonDefaults.colors(
-                focusedContainerColor = colors.textPrimary,
-                focusedContentColor = if (colors.isDark) Color.Black else Color.White,
-                contentColor = colors.textSecondary
-            )
-        ) {
-            Icon(icon, contentDescription = description)
-        }
-    } else {
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .height(48.dp)
-                .focusRequester(focusRequester)
-                .focusProperties {
-                    left = leftFocusRequester
-                    right = rightFocusRequester
-                    up = FocusRequester.Cancel
-                    canFocus = canTakeFocus
-                },
-            colors = ButtonDefaults.colors(
-                containerColor = colors.accent.copy(alpha = 0.16f),
-                focusedContainerColor = colors.textPrimary,
-                focusedContentColor = if (colors.isDark) Color.Black else Color.White,
-                contentColor = colors.accent
-            ),
-            shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
-            contentPadding = PaddingValues(horizontal = 14.dp)
-        ) {
-            Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "オフライン",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-            )
-        }
+
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .width(NETWORK_STATUS_BUTTON_WIDTH_DP.dp)
+            .height(48.dp)
+            .focusRequester(focusRequester)
+            .focusProperties {
+                left = leftFocusRequester
+                right = rightFocusRequester
+                up = FocusRequester.Cancel
+                canFocus = canTakeFocus
+            },
+        colors = ButtonDefaults.colors(
+            containerColor = if (status.isAvailable) Color.Transparent
+            else colors.accent.copy(alpha = 0.16f),
+            focusedContainerColor = colors.textPrimary,
+            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
+            contentColor = if (status.isAvailable) colors.textSecondary else colors.accent,
+        ),
+        shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        Icon(icon, contentDescription = "$label 設定", modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            maxLines = 1,
+        )
     }
 }
 

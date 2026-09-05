@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.*
@@ -38,6 +40,19 @@ import kotlinx.coroutines.delay
 
 private const val TAG = "AppsTabContent"
 
+internal object AppsTabLayout {
+    val horizontalPadding = 48.dp
+    val topPadding = 36.dp
+    val viewportBottomPadding = 24.dp
+    val cardWidth = 160.dp
+    val cardHeight = 136.dp
+    val bannerHeight = 90.dp
+    val iconSize = 72.dp
+    val horizontalSpacing = 12.dp
+    val verticalSpacing = 14.dp
+    val bottomScrollSafeArea = cardHeight
+}
+
 @Composable
 fun AppsTabContent(
     homeViewModel: HomeViewModel,
@@ -62,6 +77,7 @@ fun AppsTabContent(
     var hasEnteredCatalog by remember { mutableStateOf(false) }
     var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
+    val appScrollState = rememberScrollState()
     val catalogApps = if (isHiddenCatalog) hiddenApps else apps
     val context = LocalContext.current.applicationContext
 
@@ -117,6 +133,7 @@ fun AppsTabContent(
             isHiddenCatalog = false
             return@LaunchedEffect
         }
+        appScrollState.scrollTo(0)
         delay(80)
         contentFirstItemRequester.safeRequestFocusWithRetry(
             if (isHiddenCatalog) "AppsHiddenCatalog" else "AppsVisibleCatalog"
@@ -147,7 +164,12 @@ fun AppsTabContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 48.dp, top = 36.dp, end = 48.dp, bottom = 80.dp)
+            .padding(
+                start = AppsTabLayout.horizontalPadding,
+                top = AppsTabLayout.topPadding,
+                end = AppsTabLayout.horizontalPadding,
+                bottom = AppsTabLayout.viewportBottomPadding,
+            )
     ) {
         if (isHiddenCatalog) {
             Text(
@@ -158,19 +180,25 @@ fun AppsTabContent(
             Spacer(Modifier.height(28.dp))
         }
 
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val cardWidth = 160.dp
-            val cardHeight = 136.dp
-            val bannerHeight = 90.dp
-            val iconSize = 72.dp
-            val horizontalSpacing = 12.dp
-            val verticalSpacing = 14.dp
-            val columnCount = calculateAppGridColumns(maxWidth, cardWidth, horizontalSpacing)
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val columnCount = calculateAppGridColumns(
+                maxWidth,
+                AppsTabLayout.cardWidth,
+                AppsTabLayout.horizontalSpacing,
+            )
 
-            Column(verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(appScrollState)
+                    .padding(bottom = AppsTabLayout.bottomScrollSafeArea),
+                verticalArrangement = Arrangement.spacedBy(AppsTabLayout.verticalSpacing),
+            ) {
                 val appRows = catalogApps.chunked(columnCount)
                 appRows.forEachIndexed { rowIndex, rowApps ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(horizontalSpacing)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AppsTabLayout.horizontalSpacing),
+                    ) {
                         rowApps.forEachIndexed { columnIndex, app ->
                             val index = rowIndex * columnCount + columnIndex
                             val appFocusRequester = appFocusRequesters.getOrPut(app.stableId) {
@@ -197,11 +225,11 @@ fun AppsTabContent(
                                     }
                                 },
                                 onFocus = {},
-                                cardWidth = cardWidth,
-                                cardHeight = cardHeight,
-                                bannerWidth = cardWidth,
-                                bannerHeight = bannerHeight,
-                                iconSize = iconSize,
+                                cardWidth = AppsTabLayout.cardWidth,
+                                cardHeight = AppsTabLayout.cardHeight,
+                                bannerWidth = AppsTabLayout.cardWidth,
+                                bannerHeight = AppsTabLayout.bannerHeight,
+                                iconSize = AppsTabLayout.iconSize,
                                 showBorder = false,
                                 fullBleedBanner = true,
                                 showLabel = !hideAppLabels,
@@ -495,7 +523,7 @@ private fun HiddenLauncherAppActionDialog(
     )
 }
 
-private fun calculateAppGridColumns(maxWidth: Dp, cardWidth: Dp, spacing: Dp): Int {
+internal fun calculateAppGridColumns(maxWidth: Dp, cardWidth: Dp, spacing: Dp): Int {
     if (maxWidth <= cardWidth) return 1
     return ((maxWidth + spacing) / (cardWidth + spacing)).toInt().coerceAtLeast(1)
 }

@@ -24,7 +24,9 @@ import kotlin.concurrent.withLock
 class TsReadExDataSource(
     private val nativeLib: NativeLib,
     var tsArgs: Array<String>,
-    private val fileSizeBytesRef: AtomicLong? = null // ★ ファイルサイズ格納用
+    private val fileSizeBytesRef: AtomicLong? = null,
+    private val requestHeaders: Map<String, String> = emptyMap(),
+    private val growingHttpStream: Boolean = false,
 ) : BaseDataSource(true) {
 
     private var handle: Long = 0
@@ -34,6 +36,9 @@ class TsReadExDataSource(
     private var inputStream: InputStream? = null
     private var uri: Uri? = null
     private var opened = false
+    private var baseDataSpec: DataSpec? = null
+    private var sourceReadPosition = 0L
+    private var growingIdleRetries = 0
 
     private val inputBuffer: ByteBuffer = ByteBuffer.allocateDirect(188 * 20000)
     private val tempArray = ByteArray(188 * 20000)
@@ -48,6 +53,9 @@ class TsReadExDataSource(
         private const val CMD_EPG_SRV_NWTV_ID_CLOSE = 1074
         private const val CMD_SUCCESS = 1
         private const val TAG = "TsReadExDataSource"
+        private const val GROWING_FILE_RETRY_INTERVAL_MS = 3_000L
+        private const val GROWING_FILE_MAX_IDLE_RETRIES = 20
+        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
 
         private val edcbTunerLock = ReentrantLock()
         private var nwtvIdCounter = 500
@@ -64,6 +72,9 @@ class TsReadExDataSource(
 
     override fun open(dataSpec: DataSpec): Long {
         this.uri = dataSpec.uri
+        baseDataSpec = dataSpec
+        sourceReadPosition = dataSpec.position
+        growingIdleRetries = 0
         transferInitializing(dataSpec)
 
         try {
@@ -72,10 +83,16 @@ class TsReadExDataSource(
             throw IOException("Failed to open native filter", e)
         }
 
-        if (dataSpec.uri.scheme == "edcb") {
-            edcbTunerLock.withLock { openEdcbStream(dataSpec.uri) }
-        } else {
-            openHttpStream(dataSpec)
+        try {
+            if (dataSpec.uri.scheme == "edcb") {
+                edcbTunerLock.withLock { openEdcbStream(dataSpec.uri) }
+            } else {
+                openHttpStream(dataSpec)
+            }
+        } catch (error: Throwable) {
+            releaseOpenedResources()
+            baseDataSpec = null
+            throw error
         }
 
         transferStarted(dataSpec)
@@ -92,13 +109,16 @@ class TsReadExDataSource(
             readTimeout = 8000
             doInput = true
 
+            requestHeaders.forEach { (name, value) -> setRequestProperty(name, value) }
+            dataSpec.httpRequestHeaders.forEach { (name, value) -> setRequestProperty(name, value) }
             if (dataSpec.position > 0) {
                 setRequestProperty("Range", "bytes=${dataSpec.position}-")
             }
         }
         val responseCode = connection?.responseCode ?: -1
         if (!HttpByteRangePolicy.acceptsResponse(dataSpec.position, responseCode)) {
-            throw IOException(
+            throw HttpStatusException(
+                responseCode,
                 if (dataSpec.position > 0L && responseCode == HttpURLConnection.HTTP_OK) {
                     "Server ignored byte-range request at position ${dataSpec.position}"
                 } else {
@@ -107,12 +127,13 @@ class TsReadExDataSource(
             )
         }
 
-        val contentLengthStr = connection?.getHeaderField("Content-Length")
-        val contentLength = contentLengthStr?.toLongOrNull() ?: 0L
-
-        // ★ 初回接続時（position = 0）にファイル全体サイズを取得し、SeekMap 計算用に保存
-        if (contentLength > 0L && dataSpec.position == 0L) {
-            fileSizeBytesRef?.set(contentLength)
+        val contentLength = connection?.getHeaderField("Content-Length")?.toLongOrNull() ?: 0L
+        HttpByteRangePolicy.resourceLength(
+            requestPosition = dataSpec.position,
+            contentLength = contentLength,
+            contentRange = connection?.getHeaderField("Content-Range"),
+        )?.let { totalLength ->
+            fileSizeBytesRef?.updateAndGet { knownLength -> maxOf(knownLength, totalLength) }
         }
 
         inputStream = BufferedInputStream(connection!!.inputStream, 188 * 50000)
@@ -239,7 +260,7 @@ class TsReadExDataSource(
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
-        val input = inputStream ?: return C.RESULT_END_OF_INPUT
+        if (inputStream == null) return C.RESULT_END_OF_INPUT
 
         var total = 0
         while (total < length) {
@@ -249,11 +270,14 @@ class TsReadExDataSource(
                 outputBuffer.get(buffer, offset + total, processed)
                 total += processed
             } else {
-                val readCount = input.read(tempArray)
+                val readCount = inputStream?.read(tempArray) ?: -1
                 if (readCount == -1) {
+                    if (tryReopenGrowingHttpStream()) continue
                     return if (total > 0) total else C.RESULT_END_OF_INPUT
                 }
                 if (readCount > 0) {
+                    sourceReadPosition += readCount
+                    growingIdleRetries = 0
                     inputBuffer.clear()
                     inputBuffer.put(tempArray, 0, readCount)
                     nativeLib.pushDataBuffer(handle, inputBuffer, readCount)
@@ -262,6 +286,39 @@ class TsReadExDataSource(
         }
         if (total > 0) bytesTransferred(total)
         return total
+    }
+
+    private fun tryReopenGrowingHttpStream(): Boolean {
+        val originalSpec = baseDataSpec ?: return false
+        if (!growingHttpStream || originalSpec.uri.scheme == "edcb" ||
+            growingIdleRetries >= GROWING_FILE_MAX_IDLE_RETRIES
+        ) return false
+
+        growingIdleRetries += 1
+        runCatching { inputStream?.close() }
+        connection?.disconnect()
+        inputStream = null
+        connection = null
+        return try {
+            Thread.sleep(GROWING_FILE_RETRY_INTERVAL_MS)
+            openHttpStream(
+                originalSpec.buildUpon()
+                    .setPosition(sourceReadPosition)
+                    .setLength(C.LENGTH_UNSET.toLong())
+                    .build()
+            )
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        } catch (error: HttpStatusException) {
+            if (error.responseCode != HTTP_RANGE_NOT_SATISFIABLE) throw error
+            Log.d(TAG, "Growing MPEG-TS source has not advanced yet", error)
+            true
+        } catch (error: IOException) {
+            Log.d(TAG, "Growing MPEG-TS source has not advanced yet", error)
+            true
+        }
     }
 
     override fun close() {
@@ -276,14 +333,27 @@ class TsReadExDataSource(
                     if (ip != null) cleanupEdcbSessionAsynchronous(ip, port)
                 }
             }
-            inputStream?.close()
-            connection?.disconnect()
-            edcbSocket?.close()
+            releaseOpenedResources()
         } finally {
-            inputStream = null; connection = null; edcbSocket = null
-            if (handle != 0L) {
-                nativeLib.closeFilter(handle); handle = 0L
-            }
+            inputStream = null; connection = null; edcbSocket = null; baseDataSpec = null
         }
     }
+
+    private fun releaseOpenedResources() {
+        runCatching { inputStream?.close() }
+        connection?.disconnect()
+        runCatching { edcbSocket?.close() }
+        inputStream = null
+        connection = null
+        edcbSocket = null
+        if (handle != 0L) {
+            nativeLib.closeFilter(handle)
+            handle = 0L
+        }
+    }
+
+    private class HttpStatusException(
+        val responseCode: Int,
+        message: String,
+    ) : IOException(message)
 }

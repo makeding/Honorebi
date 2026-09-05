@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.Composable
@@ -21,6 +22,8 @@ enum class NetworkTransport {
     DISCONNECTED
 }
 
+internal const val NETWORK_STATUS_BUTTON_WIDTH_DP = 132
+
 data class NetworkConnectionStatus(
     val transport: NetworkTransport,
     val isAvailable: Boolean
@@ -28,6 +31,36 @@ data class NetworkConnectionStatus(
     companion object {
         val Disconnected = NetworkConnectionStatus(NetworkTransport.DISCONNECTED, false)
     }
+}
+
+internal data class NetworkCapabilitySnapshot(
+    val transport: NetworkTransport,
+    val isDefault: Boolean,
+)
+
+internal fun networkSnapshot(
+    hasWifi: Boolean = false,
+    hasEthernet: Boolean = false,
+    isDefault: Boolean = false,
+): NetworkCapabilitySnapshot = NetworkCapabilitySnapshot(
+    transport = when {
+        hasWifi -> NetworkTransport.WIFI
+        hasEthernet -> NetworkTransport.ETHERNET
+        else -> NetworkTransport.OTHER
+    },
+    isDefault = isDefault,
+)
+
+internal fun resolveNetworkConnectionStatus(
+    networks: List<NetworkCapabilitySnapshot>,
+): NetworkConnectionStatus {
+    val selected = networks.firstOrNull { it.isDefault }
+        ?: networks.firstOrNull { it.transport == NetworkTransport.ETHERNET }
+        ?: networks.firstOrNull { it.transport == NetworkTransport.WIFI }
+        ?: networks.firstOrNull()
+        ?: return NetworkConnectionStatus.Disconnected
+
+    return NetworkConnectionStatus(transport = selected.transport, isAvailable = true)
 }
 
 @Composable
@@ -44,32 +77,69 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
     }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val state = remember(connectivityManager) {
-        mutableStateOf(connectivityManager.getConnectionStatus())
+        mutableStateOf(connectivityManager.getDefaultConnectionStatus())
     }
 
     DisposableEffect(connectivityManager, mainHandler) {
-        val updateState = {
+        val knownTransports = linkedMapOf<Network, NetworkTransport>()
+
+        fun publishState() {
+            val defaultNetwork = connectivityManager.activeNetwork
+            state.value = resolveNetworkConnectionStatus(
+                knownTransports.map { (network, transport) ->
+                    NetworkCapabilitySnapshot(
+                        transport = transport,
+                        isDefault = network == defaultNetwork,
+                    )
+                },
+            )
+        }
+
+        fun updateNetwork(network: Network, capabilities: NetworkCapabilities) {
             mainHandler.post {
-                state.value = connectivityManager.getConnectionStatus()
+                knownTransports[network] = capabilities.toNetworkTransport()
+                publishState()
             }
         }
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                updateState()
+                mainHandler.post {
+                    connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                        knownTransports[network] = capabilities.toNetworkTransport()
+                    }
+                    publishState()
+                }
             }
 
             override fun onLost(network: Network) {
-                updateState()
+                mainHandler.post {
+                    knownTransports.remove(network)
+                    publishState()
+                }
             }
 
             override fun onUnavailable() {
-                updateState()
+                mainHandler.post(::publishState)
+            }
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                networkCapabilities: NetworkCapabilities,
+            ) {
+                updateNetwork(network, networkCapabilities)
             }
         }
 
-        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
-        updateState()
+        connectivityManager.activeNetwork?.let { network ->
+            connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                knownTransports[network] = capabilities.toNetworkTransport()
+            }
+        }
+        publishState()
+
+        val request = NetworkRequest.Builder().build()
+        runCatching { connectivityManager.registerNetworkCallback(request, callback) }
 
         onDispose {
             runCatching { connectivityManager.unregisterNetworkCallback(callback) }
@@ -79,16 +149,18 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
     return state
 }
 
-private fun ConnectivityManager.getConnectionStatus(): NetworkConnectionStatus {
-    val network = activeNetwork ?: return NetworkConnectionStatus.Disconnected
-    val capabilities = getNetworkCapabilities(network)
+private fun ConnectivityManager.getDefaultConnectionStatus(): NetworkConnectionStatus {
+    val defaultNetwork = activeNetwork ?: return NetworkConnectionStatus.Disconnected
+    val capabilities = getNetworkCapabilities(defaultNetwork)
         ?: return NetworkConnectionStatus.Disconnected
 
-    val transport = when {
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
-        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
-        else -> NetworkTransport.OTHER
-    }
-
-    return NetworkConnectionStatus(transport = transport, isAvailable = true)
+    return NetworkConnectionStatus(
+        transport = capabilities.toNetworkTransport(),
+        isAvailable = true,
+    )
 }
+
+private fun NetworkCapabilities.toNetworkTransport(): NetworkTransport = networkSnapshot(
+    hasWifi = hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+    hasEthernet = hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
+).transport

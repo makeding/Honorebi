@@ -4,4 +4,18 @@ package com.beeregg2001.komorebi.util
 internal object HttpByteRangePolicy {
     fun acceptsResponse(requestPosition: Long, responseCode: Int): Boolean =
         responseCode in 200..299 && (requestPosition <= 0L || responseCode == 206)
+
+    fun resourceLength(
+        requestPosition: Long,
+        contentLength: Long,
+        contentRange: String?,
+    ): Long? {
+        val totalFromRange = contentRange
+            ?.substringAfterLast('/', missingDelimiterValue = "")
+            ?.takeUnless { it == "*" }
+            ?.toLongOrNull()
+        if (totalFromRange != null && totalFromRange > 0L) return totalFromRange
+        if (contentLength <= 0L) return null
+        return requestPosition + contentLength
+    }
 }

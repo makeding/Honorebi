@@ -16,7 +16,7 @@ data class StreamQuality(
         const val ORIGINAL_MPEG_TS_VALUE = "original-mpegts-hwdi"
 
         fun originalMpegTsHardwareDi(): StreamQuality = StreamQuality(
-            label = "オリジナル（ハードウェア DI）",
+            label = "オリジナル (MPEG-2)",
             value = ORIGINAL_MPEG_TS_VALUE,
             isRawTs = true
         )
