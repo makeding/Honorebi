@@ -1,4 +1,4 @@
-package com.beeregg2001.komorebi.ui.main
+package com.beeregg2001.komorebi.ui.player
 
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableLongStateOf
@@ -59,14 +59,15 @@ data class RecordedPlaybackToken(
 /** Identifies a latest-wins remote playback open request. */
 data class PlaybackOpenIntentToken(val id: Long)
 
+enum class PlaybackBackResult { Ignored, Handled, RestoredFullscreen }
+
 /**
  * State and transitions that belong to playback, rather than to the launcher.
  *
- * [MainRootState] exposes this holder through compatibility delegates while the
- * UI is gradually split into a playback host.
+ * Navigation sends requests directly to this holder; player surfaces own its controls.
  */
 @Stable
-class MainRootPlaybackState {
+class PlaybackSessionState {
     var playbackTarget by mutableStateOf<PlaybackTarget>(PlaybackTarget.None)
         private set
     var playbackPhase by mutableStateOf<PlaybackPhase>(PlaybackPhase.Idle)
@@ -163,6 +164,31 @@ class MainRootPlaybackState {
 
     fun exitMiniPlayer() {
         isMiniPlayerMode = false
+    }
+
+    /** One ordered back action for every playback surface. */
+    fun handleBack(): PlaybackBackResult {
+        if (!isPlaybackActive) return PlaybackBackResult.Ignored
+        when {
+            isMiniPlayerMode -> {
+                exitMiniPlayer()
+                return PlaybackBackResult.RestoredFullscreen
+            }
+            isPlayerMiniListOpen -> isPlayerMiniListOpen = false
+            playerIsSubMenuOpen -> playerIsSubMenuOpen = false
+            livePlayback != null && (playerShowOverlay || playerIsPinnedOverlay) -> {
+                playerShowOverlay = false
+                playerIsManualOverlay = false
+                playerIsPinnedOverlay = false
+            }
+            isPlayerSubMenuOpen -> isPlayerSubMenuOpen = false
+            isPlayerSceneSearchOpen -> {
+                isPlayerSceneSearchOpen = false
+                showPlayerControls = false
+            }
+            else -> leavePlayback()
+        }
+        return PlaybackBackResult.Handled
     }
 
     /**

@@ -50,7 +50,6 @@ import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.UiChannelState
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
-import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
 import com.beeregg2001.komorebi.ui.live.logoUrlFor
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.*
@@ -69,16 +68,13 @@ fun LiveContent(
     channelViewModel: ChannelViewModel,
     epgViewModel: EpgViewModel,
     groupedChannels: Map<String, List<Channel>>,
-    selectedChannel: Channel?,
     onChannelClick: (Channel?) -> Unit,
     onFocusChannelChange: (String) -> Unit,
     mirakurunIp: String, mirakurunPort: String, konomiIp: String, konomiPort: String,
     topNavFocusRequester: FocusRequester, contentFirstItemRequester: FocusRequester,
-    onPlayerStateChanged: (Boolean) -> Unit, lastFocusedChannelId: String? = null,
+    lastFocusedChannelId: String? = null,
     isReturningFromPlayer: Boolean = false, onReturnFocusConsumed: () -> Unit = {},
-    reserveViewModel: ReserveViewModel,
     timeFormat: String = "24H",
-    isPiPMode: Boolean = false,
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
     settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -89,14 +85,7 @@ fun LiveContent(
     val rowStates = remember { mutableStateMapOf<String, LazyListState>() }
 
     val targetChannelFocusRequester = remember { FocusRequester() }
-    val isPlayerActive = selectedChannel != null
     val colors = KomorebiTheme.colors
-
-    var isMiniListOpen by remember { mutableStateOf(false) }
-    var showOverlay by remember { mutableStateOf(true) }
-    var isManualOverlay by remember { mutableStateOf(false) }
-    var isPinnedOverlay by remember { mutableStateOf(false) }
-    var isSubMenuOpen by remember { mutableStateOf(false) }
 
     var pendingChannel by remember { mutableStateOf<UiChannelState?>(null) }
     var focusedChannel by remember { mutableStateOf<UiChannelState?>(null) }
@@ -172,7 +161,6 @@ fun LiveContent(
         }
     }
 
-    LaunchedEffect(isPlayerActive) { onPlayerStateChanged(isPlayerActive) }
 
     LaunchedEffect(isReturningFromPlayer, liveRows.isNotEmpty()) {
         if (isReturningFromPlayer && liveRows.isNotEmpty()) {
@@ -221,12 +209,6 @@ fun LiveContent(
             Column(
                 modifier = modifier
                     .fillMaxSize()
-                    .then(if (isPlayerActive && !isPiPMode) Modifier.focusProperties {
-                        up = FocusRequester.Cancel
-                        down = FocusRequester.Cancel
-                        left = FocusRequester.Cancel
-                        right = FocusRequester.Cancel
-                    } else Modifier)
             ) {
                 CompactLiveProgramInfo(
                     uiState = focusedChannel,
@@ -305,25 +287,6 @@ fun LiveContent(
                 }
         }
 
-        if (selectedChannel != null && !isPiPMode) {
-            LivePlayerScreen(
-                channel = selectedChannel,
-                onChannelSelect = { onChannelClick(it) },
-                onBackPressed = { onChannelClick(null) },
-                isMiniListOpen = isMiniListOpen,
-                onMiniListToggle = { isMiniListOpen = it },
-                showOverlay = showOverlay,
-                onShowOverlayChange = { showOverlay = it },
-                isManualOverlay = isManualOverlay,
-                onManualOverlayChange = { isManualOverlay = it },
-                isPinnedOverlay = isPinnedOverlay,
-                onPinnedOverlayChange = { isPinnedOverlay = it },
-                isSubMenuOpen = isSubMenuOpen,
-                onSubMenuToggle = { isSubMenuOpen = it },
-                reserveViewModel = reserveViewModel,
-                onShowToast = { }
-            )
-        }
     }
 }
 

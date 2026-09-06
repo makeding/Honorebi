@@ -11,8 +11,8 @@ import com.beeregg2001.komorebi.data.local.AppDatabase
 import com.beeregg2001.komorebi.data.sync.RecordSyncEngine
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.CmSkipMode
-import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
+import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
 import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
 import com.beeregg2001.komorebi.data.auth.HonomiSession
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
@@ -67,10 +67,10 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val syncEngine: RecordSyncEngine,
-    private val recordProvider: RecordProvider,
     private val db: AppDatabase,
     private val honomiAuthRepository: HonomiAuthRepository,
     private val watchHistoryRepository: WatchHistoryRepository,
+    private val playbackQualityCatalog: PlaybackQualityCatalog,
 ) : ViewModel() {
 
     private val gson = Gson()
@@ -87,44 +87,13 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.liveQuality,
         settingsRepository.videoQuality
     ) { dynamicList, json, backend, currentLive, currentVideo ->
-        if (backend == "EDCB") {
-            if (dynamicList != null && dynamicList.isNotEmpty()) {
-                return@combine dynamicList
-            }
-
-            if (json.isNotBlank()) {
-                try {
-                    val type = object : TypeToken<List<StreamQuality>>() {}.type
-                    val list = gson.fromJson<List<StreamQuality>>(json, type) ?: emptyList()
-                    if (list.isNotEmpty()) return@combine list
-                } catch (e: Exception) {
-                }
-            }
-
-            val dummyList = mutableListOf<StreamQuality>()
-            if (currentLive.isNotBlank()) {
-                dummyList.add(
-                    StreamQuality(
-                        label = "設定値 ($currentLive)",
-                        value = currentLive,
-                        isRawTs = false
-                    )
-                )
-            }
-            if (currentVideo.isNotBlank() && currentVideo != currentLive) {
-                dummyList.add(
-                    StreamQuality(
-                        label = "設定値 ($currentVideo)",
-                        value = currentVideo,
-                        isRawTs = false
-                    )
-                )
-            }
-
-            if (dummyList.isEmpty()) StreamQuality.DEFAULT_QUALITIES else dummyList
-        } else {
-            StreamQuality.DEFAULT_QUALITIES
-        }
+        playbackQualityCatalog.settings(
+            backend = backend,
+            cachedJson = json,
+            selectedLiveQuality = currentLive,
+            selectedVideoQuality = currentVideo,
+            dynamicQualities = dynamicList,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StreamQuality.DEFAULT_QUALITIES)
 
     val totalRecordCount: StateFlow<Int> = db.recordedProgramDao().getTotalCountFlow()
@@ -385,13 +354,9 @@ class SettingsViewModel @Inject constructor(
                 val preVideo = settingsRepository.videoQuality.first()
 
                 if (backend == "EDCB") {
-                    val fetched = recordProvider.getStreamQualities()
+                    val fetched = playbackQualityCatalog.refreshEdcb()
                     if (fetched.isNotEmpty()) {
                         _dynamicQualities.value = fetched
-                        settingsRepository.saveString(
-                            SettingsRepository.AVAILABLE_STREAM_QUALITIES,
-                            gson.toJson(fetched)
-                        )
 
                         val postLive = settingsRepository.liveQuality.first()
                         val postVideo = settingsRepository.videoQuality.first()

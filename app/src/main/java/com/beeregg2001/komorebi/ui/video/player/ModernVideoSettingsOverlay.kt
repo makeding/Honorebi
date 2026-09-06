@@ -52,6 +52,7 @@ import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
@@ -77,12 +78,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
     onCmSkipModeToggle: () -> Unit,
-    // ★ 追加: 各機能のサポート状況を受け取るフラグ
-    isAudioSupported: Boolean = true,
-    isQualitySupported: Boolean = true,
-    isCommentSupported: Boolean = true,
-    isSubtitleSupported: Boolean = true,
-    isAutoCmSkipSupported: Boolean = true,
+    capabilities: PlaybackUiCapabilities = PlaybackUiCapabilities.Recorded,
     onClose: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
@@ -168,30 +164,30 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             icon = Icons.Default.Audiotrack,
                             onClick = onAudioToggle,
                             modifier = Modifier.focusRequester(initialFocusRequester),
-                            enabled = isAudioSupported // ★ 適用
+                            enabled = capabilities.audio
                         )
                         ModernSettingRow(
                             title = "再生速度",
                             value = "${currentSpeed}x",
                             icon = Icons.Default.Speed,
                             onClick = onSpeedToggle,
-                            enabled = true
+                            enabled = capabilities.speed
                         )
                         ModernSettingRow(
                             title = "字幕",
                             value = if (isSubtitleEnabled) "表示" else "非表示",
                             icon = Icons.Default.Subtitles,
                             onClick = onSubtitleToggle,
-                            enabled = isSubtitleSupported // ★ 適用
+                            enabled = capabilities.subtitles
                         )
                         ModernSettingRow(
                             title = "画質",
                             value = currentQuality.label,
                             icon = Icons.Default.HighQuality,
                             onClick = {
-                                if (isQualitySupported) selectedCategory = SubMenuCategory.QUALITY
-                            }, // ★ 無効時は開かない
-                            enabled = isQualitySupported && availableQualities.isNotEmpty() // ★ 適用
+                                if (capabilities.quality) selectedCategory = SubMenuCategory.QUALITY
+                            },
+                            enabled = capabilities.quality && availableQualities.isNotEmpty()
                         )
                         ModernSettingRow(
                             title = "CMスキップ",
@@ -199,14 +195,14 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             icon = Icons.Default.FastForward,
                             onClick = onCmSkipModeToggle,
                             highlight = cmSkipMode != CmSkipMode.OFF,
-                            enabled = isAutoCmSkipSupported // ★ 適用
+                            enabled = capabilities.cmSkip
                         )
                         ModernSettingRow(
                             title = "実況コメント",
                             value = if (isCommentEnabled) "表示" else "非表示",
                             icon = Icons.Default.Chat,
                             onClick = onCommentToggle,
-                            enabled = isCommentSupported // ★ 適用
+                            enabled = capabilities.comments
                         )
                         ModernSettingRow(
                             title = "L字クロップ",
@@ -214,7 +210,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             icon = Icons.Default.Crop,
                             onClick = onLCropToggle,
                             highlight = isLCropEnabled,
-                            enabled = true
+                            enabled = capabilities.crop
                         )
                     }
                 } else if (category == SubMenuCategory.QUALITY) {

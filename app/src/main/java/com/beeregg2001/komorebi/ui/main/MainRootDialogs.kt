@@ -235,7 +235,7 @@ fun MainRootDialogs(
             onPlayClick = {
                 val channel = groupedChannels.values.flatten().find { ch -> ch.id == it.channel_id }
                 if (channel != null) {
-                    state.enterLive(channel)
+                    state.playbackState.enterLive(channel)
                     homeViewModel.saveLastChannel(channel)
                     state.epgSelectedProgram = null
                 }

@@ -52,12 +52,18 @@ import kotlinx.coroutines.delay
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
+import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
+import com.beeregg2001.komorebi.ui.player.PlayerMenuTile
+import com.beeregg2001.komorebi.ui.player.RecordedPlayerMenuTileStyle
+import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 @Composable
 fun VideoTopSubMenuUI(
-    currentProgram: RecordedProgram,
+    mediaInfo: PlaybackMediaInfo,
+    currentProgram: RecordedProgram?,
     seriesPrograms: List<RecordedProgram>,
     quickPrograms: List<RecordedProgram>,
     animeChannels: List<Channel> = emptyList(),
@@ -97,16 +103,11 @@ fun VideoTopSubMenuUI(
     openQuickVideosInitially: Boolean = false,
     isVisible: Boolean = true,
     onCloseMenu: () -> Unit,
-    // ★ 追加: 各機能のサポート状況を受け取るフラグ (既存に影響しないようデフォルトは true)
-    isAudioSupported: Boolean = true,
-    isQualitySupported: Boolean = true,
-    isCommentSupported: Boolean = true,
-    isSubtitleSupported: Boolean = true,
-    isAutoCmSkipSupported: Boolean = true
+    capabilities: PlaybackUiCapabilities = PlaybackUiCapabilities.Recorded,
 ) {
     val colors = KomorebiTheme.colors
-    var selectedCategory by remember(currentProgram.id) {
-        mutableStateOf(if (openQuickVideosInitially) SubMenuCategory.QUICK_VIDEOS else null)
+    var selectedCategory by remember(mediaInfo.stableId) {
+        mutableStateOf(if (openQuickVideosInitially && capabilities.quickSelection) SubMenuCategory.QUICK_VIDEOS else null)
     }
     val quickVideoButtonRequester = remember { FocusRequester() }
     val qualityButtonRequester = remember { FocusRequester() }
@@ -136,7 +137,7 @@ fun VideoTopSubMenuUI(
 
     LaunchedEffect(isVisible, openQuickVideosInitially) {
         if (!isVisible) return@LaunchedEffect
-        selectedCategory = if (openQuickVideosInitially) SubMenuCategory.QUICK_VIDEOS else null
+        selectedCategory = if (openQuickVideosInitially && capabilities.quickSelection) SubMenuCategory.QUICK_VIDEOS else null
         delay(50)
         try {
             if (openQuickVideosInitially) {
@@ -163,26 +164,18 @@ fun VideoTopSubMenuUI(
     }
 
     LaunchedEffect(openQuickVideosInitially) {
-        if (openQuickVideosInitially) {
+        if (openQuickVideosInitially && capabilities.quickSelection) {
             selectedCategory = SubMenuCategory.QUICK_VIDEOS
         }
     }
 
-    Box(
+    PlayerSubMenuContainer(
         modifier = Modifier
-            .fillMaxWidth()
-            .wrapContentHeight()
             .graphicsLayer {
                 alpha = if (isVisible) 1f else 0f
                 translationY = if (isVisible) 0f else -80f
             }
             .focusProperties { canFocus = isVisible }
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(colors.background.copy(alpha = 0.9f), Color.Transparent)
-                )
-            )
-            .padding(top = 24.dp, bottom = 48.dp)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
@@ -199,22 +192,21 @@ fun VideoTopSubMenuUI(
                 when {
                     keyEvent.type == KeyEventType.KeyDown &&
                             keyEvent.key == Key.DirectionUp &&
-                            selectedCategory == null -> {
+                            selectedCategory == null && capabilities.quickSelection -> {
                         selectedCategory = SubMenuCategory.QUICK_VIDEOS
                         true
                     }
 
                     keyEvent.type == KeyEventType.KeyDown &&
                             keyEvent.key == Key.DirectionUp &&
-                            selectedCategory == SubMenuCategory.QUICK_VIDEOS -> {
+                            selectedCategory == SubMenuCategory.QUICK_VIDEOS && capabilities.quickSelection -> {
                         onCloseMenu()
                         true
                     }
 
                     else -> false
                 }
-            },
-        contentAlignment = Alignment.TopCenter
+            }
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -231,8 +223,13 @@ fun VideoTopSubMenuUI(
                     icon = Icons.Default.Tv,
                     subtitle = "シリーズ / 録画",
                     onClick = {
-                        selectedCategory =
-                            if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) null else SubMenuCategory.QUICK_VIDEOS
+                        if (capabilities.quickSelection) {
+                            selectedCategory = if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) {
+                                null
+                            } else {
+                                SubMenuCategory.QUICK_VIDEOS
+                            }
+                        }
                     },
                     modifier = Modifier
                         .focusRequester(quickVideoButtonRequester)
@@ -241,16 +238,17 @@ fun VideoTopSubMenuUI(
                                 FocusRequester.Cancel
                         },
                     contentColor = colors.textPrimary,
-                    enabled = seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty()
+                    enabled = capabilities.quickSelection &&
+                        (seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty())
                 )
                 VideoMenuTileItem(
                     title = "サムネイル",
                     icon = Icons.Default.GridView,
-                    subtitle = if (canOpenKeyframeGrid) "一覧" else "未生成",
+                    subtitle = if (capabilities.thumbnailGrid && canOpenKeyframeGrid) "一覧" else "未生成",
                     onClick = onKeyframeGridToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                    contentColor = if (canOpenKeyframeGrid) colors.textPrimary else colors.textSecondary,
-                    enabled = true
+                    contentColor = if (capabilities.thumbnailGrid && canOpenKeyframeGrid) colors.textPrimary else colors.textSecondary,
+                    enabled = capabilities.thumbnailGrid && canOpenKeyframeGrid
                 )
                 VideoMenuTileItem(
                     title = "音声切替",
@@ -260,7 +258,7 @@ fun VideoTopSubMenuUI(
                     modifier = Modifier
                         .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = isAudioSupported // ★ 適用
+                    enabled = capabilities.audio
                 )
                 VideoMenuTileItem(
                     title = "番組情報",
@@ -269,7 +267,8 @@ fun VideoTopSubMenuUI(
                     onClick = onProgramInfo,
                     modifier = Modifier.focusRequester(focusRequester)
                         .focusProperties { down = FocusRequester.Cancel },
-                    contentColor = colors.textPrimary
+                    contentColor = if (capabilities.programInfo) colors.textPrimary else colors.textSecondary,
+                    enabled = capabilities.programInfo
                 )
                 VideoMenuTileItem(
                     title = "再生速度",
@@ -278,7 +277,7 @@ fun VideoTopSubMenuUI(
                     onClick = onSpeedToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = true // 速度は常に利用可能
+                    enabled = capabilities.speed
                 )
                 VideoMenuTileItem(
                     title = "字幕",
@@ -287,7 +286,7 @@ fun VideoTopSubMenuUI(
                     onClick = onSubtitleToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = isSubtitleSupported // ★ 適用
+                    enabled = capabilities.subtitles
                 )
                 if (subtitleLanguages.size > 1 && currentSubtitleLanguage != null) {
                     VideoMenuTileItem(
@@ -297,7 +296,7 @@ fun VideoTopSubMenuUI(
                         onClick = onSubtitleLanguageToggle,
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                         contentColor = colors.textPrimary,
-                        enabled = isSubtitleSupported
+                        enabled = capabilities.subtitles && capabilities.subtitleLanguage
                     )
                 }
                 VideoMenuTileItem(
@@ -307,7 +306,7 @@ fun VideoTopSubMenuUI(
                     onClick = onLCropToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                     contentColor = if (isLCropEnabled) colors.accent else colors.textPrimary,
-                    enabled = true // L字クロップは常に利用可能
+                    enabled = capabilities.crop
                 )
 
                 VideoMenuTileItem(
@@ -317,7 +316,7 @@ fun VideoTopSubMenuUI(
                     onClick = onCmSkipModeToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                     contentColor = if (cmSkipMode != CmSkipMode.OFF) colors.accent else colors.textPrimary,
-                    enabled = isAutoCmSkipSupported // ★ 適用
+                    enabled = capabilities.cmSkip
                 )
 
                 VideoMenuTileItem(
@@ -327,10 +326,9 @@ fun VideoTopSubMenuUI(
                     onClick = onCommentToggle,
                     modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = isCommentSupported // ★ 適用
+                    enabled = capabilities.comments
                 )
-                if (isHdrRenderModeSupported) {
-                    VideoMenuTileItem(
+                VideoMenuTileItem(
                         title = "HDR 表示",
                         icon = Icons.Default.HighQuality,
                         subtitle = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
@@ -340,33 +338,32 @@ fun VideoTopSubMenuUI(
                         },
                         onClick = onHdrRenderModeToggle,
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                        contentColor = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
+                        contentColor = if (capabilities.hdr && isHdrRenderModeSupported && hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
                             colors.accent
                         } else {
                             colors.textPrimary
-                        }
+                        },
+                        enabled = capabilities.hdr && isHdrRenderModeSupported,
                     )
-                }
-                if (isDataBroadcastingAvailable) {
-                    VideoMenuTileItem(
+                VideoMenuTileItem(
                         title = "データ放送",
                         icon = Icons.Default.Tv,
                         subtitle = if (isDataBroadcastingActive) "表示中" else "開く",
                         onClick = onDataBroadcastingToggle,
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                        contentColor = if (isDataBroadcastingActive) {
+                        contentColor = if (capabilities.dataBroadcasting && isDataBroadcastingActive) {
                             colors.accent
                         } else {
                             colors.textPrimary
-                        }
+                        },
+                        enabled = capabilities.dataBroadcasting && isDataBroadcastingAvailable,
                     )
-                }
                 VideoMenuTileItem(
                     title = "画質",
                     icon = Icons.Default.HighQuality,
                     subtitle = currentQuality.label,
                     onClick = {
-                        if (isQualitySupported && availableQualities.isNotEmpty()) { // ★ 修正: 無効時は無視
+                        if (capabilities.quality && availableQualities.isNotEmpty()) {
                             selectedCategory =
                                 if (selectedCategory == SubMenuCategory.QUALITY) null else SubMenuCategory.QUALITY
                         }
@@ -378,17 +375,17 @@ fun VideoTopSubMenuUI(
                                 FocusRequester.Cancel
                         },
                     contentColor = colors.textPrimary,
-                    enabled = isQualitySupported && availableQualities.isNotEmpty() // ★ 適用
+                    enabled = capabilities.quality && availableQualities.isNotEmpty()
                 )
             }
 
             AnimatedVisibility(
-                visible = selectedCategory == SubMenuCategory.QUICK_VIDEOS,
+                visible = selectedCategory == SubMenuCategory.QUICK_VIDEOS && currentProgram != null,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
-                QuickVideoPanel(
-                    currentProgram = currentProgram,
+                currentProgram?.let { program -> QuickVideoPanel(
+                    currentProgram = program,
                     seriesPrograms = seriesPrograms,
                     quickPrograms = quickPrograms,
                     animeChannels = animeChannels,
@@ -407,11 +404,11 @@ fun VideoTopSubMenuUI(
                         selectedCategory = null
                         onCloseMenu()
                     }
-                )
+                ) }
             }
 
             AnimatedVisibility(
-                visible = selectedCategory == SubMenuCategory.QUALITY,
+                visible = selectedCategory == SubMenuCategory.QUALITY && capabilities.quality,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -808,47 +805,16 @@ fun VideoMenuTileItem(
     height: Dp = 100.dp,
     contentColor: Color = Color.White
 ) {
-    val colors = KomorebiTheme.colors
-    Surface(
+    PlayerMenuTile(
+        title = title,
+        icon = icon,
+        subtitle = subtitle,
         onClick = onClick,
+        style = RecordedPlayerMenuTileStyle,
+        modifier = modifier,
         enabled = enabled,
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-            contentColor = if (enabled) contentColor else colors.textPrimary.copy(alpha = 0.3f),
-            focusedContainerColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-        ),
-        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
-        modifier = modifier
-            .size(width, height)
-            // ★ 追加: 非対応項目は半透明にしてグレーアウトを強調
-            .alpha(if (enabled) 1f else 0.4f)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
-            )
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = LocalContentColor.current.copy(alpha = 0.7f)
-                )
-            }
-        }
-    }
+        width = width,
+        height = height,
+        contentColor = contentColor
+    )
 }
-

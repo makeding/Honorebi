@@ -81,7 +81,7 @@ internal fun selectTlvLayer(
     return TlvLayerSelection(video.packetId, audio.packetId)
 }
 
-internal class RawMmtsLayerController {
+class RawMmtsLayerController {
     @Volatile
     private var tracks: List<TlvTrackInfo> = emptyList()
 

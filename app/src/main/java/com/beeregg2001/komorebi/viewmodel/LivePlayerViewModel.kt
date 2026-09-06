@@ -3,40 +3,38 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
-import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.*
-import androidx.media3.common.util.TimestampAdjuster
 import androidx.media3.common.util.UnstableApi
-import com.beeregg2001.komorebi.util.playbackHttpDataSourceFactory
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.extractor.ExtractorsFactory
-import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
-import androidx.media3.extractor.ts.TsExtractor
+import androidx.media3.extractor.metadata.id3.PrivFrame
 import com.beeregg2001.komorebi.NativeLib
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.BackendConfig
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.LivePlayerConstants
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
-import com.beeregg2001.komorebi.data.repository.LiveProvider
-import com.beeregg2001.komorebi.data.repository.RecordProvider
+import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.player.CaptionDecodeRouter
+import com.beeregg2001.komorebi.ui.player.CaptionGenerationFence
+import com.beeregg2001.komorebi.ui.player.PlayerRuntime
+import com.beeregg2001.komorebi.ui.player.PlayerRuntimeState
+import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
+import com.beeregg2001.komorebi.ui.player.live.LivePlaybackSourceResolver
+import com.beeregg2001.komorebi.ui.player.live.livePlayerProfile
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
-import com.beeregg2001.komorebi.util.mmts.TlvExtractorsFactory
 import com.beeregg2001.komorebi.util.mmts.B62SubtitleSample
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
@@ -68,27 +66,15 @@ import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-private data class LivePlaybackRequest(
-    val url: String,
-    val source: StreamSource,
-    val isEdcbDirect: Boolean,
-    val quality: StreamQuality,
-    val config: BackendConfig
-) {
-    val apiQuality: String
-        get() = if (quality.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else quality.value
-}
-
 private data class SessionB62SubtitleSample(
     val token: LiveChannelSessionToken,
+    val generation: Long,
     val sample: B62SubtitleSample
 )
 
@@ -96,11 +82,11 @@ private data class SessionB62SubtitleSample(
 @HiltViewModel
 class LivePlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val liveProvider: LiveProvider,
-    private val recordProvider: RecordProvider,
     private val settingsRepository: SettingsRepository,
     @javax.inject.Named("access") private val accessHttpClient: OkHttpClient,
-    private val livePlayerFactory: LivePlayerFactory,
+    private val livePlaybackSourceResolver: LivePlaybackSourceResolver,
+    private val channelLogoCache: ChannelLogoCache,
+    private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val liveJikkyoManager: LiveJikkyoManager
 ) : ViewModel() {
 
@@ -110,10 +96,12 @@ class LivePlayerViewModel @Inject constructor(
         private const val CHANNEL_SWITCH_STREAM_DEBOUNCE_MS = 100L
     }
 
-    private val gson = Gson()
-
     private val _mainPlayer = MutableStateFlow<ExoPlayer?>(null)
     val mainPlayer: StateFlow<ExoPlayer?> = _mainPlayer.asStateFlow()
+    private var mainRuntime: PlayerRuntime? = null
+    private val _mainRuntimeState = MutableStateFlow(PlayerRuntimeState())
+    val mainRuntimeState: StateFlow<PlayerRuntimeState> = _mainRuntimeState.asStateFlow()
+    private var mainRuntimeStateJob: Job? = null
     private val _mainSessionToken = MutableStateFlow<LiveChannelSessionToken?>(null)
     val mainSessionToken: StateFlow<LiveChannelSessionToken?> = _mainSessionToken.asStateFlow()
 
@@ -123,10 +111,14 @@ class LivePlayerViewModel @Inject constructor(
         "ORIGINAL"
     )
     val isHdrToSdrToneMappingSupported: Boolean
-        get() = livePlayerFactory.isHdrToSdrToneMappingSupported
+        get() = HdrToneMapping.isSupported
 
     private val _dualPlayer = MutableStateFlow<ExoPlayer?>(null)
     val dualPlayer: StateFlow<ExoPlayer?> = _dualPlayer.asStateFlow()
+    private var dualRuntime: PlayerRuntime? = null
+    private val _dualRuntimeState = MutableStateFlow(PlayerRuntimeState())
+    val dualRuntimeState: StateFlow<PlayerRuntimeState> = _dualRuntimeState.asStateFlow()
+    private var dualRuntimeStateJob: Job? = null
     private val _dualSessionToken = MutableStateFlow<LiveChannelSessionToken?>(null)
     val dualSessionToken: StateFlow<LiveChannelSessionToken?> = _dualSessionToken.asStateFlow()
 
@@ -141,6 +133,8 @@ class LivePlayerViewModel @Inject constructor(
 
     val dataBroadcastingStore = B60DataBroadcastingStore()
     private val channelSessions = LiveChannelSessionCoordinator()
+    private val mainCaptionFence = CaptionGenerationFence { true }
+    private val dualCaptionFence = CaptionGenerationFence { true }
 
     private fun beginChannelSession(
         slot: LivePlaybackSlot,
@@ -282,12 +276,15 @@ class LivePlayerViewModel @Inject constructor(
         }
         viewModelScope.launch(Dispatchers.Default) {
             for (sample in mainB62SubtitleSamples) {
-                if (!channelSessions.isCurrent(sample.token)) continue
+                if (!channelSessions.isCurrent(sample.token) || !mainCaptionFence.accepts(sample.generation)) continue
                 decodeB62Subtitle(
                     captionDecoder = mainCaptionDecoder,
                     superimposeDecoder = mainSuperimposeDecoder,
                     sample = sample.sample,
-                    isCurrent = { channelSessions.isCurrent(sample.token) },
+                    isCurrent = {
+                        channelSessions.isCurrent(sample.token) &&
+                            mainCaptionFence.accepts(sample.generation)
+                    },
                     onLanguagesChanged = { _mainSubtitleLanguages.value = it },
                     onCue = { _mainSubtitleEvents.tryEmit(it) }
                 )
@@ -295,12 +292,15 @@ class LivePlayerViewModel @Inject constructor(
         }
         viewModelScope.launch(Dispatchers.Default) {
             for (sample in dualB62SubtitleSamples) {
-                if (!channelSessions.isCurrent(sample.token)) continue
+                if (!channelSessions.isCurrent(sample.token) || !dualCaptionFence.accepts(sample.generation)) continue
                 decodeB62Subtitle(
                     captionDecoder = dualCaptionDecoder,
                     superimposeDecoder = dualSuperimposeDecoder,
                     sample = sample.sample,
-                    isCurrent = { channelSessions.isCurrent(sample.token) },
+                    isCurrent = {
+                        channelSessions.isCurrent(sample.token) &&
+                            dualCaptionFence.accepts(sample.generation)
+                    },
                     onLanguagesChanged = { _dualSubtitleLanguages.value = it },
                     onCue = { _dualSubtitleEvents.tryEmit(it) }
                 )
@@ -325,39 +325,7 @@ class LivePlayerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isQualitiesLoaded.value = false
             try {
-                if (source == StreamSource.EDCB) {
-                    if (isEdcbDirect) {
-                        _availableQualities.value = listOf(
-                            StreamQuality(
-                                label = "オリジナル (Direct)",
-                                value = "direct",
-                                isRawTs = true
-                            )
-                        )
-                    } else {
-                        val json = settingsRepository.availableStreamQualities.first()
-                        if (json.isNotBlank()) {
-                            try {
-                                val type = object : TypeToken<List<StreamQuality>>() {}.type
-                                val list = gson.fromJson<List<StreamQuality>>(json, type)
-                                if (!list.isNullOrEmpty()) _availableQualities.value = list
-                                else fetchFromApiAndSave()
-                            } catch (e: Exception) {
-                                fetchFromApiAndSave()
-                            }
-                        } else fetchFromApiAndSave()
-                    }
-                } else if (source == StreamSource.KONOMITV) {
-                    _availableQualities.value = StreamQuality.DEFAULT_QUALITIES
-                } else {
-                    _availableQualities.value = listOf(
-                        StreamQuality(
-                            label = "オリジナル (Direct)",
-                            value = "direct",
-                            isRawTs = true
-                        )
-                    )
-                }
+                _availableQualities.value = playbackQualityCatalog.live(source, isEdcbDirect)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load stream qualities", e)
                 val currentLive = settingsRepository.liveQuality.first()
@@ -371,38 +339,6 @@ class LivePlayerViewModel @Inject constructor(
             } finally {
                 _isQualitiesLoaded.value = true
             }
-        }
-    }
-
-    private suspend fun fetchFromApiAndSave() {
-        try {
-            Log.i(TAG, "Cache empty. Interrupting EPG to fetch qualities from API.")
-            val fetched = recordProvider.getStreamQualities()
-            if (fetched.isNotEmpty()) {
-                settingsRepository.saveString(
-                    SettingsRepository.AVAILABLE_STREAM_QUALITIES,
-                    gson.toJson(fetched)
-                )
-                _availableQualities.value = fetched
-            } else {
-                val currentLive = settingsRepository.liveQuality.first()
-                _availableQualities.value = listOf(
-                    StreamQuality(
-                        label = "設定値 ($currentLive)",
-                        value = currentLive,
-                        isRawTs = false
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            val currentLive = settingsRepository.liveQuality.first()
-            _availableQualities.value = listOf(
-                StreamQuality(
-                    label = "設定値 ($currentLive)",
-                    value = currentLive,
-                    isRawTs = false
-                )
-            )
         }
     }
 
@@ -453,15 +389,16 @@ class LivePlayerViewModel @Inject constructor(
                 "source=$mainCurrentSource, quality=${mainCurrentQuality?.value}"
         )
         mainEventSource?.cancel(); mainEventSource = null
+        mainCaptionFence.reset()
         mainB62SubtitleSamples.clearPending()
         mainCaptionDecoder.reset(_currentSubtitleLanguageId.value)
         mainSuperimposeDecoder.reset()
         _mainSubtitleLanguages.value = emptyList()
 
-        // ★ 修正: KonomiTV等でセッションが残らないよう、確実にstop()とclearMediaItems()を呼ぶ
-        _mainPlayer.value?.stop()
-        _mainPlayer.value?.clearMediaItems()
-        _mainPlayer.value?.release(); _mainPlayer.value = null
+        mainRuntime?.release()
+        mainRuntime = null
+        _mainPlayer.value = null
+        clearMainRuntimeState()
         mainRawMmtsLayerController.reset()
 
         _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
@@ -479,15 +416,16 @@ class LivePlayerViewModel @Inject constructor(
                 "source=$dualCurrentSource, quality=${dualCurrentQuality?.value}"
         )
         dualEventSource?.cancel(); dualEventSource = null
+        dualCaptionFence.reset()
         dualB62SubtitleSamples.clearPending()
         dualCaptionDecoder.reset(_currentSubtitleLanguageId.value)
         dualSuperimposeDecoder.reset()
         _dualSubtitleLanguages.value = emptyList()
 
-        // ★ 修正: サブプレイヤー側も同様に確実なクリーンアップを行う
-        _dualPlayer.value?.stop()
-        _dualPlayer.value?.clearMediaItems()
-        _dualPlayer.value?.release(); _dualPlayer.value = null
+        dualRuntime?.release()
+        dualRuntime = null
+        _dualPlayer.value = null
+        clearDualRuntimeState()
         dualRawMmtsLayerController.reset()
 
         _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
@@ -507,16 +445,18 @@ class LivePlayerViewModel @Inject constructor(
         endChannelSession(LivePlaybackSlot.DUAL)
         mainPlaybackJob?.cancel(); dualPlaybackJob?.cancel()
         mainEventSource?.cancel(); dualEventSource?.cancel()
+        mainCaptionFence.reset(); dualCaptionFence.reset()
 
-        // ★ 修正: release()の前に必ずstop()とclearMediaItems()を呼んでゾンビ化を防ぐ
-        _mainPlayer.value?.stop()
-        _mainPlayer.value?.clearMediaItems()
-        _mainPlayer.value?.release(); _mainPlayer.value = null
+        mainRuntime?.release()
+        mainRuntime = null
+        _mainPlayer.value = null
+        clearMainRuntimeState()
         mainRawMmtsLayerController.reset()
 
-        _dualPlayer.value?.stop()
-        _dualPlayer.value?.clearMediaItems()
-        _dualPlayer.value?.release(); _dualPlayer.value = null
+        dualRuntime?.release()
+        dualRuntime = null
+        _dualPlayer.value = null
+        clearDualRuntimeState()
         dualRawMmtsLayerController.reset()
 
         _mainSseStatus.value = "Standby"; _dualSseStatus.value = "Standby"
@@ -544,8 +484,7 @@ class LivePlayerViewModel @Inject constructor(
                 _mainSseDetail.value = "セグメント生成待機中... ($mainAutoRetryCount/5)"
                 delay(2500)
                 if (channelSessions.isCurrent(token)) {
-                    _mainPlayer.value?.prepare()
-                    _mainPlayer.value?.play()
+                    mainRuntime?.reprepare()
                 }
                 return@launch
             }
@@ -594,8 +533,7 @@ class LivePlayerViewModel @Inject constructor(
                     "セグメント生成待機中... ($dualAutoRetryCount/5)"
                 delay(2500)
                 if (channelSessions.isCurrent(token)) {
-                    _dualPlayer.value?.prepare()
-                    _dualPlayer.value?.play()
+                    dualRuntime?.reprepare()
                 }
                 return@launch
             }
@@ -688,7 +626,7 @@ class LivePlayerViewModel @Inject constructor(
         dataBroadcastingStore.beginSession(channel.id)
 
         viewModelScope.launch {
-            val logoUrl = liveProvider.getChannelLogoUrl(channel.id)
+            val logoUrl = channelLogoCache.getChannelLogoUrl(channel)
             if (channelSessions.isCurrent(token)) _currentLogoUrl.value = logoUrl
         }
 
@@ -711,12 +649,12 @@ class LivePlayerViewModel @Inject constructor(
                         "Standby"; _mainSseDetail.value = "ストリームを準備中..."
                     }
 
-                    val request = resolvePlaybackRequest(
+                    val request = livePlaybackSourceResolver.resolve(
                         channel = channel,
                         requestedSource = source,
                         requestedIsEdcbDirect = isEdcbDirect,
                         requestedQuality = quality,
-                        streamNumber = 0,
+                        streamNumber = LivePlaybackSlot.MAIN.streamNumber,
                         factory = mainTsDataSourceFactory
                     )
                     if (!channelSessions.isCurrent(token)) return@withLock
@@ -729,20 +667,15 @@ class LivePlayerViewModel @Inject constructor(
                     if (!channelSessions.isCurrent(token)) return@withLock
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        val newPlayer = livePlayerFactory.createExoPlayer(
-                            audioOutputMode = audioOutputMode,
-                            hdrRenderMode = hdrRenderMode,
-                            isKonomiTvSource = { request.source == StreamSource.KONOMITV },
-                            onSubtitleDataReceived = { pts, data ->
-                                decodeAndEmitMainSubtitle(token, pts, data)
-                            },
-                            onError = { error -> handleMainError(uiContext, error, token) }
-                        )
+                        val runtime = PlayerRuntime(context, livePlayerProfile(audioOutputMode, hdrRenderMode))
                         if (!channelSessions.isCurrent(token)) {
-                            newPlayer.release()
+                            runtime.release()
                             return@withContext
                         }
-                        _mainPlayer.value = newPlayer
+                        mainRuntime = runtime
+                        _mainPlayer.value = runtime.player
+                        bindMainRuntimeState(runtime)
+                        attachMainRuntimeListeners(runtime, request.source, token, uiContext)
                         if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _mainSseStatus.value = "ONAir"; _mainSseDetail.value = ""
                         } else if (request.config is BackendConfig.KonomiTv) {
@@ -755,7 +688,7 @@ class LivePlayerViewModel @Inject constructor(
                             )
                         }
                         startPlayback(
-                            newPlayer,
+                            runtime,
                             request,
                             mainTsDataSourceFactory,
                             { pts, data -> decodeAndEmitMainSubtitle(token, pts, data) },
@@ -807,12 +740,12 @@ class LivePlayerViewModel @Inject constructor(
                     delay(if (isAutoRetry) 0 else 600)
                     if (!channelSessions.isCurrent(token)) return@withLock
 
-                    val request = resolvePlaybackRequest(
+                    val request = livePlaybackSourceResolver.resolve(
                         channel = channel,
                         requestedSource = source,
                         requestedIsEdcbDirect = isEdcbDirect,
                         requestedQuality = quality,
-                        streamNumber = 1,
+                        streamNumber = LivePlaybackSlot.DUAL.streamNumber,
                         factory = dualTsDataSourceFactory
                     )
                     if (!channelSessions.isCurrent(token)) return@withLock
@@ -825,20 +758,15 @@ class LivePlayerViewModel @Inject constructor(
                     if (!channelSessions.isCurrent(token)) return@withLock
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        val newDualPlayer = livePlayerFactory.createExoPlayer(
-                            audioOutputMode = audioOutputMode,
-                            hdrRenderMode = hdrRenderMode,
-                            isKonomiTvSource = { request.source == StreamSource.KONOMITV },
-                            onSubtitleDataReceived = { pts, data ->
-                                decodeAndEmitDualSubtitle(token, pts, data)
-                            },
-                            onError = { error -> handleDualError(uiContext, error, token) }
-                        )
+                        val runtime = PlayerRuntime(context, livePlayerProfile(audioOutputMode, hdrRenderMode))
                         if (!channelSessions.isCurrent(token)) {
-                            newDualPlayer.release()
+                            runtime.release()
                             return@withContext
                         }
-                        _dualPlayer.value = newDualPlayer
+                        dualRuntime = runtime
+                        _dualPlayer.value = runtime.player
+                        bindDualRuntimeState(runtime)
+                        attachDualRuntimeListeners(runtime, request.source, token, uiContext)
                         if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _dualSseStatus.value = "ONAir"; _dualSseDetail.value = ""
                         } else if (request.config is BackendConfig.KonomiTv) {
@@ -851,7 +779,7 @@ class LivePlayerViewModel @Inject constructor(
                             )
                         }
                         startPlayback(
-                            newDualPlayer,
+                            runtime,
                             request,
                             dualTsDataSourceFactory,
                             { pts, data -> decodeAndEmitDualSubtitle(token, pts, data) },
@@ -932,29 +860,49 @@ class LivePlayerViewModel @Inject constructor(
     private fun decodeAndEmitMainSubtitle(
         token: LiveChannelSessionToken, ptsMs: Long, data: ByteArray
     ) {
-        if (!channelSessions.isCurrent(token)) return
-        val cue = mainCaptionDecoder.decode(data, ptsMs, renderCaptions = isSubtitleEnabled)
-        if (!channelSessions.isCurrent(token)) return
-        _mainSubtitleLanguages.value = mainCaptionDecoder.availableLanguages()
-        if (isSubtitleEnabled && cue != null) _mainSubtitleEvents.tryEmit(cue)
+        val generation = mainCaptionFence.token()
+        if (!mainCaptionFence.accepts(generation) || !channelSessions.isCurrent(token)) return
+        val result = CaptionDecodeRouter.decodeB24(
+            privateData = data,
+            captionsEnabled = isSubtitleEnabled,
+            captionDecoder = mainCaptionDecoder,
+            superimposeDecoder = mainSuperimposeDecoder,
+            ptsMs = ptsMs,
+        ) ?: return
+        if (!mainCaptionFence.accepts(generation) || !channelSessions.isCurrent(token)) return
+        if (result.type == NativeCaptionCue.TYPE_CAPTION) _mainSubtitleLanguages.value = result.languages
+        if (result.render) result.cues.forEach(_mainSubtitleEvents::tryEmit)
     }
 
     private fun decodeAndEmitDualSubtitle(
         token: LiveChannelSessionToken, ptsMs: Long, data: ByteArray
     ) {
-        if (!channelSessions.isCurrent(token)) return
-        val cue = dualCaptionDecoder.decode(data, ptsMs, renderCaptions = isSubtitleEnabled)
-        if (!channelSessions.isCurrent(token)) return
-        _dualSubtitleLanguages.value = dualCaptionDecoder.availableLanguages()
-        if (isSubtitleEnabled && cue != null) _dualSubtitleEvents.tryEmit(cue)
+        val generation = dualCaptionFence.token()
+        if (!dualCaptionFence.accepts(generation) || !channelSessions.isCurrent(token)) return
+        val result = CaptionDecodeRouter.decodeB24(
+            privateData = data,
+            captionsEnabled = isSubtitleEnabled,
+            captionDecoder = dualCaptionDecoder,
+            superimposeDecoder = dualSuperimposeDecoder,
+            ptsMs = ptsMs,
+        ) ?: return
+        if (!dualCaptionFence.accepts(generation) || !channelSessions.isCurrent(token)) return
+        if (result.type == NativeCaptionCue.TYPE_CAPTION) _dualSubtitleLanguages.value = result.languages
+        if (result.render) result.cues.forEach(_dualSubtitleEvents::tryEmit)
     }
 
     private fun decodeAndEmitMainB62Subtitle(token: LiveChannelSessionToken, sample: B62SubtitleSample) {
-        if (channelSessions.isCurrent(token)) mainB62SubtitleSamples.trySend(SessionB62SubtitleSample(token, sample))
+        val generation = mainCaptionFence.token()
+        if (channelSessions.isCurrent(token) && mainCaptionFence.accepts(generation)) {
+            mainB62SubtitleSamples.trySend(SessionB62SubtitleSample(token, generation, sample))
+        }
     }
 
     private fun decodeAndEmitDualB62Subtitle(token: LiveChannelSessionToken, sample: B62SubtitleSample) {
-        if (channelSessions.isCurrent(token)) dualB62SubtitleSamples.trySend(SessionB62SubtitleSample(token, sample))
+        val generation = dualCaptionFence.token()
+        if (channelSessions.isCurrent(token) && dualCaptionFence.accepts(generation)) {
+            dualB62SubtitleSamples.trySend(SessionB62SubtitleSample(token, generation, sample))
+        }
     }
 
     private suspend fun decodeB62Subtitle(
@@ -966,29 +914,17 @@ class LivePlayerViewModel @Inject constructor(
         onCue: (NativeCaptionCue) -> Unit
     ) {
         if (!isCurrent()) return
-        val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
-        if (isCaption && !isSubtitleEnabled) return
-        val decoder = when (sample.type) {
-            NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
-            NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
-            else -> return
-        }
-        val decoded = decoder.decodeB62(
-            data = sample.data,
-            ptsMs = sample.timeUs / 1_000L,
-            operationMode = sample.operationMode,
-            timingMode = sample.timingMode,
-            referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
-            mpuSequenceNumber = sample.mpuSequenceNumber,
-            resources = sample.resources,
-            discontinuity = sample.discontinuity
-        )
+        val result = CaptionDecodeRouter.decodeB62(
+            sample = sample,
+            captionDecoder = captionDecoder,
+            superimposeDecoder = superimposeDecoder,
+            captionsEnabled = isSubtitleEnabled,
+        ) ?: return
         if (!isCurrent()) return
-        val languages = decoder.availableLanguages()
         withContext(Dispatchers.Main.immediate) {
             if (!isCurrent()) return@withContext
-            if (isCaption) onLanguagesChanged(languages)
-            if (!isCaption || isSubtitleEnabled) decoded.forEach(onCue)
+            if (result.type == NativeCaptionCue.TYPE_CAPTION) onLanguagesChanged(result.languages)
+            if (result.render) result.cues.forEach(onCue)
         }
     }
 
@@ -1049,125 +985,97 @@ class LivePlayerViewModel @Inject constructor(
         _mainPlayerErrorIsCapabilityRelated.value = false
     }
 
-    private suspend fun resolvePlaybackRequest(
-        channel: Channel,
-        requestedSource: StreamSource,
-        requestedIsEdcbDirect: Boolean,
-        requestedQuality: StreamQuality,
-        streamNumber: Int,
-        factory: TsReadExDataSourceFactory
-    ): LivePlaybackRequest {
-        val isRawMmts = channel.type.equals("BS4K", ignoreCase = true)
-        val quality = if (isRawMmts) {
-            StreamQuality.rawMmtsQualities(channel)
-                .firstOrNull { it.value == requestedQuality.value }
-                ?: StreamQuality.rawMmtsQualities(channel).first()
-        } else if (requestedQuality.isRawMmts) {
-            val savedQuality = settingsRepository.liveQuality.first()
-            StreamQuality(
-                label = savedQuality,
-                value = savedQuality
-            )
-        } else {
-            requestedQuality
-        }
-        val source = if (isRawMmts) resolveRawMmtsSource(requestedSource) else requestedSource
-        val isEdcbDirect = source == StreamSource.EDCB && requestedIsEdcbDirect
-        val config = settingsRepository.getBackendConfig(source)
-
-        val url = when (source) {
-            StreamSource.EDCB -> {
-                if (!isEdcbDirect) {
-                    val hlsUrl = liveProvider.getLiveStreamUrl(channel.id, quality.value, streamNumber)
-                    if (hlsUrl.isBlank()) throw IOException("HLSトランスコードの開始に失敗しました")
-                    return LivePlaybackRequest(hlsUrl, source, false, quality, config)
-                }
-                val ip = if (config.ip.isNotBlank()) config.ip else "127.0.0.1"
-                val port = if (config.port.isNotBlank()) config.port else "4510"
-                val parts = channel.id.split("_")
-                val isEdcbFormat = parts.size >= 4 && parts[0].startsWith("edcb", ignoreCase = true)
-                val finalOnid = if (isEdcbFormat) parts[1] else channel.networkId.toString()
-                val finalTsid =
-                    if (isEdcbFormat) parts[2] else if (channel.transportStreamId != 0L) channel.transportStreamId.toString() else channel.networkId.toString()
-                val finalSid = if (isEdcbFormat) parts[3] else channel.serviceId.toString()
-                factory.tsArgs = arrayOf(
-                    "-x",
-                    "18/38/39",
-                    "-n",
-                    finalSid,
-                    "-a",
-                    "13",
-                    "-b",
-                    "4",
-                    "-c",
-                    "5",
-                    "-u",
-                    "1",
-                    "-d",
-                    "13"
-                )
-                "edcb://$ip:$port/live?onid=$finalOnid&tsid=$finalTsid&sid=$finalSid"
+    /** The scene consumes this snapshot; runtime remains the only basic event listener. */
+    private fun bindMainRuntimeState(runtime: PlayerRuntime) {
+        mainRuntimeStateJob?.cancel()
+        _mainRuntimeState.value = runtime.state.value
+        mainRuntimeStateJob = viewModelScope.launch {
+            runtime.state.collect { state ->
+                if (mainRuntime === runtime) _mainRuntimeState.value = state
             }
-
-            StreamSource.MIRAKURUN -> {
-                if (config.isValid) {
-                    if (quality.isRawMmts) {
-                        UrlBuilder.getMirakurunRawMmtsStreamUrl(
-                            config.ip,
-                            config.port,
-                            channel.networkId,
-                            channel.serviceId
-                        )
-                    } else {
-                        factory.tsArgs = arrayOf(
-                            "-x", "18/38/39",
-                            "-n", channel.serviceId.toString(),
-                            "-a", "13",
-                            "-b", "4",
-                            "-c", "5",
-                            "-u", "1",
-                            "-d", "13"
-                        )
-                        UrlBuilder.getMirakurunStreamUrl(
-                            config.ip,
-                            config.port,
-                            channel.networkId,
-                            channel.serviceId
-                        )
-                    }
-                } else ""
-            }
-
-            StreamSource.KONOMITV -> UrlBuilder.getKonomiTvLiveStreamUrl(
-                config.ip,
-                config.port,
-                channel.displayChannelId,
-                if (quality.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else quality.value
-            )
         }
-        if (url.isBlank()) throw IOException("ストリーミングソースの設定が不完全です: $source")
-        return LivePlaybackRequest(url, source, isEdcbDirect, quality, config)
     }
 
-    private suspend fun resolveRawMmtsSource(requestedSource: StreamSource): StreamSource {
-        if (requestedSource != StreamSource.EDCB &&
-            settingsRepository.getBackendConfig(requestedSource).isValid
-        ) {
-            return requestedSource
+    private fun bindDualRuntimeState(runtime: PlayerRuntime) {
+        dualRuntimeStateJob?.cancel()
+        _dualRuntimeState.value = runtime.state.value
+        dualRuntimeStateJob = viewModelScope.launch {
+            runtime.state.collect { state ->
+                if (dualRuntime === runtime) _dualRuntimeState.value = state
+            }
         }
-        if (settingsRepository.getBackendConfig(StreamSource.KONOMITV).isValid) {
-            return StreamSource.KONOMITV
-        }
-        if (settingsRepository.getBackendConfig(StreamSource.MIRAKURUN).isValid) {
-            return StreamSource.MIRAKURUN
-        }
-        throw IOException("BS4K/BS8K Raw MMTS には HonomiTV または Mirakurun の設定が必要です")
+    }
+
+    private fun clearMainRuntimeState() {
+        mainRuntimeStateJob?.cancel()
+        mainRuntimeStateJob = null
+        _mainRuntimeState.value = PlayerRuntimeState()
+    }
+
+    private fun clearDualRuntimeState() {
+        dualRuntimeStateJob?.cancel()
+        dualRuntimeStateJob = null
+        _dualRuntimeState.value = PlayerRuntimeState()
+    }
+
+    private fun attachMainRuntimeListeners(
+        runtime: PlayerRuntime,
+        source: StreamSource,
+        token: LiveChannelSessionToken,
+        uiContext: Context,
+    ) {
+        runtime.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) = handleMainError(uiContext, error, token)
+
+            override fun onMetadata(metadata: Metadata) {
+                if (source != StreamSource.KONOMITV || !channelSessions.isCurrent(token)) return
+                for (index in 0 until metadata.length()) {
+                    val entry = metadata.get(index)
+                    if (entry is PrivFrame &&
+                        (entry.owner.contains("aribb24", true) || entry.owner.contains("B24", true))
+                    ) {
+                        decodeAndEmitMainSubtitle(
+                            token,
+                            runtime.player.currentPosition + LivePlayerConstants.SUBTITLE_SYNC_OFFSET_MS,
+                            entry.privateData,
+                        )
+                    }
+                }
+            }
+        })
+    }
+
+    private fun attachDualRuntimeListeners(
+        runtime: PlayerRuntime,
+        source: StreamSource,
+        token: LiveChannelSessionToken,
+        uiContext: Context,
+    ) {
+        runtime.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) = handleDualError(uiContext, error, token)
+
+            override fun onMetadata(metadata: Metadata) {
+                if (source != StreamSource.KONOMITV || !channelSessions.isCurrent(token)) return
+                for (index in 0 until metadata.length()) {
+                    val entry = metadata.get(index)
+                    if (entry is PrivFrame &&
+                        (entry.owner.contains("aribb24", true) || entry.owner.contains("B24", true))
+                    ) {
+                        decodeAndEmitDualSubtitle(
+                            token,
+                            runtime.player.currentPosition + LivePlayerConstants.SUBTITLE_SYNC_OFFSET_MS,
+                            entry.privateData,
+                        )
+                    }
+                }
+            }
+        })
     }
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun startPlayback(
-        player: ExoPlayer?,
-        request: LivePlaybackRequest,
+        runtime: PlayerRuntime,
+        request: LivePlaybackSourceResolver.Request,
         factory: TsReadExDataSourceFactory,
         onSubtitleDataReceived: (Long, ByteArray) -> Unit,
         onB62SubtitleDataReceived: (B62SubtitleSample) -> Unit,
@@ -1175,79 +1083,22 @@ class LivePlayerViewModel @Inject constructor(
         rawMmtsLayerController: RawMmtsLayerController? = null,
         sessionToken: LiveChannelSessionToken? = null
     ) {
-        val mediaItem = MediaItem.fromUri(request.url)
-        val mediaSource = when {
-            request.quality.isRawMmts -> {
-                rawMmtsLayerController?.reset()
-                val httpDataSourceFactory = playbackHttpDataSourceFactory(context)
-                if (request.source == StreamSource.MIRAKURUN) {
-                    httpDataSourceFactory.setDefaultRequestProperties(
-                        mapOf("X-Mirakurun-Priority" to "0")
-                    )
-                }
-                ProgressiveMediaSource.Factory(
-                    httpDataSourceFactory,
-                    TlvExtractorsFactory(
-                        preferredVideoPacketId = request.quality.videoPacketId,
-                        onTracksChanged = {
-                            if (sessionToken == null || channelSessions.isCurrent(sessionToken)) {
-                                rawMmtsLayerController?.updateTracks(it)
-                            }
-                        },
-                        onSubtitleDataReceived = onB62SubtitleDataReceived,
-                        dataBroadcastingCallback = dataBroadcastingCallback
-                    )
-                ).createMediaSource(mediaItem)
-            }
-
-            request.source == StreamSource.MIRAKURUN ||
-                (request.source == StreamSource.EDCB && request.isEdcbDirect) -> {
-                    val extractorsFactory = ExtractorsFactory {
-                        arrayOf(
-                            TsExtractor(
-                                TsExtractor.MODE_SINGLE_PMT,
-                                TimestampAdjuster(C.TIME_UNSET),
-                                DirectSubtitlePayloadReaderFactory(
-                                    onSubtitleDataReceived = onSubtitleDataReceived
-                                ),
-                                TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES
-                            )
-                        )
-                    }
-                    ProgressiveMediaSource.Factory(factory, extractorsFactory)
-                        .createMediaSource(mediaItem)
-                }
-
-            request.source == StreamSource.EDCB && !request.isEdcbDirect -> {
-                        val uri = Uri.parse(request.url)
-                        val ctok = uri.getQueryParameter("ctok") ?: ""
-                        val httpDataSourceFactory = playbackHttpDataSourceFactory(context)
-                            .setDefaultRequestProperties(mapOf("Cookie" to "ctok=$ctok"))
-                        HlsMediaSource.Factory(httpDataSourceFactory)
-                            .setAllowChunklessPreparation(false).createMediaSource(mediaItem)
-                    }
-
-            else -> DefaultMediaSourceFactory(context)
-                .setDataSourceFactory(playbackHttpDataSourceFactory(context))
-                .createMediaSource(mediaItem)
+        val acceptsCurrentSession = { sessionToken == null || channelSessions.isCurrent(sessionToken) }
+        val mediaSource = livePlaybackSourceResolver.createMediaSource(
+            request = request,
+            factory = factory,
+            onSubtitleDataReceived = onSubtitleDataReceived,
+            onB62SubtitleDataReceived = onB62SubtitleDataReceived,
+            dataBroadcastingCallback = dataBroadcastingCallback,
+            rawMmtsLayerController = rawMmtsLayerController,
+            acceptsCurrentSession = acceptsCurrentSession
+        )
+        rawMmtsLayerController?.let { controller ->
+            livePlaybackSourceResolver.attachRawMmtsLayerSelection(
+                runtime, request, controller, acceptsCurrentSession
+            )
         }
-        if (request.quality.isRawMmts && player != null && rawMmtsLayerController != null) {
-            player.addListener(object : Player.Listener {
-                override fun onTracksChanged(tracks: Tracks) {
-                    if (sessionToken != null && !channelSessions.isCurrent(sessionToken)) return
-                    val parameters = rawMmtsLayerController.buildLayerSelection(
-                        player,
-                        request.quality.videoPacketId,
-                        mainAudio = true
-                    ) ?: return
-                    player.removeListener(this)
-                    player.trackSelectionParameters = parameters
-                }
-            })
-        }
-        if (sessionToken == null || channelSessions.isCurrent(sessionToken)) {
-            player?.setMediaSource(mediaSource); player?.prepare(); player?.play()
-        }
+        if (acceptsCurrentSession()) runtime.load(mediaSource, playWhenReady = true)
     }
 
     private fun startMainSse(
@@ -1310,16 +1161,18 @@ class LivePlayerViewModel @Inject constructor(
                                 return@launch
                             }
                             when (status) {
-                                "Standby", "Restart" -> _mainPlayer.value?.pause()
+                                "Standby", "Restart" -> mainRuntime?.pause()
                                 "ONAir" -> {
                                     if (_mainPlayer.value?.playerError != null || _mainPlayerError.value != null) {
                                         _mainPlayerError.value = null
                                         _mainPlayerErrorIsCapabilityRelated.value = false
-                                        _mainPlayer.value?.prepare()
-                                    }; _mainPlayer.value?.play()
+                                        mainRuntime?.reprepare()
+                                    } else {
+                                        mainRuntime?.play()
+                                    }
                                 }
 
-                                "Offline" -> _mainPlayer.value?.pause()
+                                "Offline" -> mainRuntime?.pause()
                             }
                         } catch (e: Exception) {
                         }
@@ -1388,12 +1241,16 @@ class LivePlayerViewModel @Inject constructor(
                                 return@launch
                             }
                             when (status) {
-                                "Standby", "Restart" -> _dualPlayer.value?.pause()
+                                "Standby", "Restart" -> dualRuntime?.pause()
                                 "ONAir" -> {
-                                    if (_dualPlayer.value?.playerError != null) _dualPlayer.value?.prepare(); _dualPlayer.value?.play()
+                                    if (_dualPlayer.value?.playerError != null) {
+                                        dualRuntime?.reprepare()
+                                    } else {
+                                        dualRuntime?.play()
+                                    }
                                 }
 
-                                "Offline" -> _dualPlayer.value?.pause()
+                                "Offline" -> dualRuntime?.pause()
                             }
                         } catch (e: Exception) {
                         }

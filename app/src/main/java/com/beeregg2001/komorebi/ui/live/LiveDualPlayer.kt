@@ -19,7 +19,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,10 +32,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
@@ -44,6 +41,7 @@ import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.player.PlayerSurface
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -67,12 +65,14 @@ fun DualDisplayPlayer(
     mainPixelRatio: Float,
     mainCaptionCue: NativeCaptionCue?,
     mainSuperimposeCue: NativeCaptionCue?,
+    isMainBuffering: Boolean,
     dualPlayer: ExoPlayer?,
     dualVideoWidth: Int,
     dualVideoHeight: Int,
     dualPixelRatio: Float,
     dualCaptionCue: NativeCaptionCue?,
     dualSuperimposeCue: NativeCaptionCue?,
+    isDualBuffering: Boolean,
     isSubtitleEnabled: Boolean
 ) {
     val colors = KomorebiTheme.colors
@@ -130,42 +130,11 @@ fun DualDisplayPlayer(
                 .border(4.dp, leftBorderColor)
         ) {
             if (mainPlayer != null) {
-                AndroidView(
-                    factory = {
-                        PlayerView(it).apply {
-                            player = mainPlayer
-                            useController = false
-                            keepScreenOn = true
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        }
-                    },
-                    update = { view ->
-                        if (view.player != mainPlayer) {
-                            view.player = mainPlayer
-                        }
-                        view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    },
-                    // ★ 修正2: 破棄時に参照を外す
-                    onRelease = { view ->
-                        view.player = null
-                        view.keepScreenOn = false
-                    },
+                PlayerSurface(
+                    player = mainPlayer,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
                     modifier = Modifier.fillMaxSize()
                 )
-
-                var isMainBuffering by remember { mutableStateOf(false) }
-                DisposableEffect(mainPlayer) {
-                    val listener = object : androidx.media3.common.Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) {
-                            isMainBuffering =
-                                (playbackState == androidx.media3.common.Player.STATE_BUFFERING)
-                        }
-                    }
-                    mainPlayer.addListener(listener)
-                    isMainBuffering =
-                        mainPlayer.playbackState == androidx.media3.common.Player.STATE_BUFFERING
-                    onDispose { mainPlayer.removeListener(listener) }
-                }
 
                 val showMainLoading = if (state.currentStreamSource == StreamSource.KONOMITV) {
                     state.sseStatus == "Standby" || state.sseStatus == "Offline"
@@ -247,42 +216,11 @@ fun DualDisplayPlayer(
         ) {
             if (state.dualRightChannel != null) {
                 if (dualPlayer != null) {
-                    AndroidView(
-                        factory = {
-                            PlayerView(it).apply {
-                                player = dualPlayer
-                                useController = false
-                                keepScreenOn = true
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            }
-                        },
-                        update = { view ->
-                            if (view.player != dualPlayer) {
-                                view.player = dualPlayer
-                            }
-                            view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        },
-                        // ★ 修正2: 破棄時に参照を外す
-                        onRelease = { view ->
-                            view.player = null
-                            view.keepScreenOn = false
-                        },
+                    PlayerSurface(
+                        player = dualPlayer,
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
                         modifier = Modifier.fillMaxSize()
                     )
-
-                    var isDualBuffering by remember { mutableStateOf(false) }
-                    DisposableEffect(dualPlayer) {
-                        val listener = object : androidx.media3.common.Player.Listener {
-                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                isDualBuffering =
-                                    (playbackState == androidx.media3.common.Player.STATE_BUFFERING)
-                            }
-                        }
-                        dualPlayer.addListener(listener)
-                        isDualBuffering =
-                            dualPlayer.playbackState == androidx.media3.common.Player.STATE_BUFFERING
-                        onDispose { dualPlayer.removeListener(listener) }
-                    }
 
                     val showDualLoading = if (state.currentStreamSource == StreamSource.KONOMITV) {
                         state.dualSseStatus == "Standby" || state.dualSseStatus == "Offline"

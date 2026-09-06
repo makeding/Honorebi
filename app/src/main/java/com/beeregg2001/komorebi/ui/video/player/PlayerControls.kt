@@ -55,7 +55,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.ArchivedComment
-import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
+import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -65,7 +66,8 @@ import kotlin.math.pow
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun PlayerControls(
-    program: RecordedProgram,
+    mediaInfo: PlaybackMediaInfo,
+    capabilities: PlaybackUiCapabilities = PlaybackUiCapabilities.Recorded,
     timeFormat: String,
     allComments: List<ArchivedComment>,
     tiledThumbnailUrl: String?,
@@ -113,7 +115,7 @@ fun PlayerControls(
         bufferedPositionMs = displayBufferedPositionMsProvider,
     )
 
-    val tileInfo = program.recordedVideo.thumbnailInfo?.tile
+    val tileInfo = mediaInfo.thumbnailInfo?.tile
     val tileColumns = tileInfo?.columnCount ?: 1
     val tileInterval = tileInfo?.intervalSec ?: 10.0
     val tileWidth = tileInfo?.tileWidth ?: 320
@@ -127,6 +129,8 @@ fun PlayerControls(
     )
     val playHeadVerticalOffset = (playHeadSize - trackHeight) / 2
     val graphHeight = 48.dp
+    val chapterControlsEnabled = capabilities.chapters && hasChapters
+    val keyframeGridEnabled = capabilities.thumbnailGrid && canOpenKeyframeGrid
     LaunchedEffect(isVisible, isModernUi) {
         if (isVisible && isModernUi) {
             delay(100)
@@ -193,7 +197,7 @@ fun PlayerControls(
                     .padding(horizontal = 48.dp, vertical = 40.dp)
             ) {
                 Text(
-                    text = program.title,
+                    text = mediaInfo.title,
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 26.sp
@@ -216,7 +220,7 @@ fun PlayerControls(
                     totalDurationMs = totalDurationMs,
                     allComments = allComments,
                     hasChapters = hasChapters,
-                    program = program,
+                    mediaInfo = mediaInfo,
                     externalChapters = externalChapters,
                     isModernUi = isModernUi,
                     isSeekBarFocused = isSeekBarFocused,
@@ -243,38 +247,36 @@ fun PlayerControls(
                                 icon = Icons.Default.Info,
                                 label = "番組詳細",
                                 onClick = onInfoToggle,
-                                modifier = Modifier.focusRequester(infoFocusRequester)
+                                modifier = Modifier.focusRequester(infoFocusRequester),
+                                enabled = capabilities.programInfo,
                             )
-                            if (hasChapters) {
-                                OsdIconButton(
-                                    icon = Icons.Default.FormatListBulleted,
-                                    label = "チャプター",
-                                    onClick = onChapterListToggle
-                                )
-                            }
-                            if (canOpenKeyframeGrid) {
-                                OsdIconButton(
-                                    icon = Icons.Default.GridView,
-                                    label = "サムネイル",
-                                    onClick = onKeyframeGridToggle
-                                )
-                            }
+                            OsdIconButton(
+                                icon = Icons.Default.FormatListBulleted,
+                                label = "チャプター",
+                                onClick = onChapterListToggle,
+                                enabled = chapterControlsEnabled,
+                            )
+                            OsdIconButton(
+                                icon = Icons.Default.GridView,
+                                label = "サムネイル",
+                                onClick = onKeyframeGridToggle,
+                                enabled = keyframeGridEnabled,
+                            )
                         }
 
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(24.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (hasChapters) {
-                                OsdIconButton(
-                                    icon = Icons.Default.SkipPrevious,
-                                    label = "前のチャプター",
-                                    onClick = onSkipPreviousChapter,
-                                    buttonSize = 48.dp,
-                                    iconSize = 24.dp,
-                                    allowContinuousPress = true
-                                )
-                            }
+                            OsdIconButton(
+                                icon = Icons.Default.SkipPrevious,
+                                label = "前のチャプター",
+                                onClick = onSkipPreviousChapter,
+                                buttonSize = 48.dp,
+                                iconSize = 24.dp,
+                                allowContinuousPress = true,
+                                enabled = chapterControlsEnabled,
+                            )
 
                             OsdIconButton(
                                 icon = Icons.Default.FastRewind,
@@ -302,16 +304,15 @@ fun PlayerControls(
                                 allowContinuousPress = true
                             )
 
-                            if (hasChapters) {
-                                OsdIconButton(
-                                    icon = Icons.Default.SkipNext,
-                                    label = "次のチャプター",
-                                    onClick = onSkipNextChapter,
-                                    buttonSize = 48.dp,
-                                    iconSize = 24.dp,
-                                    allowContinuousPress = true
-                                )
-                            }
+                            OsdIconButton(
+                                icon = Icons.Default.SkipNext,
+                                label = "次のチャプター",
+                                onClick = onSkipNextChapter,
+                                buttonSize = 48.dp,
+                                iconSize = 24.dp,
+                                allowContinuousPress = true,
+                                enabled = chapterControlsEnabled,
+                            )
                         }
 
                         OsdIconButton(
@@ -419,7 +420,7 @@ private fun RecordedControlsProgressRow(
     totalDurationMs: Long,
     allComments: List<ArchivedComment>,
     hasChapters: Boolean,
-    program: RecordedProgram,
+    mediaInfo: PlaybackMediaInfo,
     externalChapters: List<ChapterInfo>,
     isModernUi: Boolean,
     isSeekBarFocused: Boolean,
@@ -493,7 +494,7 @@ private fun RecordedControlsProgressRow(
                     .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp)),
             )
             if (hasChapters && totalDurationMs > 0L) {
-                val apiCmSections = program.recordedVideo.cmSections ?: emptyList()
+                val apiCmSections = mediaInfo.cmSections
                 val renderSections = if (apiCmSections.isNotEmpty()) {
                     apiCmSections.map { ChapterInfo((it.startTime * 1000).toLong(), (it.endTime * 1000).toLong(), isCm = true) }
                 } else externalChapters
@@ -560,20 +561,22 @@ fun OsdIconButton(
     buttonSize: Dp = 48.dp,
     iconSize: Dp = 24.dp,
     isPrimary: Boolean = false,
-    allowContinuousPress: Boolean = false
+    allowContinuousPress: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val colors = KomorebiTheme.colors
     var lastRepeatTime by remember { mutableLongStateOf(0L) }
 
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.15f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isPrimary) colors.accent else Color.White.copy(alpha = 0.1f),
             focusedContainerColor = Color.White,
-            contentColor = Color.White,
-            focusedContentColor = Color.Black
+            contentColor = if (enabled) Color.White else Color.White.copy(alpha = 0.35f),
+            focusedContentColor = Color.Black,
         ),
         modifier = modifier
             .size(buttonSize)
@@ -582,7 +585,7 @@ fun OsdIconButton(
             .onPreviewKeyEvent { event ->
                 if (event.key == Key.DirectionCenter || event.key == Key.Enter) {
                     if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0) {
-                        if (allowContinuousPress) {
+                        if (enabled && allowContinuousPress) {
                             val now = System.currentTimeMillis()
                             if (now - lastRepeatTime > 200) {
                                 onClick()

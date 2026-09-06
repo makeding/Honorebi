@@ -1,4 +1,6 @@
-package com.beeregg2001.komorebi.ui.live
+package com.beeregg2001.komorebi.ui.player
+
+// Shared BML runtime used by both live and recorded playback surfaces.
 
 import android.annotation.SuppressLint
 import android.graphics.Color
@@ -50,21 +52,6 @@ private const val SHELL_PATH = "/libaribhtml5/index.html"
 private const val SDK_PATH = "/libaribhtml5/libaribhtml5.js"
 private const val BROADCAST_PREFIX = "/data-broadcast/"
 private const val NTP_UNIX_EPOCH_OFFSET_SECONDS = 2_208_988_800L
-
-data class DataBroadcastingRemoteCommand(
-    val id: Long,
-    val key: String
-)
-
-data class B60MediaPlane(
-    val visible: Boolean,
-    val x: Float,
-    val y: Float,
-    val width: Float,
-    val height: Float,
-    val screenWidth: Float,
-    val screenHeight: Float
-)
 
 private class B60JavascriptBridge(
     private val currentMediaTimeSeconds: () -> Double,

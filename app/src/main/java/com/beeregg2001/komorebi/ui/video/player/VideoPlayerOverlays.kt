@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
+import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -129,14 +131,14 @@ fun VideoLCropOverlay(
     val focusedContentColor = if (colors.isDark) Color.Black else Color.White
 
     // モード切り替え時の自動フォーカス制御
-    LaunchedEffect(state.lCropMode) {
-        if (state.lCropMode == LCropMode.MENU) {
+    LaunchedEffect(state.crop.mode) {
+        if (state.crop.mode == PlayerCropMode.MENU) {
             delay(150)
             try {
                 menuFocusRequester.requestFocus()
             } catch (e: Exception) {
             }
-        } else if (state.lCropMode == LCropMode.DIRECT_ADJUST) {
+        } else if (state.crop.mode == PlayerCropMode.DIRECT_ADJUST) {
             delay(150)
             try {
                 directAdjustFocusRequester.requestFocus()
@@ -145,7 +147,7 @@ fun VideoLCropOverlay(
         }
     }
 
-    if (state.lCropMode == LCropMode.DIRECT_ADJUST) {
+    if (state.crop.mode == PlayerCropMode.DIRECT_ADJUST) {
         // --- ダイレクト調整モード (操作ガイド表示) ---
         Box(
             modifier = Modifier
@@ -175,13 +177,13 @@ fun VideoLCropOverlay(
                 Spacer(Modifier.height(16.dp))
                 Text("十字キー: 映像を移動", color = colors.textPrimary)
                 Text(
-                    "決定ボタン: 倍率切り替え (${state.lCropZoom.toInt()}%)",
+                    "決定ボタン: 倍率切り替え (${state.crop.zoomPercent.toInt()}%)",
                     color = colors.textPrimary
                 )
                 Text("戻るボタン: メニューへ戻る", color = colors.textSecondary.copy(alpha = 0.7f))
             }
         }
-    } else if (state.lCropMode == LCropMode.MENU) {
+    } else if (state.crop.mode == PlayerCropMode.MENU) {
         // --- メニューモード (ボトムパネル) ---
         Box(
             modifier = Modifier
@@ -241,7 +243,7 @@ fun VideoLCropOverlay(
                     // --- 左側：操作ボタン ---
                     Column(modifier = Modifier.weight(1.2f)) {
                         Button(
-                            onClick = { state.lCropMode = LCropMode.DIRECT_ADJUST },
+                            onClick = { state.crop.mode = PlayerCropMode.DIRECT_ADJUST },
                             modifier = Modifier
                                 .fillMaxWidth(0.9f)
                                 .focusRequester(menuFocusRequester),
@@ -288,10 +290,10 @@ fun VideoLCropOverlay(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 VideoAdjustmentButton(icon = Icons.Default.Remove) {
-                                    state.lCropZoom = (state.lCropZoom - 1f).coerceAtLeast(100f)
+                                    state.crop.zoomPercent = (state.crop.zoomPercent - 1f).coerceAtLeast(100f)
                                 }
                                 Text(
-                                    text = "${state.lCropZoom.toInt()}%",
+                                    text = "${state.crop.zoomPercent.toInt()}%",
                                     color = colors.textPrimary,
                                     modifier = Modifier.width(60.dp),
                                     textAlign = TextAlign.Center,
@@ -299,13 +301,13 @@ fun VideoLCropOverlay(
                                     fontWeight = FontWeight.Bold
                                 )
                                 VideoAdjustmentButton(icon = Icons.Default.Add) {
-                                    state.lCropZoom = (state.lCropZoom + 1f).coerceAtMost(200f)
+                                    state.crop.zoomPercent = (state.crop.zoomPercent + 1f).coerceAtMost(200f)
                                 }
                             }
                         }
 
                         Text(
-                            text = "座標: X ${state.lCropX.toInt()}% / Y ${state.lCropY.toInt()}%",
+                            text = "座標: X ${state.crop.xPercent.toInt()}% / Y ${state.crop.yPercent.toInt()}%",
                             color = colors.textSecondary.copy(alpha = 0.6f),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(start = 80.dp, top = 4.dp)
@@ -322,11 +324,11 @@ fun VideoLCropOverlay(
                             )
                             Button(
                                 onClick = {
-                                    state.lCropOrigin = when (state.lCropOrigin) {
-                                        ZoomOrigin.TopLeft -> ZoomOrigin.TopRight
-                                        ZoomOrigin.TopRight -> ZoomOrigin.BottomRight
-                                        ZoomOrigin.BottomRight -> ZoomOrigin.BottomLeft
-                                        ZoomOrigin.BottomLeft -> ZoomOrigin.TopLeft
+                                    state.crop.origin = when (state.crop.origin) {
+                                        PlayerZoomOrigin.TopLeft -> PlayerZoomOrigin.TopRight
+                                        PlayerZoomOrigin.TopRight -> PlayerZoomOrigin.BottomRight
+                                        PlayerZoomOrigin.BottomRight -> PlayerZoomOrigin.BottomLeft
+                                        PlayerZoomOrigin.BottomLeft -> PlayerZoomOrigin.TopLeft
                                     }
                                 },
                                 colors = ButtonDefaults.colors(
@@ -336,7 +338,7 @@ fun VideoLCropOverlay(
                                     focusedContentColor = focusedContentColor
                                 )
                             ) {
-                                Text(state.lCropOrigin.name, fontWeight = FontWeight.Bold)
+                                Text(state.crop.origin.name, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -375,4 +377,3 @@ private fun VideoAdjustmentButton(
         }
     }
 }
-

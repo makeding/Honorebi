@@ -41,6 +41,9 @@ import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.player.LivePlayerMenuTileStyle
+import com.beeregg2001.komorebi.ui.player.PlayerMenuTile
+import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 
 enum class LiveSubMenuCategory {
     QUICK_CHANNELS, AUDIO, QUALITY, SOURCE
@@ -151,16 +154,8 @@ fun LiveTopSubMenuUI(
         }
     }
 
-    Box(
+    PlayerSubMenuContainer(
         modifier = Modifier
-            .fillMaxWidth()
-            .wrapContentHeight()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(colors.background.copy(alpha = 0.9f), Color.Transparent)
-                )
-            )
-            .padding(top = 24.dp, bottom = 48.dp)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
                     keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE
@@ -185,8 +180,7 @@ fun LiveTopSubMenuUI(
                         true
                     }
                 } else false
-            },
-        contentAlignment = Alignment.TopCenter
+            }
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -619,39 +613,18 @@ fun LiveMenuTileItem(
     height: Dp = 100.dp,
     contentColor: Color = Color.White
 ) {
-    val colors = KomorebiTheme.colors
-    Surface(
+    PlayerMenuTile(
+        title = title,
+        icon = icon,
+        subtitle = subtitle,
         onClick = onClick,
+        style = LivePlayerMenuTileStyle,
+        modifier = modifier,
         enabled = enabled,
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.textPrimary.copy(0.1f),
-            contentColor = if (enabled) contentColor else colors.textPrimary.copy(0.3f),
-            focusedContainerColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-        ),
-        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
-        modifier = modifier
-            .size(width, height)
-            .alpha(if (enabled) 1f else 0.5f)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(icon, null, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = LocalContentColor.current.copy(0.7f)
-                )
-            }
-        }
-    }
+        width = width,
+        height = height,
+        contentColor = contentColor
+    )
 }
 
 @Composable

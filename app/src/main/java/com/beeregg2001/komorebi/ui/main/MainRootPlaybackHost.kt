@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.main
 
+import com.beeregg2001.komorebi.ui.player.*
+
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.animateDpAsState
@@ -64,17 +66,17 @@ fun MainRootPlaybackHost(
     CastRouteDiscovery()
 
     val playerWidth by animateDpAsState(
-        targetValue = if (state.isMiniPlayerMode) 320.dp else 1920.dp,
+        targetValue = if (state.playbackState.isMiniPlayerMode) 320.dp else 1920.dp,
         label = "width",
         animationSpec = tween(400),
     )
     val playerHeight by animateDpAsState(
-        targetValue = if (state.isMiniPlayerMode) 180.dp else 1080.dp,
+        targetValue = if (state.playbackState.isMiniPlayerMode) 180.dp else 1080.dp,
         label = "height",
         animationSpec = tween(400),
     )
     val playerPadding by animateDpAsState(
-        targetValue = if (state.isMiniPlayerMode) 32.dp else 0.dp,
+        targetValue = if (state.playbackState.isMiniPlayerMode) 32.dp else 0.dp,
         label = "padding",
         animationSpec = tween(400),
     )
@@ -97,103 +99,108 @@ fun MainRootPlaybackHost(
             .fillMaxSize()
             .zIndex(1f)
             .let {
-                if (state.isMiniPlayerMode) it
+                if (state.playbackState.isMiniPlayerMode) it
                     .padding(bottom = playerPadding, end = playerPadding)
                     .wrapContentSize(Alignment.BottomEnd)
                 else it
             }
             .size(playerWidth, playerHeight)
-            .clip(RoundedCornerShape(if (state.isMiniPlayerMode) 12.dp else 0.dp)),
+            .clip(RoundedCornerShape(if (state.playbackState.isMiniPlayerMode) 12.dp else 0.dp)),
     ) {
         // Switching retains the committed target for the session/Cast lease,
         // while the host materializes the incoming recording until READY.
-        when (val target = state.renderPlaybackTarget) {
+        when (val target = state.playbackState.renderPlaybackTarget) {
             is PlaybackTarget.Live -> LivePlayerScreen(
+                channelViewModel = hiltViewModel(),
+                reserveViewModel = hiltViewModel(),
+                recordViewModel = hiltViewModel(),
+                settingsViewModel = hiltViewModel(),
+                livePlayerViewModel = hiltViewModel(),
                 channel = target.channel,
                 initialQuality = data.defaultLiveQuality,
-                isMiniListOpen = state.isPlayerMiniListOpen,
-                onMiniListToggle = { state.isPlayerMiniListOpen = it },
-                showOverlay = state.playerShowOverlay,
-                onShowOverlayChange = { state.playerShowOverlay = it },
-                isManualOverlay = state.playerIsManualOverlay,
-                onManualOverlayChange = { state.playerIsManualOverlay = it },
-                isPinnedOverlay = state.playerIsPinnedOverlay,
-                onPinnedOverlayChange = { state.playerIsPinnedOverlay = it },
-                isSubMenuOpen = state.playerIsSubMenuOpen,
-                onSubMenuToggle = { state.playerIsSubMenuOpen = it },
+                isMiniListOpen = state.playbackState.isPlayerMiniListOpen,
+                onMiniListToggle = { state.playbackState.isPlayerMiniListOpen = it },
+                showOverlay = state.playbackState.playerShowOverlay,
+                onShowOverlayChange = { state.playbackState.playerShowOverlay = it },
+                isManualOverlay = state.playbackState.playerIsManualOverlay,
+                onManualOverlayChange = { state.playbackState.playerIsManualOverlay = it },
+                isPinnedOverlay = state.playbackState.playerIsPinnedOverlay,
+                onPinnedOverlayChange = { state.playbackState.playerIsPinnedOverlay = it },
+                isSubMenuOpen = state.playbackState.playerIsSubMenuOpen,
+                onSubMenuToggle = { state.playbackState.playerIsSubMenuOpen = it },
                 onChannelSelect = { newChannel ->
-                    state.enterLive(
+                    state.playbackState.enterLive(
                         newChannel,
                         exitMiniPlayer = false,
                     )
                 },
                 onChannelPlaybackCommitted = onSaveLastChannel,
                 onChasePlaybackSelect = { program ->
-                    state.isPlayerMiniListOpen = false
-                    state.playerIsSubMenuOpen = false
-                    state.isPlayerSubMenuOpen = false
-                    state.isPlayerSceneSearchOpen = false
-                    state.enterRecorded(program, playbackResumePositionMs(program, data.watchHistory))
+                    state.playbackState.isPlayerMiniListOpen = false
+                    state.playbackState.playerIsSubMenuOpen = false
+                    state.playbackState.isPlayerSubMenuOpen = false
+                    state.playbackState.isPlayerSceneSearchOpen = false
+                    state.playbackState.enterRecorded(program, playbackResumePositionMs(program, data.watchHistory))
                 },
-                onBackPressed = { state.leavePlayback() },
+                onBackPressed = { state.playbackState.leavePlayback() },
                 onCheckDeviceCapabilities = {
-                    state.leavePlayback()
+                    state.playbackState.leavePlayback()
                     state.settingsInitialCategoryIndex = 2
                     state.settingsInitialFocusItemIndex = 9
                     state.settingsOpenDeviceCapabilities = true
                     state.isSettingsOpen = true
                 },
                 onShowToast = { state.toastMessage = it },
-                isPiPMode = state.isMiniPlayerMode,
+                isPiPMode = state.playbackState.isMiniPlayerMode,
                 onPiPRequested = {
-                    if (state.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
+                    if (state.playbackState.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
                 },
                 timeFormat = data.timeFormat,
             )
 
             is PlaybackTarget.Recorded -> {
                 val selectedProgram = target.program
-                val playbackToken = state.recordedPlaybackToken
+                val playbackToken = state.playbackState.recordedPlaybackToken
                 // Capture commitment for this player instance: its disposal still persists A
                 // while B is being prepared, but an uncommitted B never writes history.
                 val shouldPersistSelectedProgram =
-                    (state.playbackTarget as? PlaybackTarget.Recorded)?.program?.id == selectedProgram.id
+                    (state.playbackState.playbackTarget as? PlaybackTarget.Recorded)?.program?.id == selectedProgram.id
                 androidx.compose.runtime.key(playbackToken) {
                     VideoPlayerScreen(
                         videoPlayerViewModel = hiltViewModel(),
                         settingsViewModel = hiltViewModel(),
                         program = selectedProgram,
-                        initialPositionMs = state.renderInitialPlaybackPositionMs,
+                        initialPositionMs = state.playbackState.renderInitialPlaybackPositionMs,
                         initialQuality = data.defaultVideoQuality,
                         isNetworkAvailable = data.isNetworkAvailable,
-                        showControls = state.showPlayerControls,
-                        onShowControlsChange = { state.showPlayerControls = it },
-                        isSubMenuOpen = state.isPlayerSubMenuOpen,
-                        onSubMenuToggle = { state.isPlayerSubMenuOpen = it },
-                        isSceneSearchOpen = state.isPlayerSceneSearchOpen,
-                        onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
+                        showControls = state.playbackState.showPlayerControls,
+                        onShowControlsChange = { state.playbackState.showPlayerControls = it },
+                        isSubMenuOpen = state.playbackState.isPlayerSubMenuOpen,
+                        onSubMenuToggle = { state.playbackState.isPlayerSubMenuOpen = it },
+                        isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen,
+                        onSceneSearchToggle = { state.playbackState.isPlayerSceneSearchOpen = it },
                         recentRecordings = data.recentRecordings,
                         animeChannels = animeChannels,
                         onProgramSelect = { program, selectionReason ->
-                            state.isPlayerSubMenuOpen = false
-                            state.isPlayerSceneSearchOpen = false
+                            state.playbackState.isPlayerSubMenuOpen = false
+                            state.playbackState.isPlayerSceneSearchOpen = false
                             val switchReason = when (selectionReason) {
                                 RecordedProgramSelectionReason.NextEpisode -> PlaybackSwitchReason.NextEpisode
                                 RecordedProgramSelectionReason.PreviousEpisode -> PlaybackSwitchReason.PreviousEpisode
                                 RecordedProgramSelectionReason.QuickSelect -> PlaybackSwitchReason.QuickSelect
                             }
-                            state.beginRecordedSwitch(program = program, reason = switchReason)
+                            state.playbackState.beginRecordedSwitch(program = program, reason = switchReason)
                         },
                         recordedPlaybackToken = playbackToken,
-                        isCurrentRecordedPlayback = state::isCurrentRecordedPlayback,
-                        isRecordedSwitching = state.playbackPhase is PlaybackPhase.Switching,
+                        isCurrentRecordedPlayback = state.playbackState::isCurrentRecordedPlayback,
+                        isRecordedSwitching = state.playbackState.playbackPhase is PlaybackPhase.Switching,
                         onProgramReady = { readyProgramId, token ->
-                            if (token.programId == readyProgramId && state.isCurrentRecordedPlayback(token)) {
-                                state.commitRecordedSwitch(token)
+                            if (token.programId == readyProgramId && state.playbackState.isCurrentRecordedPlayback(token)) {
+                                state.playbackState.commitRecordedSwitch(token)
                             }
                         },
                         onRecordedSwitchTerminalFailure = { token, failure ->
-                            if (state.isCurrentRecordedPlayback(token) && state.failRecordedSwitch(token)) {
+                            if (state.playbackState.isCurrentRecordedPlayback(token) && state.playbackState.failRecordedSwitch(token)) {
                                 state.toastMessage = when (failure) {
                                     com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.InitialUrlUnavailable ->
                                         "次の番組のストリームURLを取得できませんでした"
@@ -206,59 +213,47 @@ fun MainRootPlaybackHost(
                         },
                         shouldPersistWatchHistory = { shouldPersistSelectedProgram },
                         onChannelSelect = { channel ->
-                            state.isPlayerSubMenuOpen = false
-                            state.isPlayerSceneSearchOpen = false
-                            state.showPlayerControls = false
-                            state.playerShowOverlay = false
-                            state.enterLive(channel)
+                            state.playbackState.isPlayerSubMenuOpen = false
+                            state.playbackState.isPlayerSceneSearchOpen = false
+                            state.playbackState.showPlayerControls = false
+                            state.playbackState.playerShowOverlay = false
+                            state.playbackState.enterLive(channel)
                             onSaveLastChannel(channel)
                         },
                         onPlaybackEnded = onPlaybackEnded,
-                        onBackPressed = { state.leavePlayback() },
+                        onBackPressed = { state.playbackState.leavePlayback() },
                         onShowToast = { state.toastMessage = it },
-                        isPiPMode = state.isMiniPlayerMode,
+                        isPiPMode = state.playbackState.isMiniPlayerMode,
                         onPiPRequested = {
-                            if (state.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
+                            if (state.playbackState.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
                         },
                     )
                 }
             }
 
             is PlaybackTarget.Smb -> {
-                val baseProgram = data.recentRecordings.firstOrNull()
-                if (baseProgram != null) {
-                    val dummyProgram = baseProgram.copy(
-                        id = target.item.path.hashCode(),
-                        title = target.item.name,
-                        description = "SMBネットワーク再生: ${target.item.path}",
-                    )
                     VideoPlayerScreen(
                         videoPlayerViewModel = hiltViewModel(),
                         settingsViewModel = hiltViewModel(),
-                        program = dummyProgram,
+                        program = null,
                         smbItem = target.item,
-                        initialPositionMs = state.initialPlaybackPositionMs,
+                        smbMetadata = com.beeregg2001.komorebi.ui.video.smb.SmbPlaybackMetadata.from(target.item),
+                        initialPositionMs = state.playbackState.initialPlaybackPositionMs,
                         initialQuality = data.defaultVideoQuality,
                         isNetworkAvailable = data.isNetworkAvailable,
-                        showControls = state.showPlayerControls,
-                        onShowControlsChange = { state.showPlayerControls = it },
-                        isSubMenuOpen = state.isPlayerSubMenuOpen,
-                        onSubMenuToggle = { state.isPlayerSubMenuOpen = it },
-                        isSceneSearchOpen = state.isPlayerSceneSearchOpen,
-                        onSceneSearchToggle = { state.isPlayerSceneSearchOpen = it },
-                        onBackPressed = { state.leavePlayback() },
+                        showControls = state.playbackState.showPlayerControls,
+                        onShowControlsChange = { state.playbackState.showPlayerControls = it },
+                        isSubMenuOpen = state.playbackState.isPlayerSubMenuOpen,
+                        onSubMenuToggle = { state.playbackState.isPlayerSubMenuOpen = it },
+                        isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen,
+                        onSceneSearchToggle = { state.playbackState.isPlayerSceneSearchOpen = it },
+                        onBackPressed = { state.playbackState.leavePlayback() },
                         onShowToast = { state.toastMessage = it },
-                        isPiPMode = state.isMiniPlayerMode,
+                        isPiPMode = state.playbackState.isMiniPlayerMode,
                         onPiPRequested = {
-                            if (state.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
+                            if (state.playbackState.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
                         },
                     )
-                } else {
-                    LaunchedEffect(Unit) {
-                        state.toastMessage = "再生用のダミーデータを生成できませんでした"
-                        state.leavePlayback(returningFromPlayer = false)
-                    }
-                }
             }
 
             PlaybackTarget.None -> Unit

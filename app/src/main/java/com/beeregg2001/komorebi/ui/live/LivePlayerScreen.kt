@@ -4,7 +4,6 @@ package com.beeregg2001.komorebi.ui.live
 
 import android.os.Build
 import android.util.Log
-import android.view.KeyEvent as NativeKeyEvent
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
@@ -26,8 +25,6 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -35,7 +32,6 @@ import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.beeregg2001.komorebi.media.SystemMediaSession
-import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.SettingsRepository
@@ -49,31 +45,29 @@ import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
+import com.beeregg2001.komorebi.ui.player.PlayerSurface
+import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
+import com.beeregg2001.komorebi.ui.player.B60MediaPlane
+import com.beeregg2001.komorebi.ui.player.B60_INITIAL_MEDIA_PLANE
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
+import com.beeregg2001.komorebi.ui.player.b60MediaPlane
+import com.beeregg2001.komorebi.ui.player.rememberDataBroadcastingInputState
+import com.beeregg2001.komorebi.ui.player.isDataBroadcastingToggleKeyEvent
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.util.Collections
-import android.graphics.Color as AndroidColor
 import master.flame.danmaku.controller.IDanmakuView
-import master.flame.danmaku.danmaku.model.BaseDanmaku
 
 private const val TAG = "LivePlayerScreen"
-private const val LIVE_DANMAKU_WINDOW_MS = 1_000L
-private const val LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW = 16
-private const val LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW = 4
 private const val LIVE_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
 private val LIVE_PROGRAM_INFO_SUBTITLE_OFFSET = 200.dp
-
-internal fun isDataBroadcastingToggleKeyEvent(keyEvent: KeyEvent): Boolean {
-    if (keyEvent.type != KeyEventType.KeyUp) return false
-    return when (keyEvent.nativeKeyEvent.keyCode) {
-        NativeKeyEvent.KEYCODE_TV_DATA_SERVICE,
-        NativeKeyEvent.KEYCODE_D -> true
-        else -> false
-    }
-}
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -98,11 +92,11 @@ fun LivePlayerScreen(
     onShowToast: (String) -> Unit,
     isPiPMode: Boolean = false,
     onPiPRequested: () -> Unit = {},
-    channelViewModel: ChannelViewModel = hiltViewModel(),
-    reserveViewModel: ReserveViewModel = hiltViewModel(),
-    recordViewModel: RecordViewModel = hiltViewModel(),
-    settingsViewModel: SettingsViewModel = hiltViewModel(),
-    livePlayerViewModel: LivePlayerViewModel = hiltViewModel(),
+    channelViewModel: ChannelViewModel,
+    reserveViewModel: ReserveViewModel,
+    recordViewModel: RecordViewModel,
+    settingsViewModel: SettingsViewModel,
+    livePlayerViewModel: LivePlayerViewModel,
     timeFormat: String = "24H",
     isDataBroadcastingMode: Boolean = false,
     onDataBroadcastingBack: () -> Unit = {},
@@ -189,10 +183,12 @@ fun LivePlayerScreen(
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") || Build.PRODUCT == "google_sdk" }
 
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
-    var isMainPlaying by remember { mutableStateOf(false) }
-    var isDualPlaying by remember { mutableStateOf(false) }
     val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
+    val mainRuntimeState by livePlayerViewModel.mainRuntimeState.collectAsState()
+    val dualRuntimeState by livePlayerViewModel.dualRuntimeState.collectAsState()
+    val isMainPlaying = mainRuntimeState.isPlaying
+    val isDualPlaying = dualRuntimeState.isPlaying
     val mainSessionToken by livePlayerViewModel.mainSessionToken.collectAsState()
     val dualSessionToken by livePlayerViewModel.dualSessionToken.collectAsState()
     val mainSubtitleLanguages by livePlayerViewModel.mainSubtitleLanguages.collectAsState()
@@ -262,6 +258,7 @@ fun LivePlayerScreen(
     var localDataBroadcastingMode by rememberSaveable(currentChannelItem.id) {
         mutableStateOf(false)
     }
+    val dataBroadcastingInput = rememberDataBroadcastingInputState(currentChannelItem.id)
     var dataBroadcastingRemoteSequence by rememberSaveable { mutableLongStateOf(0L) }
     var dataBroadcastingRemoteCommand by remember { mutableStateOf<DataBroadcastingRemoteCommand?>(null) }
     var dataBroadcastingMediaPlane by remember(currentChannelItem.id) {
@@ -315,7 +312,7 @@ fun LivePlayerScreen(
         isDataBroadcastingBlank = false
         dataBroadcastingRemoteCommand = null
         dataBroadcastingMediaPlane = null
-        ps.resetDataBroadcastingInput()
+        dataBroadcastingInput.reset()
         onShowToast("データ放送を終了しました")
     }
     val dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = { colorKey ->
@@ -335,7 +332,7 @@ fun LivePlayerScreen(
         ) {
             localDataBroadcastingMode = true
             isDataBroadcastingBlank = false
-            ps.closeDataBroadcastingColorSelector()
+            dataBroadcastingInput.closeColorSelector()
             if (!hasShownDataBroadcastingHint) {
                 hasShownDataBroadcastingHint = true
                 onShowToast(
@@ -415,17 +412,16 @@ fun LivePlayerScreen(
         }
     }
 
-    var videoWidth by remember { mutableIntStateOf(0) }
-    var videoHeight by remember { mutableIntStateOf(0) }
-    var pixelWidthHeightRatio by remember { mutableFloatStateOf(1f) }
-    var dualVideoWidth by remember { mutableIntStateOf(0) }
-    var dualVideoHeight by remember { mutableIntStateOf(0) }
-    var dualPixelWidthHeightRatio by remember { mutableFloatStateOf(1f) }
-
-    var isMainBuffering by remember { mutableStateOf(false) }
-    var isDualBuffering by remember { mutableStateOf(false) }
-    var mainPlaybackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
-    var hasMainRenderedFirstFrame by remember { mutableStateOf(false) }
+    val videoWidth = mainRuntimeState.videoSize.width
+    val videoHeight = mainRuntimeState.videoSize.height
+    val pixelWidthHeightRatio = mainRuntimeState.videoSize.pixelWidthHeightRatio
+    val dualVideoWidth = dualRuntimeState.videoSize.width
+    val dualVideoHeight = dualRuntimeState.videoSize.height
+    val dualPixelWidthHeightRatio = dualRuntimeState.videoSize.pixelWidthHeightRatio
+    val isMainBuffering = mainRuntimeState.playbackState == Player.STATE_BUFFERING
+    val isDualBuffering = dualRuntimeState.playbackState == Player.STATE_BUFFERING
+    val mainPlaybackState = mainRuntimeState.playbackState
+    val hasMainRenderedFirstFrame = mainRuntimeState.renderedFrameGeneration > 0
     var lastChannelIdForSwitchHint by remember { mutableStateOf(currentChannelItem.id) }
     var isChannelSwitchDebouncing by remember { mutableStateOf(false) }
 
@@ -437,54 +433,7 @@ fun LivePlayerScreen(
         isChannelSwitchDebouncing = false
     }
 
-    DisposableEffect(mainPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                ps.isPlayerPlaying = isPlaying
-                isMainPlaying = isPlaying
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                videoWidth = videoSize.width; videoHeight =
-                    videoSize.height; pixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                mainPlaybackState = playbackState
-                isMainBuffering = (playbackState == Player.STATE_BUFFERING)
-            }
-
-            override fun onRenderedFirstFrame() {
-                hasMainRenderedFirstFrame = true
-            }
-        }
-        mainPlayer?.addListener(listener)
-        isMainPlaying = mainPlayer?.isPlaying == true
-        mainPlaybackState = mainPlayer?.playbackState ?: Player.STATE_IDLE
-        isMainBuffering = mainPlayer?.playbackState == Player.STATE_BUFFERING
-        onDispose { mainPlayer?.removeListener(listener) }
-    }
-
-    DisposableEffect(dualPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                isDualPlaying = isPlaying
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                dualVideoWidth = videoSize.width; dualVideoHeight =
-                    videoSize.height; dualPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                isDualBuffering = (playbackState == Player.STATE_BUFFERING)
-            }
-        }
-        dualPlayer?.addListener(listener)
-        isDualPlaying = dualPlayer?.isPlaying == true
-        isDualBuffering = dualPlayer?.playbackState == Player.STATE_BUFFERING
-        onDispose { dualPlayer?.removeListener(listener) }
-    }
+    LaunchedEffect(isMainPlaying) { ps.isPlayerPlaying = isMainPlaying }
 
     SystemMediaSession(
         player = mainPlayer,
@@ -536,7 +485,6 @@ fun LivePlayerScreen(
             return@LaunchedEffect
         }
 
-        hasMainRenderedFirstFrame = false
         livePlayerViewModel.playMainChannel(
             uiContext = uiContext,
             channel = currentChannelItem,
@@ -587,69 +535,15 @@ fun LivePlayerScreen(
         livePlayerViewModel.setSubtitlesEnabled(isSubtitleEnabled)
     }
 
-    LaunchedEffect(mainSessionToken) {
-        danmakuViewRef.value?.removeAllDanmakus(true)
-        var rateWindowStartMs = System.currentTimeMillis()
-        var scrollDanmakuCount = 0
-        var fixedDanmakuCount = 0
-        val colorCache = HashMap<String, Int>()
-
-        livePlayerViewModel.liveComments.collect { comment ->
-            if (comment.sessionToken != mainSessionToken) return@collect
-            if (!isCommentEnabled || !isHeavyUiReady || ps.isDualDisplayMode) return@collect
-
-            val nowMs = System.currentTimeMillis()
-            if (nowMs - rateWindowStartMs >= LIVE_DANMAKU_WINDOW_MS) {
-                rateWindowStartMs = nowMs
-                scrollDanmakuCount = 0
-                fixedDanmakuCount = 0
-            }
-
-            val danmakuType = when (comment.position) {
-                "top" -> BaseDanmaku.TYPE_FIX_TOP
-                "bottom" -> BaseDanmaku.TYPE_FIX_BOTTOM
-                else -> BaseDanmaku.TYPE_SCROLL_RL
-            }
-            if (danmakuType == BaseDanmaku.TYPE_SCROLL_RL) {
-                if (scrollDanmakuCount >= LIVE_SCROLL_DANMAKU_LIMIT_PER_WINDOW) return@collect
-                scrollDanmakuCount++
-            } else {
-                if (fixedDanmakuCount >= LIVE_FIXED_DANMAKU_LIMIT_PER_WINDOW) return@collect
-                fixedDanmakuCount++
-            }
-
-            danmakuViewRef.value?.let { view ->
-                (view as? android.view.View)?.post {
-                    if (comment.sessionToken != mainSessionToken ||
-                        danmakuViewRef.value !== view || !isCommentEnabled ||
-                        !isHeavyUiReady || ps.isDualDisplayMode
-                    ) return@post
-                    if (!view.isPrepared) return@post
-
-                    val danmaku =
-                        view.config.mDanmakuFactory.createDanmaku(danmakuType) ?: return@post
-                    danmaku.text = comment.text
-                    danmaku.padding = 5
-
-                    val sizeFactor = when (comment.size) {
-                        "big" -> 1.5f
-                        "small" -> 0.8f
-                        else -> 1.0f
-                    }
-                    danmaku.textSize =
-                        (32f * commentFontSizeScale * sizeFactor) * view.context.resources.displayMetrics.density
-
-                    danmaku.textColor = colorCache.getOrPut(comment.color) {
-                        runCatching { AndroidColor.parseColor(comment.color) }
-                            .getOrDefault(AndroidColor.WHITE)
-                    }
-                    danmaku.textShadowColor = AndroidColor.BLACK
-                    danmaku.setTime(view.currentTime + 10)
-                    view.addDanmaku(danmaku)
-                }
-            }
-        }
-    }
+    LiveDanmakuEffect(
+        comments = livePlayerViewModel.liveComments,
+        sessionToken = mainSessionToken,
+        enabled = isCommentEnabled,
+        heavyUiReady = isHeavyUiReady,
+        dualDisplay = ps.isDualDisplayMode,
+        fontSizeScale = commentFontSizeScale,
+        danmakuView = danmakuViewRef,
+    )
 
     var hasStoppedByLifecycle by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -697,12 +591,12 @@ fun LivePlayerScreen(
 
     LaunchedEffect(
         isDataBroadcastingActive,
-        ps.isDataBroadcastingColorSelectorVisible,
-        ps.selectedDataBroadcastingColorKey
+        dataBroadcastingInput.isColorSelectorVisible,
+        dataBroadcastingInput.selectedColorKey
     ) {
-        if (isDataBroadcastingActive && ps.isDataBroadcastingColorSelectorVisible) {
+        if (isDataBroadcastingActive && dataBroadcastingInput.isColorSelectorVisible) {
             delay(5000)
-            ps.closeDataBroadcastingColorSelector()
+            dataBroadcastingInput.closeColorSelector()
         }
     }
 
@@ -715,16 +609,16 @@ fun LivePlayerScreen(
         if (!isDataBroadcastingActive || isDataBroadcastingBlank ||
             isPiPMode || ps.isDualDisplayMode
         ) {
-            ps.resetDataBroadcastingInput()
+            dataBroadcastingInput.reset()
         }
     }
 
     val isUiVisible =
-        isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.lCropMode != LCropMode.HIDDEN
+        isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.crop.mode != PlayerCropMode.HIDDEN
     // Keep captions visible under lightweight overlays. The channel browser is a full-screen
     // surface, so captions must not be drawn over its cards.
     val isSubtitleBlockingUiVisible =
-        ps.lCropMode != LCropMode.HIDDEN || isMiniListOpen
+        ps.crop.mode != PlayerCropMode.HIDDEN || isMiniListOpen
     val subtitleBottomAvoidanceOffset by animateDpAsState(
         targetValue = when {
             showOverlay -> LIVE_PROGRAM_INFO_SUBTITLE_OFFSET
@@ -741,7 +635,7 @@ fun LivePlayerScreen(
     LaunchedEffect(isMiniListOpen) {
         if (!isMiniListOpen) {
             isMiniPlayerSelectionPending = false
-            if (!currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.lCropMode == LCropMode.HIDDEN) {
+            if (!currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.crop.mode == PlayerCropMode.HIDDEN) {
                 delay(100); mainFocusRequester.safeRequestFocus(TAG)
             }
         }
@@ -770,7 +664,7 @@ fun LivePlayerScreen(
             .onKeyEvent { keyEvent ->
                 if (isPiPMode) return@onKeyEvent false
                 if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
-                    ps.resetDataBroadcastingInput()
+                    dataBroadcastingInput.reset()
                     if (!isB60Channel) {
                         onShowToast("B60 データ放送は BS4K/BS8K で利用できます")
                         return@onKeyEvent true
@@ -783,6 +677,19 @@ fun LivePlayerScreen(
                     } else if (isDataBroadcastingActive) {
                         dispatchDataBroadcastingRemoteKey("data")
                     }
+                    return@onKeyEvent true
+                }
+                if (isDataBroadcastingActive && !isDataBroadcastingBlank &&
+                    !ps.isDualDisplayMode && !isSubMenuOpen && !isMiniListOpen &&
+                    dataBroadcastingInput.handleKeyEvent(
+                        keyEvent = keyEvent,
+                        scope = scope,
+                        onBack = dispatchDataBroadcastingBack,
+                        onBlank = { dispatchDataBroadcastingRemoteKey("data") },
+                        onColorKey = dispatchDataBroadcastingColorKey,
+                        onRemoteKey = dispatchDataBroadcastingRemoteKey,
+                    )
+                ) {
                     return@onKeyEvent true
                 }
                 ps.handleKeyEvent(
@@ -805,11 +712,6 @@ fun LivePlayerScreen(
                     onShowToast = onShowToast,
                     onPiPRequested = onPiPRequested,
                     onBackPressed = onBackPressed,
-                    isDataBroadcastingMode = isDataBroadcastingActive && !isDataBroadcastingBlank,
-                    onDataBroadcastingBack = dispatchDataBroadcastingBack,
-                    onDataBroadcastingBlank = { dispatchDataBroadcastingRemoteKey("data") },
-                    onDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
-                    onDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey
                 )
             }
     ) {
@@ -827,12 +729,14 @@ fun LivePlayerScreen(
                 mainPixelRatio = pixelWidthHeightRatio,
                 mainCaptionCue = mainCaptionCue.value,
                 mainSuperimposeCue = mainSuperimposeCue.value,
+                isMainBuffering = isMainBuffering,
                 dualPlayer = dualPlayer,
                 dualVideoWidth = dualVideoWidth,
                 dualVideoHeight = dualVideoHeight,
                 dualPixelRatio = dualPixelWidthHeightRatio,
                 dualCaptionCue = dualCaptionCue.value,
                 dualSuperimposeCue = dualSuperimposeCue.value,
+                isDualBuffering = isDualBuffering,
                 isSubtitleEnabled = isSubtitleEnabled
             )
         } else {
@@ -888,41 +792,31 @@ fun LivePlayerScreen(
                     Modifier.fillMaxSize()
                 }
 
-            AndroidView(
-                factory = {
-                    PlayerView(it).apply {
-                        player = mainPlayer
-                        useController = false; keepScreenOn = true; resizeMode =
-                        AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
-                },
-                update = { view ->
-                    if (view.player != mainPlayer) view.player = mainPlayer
-
-                    if (videoWidth > 0 && videoHeight > 0) {
-                        val ratio = videoWidth.toFloat() / videoHeight.toFloat()
-                        val isAnamorphic =
-                            (videoWidth == 1440 && videoHeight == 1080 && pixelWidthHeightRatio == 1.0f)
-                        val targetMode =
-                            if (isAnamorphic || ratio >= 1.7f) AspectRatioFrameLayout.RESIZE_MODE_FILL else AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        if (view.resizeMode != targetMode) view.resizeMode = targetMode
-                    }
-                },
-                onRelease = { view ->
-                    view.player = null
-                    view.keepScreenOn = false
-                },
+            val mainResizeMode = if (videoWidth > 0 && videoHeight > 0) {
+                val ratio = videoWidth.toFloat() / videoHeight.toFloat()
+                val isAnamorphic = videoWidth == 1440 && videoHeight == 1080 && pixelWidthHeightRatio == 1.0f
+                if (isAnamorphic || ratio >= 1.7f) {
+                    AspectRatioFrameLayout.RESIZE_MODE_FILL
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+            } else {
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+            PlayerSurface(
+                player = mainPlayer,
+                resizeMode = mainResizeMode,
                 modifier = mainPlayerModifier
                     .graphicsLayer {
-                        if (ps.lCropEnabled) {
-                            scaleX = ps.lCropZoom / 100f; scaleY = ps.lCropZoom / 100f
-                            translationX = size.width * (ps.lCropX / 100f); translationY =
-                                size.height * (ps.lCropY / 100f)
-                            transformOrigin = when (ps.lCropOrigin) {
-                                ZoomOrigin.TopLeft -> TransformOrigin(0f, 0f)
-                                ZoomOrigin.TopRight -> TransformOrigin(1f, 0f)
-                                ZoomOrigin.BottomLeft -> TransformOrigin(0f, 1f)
-                                ZoomOrigin.BottomRight -> TransformOrigin(1f, 1f)
+                        if (ps.crop.isEnabled) {
+                            scaleX = ps.crop.zoomPercent / 100f; scaleY = ps.crop.zoomPercent / 100f
+                            translationX = size.width * (ps.crop.xPercent / 100f); translationY =
+                                size.height * (ps.crop.yPercent / 100f)
+                            transformOrigin = when (ps.crop.origin) {
+                                PlayerZoomOrigin.TopLeft -> TransformOrigin(0f, 0f)
+                                PlayerZoomOrigin.TopRight -> TransformOrigin(1f, 0f)
+                                PlayerZoomOrigin.BottomLeft -> TransformOrigin(0f, 1f)
+                                PlayerZoomOrigin.BottomRight -> TransformOrigin(1f, 1f)
                             }
                         } else {
                             scaleX = 1f; scaleY = 1f; translationX = 0f; translationY =
@@ -930,7 +824,7 @@ fun LivePlayerScreen(
                         }
                     }
                     .focusRequester(mainFocusRequester)
-                    .focusable(!isPiPMode && !isMiniListOpen && !isSubMenuOpen && ps.lCropMode == LCropMode.HIDDEN)
+                    .focusable(!isPiPMode && !isMiniListOpen && !isSubMenuOpen && ps.crop.mode == PlayerCropMode.HIDDEN)
             )
 
             val isVideoVisible =
@@ -957,13 +851,13 @@ fun LivePlayerScreen(
                 }
 
                 if (isHeavyUiReady && isCommentEnabled) {
-                    LiveCommentOverlay(
-                        Modifier.fillMaxSize(),
-                        isEmulator,
-                        commentSpeed,
-                        commentOpacity,
-                        commentMaxLines,
-                        mainSessionToken
+                    DanmakuOverlay(
+                        modifier = Modifier.fillMaxSize(),
+                        useSoftwareRendering = isEmulator,
+                        speed = commentSpeed,
+                        opacity = commentOpacity,
+                        maxLines = commentMaxLines,
+                        sessionKey = mainSessionToken,
                     ) { view ->
                         if (mainSessionToken != null) danmakuViewRef.value = view
                         if (!ps.isPlayerPlaying) view.pause()
@@ -980,14 +874,14 @@ fun LivePlayerScreen(
         }
 
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && ps.lCropMode != LCropMode.HIDDEN,
+            visible = !isPiPMode && ps.crop.mode != PlayerCropMode.HIDDEN,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
             LCropOverlay(
                 state = ps,
                 onClose = {
-                    ps.lCropMode = LCropMode.HIDDEN; scope.launch {
+                    ps.crop.mode = PlayerCropMode.HIDDEN; scope.launch {
                     delay(200); mainFocusRequester.safeRequestFocus(
                     TAG
                 )
@@ -1166,7 +1060,7 @@ fun LivePlayerScreen(
                 currentSubtitleLanguageId = currentSubtitleLanguageId,
                 currentQuality = ps.currentQuality,
                 isCommentEnabled = isCommentEnabled,
-                isLCropEnabled = ps.lCropEnabled,
+                isLCropEnabled = ps.crop.isEnabled,
                 isRecording = isRecording,
                 canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
@@ -1366,14 +1260,14 @@ fun LivePlayerScreen(
                     )
                 },
                 onLCropToggle = {
-                    ps.lCropEnabled = !ps.lCropEnabled
-                    if (ps.lCropEnabled) {
-                        ps.lCropMode = LCropMode.MENU
+                    ps.crop.isEnabled = !ps.crop.isEnabled
+                    if (ps.crop.isEnabled) {
+                        ps.crop.mode = PlayerCropMode.MENU
                         onSubMenuToggle(false)
                     } else {
-                        ps.lCropMode = LCropMode.HIDDEN
-                        ps.lCropZoom = 100f; ps.lCropX = 0f; ps.lCropY = 0f; ps.lCropOrigin =
-                            ZoomOrigin.TopRight
+                        ps.crop.mode = PlayerCropMode.HIDDEN
+                        ps.crop.zoomPercent = 100f; ps.crop.xPercent = 0f; ps.crop.yPercent = 0f
+                        ps.crop.origin = PlayerZoomOrigin.TopRight
                     }
                 },
                 onCloseMenu = {
@@ -1386,17 +1280,17 @@ fun LivePlayerScreen(
             visible = !isPiPMode &&
                 !ps.isDualDisplayMode &&
                 isDataBroadcastingActive &&
-                ps.isDataBroadcastingColorSelectorVisible,
+                dataBroadcastingInput.isColorSelectorVisible,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
             DataBroadcastingColorSelectorOverlay(
-                selectedKey = ps.selectedDataBroadcastingColorKey,
+                selectedKey = dataBroadcastingInput.selectedColorKey,
                 onColorSelected = { colorKey ->
-                    ps.dispatchDataBroadcastingColorKey(colorKey, onDataBroadcastingColorKey)
+                    dataBroadcastingInput.dispatchColorKey(colorKey, dispatchDataBroadcastingColorKey)
                 },
                 onDismiss = {
-                    ps.closeDataBroadcastingColorSelector()
+                    dataBroadcastingInput.closeColorSelector()
                 }
             )
         }

@@ -5,9 +5,9 @@ import com.beeregg2001.komorebi.util.mmts.B60BroadcastClock
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
 import com.beeregg2001.komorebi.util.mmts.B60EventInfo
 
-enum class LivePlaybackSlot {
-    MAIN,
-    DUAL
+enum class LivePlaybackSlot(val streamNumber: Int) {
+    MAIN(0),
+    DUAL(1),
 }
 
 data class LiveChannelSessionToken(

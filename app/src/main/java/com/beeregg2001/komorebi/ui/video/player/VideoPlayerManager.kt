@@ -27,9 +27,6 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.util.playbackHttpDataSourceFactory
 import androidx.media3.datasource.HttpDataSource
-import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -42,7 +39,11 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.subtitle.AribId3PrivPayloadRouter
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
-import com.beeregg2001.komorebi.ui.player.LibaribtlvToneMappingRenderersFactory
+import com.beeregg2001.komorebi.ui.player.CaptionDecodeRouter
+import com.beeregg2001.komorebi.ui.player.CaptionGenerationFence
+import com.beeregg2001.komorebi.ui.player.PlayerBufferProfile
+import com.beeregg2001.komorebi.ui.player.PlayerProfile
+import com.beeregg2001.komorebi.ui.player.PlayerRuntime
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadDataType
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryPolicy
@@ -167,7 +168,7 @@ fun rememberManagedExoPlayer(
         PlayerErrorRecovery.UseDefault
     },
     onStopOrDispose: (ExoPlayer) -> Unit,
-    settingsViewModel: SettingsViewModel = hiltViewModel()
+    settingsViewModel: SettingsViewModel,
 ): ExoPlayer {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -231,8 +232,8 @@ fun rememberManagedExoPlayer(
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
     }
-    val captionSource = remember(captionDecoder) {
-        com.beeregg2001.komorebi.ui.subtitle.RecordedCaptionSource {
+    val captionFence = remember(captionDecoder) {
+        CaptionGenerationFence {
             captionQuality == vs.currentQuality.value && recordedPlaybackFence.accepts()
         }
     }
@@ -244,43 +245,28 @@ fun rememberManagedExoPlayer(
     val currentOnStreamSessionExpired = rememberUpdatedState(onStreamSessionExpired)
     val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
     val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
-    LaunchedEffect(captionSource, subtitleResetSerial) {
-        captionSource.reset()
+    LaunchedEffect(captionFence, subtitleResetSerial) {
+        captionFence.reset()
         captionDecoder.reset(subtitleLanguageId)
         superimposeDecoder.reset()
         currentOnSubtitleLanguagesChanged.value(emptyList())
     }
     LaunchedEffect(captionDecoder, b62SubtitleSamples, recordedPlaybackFence.identity) {
         for (fencedSample in b62SubtitleSamples) {
-            if (!(captionSource.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) continue
-            val sample = fencedSample.sample
-            val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
-            val decoder = when (sample.type) {
-                NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
-                NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
-                else -> continue
+            if (!(captionFence.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) continue
+            val decoded = withContext(Dispatchers.Default) {
+                CaptionDecodeRouter.decodeB62(
+                    sample = fencedSample.sample,
+                    captionDecoder = captionDecoder,
+                    superimposeDecoder = superimposeDecoder,
+                    captionsEnabled = vs.isSubtitleEnabled,
+                )
+            } ?: continue
+            if (!(captionFence.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) continue
+            if (decoded.type == NativeCaptionDecoder.TYPE_CAPTION) {
+                currentOnSubtitleLanguagesChanged.value(decoded.languages)
             }
-            val (decoded, languages) = withContext(Dispatchers.Default) {
-                decoder.decodeB62(
-                    data = sample.data,
-                    ptsMs = sample.timeUs / 1_000L,
-                    operationMode = sample.operationMode,
-                    timingMode = sample.timingMode,
-                    referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
-                    mpuSequenceNumber = sample.mpuSequenceNumber,
-                    resources = sample.resources,
-                    discontinuity = sample.discontinuity
-                ) to decoder.availableLanguages()
-            }
-            if (!(captionSource.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) continue
-            if (isCaption) currentOnSubtitleLanguagesChanged.value(languages)
-            if (!isCaption || vs.isSubtitleEnabled) {
-                decoded.forEach { cue ->
-                    if ((captionSource.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) {
-                        onSubtitleCue(cue)
-                    }
-                }
-            }
+            if (decoded.render) decoded.cues.forEach(onSubtitleCue)
         }
     }
     LaunchedEffect(subtitleLanguageId, recordedPlaybackFence.identity) {
@@ -290,7 +276,7 @@ fun rememberManagedExoPlayer(
     }
     DisposableEffect(captionDecoder, b62SubtitleSamples) {
         onDispose {
-            captionSource.retire()
+            captionFence.retire()
             b62SubtitleSamples.close()
             captionDecoder.close()
             superimposeDecoder.close()
@@ -326,7 +312,7 @@ fun rememberManagedExoPlayer(
         }
     }
 
-    val exoPlayer = remember(
+    val playerRuntime = remember(
         recordedPlaybackFence.identity,
         constructionKey,
         captionQuality,
@@ -334,14 +320,6 @@ fun rememberManagedExoPlayer(
         dataBroadcastingCallback,
     ) {
         Log.i(TAG, "Building recorded ExoPlayer: $constructionKey")
-        val renderersFactory = LibaribtlvToneMappingRenderersFactory(
-            context,
-            if (enableHdrToSdrToneMapping) HdrToneMapping.colorLut else null
-        ).apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-            setEnableDecoderFallback(true)
-        }
-
         val httpDataSourceFactory = playbackHttpDataSourceFactory(context)
         val accessSettings = dagger.hilt.android.EntryPointAccessors.fromApplication(
             context.applicationContext, com.beeregg2001.komorebi.util.PlaybackHttpEntryPoint::class.java
@@ -371,9 +349,9 @@ fun rememberManagedExoPlayer(
             fileSizeBytesRef = fileSizeBytesRef,
             fileSizeReferenceDurationUsRef = fileSizeReferenceDurationUsRef,
             onRawMmtsSubtitleData = { sample ->
-                if (captionSource.accepts()) {
+                if (captionFence.accepts()) {
                     b62SubtitleSamples.trySend(
-                        FencedB62SubtitleSample(recordedPlaybackFence.tokenOrNull(), sample, captionSource.token())
+                        FencedB62SubtitleSample(recordedPlaybackFence.tokenOrNull(), sample, captionFence.token())
                     )
                 }
             },
@@ -383,43 +361,26 @@ fun rememberManagedExoPlayer(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, customExtractorsFactory)
             .setLoadErrorHandlingPolicy(HonomiLikeHlsLoadErrorHandlingPolicy(isNetworkAvailable))
 
-        val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
         val bufferProfile = RecordedPlayerBufferProfile.select(
             isRawMmtsPlayback = isRawMmtsPlayback,
             isRecordingChasePlayback = isRecordingChasePlayback,
         )
-        val loadControl = DefaultLoadControl.Builder()
-            .setAllocator(allocator)
-            .setTargetBufferBytes(bufferProfile.targetBufferBytes)
-            .setBufferDurationsMs(
-                bufferProfile.minBufferMs,
-                bufferProfile.maxBufferMs,
-                bufferProfile.bufferForPlaybackMs,
-                bufferProfile.bufferForPlaybackAfterRebufferMs
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-
-        val livePlaybackSpeedControl = DefaultLivePlaybackSpeedControl.Builder()
-            .setFallbackMinPlaybackSpeed(1.0f)
-            .setFallbackMaxPlaybackSpeed(1.0f)
-            .build()
-
-        ExoPlayer.Builder(context, renderersFactory)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setLoadControl(loadControl)
-            .setLivePlaybackSpeedControl(livePlaybackSpeedControl)
-            .build().apply {
-                if (enableHdrToSdrToneMapping) {
-                    setVideoEffects(emptyList())
-                }
-                setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
-                setAudioAttributes(
-                    AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .setUsage(C.USAGE_MEDIA).build(),
-                    true
-                )
-                addListener(object : Player.Listener {
+        val runtime = PlayerRuntime(
+            context = context,
+            profile = PlayerProfile(
+                buffer = PlayerBufferProfile(
+                    minBufferMs = bufferProfile.minBufferMs,
+                    maxBufferMs = bufferProfile.maxBufferMs,
+                    bufferForPlaybackMs = bufferProfile.bufferForPlaybackMs,
+                    bufferForPlaybackAfterRebufferMs = bufferProfile.bufferForPlaybackAfterRebufferMs,
+                    targetBufferBytes = bufferProfile.targetBufferBytes,
+                ),
+                enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
+            ),
+            mediaSourceFactory = mediaSourceFactory,
+        )
+        val managedPlayer = runtime.player
+        runtime.addListener(object : Player.Listener {
                     private var wasBuffering = false
 
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -438,7 +399,7 @@ fun rememberManagedExoPlayer(
 
                     override fun onTracksChanged(tracks: Tracks) {
                         if (!recordedPlaybackFence.accepts()) return
-                        applyAudioSelectionAndMatrix(vs.currentAudioMode, this@apply)
+                        applyAudioSelectionAndMatrix(vs.currentAudioMode, managedPlayer)
                     }
 
                     override fun onPositionDiscontinuity(
@@ -449,8 +410,8 @@ fun rememberManagedExoPlayer(
                         if (!recordedPlaybackFence.accepts() ||
                             !AribId3PrivPayloadRouter.shouldResetForPositionDiscontinuity(reason)
                         ) return
-                        if (!captionSource.accepts()) return
-                        captionSource.reset()
+                        if (!captionFence.accepts()) return
+                        captionFence.reset()
                         captionDecoder.reset(subtitleLanguageId)
                         superimposeDecoder.reset()
                         currentOnSubtitleLanguagesChanged.value(emptyList())
@@ -463,15 +424,15 @@ fun rememberManagedExoPlayer(
                         if (isBuffering && !wasBuffering) {
                             Log.i(
                                 TAG,
-                                "Video buffering started. [recording_chase=$isRecordingChasePlayback, position_ms=$currentPosition, buffered_ms=$bufferedPosition, duration_ms=$duration]"
+                                "Video buffering started. [recording_chase=$isRecordingChasePlayback, position_ms=${managedPlayer.currentPosition}, buffered_ms=${managedPlayer.bufferedPosition}, duration_ms=${managedPlayer.duration}]"
                             )
                         }
                         if (playbackState == Player.STATE_READY) {
-                            currentOnDurationChanged.value(duration)
+                            currentOnDurationChanged.value(managedPlayer.duration)
                             if (wasBuffering) {
                                 Log.i(
                                     TAG,
-                                    "Video buffering ended. [recording_chase=$isRecordingChasePlayback, position_ms=$currentPosition, buffered_ms=$bufferedPosition, duration_ms=$duration]"
+                                    "Video buffering ended. [recording_chase=$isRecordingChasePlayback, position_ms=${managedPlayer.currentPosition}, buffered_ms=${managedPlayer.bufferedPosition}, duration_ms=${managedPlayer.duration}]"
                                 )
                             }
                         }
@@ -487,14 +448,14 @@ fun rememberManagedExoPlayer(
                         }
                         scope.launch {
                             try {
-                                if (!recordedPlaybackFence.accepts()) return@launch
-                                when (currentOnPlayerErrorRecovery.value(this@apply, error)) {
+                                if (!recordedPlaybackFence.accepts() || !captionFence.accepts()) return@launch
+                                when (currentOnPlayerErrorRecovery.value(managedPlayer, error)) {
                                     PlayerErrorRecovery.Handled -> return@launch
                                     PlayerErrorRecovery.Reprepare -> Unit
                                     PlayerErrorRecovery.UseDefault -> {
                                         if (
                                             error.hasHttpResponseCode(422) &&
-                                            currentOnStreamSessionExpired.value(this@apply)
+                                            currentOnStreamSessionExpired.value(managedPlayer)
                                         ) {
                                             return@launch
                                         }
@@ -502,9 +463,8 @@ fun rememberManagedExoPlayer(
                                 }
                                 currentOnBufferingChanged.value(true)
                                 delay(3000L)
-                                if (!recordedPlaybackFence.accepts()) return@launch
-                                prepare()
-                                playWhenReady = true
+                                if (!recordedPlaybackFence.accepts() || !captionFence.accepts()) return@launch
+                                runtime.reprepare(playWhenReady = true)
                             } finally {
                                 isPlaybackRecoveryRunning.set(false)
                             }
@@ -512,65 +472,52 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onMetadata(metadata: Metadata) {
-                        if (!captionSource.accepts()) return
+                        if (!captionFence.accepts()) return
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry !is PrivFrame) continue
                             if (!entry.owner.equals("aribb24.js", ignoreCase = true)) continue
-                            when (val route = AribId3PrivPayloadRouter.route(
-                                entry.privateData,
+                            val decoded = CaptionDecodeRouter.decodeB24(
+                                privateData = entry.privateData,
                                 captionsEnabled = vs.isSubtitleEnabled,
-                            )) {
-                                is AribId3PrivPayloadRouter.Route.Caption -> {
-                                    val cue = captionDecoder.decode(
-                                        entry.privateData,
-                                        currentPosition,
-                                        renderCaptions = route.render,
-                                    )
-                                    if (!recordedPlaybackFence.accepts()) continue
-                                    currentOnSubtitleLanguagesChanged.value(
-                                        captionDecoder.availableLanguages()
-                                    )
-                                    if (route.render && cue != null) {
-                                        Log.i(TAG, "ARIB metadata caption: quality=$captionQuality, pts_ms=${cue.ptsMs}, duration_ms=${cue.durationMs}, clear=${cue.clearScreen}, images=${cue.images.size}")
-                                        onSubtitleCue(cue)
-                                    }
-                                }
-                                AribId3PrivPayloadRouter.Route.Superimpose -> {
-                                    val cue = superimposeDecoder.decode(
-                                        entry.privateData,
-                                        currentPosition,
-                                        renderCaptions = true,
-                                    )
-                                    if (cue != null && captionSource.accepts()) {
-                                        Log.i(TAG, "ARIB metadata superimpose: quality=$captionQuality, pts_ms=${cue.ptsMs}, clear=${cue.clearScreen}, images=${cue.images.size}")
-                                        onSubtitleCue(cue)
-                                    }
-                                }
-                                AribId3PrivPayloadRouter.Route.Ignore -> Unit
+                                captionDecoder = captionDecoder,
+                                superimposeDecoder = superimposeDecoder,
+                                ptsMs = managedPlayer.currentPosition,
+                            ) ?: continue
+                            if (!captionFence.accepts()) continue
+                            if (decoded.type == NativeCaptionDecoder.TYPE_CAPTION) {
+                                currentOnSubtitleLanguagesChanged.value(decoded.languages)
+                            }
+                            if (decoded.render) decoded.cues.forEach { cue ->
+                                Log.i(TAG, "ARIB metadata cue: quality=$captionQuality, pts_ms=${cue.ptsMs}, duration_ms=${cue.durationMs}, clear=${cue.clearScreen}, images=${cue.images.size}")
+                                onSubtitleCue(cue)
                             }
                         }
                     }
-                })
-            }
+        })
+        runtime
     }
+    val exoPlayer = playerRuntime.player
 
     LaunchedEffect(vs.currentAudioMode) {
         applyAudioSelectionAndMatrix(vs.currentAudioMode, exoPlayer)
     }
 
-    DisposableEffect(lifecycleOwner, exoPlayer) {
+    DisposableEffect(lifecycleOwner, playerRuntime) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                exoPlayer.pause()
+                playerRuntime.pause()
                 currentOnStopOrDispose.value(exoPlayer)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            currentOnStopOrDispose.value(exoPlayer)
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            exoPlayer.release()
+            try {
+                currentOnStopOrDispose.value(exoPlayer)
+            } finally {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                playerRuntime.release()
+            }
         }
     }
 

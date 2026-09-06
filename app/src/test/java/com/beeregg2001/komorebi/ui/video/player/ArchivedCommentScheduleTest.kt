@@ -51,7 +51,7 @@ class ArchivedCommentScheduleTest {
         val source = mutableStateListOf<ArchivedComment>()
         val snapshots = ArchivedCommentSnapshots(source)
         var active = true
-        val token = com.beeregg2001.komorebi.ui.main.RecordedPlaybackToken(1L, 1L, 1)
+        val token = com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken(1L, 1L, 1)
         val fence = RecordedPlaybackFence(token, { active }, token)
         val observer = launch(start = CoroutineStart.UNDISPATCHED) { snapshots.observe(fence) }
         try {

@@ -3,8 +3,6 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import android.util.Log
-import android.view.SurfaceView
-import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
@@ -35,26 +33,28 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.MediaMetadata
-import androidx.media3.ui.AspectRatioFrameLayout
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
-import com.beeregg2001.komorebi.ui.live.B60_INITIAL_MEDIA_PLANE
-import com.beeregg2001.komorebi.ui.live.B60MediaPlane
-import com.beeregg2001.komorebi.ui.live.DataBroadcastingColorKey
-import com.beeregg2001.komorebi.ui.live.DataBroadcastingColorSelectorOverlay
-import com.beeregg2001.komorebi.ui.live.DataBroadcastingRemoteCommand
-import com.beeregg2001.komorebi.ui.live.DataBroadcastingWebViewOverlay
-import com.beeregg2001.komorebi.ui.live.LivePlayerState
-import com.beeregg2001.komorebi.ui.live.b60MediaPlane
-import com.beeregg2001.komorebi.ui.live.isDataBroadcastingToggleKeyEvent
+import com.beeregg2001.komorebi.ui.player.B60_INITIAL_MEDIA_PLANE
+import com.beeregg2001.komorebi.ui.player.B60MediaPlane
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingInputState
+import com.beeregg2001.komorebi.ui.player.PlayerSurface
+import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
+import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
+import com.beeregg2001.komorebi.ui.player.b60MediaPlane
+import com.beeregg2001.komorebi.ui.player.isDataBroadcastingToggleKeyEvent
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
@@ -139,47 +139,28 @@ internal fun BoxScope.RecordedMediaSurface(
         Modifier.fillMaxSize()
     }
 
-    AndroidView(
-        factory = { context ->
-            AspectRatioFrameLayout(context).apply {
-                keepScreenOn = true
-                val surfaceView = SurfaceView(context).apply {
-                    layoutParams = ViewGroup.LayoutParams(-1, -1)
-                }
-                addView(surfaceView)
-            }
-        },
-        update = { view ->
-            val surfaceView = view.getChildAt(0) as SurfaceView
-            exoPlayer.setVideoSurfaceView(surfaceView)
-            if (videoWidth > 0 && videoHeight > 0) {
-                val ratio =
-                    (videoWidth.toFloat() * pixelWidthHeightRatio) / videoHeight.toFloat()
-                view.setAspectRatio(ratio)
-                val targetMode = if (ratio >= 1.7f) {
-                    AspectRatioFrameLayout.RESIZE_MODE_FILL
-                } else {
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                }
-                if (view.resizeMode != targetMode) view.resizeMode = targetMode
-            }
-        },
-        onRelease = { view ->
-            exoPlayer.clearVideoSurfaceView(view.getChildAt(0) as SurfaceView)
-            view.keepScreenOn = false
-        },
+    val resizeMode = if (videoWidth > 0 && videoHeight > 0 &&
+        (videoWidth.toFloat() * pixelWidthHeightRatio) / videoHeight.toFloat() >= 1.7f
+    ) {
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+    } else {
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+    PlayerSurface(
+        player = exoPlayer,
+        resizeMode = resizeMode,
         modifier = videoSurfaceModifier
             .graphicsLayer {
-                if (state.lCropEnabled) {
-                    scaleX = state.lCropZoom / 100f
-                    scaleY = state.lCropZoom / 100f
-                    translationX = size.width * (state.lCropX / 100f)
-                    translationY = size.height * (state.lCropY / 100f)
-                    transformOrigin = when (state.lCropOrigin) {
-                        ZoomOrigin.TopLeft -> TransformOrigin(0f, 0f)
-                        ZoomOrigin.TopRight -> TransformOrigin(1f, 0f)
-                        ZoomOrigin.BottomLeft -> TransformOrigin(0f, 1f)
-                        ZoomOrigin.BottomRight -> TransformOrigin(1f, 1f)
+                if (state.crop.isEnabled) {
+                    scaleX = state.crop.zoomPercent / 100f
+                    scaleY = state.crop.zoomPercent / 100f
+                    translationX = size.width * (state.crop.xPercent / 100f)
+                    translationY = size.height * (state.crop.yPercent / 100f)
+                    transformOrigin = when (state.crop.origin) {
+                        PlayerZoomOrigin.TopLeft -> TransformOrigin(0f, 0f)
+                        PlayerZoomOrigin.TopRight -> TransformOrigin(1f, 0f)
+                        PlayerZoomOrigin.BottomLeft -> TransformOrigin(0f, 1f)
+                        PlayerZoomOrigin.BottomRight -> TransformOrigin(1f, 1f)
                     }
                 } else {
                     scaleX = 1f
@@ -200,7 +181,7 @@ internal fun BoxScope.RecordedMediaSurface(
             .focusable(
                 !isPiPMode &&
                     !isSubOverlayOpen &&
-                    state.lCropMode == LCropMode.HIDDEN
+                    state.crop.mode == PlayerCropMode.HIDDEN
             )
     )
 }
@@ -237,6 +218,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     onPlayNextEpisodeNow: () -> Unit,
     onCancelNextEpisodeCountdown: () -> Unit,
     program: RecordedProgram,
+    mediaInfo: PlaybackMediaInfo,
     timeFormat: String,
     tiledThumbnailUrl: String?,
     showControls: Boolean,
@@ -280,7 +262,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
             isSubOverlayOpen ||
             isDataBroadcastingActive ||
             showNextEpisodeCountdown ||
-            state.lCropMode != LCropMode.HIDDEN
+            state.crop.mode != PlayerCropMode.HIDDEN
     ) != null
     val commentLayer = @Composable {
         if (isHeavyUiReady && state.isCommentEnabled) {
@@ -333,7 +315,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     }
 
     AnimatedVisibility(
-        visible = state.lCropMode != LCropMode.HIDDEN,
+        visible = state.crop.mode != PlayerCropMode.HIDDEN,
         enter = fadeIn(),
         exit = fadeOut()
     ) {
@@ -365,18 +347,18 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         }
     }
 
-    if (showControls && !isSubOverlayOpen && state.lCropMode == LCropMode.HIDDEN) {
+    if (showControls && !isSubOverlayOpen && state.crop.mode == PlayerCropMode.HIDDEN) {
         RecordedProgramStatus(program, timeFormat, presentation)
     }
 
     PlayerControls(
-        program = program,
+        mediaInfo = mediaInfo,
         timeFormat = timeFormat,
         onControlsTopChanged = onControlsTopChanged,
         infoFocusRequester = infoFocusRequester,
         tiledThumbnailUrl = tiledThumbnailUrl,
         allComments = comments,
-        isVisible = showControls && !isSubOverlayOpen && state.lCropMode == LCropMode.HIDDEN,
+        isVisible = showControls && !isSubOverlayOpen && state.crop.mode == PlayerCropMode.HIDDEN,
         isSeekingPreviewVisible = isSeekingPreviewVisible,
         isModernUi = isModern,
         isPlaying = isPlaying,
@@ -534,7 +516,7 @@ internal fun RecordedPlayerMenus(
             isSubtitleEnabled = state.isSubtitleEnabled,
             currentQuality = state.currentQuality,
             isCommentEnabled = state.isCommentEnabled,
-            isLCropEnabled = state.lCropEnabled,
+            isLCropEnabled = state.crop.isEnabled,
             cmSkipMode = cmSkipMode,
             availableQualities = availableQualities,
             onAudioToggle = onAudioToggle,
@@ -550,6 +532,7 @@ internal fun RecordedPlayerMenus(
 
     Box(modifier = Modifier.fillMaxSize()) {
         VideoTopSubMenuUI(
+            mediaInfo = PlaybackMediaInfo.recorded(program),
             currentProgram = program,
             seriesPrograms = seriesPrograms,
             quickPrograms = quickPrograms,
@@ -564,7 +547,7 @@ internal fun RecordedPlayerMenus(
             currentSubtitleLanguageId = currentSubtitleLanguageId,
             currentQuality = state.currentQuality,
             isCommentEnabled = state.isCommentEnabled,
-            isLCropEnabled = state.lCropEnabled,
+            isLCropEnabled = state.crop.isEnabled,
             cmSkipMode = cmSkipMode,
             hdrRenderMode = hdrRenderMode,
             isHdrRenderModeSupported = isHdrRenderModeSupported,
@@ -641,26 +624,26 @@ internal fun toggleRecordedLCrop(
     state: VideoPlayerState,
     onEnterAdjustment: () -> Unit
 ) {
-    state.lCropEnabled = !state.lCropEnabled
-    if (state.lCropEnabled) {
-        state.lCropMode = LCropMode.MENU
+    state.crop.isEnabled = !state.crop.isEnabled
+    if (state.crop.isEnabled) {
+        state.crop.mode = PlayerCropMode.MENU
         onEnterAdjustment()
     } else {
-        state.lCropMode = LCropMode.HIDDEN
-        state.lCropZoom = 100f
-        state.lCropX = 0f
-        state.lCropY = 0f
-        state.lCropOrigin = ZoomOrigin.TopRight
+        state.crop.mode = PlayerCropMode.HIDDEN
+        state.crop.zoomPercent = 100f
+        state.crop.xPercent = 0f
+        state.crop.yPercent = 0f
+        state.crop.origin = PlayerZoomOrigin.TopRight
     }
 }
 
 internal fun closeRecordedLCrop(state: VideoPlayerState) {
-    state.lCropMode = LCropMode.HIDDEN
-    if (!state.lCropEnabled) {
-        state.lCropZoom = 100f
-        state.lCropX = 0f
-        state.lCropY = 0f
-        state.lCropOrigin = ZoomOrigin.TopRight
+    state.crop.mode = PlayerCropMode.HIDDEN
+    if (!state.crop.isEnabled) {
+        state.crop.zoomPercent = 100f
+        state.crop.xPercent = 0f
+        state.crop.yPercent = 0f
+        state.crop.origin = PlayerZoomOrigin.TopRight
     }
 }
 
@@ -713,7 +696,7 @@ internal fun handleRecordedPlayerKeyEvent(
     isDataBroadcastingAvailable: Boolean,
     isDataBroadcastingActive: Boolean,
     isDataBroadcastingBlank: Boolean,
-    dataBroadcastingInput: LivePlayerState,
+    dataBroadcastingInput: DataBroadcastingInputState,
     scope: CoroutineScope,
     dispatchDataBroadcastingRemoteKey: (String) -> Unit,
     dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit,
@@ -753,7 +736,7 @@ internal fun handleRecordedPlayerKeyEvent(
     if (isPiPMode || isSubOverlayOpen || isProgramInfoOpen) state.resetMediaKeys()
     if (isPiPMode) return false
     if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
-        dataBroadcastingInput.resetDataBroadcastingInput()
+        dataBroadcastingInput.reset()
         when {
             !isDataBroadcastingAvailable -> {
                 onShowToast("録画データ放送は Raw MMT/TLV の BS4K/BS8K で利用できます")
@@ -775,13 +758,13 @@ internal fun handleRecordedPlayerKeyEvent(
     if (
         isDataBroadcastingActive &&
         !isDataBroadcastingBlank &&
-        dataBroadcastingInput.handleDataBroadcastingRemoteKeyEvent(
+        dataBroadcastingInput.handleKeyEvent(
             keyEvent = keyEvent,
             scope = scope,
-            onDataBroadcastingBack = { dispatchDataBroadcastingRemoteKey("back") },
-            onDataBroadcastingBlank = { dispatchDataBroadcastingRemoteKey("data") },
-            onDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
-            onDataBroadcastingRemoteKey = dispatchDataBroadcastingRemoteKey
+            onBack = { dispatchDataBroadcastingRemoteKey("back") },
+            onBlank = { dispatchDataBroadcastingRemoteKey("data") },
+            onColorKey = dispatchDataBroadcastingColorKey,
+            onRemoteKey = dispatchDataBroadcastingRemoteKey,
         )
     ) {
         return true
@@ -798,7 +781,7 @@ internal fun handleRecordedPlayerKeyEvent(
             isSubOverlayOpen ||
             isDataBroadcastingActive ||
             showNextEpisodeCountdown ||
-            state.lCropMode != LCropMode.HIDDEN
+            state.crop.mode != PlayerCropMode.HIDDEN
     )
     val isConfirmKey = keyEvent.nativeKeyEvent.keyCode in listOf(
         android.view.KeyEvent.KEYCODE_DPAD_CENTER,
@@ -921,7 +904,6 @@ internal fun previousRecordedSeriesProgram(
 internal fun RecordedSystemMediaSession(
     player: ExoPlayer,
     program: RecordedProgram,
-    smbTitle: String?,
     artworkUrl: String?,
     isLoading: Boolean,
     previousProgram: RecordedProgram?,
@@ -933,7 +915,7 @@ internal fun RecordedSystemMediaSession(
 ) {
     SystemMediaSession(
         player = player,
-        title = smbTitle ?: program.title,
+        title = program.title,
         subtitle = program.channel?.name,
         artworkUrl = artworkUrl,
         mediaType = MediaMetadata.MEDIA_TYPE_TV_SHOW,

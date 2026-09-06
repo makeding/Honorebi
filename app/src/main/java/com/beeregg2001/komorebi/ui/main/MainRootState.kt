@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.main
 
 import androidx.compose.runtime.*
+import com.beeregg2001.komorebi.ui.player.PlaybackSessionState
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 
@@ -32,18 +33,8 @@ class AiFocusTicketManager {
 class MainRootState {
     // タブ・選択状態
     var currentTabIndex by mutableIntStateOf(0)
-    val playbackState = MainRootPlaybackState()
+    val playbackState = PlaybackSessionState()
 
-    val playbackTarget: PlaybackTarget get() = playbackState.playbackTarget
-    val renderPlaybackTarget: PlaybackTarget get() = playbackState.renderPlaybackTarget
-    val renderInitialPlaybackPositionMs: Long get() = playbackState.renderInitialPlaybackPositionMs
-    val playbackPhase: PlaybackPhase get() = playbackState.playbackPhase
-    val recordedPlaybackToken: RecordedPlaybackToken get() = playbackState.recordedPlaybackToken
-    val playbackSession: PlaybackSession? get() = playbackState.playbackSession
-    val playbackSessionEpoch: Long? get() = playbackState.playbackSessionEpoch
-    var initialPlaybackPositionMs: Long
-        get() = playbackState.initialPlaybackPositionMs
-        set(value) { playbackState.initialPlaybackPositionMs = value }
     var epgSelectedProgram by mutableStateOf<EpgProgram?>(null)
 
     var backendType by mutableStateOf("KONOMITV")
@@ -85,50 +76,6 @@ class MainRootState {
 
     var triggerHomeBack by mutableStateOf(false)
 
-    // Playback state is delegated to MainRootPlaybackState during the migration.
-    var isPlayerMiniListOpen: Boolean
-        get() = playbackState.isPlayerMiniListOpen
-        set(value) { playbackState.isPlayerMiniListOpen = value }
-    var playerShowOverlay: Boolean
-        get() = playbackState.playerShowOverlay
-        set(value) { playbackState.playerShowOverlay = value }
-    var playerIsManualOverlay: Boolean
-        get() = playbackState.playerIsManualOverlay
-        set(value) { playbackState.playerIsManualOverlay = value }
-    var playerIsPinnedOverlay: Boolean
-        get() = playbackState.playerIsPinnedOverlay
-        set(value) { playbackState.playerIsPinnedOverlay = value }
-    var playerIsSubMenuOpen: Boolean
-        get() = playbackState.playerIsSubMenuOpen
-        set(value) { playbackState.playerIsSubMenuOpen = value }
-    var showPlayerControls: Boolean
-        get() = playbackState.showPlayerControls
-        set(value) { playbackState.showPlayerControls = value }
-    var isPlayerSubMenuOpen: Boolean
-        get() = playbackState.isPlayerSubMenuOpen
-        set(value) { playbackState.isPlayerSubMenuOpen = value }
-    var isPlayerSceneSearchOpen: Boolean
-        get() = playbackState.isPlayerSceneSearchOpen
-        set(value) { playbackState.isPlayerSceneSearchOpen = value }
-    var isMiniPlayerMode: Boolean
-        get() = playbackState.isMiniPlayerMode
-        set(value) { playbackState.isMiniPlayerMode = value }
-    var lastSelectedChannelId: String?
-        get() = playbackState.lastSelectedChannelId
-        set(value) { playbackState.lastSelectedChannelId = value }
-    var lastSelectedProgramId: String?
-        get() = playbackState.lastSelectedProgramId
-        set(value) { playbackState.lastSelectedProgramId = value }
-    var isReturningFromPlayer: Boolean
-        get() = playbackState.isReturningFromPlayer
-        set(value) { playbackState.isReturningFromPlayer = value }
-    var lastPlayedRecordingId: Int?
-        get() = playbackState.lastPlayedRecordingId
-        set(value) { playbackState.lastPlayedRecordingId = value }
-    var lastPlayedSmbPath: String?
-        get() = playbackState.lastPlayedSmbPath
-        set(value) { playbackState.lastPlayedSmbPath = value }
-
     // システム状態
     var isDataReady by mutableStateOf(false)
     var isUiReady by mutableStateOf(false)
@@ -142,66 +89,9 @@ class MainRootState {
     var editingCondition by mutableStateOf<ReservationCondition?>(null)
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
 
-    val isPlaybackActive: Boolean get() = playbackState.isPlaybackActive
-    val livePlayback: PlaybackTarget.Live? get() = playbackState.livePlayback
-    val recordedPlayback: PlaybackTarget.Recorded? get() = playbackState.recordedPlayback
-    val smbPlayback: PlaybackTarget.Smb? get() = playbackState.smbPlayback
-
-    fun enterLive(
-        channel: Channel,
-        exitMiniPlayer: Boolean = true
-    ) {
-        playbackState.enterLive(channel, exitMiniPlayer)
-    }
-
-    fun enterRecorded(program: RecordedProgram, initialPositionMs: Long = 0L) {
-        playbackState.enterRecorded(program, initialPositionMs)
-    }
-
-    fun enterSmb(item: SmbItem, initialPositionMs: Long = 0L) {
-        playbackState.enterSmb(item, initialPositionMs)
-    }
-
-    fun beginRecordedSwitch(
-        program: RecordedProgram,
-        initialPositionMs: Long = 0L,
-        reason: PlaybackSwitchReason,
-    ): Boolean = playbackState.beginRecordedSwitch(program, initialPositionMs, reason)
-
-    fun commitRecordedSwitch(token: RecordedPlaybackToken): Boolean = playbackState.commitRecordedSwitch(token)
-
-    fun failRecordedSwitch(token: RecordedPlaybackToken): Boolean = playbackState.failRecordedSwitch(token)
-
-    fun isCurrentRecordedPlayback(token: RecordedPlaybackToken): Boolean = playbackState.isCurrentRecordedPlayback(token)
-
-    fun beginPlaybackOpenIntent(): PlaybackOpenIntentToken = playbackState.beginPlaybackOpenIntent()
-
-    fun completePlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = playbackState.completePlaybackOpenIntent(token)
-
-    fun failPlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = playbackState.failPlaybackOpenIntent(token)
-
-    fun isCurrentPlaybackOpenIntent(token: PlaybackOpenIntentToken): Boolean = playbackState.isCurrentPlaybackOpenIntent(token)
-
-    fun enterMiniPlayer(): Boolean {
-        return playbackState.enterMiniPlayer()
-    }
-
-    fun exitMiniPlayer() {
-        playbackState.exitMiniPlayer()
-    }
-
-    fun leavePlayback(returningFromPlayer: Boolean = true) {
-        playbackState.leavePlayback(returningFromPlayer)
-    }
-
-    /** Clears playback-only state when the system Home intent wins. */
-    fun resetPlayback() {
-        playbackState.resetPlayback()
-    }
-
     /** The playback portion of a system Home reset. Root destinations are reset by their owner. */
     fun resetForLauncherHome() {
-        resetPlayback()
+        playbackState.resetPlayback()
         launcherHomeFocusTick++
         triggerHomeBack = false
     }
@@ -221,9 +111,9 @@ class MainRootState {
         recordListOpen: Boolean,
         reserveOverlayOpen: Boolean
     ): Boolean {
-        if (isMiniPlayerMode) return false
+        if (playbackState.isMiniPlayerMode) return false
 
-        return isPlaybackActive || epgProgram != null ||
+        return playbackState.isPlaybackActive || epgProgram != null ||
                 settingsOpen || recordListOpen || reserveOverlayOpen ||
                 isSeriesListOpen || isAiConciergeOpen || isSmbLibraryOpen ||
                 editingCondition != null || selectedConditionReserveItem != null ||

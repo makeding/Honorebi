@@ -1,6 +1,6 @@
 @file:OptIn(UnstableApi::class)
 
-package com.beeregg2001.komorebi.ui.live
+package com.beeregg2001.komorebi.ui.player.live
 
 import android.util.SparseArray
 import androidx.media3.common.util.ParsableByteArray

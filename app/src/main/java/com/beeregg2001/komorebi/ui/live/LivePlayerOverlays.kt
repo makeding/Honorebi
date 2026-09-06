@@ -28,127 +28,13 @@ import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
+import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
+import com.beeregg2001.komorebi.ui.player.formatChannelType
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
-
-private data class DataBroadcastingColorKeySpec(
-    val key: DataBroadcastingColorKey,
-    val label: String,
-    val color: Color,
-    val contentColor: Color,
-    val alignment: Alignment
-)
-
-private val dataBroadcastingColorKeySpecs = listOf(
-    DataBroadcastingColorKeySpec(
-        key = DataBroadcastingColorKey.Blue,
-        label = "青",
-        color = Color(0xFF006EDC),
-        contentColor = Color.White,
-        alignment = Alignment.TopCenter
-    ),
-    DataBroadcastingColorKeySpec(
-        key = DataBroadcastingColorKey.Red,
-        label = "赤",
-        color = Color(0xFFC90000),
-        contentColor = Color.White,
-        alignment = Alignment.CenterStart
-    ),
-    DataBroadcastingColorKeySpec(
-        key = DataBroadcastingColorKey.Green,
-        label = "緑",
-        color = Color(0xFF1B8700),
-        contentColor = Color.White,
-        alignment = Alignment.CenterEnd
-    ),
-    DataBroadcastingColorKeySpec(
-        key = DataBroadcastingColorKey.Yellow,
-        label = "黄",
-        color = Color(0xFFE3B200),
-        contentColor = Color.Black,
-        alignment = Alignment.BottomCenter
-    )
-)
-
-@Composable
-fun DataBroadcastingColorSelectorOverlay(
-    selectedKey: DataBroadcastingColorKey,
-    onColorSelected: (DataBroadcastingColorKey) -> Unit,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = 72.dp),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .size(248.dp)
-                .background(Color.Black.copy(alpha = 0.68f), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
-                .padding(14.dp)
-        ) {
-            dataBroadcastingColorKeySpecs.forEach { spec ->
-                DataBroadcastingColorSelectorButton(
-                    spec = spec,
-                    selected = selectedKey == spec.key,
-                    onClick = { onColorSelected(spec.key) },
-                    modifier = Modifier.align(spec.alignment)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(58.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
-                    .clickable(onClick = onDismiss),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "×",
-                    color = Color.White.copy(alpha = 0.78f),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Light
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DataBroadcastingColorSelectorButton(
-    spec: DataBroadcastingColorKeySpec,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val borderColor = if (selected) Color.White else Color.White.copy(alpha = 0.18f)
-    val borderWidth = if (selected) 4.dp else 1.dp
-    val buttonSize = if (selected) 76.dp else 68.dp
-
-    Box(
-        modifier = modifier
-            .size(buttonSize)
-            .clip(CircleShape)
-            .background(spec.color)
-            .border(borderWidth, borderColor, CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = spec.label,
-            color = spec.contentColor,
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 22.sp),
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
 
 /**
  * REGZA風の信号情報オーバーレイ
@@ -572,14 +458,14 @@ fun LCropOverlay(
 
     val focusedContentColor = if (colors.isDark) Color.Black else Color.White
 
-    LaunchedEffect(state.lCropMode) {
-        if (state.lCropMode == LCropMode.MENU) {
+    LaunchedEffect(state.crop.mode) {
+        if (state.crop.mode == PlayerCropMode.MENU) {
             delay(150)
             try {
                 menuFocusRequester.requestFocus()
             } catch (e: Exception) {
             }
-        } else if (state.lCropMode == LCropMode.DIRECT_ADJUST) {
+        } else if (state.crop.mode == PlayerCropMode.DIRECT_ADJUST) {
             delay(150)
             try {
                 directAdjustFocusRequester.requestFocus()
@@ -588,7 +474,7 @@ fun LCropOverlay(
         }
     }
 
-    if (state.lCropMode == LCropMode.DIRECT_ADJUST) {
+    if (state.crop.mode == PlayerCropMode.DIRECT_ADJUST) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -617,13 +503,13 @@ fun LCropOverlay(
                 Spacer(Modifier.height(16.dp))
                 Text("十字キー: 映像を移動", color = colors.textPrimary)
                 Text(
-                    "決定ボタン: 倍率切り替え (${state.lCropZoom.toInt()}%)",
+                    "決定ボタン: 倍率切り替え (${state.crop.zoomPercent.toInt()}%)",
                     color = colors.textPrimary
                 )
                 Text("戻るボタン: メニューへ戻る", color = colors.textSecondary.copy(alpha = 0.7f))
             }
         }
-    } else if (state.lCropMode == LCropMode.MENU) {
+    } else if (state.crop.mode == PlayerCropMode.MENU) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -680,7 +566,7 @@ fun LCropOverlay(
                 ) {
                     Column(modifier = Modifier.weight(1.2f)) {
                         Button(
-                            onClick = { state.lCropMode = LCropMode.DIRECT_ADJUST },
+                            onClick = { state.crop.mode = PlayerCropMode.DIRECT_ADJUST },
                             modifier = Modifier
                                 .fillMaxWidth(0.9f)
                                 .focusRequester(menuFocusRequester),
@@ -725,10 +611,10 @@ fun LCropOverlay(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 AdjustmentButton(icon = Icons.Default.Remove) {
-                                    state.lCropZoom = (state.lCropZoom - 1f).coerceAtLeast(100f)
+                                    state.crop.zoomPercent = (state.crop.zoomPercent - 1f).coerceAtLeast(100f)
                                 }
                                 Text(
-                                    text = "${state.lCropZoom.toInt()}%",
+                                    text = "${state.crop.zoomPercent.toInt()}%",
                                     color = colors.textPrimary,
                                     modifier = Modifier.width(60.dp),
                                     textAlign = TextAlign.Center,
@@ -736,13 +622,13 @@ fun LCropOverlay(
                                     fontWeight = FontWeight.Bold
                                 )
                                 AdjustmentButton(icon = Icons.Default.Add) {
-                                    state.lCropZoom = (state.lCropZoom + 1f).coerceAtMost(200f)
+                                    state.crop.zoomPercent = (state.crop.zoomPercent + 1f).coerceAtMost(200f)
                                 }
                             }
                         }
 
                         Text(
-                            text = "座標: X ${state.lCropX.toInt()}% / Y ${state.lCropY.toInt()}%",
+                            text = "座標: X ${state.crop.xPercent.toInt()}% / Y ${state.crop.yPercent.toInt()}%",
                             color = colors.textSecondary.copy(alpha = 0.6f),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(start = 80.dp, top = 4.dp)
@@ -758,11 +644,11 @@ fun LCropOverlay(
                             )
                             Button(
                                 onClick = {
-                                    state.lCropOrigin = when (state.lCropOrigin) {
-                                        ZoomOrigin.TopLeft -> ZoomOrigin.TopRight
-                                        ZoomOrigin.TopRight -> ZoomOrigin.BottomRight
-                                        ZoomOrigin.BottomRight -> ZoomOrigin.BottomLeft
-                                        ZoomOrigin.BottomLeft -> ZoomOrigin.TopLeft
+                                    state.crop.origin = when (state.crop.origin) {
+                                        PlayerZoomOrigin.TopLeft -> PlayerZoomOrigin.TopRight
+                                        PlayerZoomOrigin.TopRight -> PlayerZoomOrigin.BottomRight
+                                        PlayerZoomOrigin.BottomRight -> PlayerZoomOrigin.BottomLeft
+                                        PlayerZoomOrigin.BottomLeft -> PlayerZoomOrigin.TopLeft
                                     }
                                 },
                                 colors = ButtonDefaults.colors(
@@ -772,11 +658,11 @@ fun LCropOverlay(
                                     focusedContentColor = focusedContentColor
                                 )
                             ) {
-                                val originLabel = when (state.lCropOrigin) {
-                                    ZoomOrigin.TopLeft -> "左上"
-                                    ZoomOrigin.TopRight -> "右上"
-                                    ZoomOrigin.BottomLeft -> "左下"
-                                    ZoomOrigin.BottomRight -> "右下"
+                                val originLabel = when (state.crop.origin) {
+                                    PlayerZoomOrigin.TopLeft -> "左上"
+                                    PlayerZoomOrigin.TopRight -> "右上"
+                                    PlayerZoomOrigin.BottomLeft -> "左下"
+                                    PlayerZoomOrigin.BottomRight -> "右下"
                                 }
                                 Text(originLabel, fontWeight = FontWeight.Bold)
                             }
@@ -816,11 +702,4 @@ private fun AdjustmentButton(
             Icon(icon, null, modifier = Modifier.size(24.dp))
         }
     }
-}
-
-fun formatChannelType(type: String): String = when (type.uppercase()) {
-    "GR" -> "地デジ"
-    "BS" -> "BS"
-    "CS" -> "CS"
-    else -> type
 }

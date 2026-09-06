@@ -10,16 +10,15 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.CmSection
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
-import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.repository.KonomiRepository
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
 import com.beeregg2001.komorebi.ui.video.player.policy.selectNaturalEpisodePrograms
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
+import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
+import com.beeregg2001.komorebi.ui.player.recorded.RecordedPlaybackSourceResolver
 import com.beeregg2001.komorebi.util.TitleNormalizer
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,6 +52,8 @@ class VideoPlayerViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val konomiRepository: KonomiRepository,
     private val channelLogoCache: com.beeregg2001.komorebi.data.repository.ChannelLogoCache,
+    private val playbackQualityCatalog: PlaybackQualityCatalog,
+    private val playbackSourceResolver: RecordedPlaybackSourceResolver,
 ) : ViewModel() {
 
     companion object {
@@ -62,7 +63,6 @@ class VideoPlayerViewModel @Inject constructor(
         private const val STREAM_KEEP_ALIVE_INTERVAL_MS = 3_000L
     }
 
-    private val gson = Gson()
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
 
@@ -88,8 +88,7 @@ class VideoPlayerViewModel @Inject constructor(
     private val _isLiveStream = MutableStateFlow(false)
     val isLiveStream: StateFlow<Boolean> = _isLiveStream.asStateFlow()
 
-    private val _availableQualities =
-        MutableStateFlow<List<StreamQuality>>(StreamQuality.DEFAULT_QUALITIES)
+    private val _availableQualities = MutableStateFlow(emptyList<StreamQuality>())
     val availableQualities: StateFlow<List<StreamQuality>> = _availableQualities.asStateFlow()
 
     private val _isQualitiesLoaded = MutableStateFlow(false)
@@ -143,106 +142,15 @@ class VideoPlayerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _isQualitiesLoaded.value = false
             try {
-                val backend = settingsRepository.backendType.first()
-                if (backend == "EDCB") {
-                    val playMethod = settingsRepository.edcbRecordPlayMethod.first()
-                    if (playMethod == "DIRECT") {
-                        _availableQualities.value = listOf(
-                            StreamQuality(
-                                label = "オリジナル (Direct)",
-                                value = "direct",
-                                isRawTs = true
-                            )
-                        )
-                    } else {
-                        val json = settingsRepository.availableStreamQualities.first()
-                        if (json.isNotBlank()) {
-                            try {
-                                val type = object : TypeToken<List<StreamQuality>>() {}.type
-                                val list = gson.fromJson<List<StreamQuality>>(json, type)
-                                if (!list.isNullOrEmpty()) {
-                                    _availableQualities.value = list
-                                } else {
-                                    fetchFromApiAndSave()
-                                }
-                            } catch (e: Exception) {
-                                fetchFromApiAndSave()
-                            }
-                        } else {
-                            fetchFromApiAndSave()
-                        }
-                    }
-                } else if (backend == "KONOMITV") {
-                    _availableQualities.value = when {
-                        program?.requiresRawMmtsPlayback == true ->
-                            listOf(StreamQuality.recordedRawMmts())
-
-                        program?.recordedVideo?.containerFormat.equals(
-                            "MPEG-TS",
-                            ignoreCase = true
-                        ) && program?.recordedVideo?.videoCodec.equals(
-                            "MPEG-2",
-                            ignoreCase = true
-                        ) -> listOf(StreamQuality.originalMpegTsHardwareDi()) +
-                            StreamQuality.DEFAULT_QUALITIES
-
-                        else -> StreamQuality.DEFAULT_QUALITIES
-                    }
-                } else {
-                    _availableQualities.value = listOf(
-                        StreamQuality(
-                            label = "オリジナル (Direct)",
-                            value = "direct",
-                            isRawTs = true
-                        )
-                    )
-                }
+                _availableQualities.value = playbackQualityCatalog.recorded(program)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load stream qualities from cache", e)
-                val currentVideo = settingsRepository.videoQuality.first()
-                _availableQualities.value = listOf(
-                    StreamQuality(
-                        label = "設定値 ($currentVideo)",
-                        value = currentVideo,
-                        isRawTs = false
-                    )
-                )
+                _availableQualities.value = playbackQualityCatalog.recorded(null)
             } finally {
                 _isQualitiesLoaded.value = true
             }
-        }
-    }
-
-    private suspend fun fetchFromApiAndSave() {
-        try {
-            Log.i(TAG, "Cache empty. Fetching qualities from API.")
-            val fetched = recordProvider.getStreamQualities()
-            if (fetched.isNotEmpty()) {
-                settingsRepository.saveString(
-                    SettingsRepository.AVAILABLE_STREAM_QUALITIES,
-                    gson.toJson(fetched)
-                )
-                _availableQualities.value = fetched
-            } else {
-                val currentVideo = settingsRepository.videoQuality.first()
-                _availableQualities.value = listOf(
-                    StreamQuality(
-                        label = "設定値 ($currentVideo)",
-                        value = currentVideo,
-                        isRawTs = false
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch from API", e)
-            val currentVideo = settingsRepository.videoQuality.first()
-            _availableQualities.value = listOf(
-                StreamQuality(
-                    label = "設定値 ($currentVideo)",
-                    value = currentVideo,
-                    isRawTs = false
-                )
-            )
         }
     }
 
@@ -272,37 +180,11 @@ class VideoPlayerViewModel @Inject constructor(
         offsetSeconds: Double = 0.0,
         isRecording: Boolean = false
     ): String {
-        return try {
-            withContext(Dispatchers.IO) {
-                if (quality == StreamQuality.RAW_MMTS_PRIMARY_VALUE) {
-                    val ip = settingsRepository.konomiIp.first()
-                    val port = settingsRepository.konomiPort.first()
-                    _isLiveStream.value = false
-                    return@withContext UrlBuilder.getVideoRawMmtsUrl(ip, port, videoId)
-                }
-                if (quality == StreamQuality.ORIGINAL_MPEG_TS_VALUE) {
-                    val ip = settingsRepository.konomiIp.first()
-                    val port = settingsRepository.konomiPort.first()
-                    _isLiveStream.value = false
-                    return@withContext UrlBuilder.getVideoOriginalDownloadUrl(ip, port, videoId)
-                }
-                val url =
-                    recordProvider.getRecordStreamUrl(
-                        videoId,
-                        quality,
-                        sessionId,
-                        offsetSeconds,
-                        isRecording
-                    )
-                _isLiveStream.value = url.contains("/api/xcode") && quality != "10"
-                url
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to resolve stream URL", e)
-            ""
+        val source = withContext(Dispatchers.IO) {
+            playbackSourceResolver.resolve(videoId, quality, sessionId, offsetSeconds, isRecording)
         }
+        _isLiveStream.value = source.usesTranscodingLiveWindow
+        return source.url
     }
 
     fun fetchProgramDetail(videoId: Int) {

@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.ui.main
 
+import com.beeregg2001.komorebi.ui.player.*
+
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.RecordedVideo
@@ -19,97 +21,97 @@ class MainRootStateTest {
         val recording = recording()
         val smbItem = smbItem()
 
-        assertEquals(PlaybackTarget.None, state.playbackTarget)
-        assertFalse(state.isPlaybackActive)
+        assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertFalse(state.playbackState.isPlaybackActive)
 
-        state.enterLive(channel)
-        assertEquals(PlaybackTarget.Live(channel), state.playbackTarget)
-        assertTrue(state.isPlaybackActive)
-        assertEquals(channel, state.livePlayback?.channel)
-        assertNull(state.recordedPlayback)
-        assertNull(state.smbPlayback)
+        state.playbackState.enterLive(channel)
+        assertEquals(PlaybackTarget.Live(channel), state.playbackState.playbackTarget)
+        assertTrue(state.playbackState.isPlaybackActive)
+        assertEquals(channel, state.playbackState.livePlayback?.channel)
+        assertNull(state.playbackState.recordedPlayback)
+        assertNull(state.playbackState.smbPlayback)
 
-        state.enterRecorded(recording)
-        assertEquals(PlaybackTarget.Recorded(recording), state.playbackTarget)
-        assertNull(state.livePlayback)
-        assertEquals(recording, state.recordedPlayback?.program)
-        assertNull(state.smbPlayback)
+        state.playbackState.enterRecorded(recording)
+        assertEquals(PlaybackTarget.Recorded(recording), state.playbackState.playbackTarget)
+        assertNull(state.playbackState.livePlayback)
+        assertEquals(recording, state.playbackState.recordedPlayback?.program)
+        assertNull(state.playbackState.smbPlayback)
 
-        state.enterSmb(smbItem)
-        assertEquals(PlaybackTarget.Smb(smbItem), state.playbackTarget)
-        assertNull(state.livePlayback)
-        assertNull(state.recordedPlayback)
-        assertEquals(smbItem, state.smbPlayback?.item)
+        state.playbackState.enterSmb(smbItem)
+        assertEquals(PlaybackTarget.Smb(smbItem), state.playbackState.playbackTarget)
+        assertNull(state.playbackState.livePlayback)
+        assertNull(state.playbackState.recordedPlayback)
+        assertEquals(smbItem, state.playbackState.smbPlayback?.item)
     }
 
     @Test
     fun enterRecorded_fromMiniLive_replacesLiveAndRestoresVideoControls() {
         val state = MainRootState()
         val recording = recording()
-        state.enterLive(channel())
-        state.isMiniPlayerMode = true
-        state.showPlayerControls = false
+        state.playbackState.enterLive(channel())
+        state.playbackState.isMiniPlayerMode = true
+        state.playbackState.showPlayerControls = false
 
-        state.enterRecorded(recording, initialPositionMs = 12_345L)
+        state.playbackState.enterRecorded(recording, initialPositionMs = 12_345L)
 
-        assertEquals(PlaybackTarget.Recorded(recording), state.playbackTarget)
-        assertNull(state.livePlayback)
-        assertFalse(state.isMiniPlayerMode)
-        assertTrue(state.showPlayerControls)
-        assertEquals(12_345L, state.initialPlaybackPositionMs)
-        assertEquals(recording.id.toString(), state.lastSelectedProgramId)
-        assertNull(state.lastSelectedChannelId)
+        assertEquals(PlaybackTarget.Recorded(recording), state.playbackState.playbackTarget)
+        assertNull(state.playbackState.livePlayback)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertTrue(state.playbackState.showPlayerControls)
+        assertEquals(12_345L, state.playbackState.initialPlaybackPositionMs)
+        assertEquals(recording.id.toString(), state.playbackState.lastSelectedProgramId)
+        assertNull(state.playbackState.lastSelectedChannelId)
     }
 
     @Test
     fun enterSmb_fromMiniLive_replacesLiveAndRestoresVideoControls() {
         val state = MainRootState()
         val smbItem = smbItem()
-        state.enterLive(channel())
-        state.isMiniPlayerMode = true
-        state.showPlayerControls = false
+        state.playbackState.enterLive(channel())
+        state.playbackState.isMiniPlayerMode = true
+        state.playbackState.showPlayerControls = false
 
-        state.enterSmb(smbItem, initialPositionMs = 54_321L)
+        state.playbackState.enterSmb(smbItem, initialPositionMs = 54_321L)
 
-        assertEquals(PlaybackTarget.Smb(smbItem), state.playbackTarget)
-        assertNull(state.livePlayback)
-        assertFalse(state.isMiniPlayerMode)
-        assertTrue(state.showPlayerControls)
-        assertEquals(54_321L, state.initialPlaybackPositionMs)
-        assertEquals(smbItem.path, state.lastPlayedSmbPath)
+        assertEquals(PlaybackTarget.Smb(smbItem), state.playbackState.playbackTarget)
+        assertNull(state.playbackState.livePlayback)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertTrue(state.playbackState.showPlayerControls)
+        assertEquals(54_321L, state.playbackState.initialPlaybackPositionMs)
+        assertEquals(smbItem.path, state.playbackState.lastPlayedSmbPath)
     }
 
     @Test
     fun enterLive_fromRecorded_replacesRecordedAndClearsRecordingSelectionHistory() {
         val state = MainRootState()
         val channel = channel()
-        state.enterRecorded(recording(), initialPositionMs = 7_000L)
-        state.isMiniPlayerMode = true
+        state.playbackState.enterRecorded(recording(), initialPositionMs = 7_000L)
+        state.playbackState.isMiniPlayerMode = true
 
-        state.enterLive(channel)
+        state.playbackState.enterLive(channel)
 
-        assertEquals(PlaybackTarget.Live(channel), state.playbackTarget)
-        assertEquals(channel, state.livePlayback?.channel)
-        assertNull(state.recordedPlayback)
-        assertFalse(state.isMiniPlayerMode)
-        assertEquals(channel.id, state.lastSelectedChannelId)
-        assertNull(state.lastSelectedProgramId)
+        assertEquals(PlaybackTarget.Live(channel), state.playbackState.playbackTarget)
+        assertEquals(channel, state.playbackState.livePlayback?.channel)
+        assertNull(state.playbackState.recordedPlayback)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertEquals(channel.id, state.playbackState.lastSelectedChannelId)
+        assertNull(state.playbackState.lastSelectedProgramId)
     }
 
     @Test
     fun leavePlayback_clearsTargetAndMarksReturnToLauncher() {
         val state = MainRootState()
-        state.enterSmb(smbItem())
-        state.isMiniPlayerMode = true
-        state.showPlayerControls = false
+        state.playbackState.enterSmb(smbItem())
+        state.playbackState.isMiniPlayerMode = true
+        state.playbackState.showPlayerControls = false
 
-        state.leavePlayback()
+        state.playbackState.leavePlayback()
 
-        assertEquals(PlaybackTarget.None, state.playbackTarget)
-        assertFalse(state.isPlaybackActive)
-        assertFalse(state.isMiniPlayerMode)
-        assertTrue(state.showPlayerControls)
-        assertTrue(state.isReturningFromPlayer)
+        assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertFalse(state.playbackState.isPlaybackActive)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertTrue(state.playbackState.showPlayerControls)
+        assertTrue(state.playbackState.isReturningFromPlayer)
     }
 
     @Test
@@ -117,44 +119,44 @@ class MainRootStateTest {
         val state = MainRootState()
         val first = recording()
         val next = recording(id = 43)
-        state.enterRecorded(first)
-        val session = requireNotNull(state.playbackSession)
+        state.playbackState.enterRecorded(first)
+        val session = requireNotNull(state.playbackState.playbackSession)
 
-        assertTrue(state.beginRecordedSwitch(next, reason = PlaybackSwitchReason.NextEpisode))
-        assertEquals(PlaybackTarget.Recorded(first), state.playbackTarget)
-        assertEquals(PlaybackTarget.Recorded(next), state.renderPlaybackTarget)
-        assertEquals(PlaybackPhase.Switching::class, state.playbackPhase::class)
-        assertTrue(state.commitRecordedSwitch(state.recordedPlaybackToken))
+        assertTrue(state.playbackState.beginRecordedSwitch(next, reason = PlaybackSwitchReason.NextEpisode))
+        assertEquals(PlaybackTarget.Recorded(first), state.playbackState.playbackTarget)
+        assertEquals(PlaybackTarget.Recorded(next), state.playbackState.renderPlaybackTarget)
+        assertEquals(PlaybackPhase.Switching::class, state.playbackState.playbackPhase::class)
+        assertTrue(state.playbackState.commitRecordedSwitch(state.playbackState.recordedPlaybackToken))
 
-        assertEquals(PlaybackTarget.Recorded(next), state.playbackTarget)
-        assertEquals(session, state.playbackSession)
+        assertEquals(PlaybackTarget.Recorded(next), state.playbackState.playbackTarget)
+        assertEquals(session, state.playbackState.playbackSession)
     }
 
     @Test
     fun enterMiniPlayer_withoutPlaybackTarget_returnsFalseAndKeepsItClosed() {
         val state = MainRootState()
 
-        assertFalse(state.enterMiniPlayer())
+        assertFalse(state.playbackState.enterMiniPlayer())
 
-        assertEquals(PlaybackTarget.None, state.playbackTarget)
-        assertFalse(state.isMiniPlayerMode)
+        assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertFalse(state.playbackState.isMiniPlayerMode)
     }
 
     @Test
     fun enterMiniPlayer_withAnyPlaybackTarget_returnsTrue() {
         val cases = listOf<(MainRootState) -> Unit>(
-            { it.enterLive(channel()) },
-            { it.enterRecorded(recording()) },
-            { it.enterSmb(smbItem()) },
+            { it.playbackState.enterLive(channel()) },
+            { it.playbackState.enterRecorded(recording()) },
+            { it.playbackState.enterSmb(smbItem()) },
         )
 
         cases.forEach { enterPlayback ->
             val state = MainRootState()
             enterPlayback(state)
 
-            assertTrue(state.enterMiniPlayer())
-            assertTrue(state.isMiniPlayerMode)
-            assertTrue(state.isPlaybackActive)
+            assertTrue(state.playbackState.enterMiniPlayer())
+            assertTrue(state.playbackState.isMiniPlayerMode)
+            assertTrue(state.playbackState.isPlaybackActive)
         }
     }
 
@@ -162,62 +164,62 @@ class MainRootStateTest {
     fun exitMiniPlayer_preservesPlaybackTarget() {
         val state = MainRootState()
         val recording = recording()
-        state.enterRecorded(recording)
-        assertTrue(state.enterMiniPlayer())
+        state.playbackState.enterRecorded(recording)
+        assertTrue(state.playbackState.enterMiniPlayer())
 
-        state.exitMiniPlayer()
+        state.playbackState.exitMiniPlayer()
 
-        assertFalse(state.isMiniPlayerMode)
-        assertEquals(PlaybackTarget.Recorded(recording), state.playbackTarget)
-        assertEquals(recording, state.recordedPlayback?.program)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertEquals(PlaybackTarget.Recorded(recording), state.playbackState.playbackTarget)
+        assertEquals(recording, state.playbackState.recordedPlayback?.program)
     }
 
     @Test
     fun enterLive_withExitMiniPlayerFalse_keepsMiniModeWhileSwitchingChannel() {
         val state = MainRootState()
         val nextChannel = channel(id = "gr-next")
-        state.enterLive(channel())
-        assertTrue(state.enterMiniPlayer())
+        state.playbackState.enterLive(channel())
+        assertTrue(state.playbackState.enterMiniPlayer())
 
-        state.enterLive(nextChannel, exitMiniPlayer = false)
+        state.playbackState.enterLive(nextChannel, exitMiniPlayer = false)
 
-        assertTrue(state.isMiniPlayerMode)
-        assertEquals(PlaybackTarget.Live(nextChannel), state.playbackTarget)
-        assertEquals(nextChannel.id, state.lastSelectedChannelId)
+        assertTrue(state.playbackState.isMiniPlayerMode)
+        assertEquals(PlaybackTarget.Live(nextChannel), state.playbackState.playbackTarget)
+        assertEquals(nextChannel.id, state.playbackState.lastSelectedChannelId)
     }
 
     @Test
     fun resetForLauncherHome_clearsTargetAndRestoresPlaybackUiDefaults() {
         val state = MainRootState()
         val previousFocusTick = state.launcherHomeFocusTick
-        state.enterLive(channel())
-        state.initialPlaybackPositionMs = 9_999L
-        state.isMiniPlayerMode = true
-        state.isPlayerMiniListOpen = true
-        state.playerShowOverlay = true
-        state.playerIsManualOverlay = true
-        state.playerIsPinnedOverlay = true
-        state.playerIsSubMenuOpen = true
-        state.isPlayerSubMenuOpen = true
-        state.isPlayerSceneSearchOpen = true
-        state.showPlayerControls = false
-        state.isReturningFromPlayer = true
+        state.playbackState.enterLive(channel())
+        state.playbackState.initialPlaybackPositionMs = 9_999L
+        state.playbackState.isMiniPlayerMode = true
+        state.playbackState.isPlayerMiniListOpen = true
+        state.playbackState.playerShowOverlay = true
+        state.playbackState.playerIsManualOverlay = true
+        state.playbackState.playerIsPinnedOverlay = true
+        state.playbackState.playerIsSubMenuOpen = true
+        state.playbackState.isPlayerSubMenuOpen = true
+        state.playbackState.isPlayerSceneSearchOpen = true
+        state.playbackState.showPlayerControls = false
+        state.playbackState.isReturningFromPlayer = true
         state.triggerHomeBack = true
 
         state.resetForLauncherHome()
 
-        assertEquals(PlaybackTarget.None, state.playbackTarget)
-        assertEquals(0L, state.initialPlaybackPositionMs)
-        assertFalse(state.isMiniPlayerMode)
-        assertFalse(state.isPlayerMiniListOpen)
-        assertFalse(state.playerShowOverlay)
-        assertFalse(state.playerIsManualOverlay)
-        assertFalse(state.playerIsPinnedOverlay)
-        assertFalse(state.playerIsSubMenuOpen)
-        assertFalse(state.isPlayerSubMenuOpen)
-        assertFalse(state.isPlayerSceneSearchOpen)
-        assertTrue(state.showPlayerControls)
-        assertFalse(state.isReturningFromPlayer)
+        assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertEquals(0L, state.playbackState.initialPlaybackPositionMs)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertFalse(state.playbackState.isPlayerMiniListOpen)
+        assertFalse(state.playbackState.playerShowOverlay)
+        assertFalse(state.playbackState.playerIsManualOverlay)
+        assertFalse(state.playbackState.playerIsPinnedOverlay)
+        assertFalse(state.playbackState.playerIsSubMenuOpen)
+        assertFalse(state.playbackState.isPlayerSubMenuOpen)
+        assertFalse(state.playbackState.isPlayerSceneSearchOpen)
+        assertTrue(state.playbackState.showPlayerControls)
+        assertFalse(state.playbackState.isReturningFromPlayer)
         assertEquals(previousFocusTick + 1, state.launcherHomeFocusTick)
         assertFalse(state.triggerHomeBack)
     }

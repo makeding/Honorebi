@@ -60,7 +60,7 @@ fun MainRootBackground(
     val colors = KomorebiTheme.colors
 
     // ★ 修正: SMBアイテムが選択されている場合も背面を非表示（ホームレイヤー維持）にする
-    val showHomeLayer = !state.isPlaybackActive || state.isMiniPlayerMode
+    val showHomeLayer = !state.playbackState.isPlaybackActive || state.playbackState.isMiniPlayerMode
 
     if (showHomeLayer) {
         Box(
@@ -78,7 +78,7 @@ fun MainRootBackground(
                                 program.isRecording || program.recordedVideo.status == "Recording"
                             val isAnalyzed = isRecordingProgram || (program.recordedVideo.hasKeyFrames ?: true)
                             if (!isAnalyzed) return@RecordListScreen
-                            state.enterRecorded(
+                            state.playbackState.enterRecorded(
                                 program,
                                 playbackResumePositionMs(program, watchHistory, forcedPosition),
                             )
@@ -90,9 +90,9 @@ fun MainRootBackground(
                             }
                             recordViewModel.searchRecordings("")
                         },
-                        isReturningFromPlayer = state.isReturningFromPlayer,
-                        lastPlayedProgramId = state.lastPlayedRecordingId,
-                        onReturnFocusConsumed = { state.isReturningFromPlayer = false },
+                        isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
+                        lastPlayedProgramId = state.playbackState.lastPlayedRecordingId,
+                        onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false },
                         timeFormat = timeFormat,
                         autoReserveKeywords = autoReserveKeywords,
                         onAutoReserveClick = { program ->
@@ -108,12 +108,12 @@ fun MainRootBackground(
                         onBack = { state.isSmbLibraryOpen = false },
                         onFileClick = { item ->
                             // ★ 修正: SMBファイルをクリックしたら、プレイヤーを起動する
-                            state.enterSmb(item)
+                            state.playbackState.enterSmb(item)
                         },
                         // ★ 追加: 再生画面から戻ってきた際のフォーカス復帰用パラメータ
-                        isReturningFromPlayer = state.isReturningFromPlayer,
-                        lastPlayedPath = state.lastPlayedSmbPath,
-                        onReturnFocusConsumed = { state.isReturningFromPlayer = false }
+                        isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
+                        lastPlayedPath = state.playbackState.lastPlayedSmbPath,
+                        onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false }
                     )
                 }
 
@@ -193,23 +193,23 @@ fun MainRootBackground(
                         initialTabIndex = safeTabIndex,
                         launcherHomeFocusTick = state.launcherHomeFocusTick,
                         onTabChange = { state.currentTabIndex = it },
-                        selectedChannel = state.livePlayback?.channel,
+                        selectedChannel = state.playbackState.livePlayback?.channel,
                         onChannelClick = { channel ->
                             if (channel != null) {
-                                state.enterLive(channel)
+                                state.playbackState.enterLive(channel)
                                 homeViewModel.saveLastChannel(channel)
-                            } else if (state.livePlayback != null) {
-                                state.leavePlayback(returningFromPlayer = false)
+                            } else if (state.playbackState.livePlayback != null) {
+                                state.playbackState.leavePlayback(returningFromPlayer = false)
                             }
                         },
-                        selectedProgram = state.recordedPlayback?.program,
+                        selectedProgram = state.playbackState.recordedPlayback?.program,
                         onProgramSelected = { program ->
                             if (program != null) {
                                 val isRecordingProgram =
                                     program.isRecording || program.recordedVideo.status == "Recording"
                                 val isAnalyzed = isRecordingProgram || (program.recordedVideo.hasKeyFrames ?: true)
                                 if (!isAnalyzed) return@HomeLauncherScreen
-                                state.enterRecorded(program, playbackResumePositionMs(program, watchHistory))
+                                state.playbackState.enterRecorded(program, playbackResumePositionMs(program, watchHistory))
                             }
                         },
                         onReserveSelected = { reserveItem -> state.selectedReserve = reserveItem },
@@ -230,13 +230,13 @@ fun MainRootBackground(
                             val channel =
                                 groupedChannels.values.flatten().find { ch -> ch.id == channelId }
                             if (channel != null) {
-                                state.enterLive(channel)
+                                state.playbackState.enterLive(channel)
                                 homeViewModel.saveLastChannel(channel)
                                 state.epgSelectedProgram = null; state.isEpgJumpMenuOpen = false
                             }
                         },
-                        lastPlayerChannelId = state.lastSelectedChannelId,
-                        lastPlayerProgramId = state.lastSelectedProgramId,
+                        lastPlayerChannelId = state.playbackState.lastSelectedChannelId,
+                        lastPlayerProgramId = state.playbackState.lastSelectedProgramId,
                         isSettingsOpen = state.isSettingsOpen,
                         onSettingsToggle = { state.isSettingsOpen = it },
                         isRecordListOpen = state.isRecordListOpen,
@@ -244,21 +244,21 @@ fun MainRootBackground(
                         onCloseRecordList = { state.isRecordListOpen = false },
                         onShowSeriesList = { state.isSeriesListOpen = true },
                         onShowSmbLibrary = { state.isSmbLibraryOpen = true },
-                        isReturningFromPlayer = state.isReturningFromPlayer,
-                        onReturnFocusConsumed = { state.isReturningFromPlayer = false },
+                        isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
+                        onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false },
                         isUiReadyFlag = state.isUiReady,
                         settingsViewModel = settingsViewModel,
                         timeFormat = timeFormat,
                         networkConnectionStatus = networkConnectionStatus,
-                        hasActivePlayer = state.isMiniPlayerMode,
-                        onReturnToPlayerClick = { state.isMiniPlayerMode = false },
+                        hasActivePlayer = state.playbackState.isMiniPlayerMode,
+                        onReturnToPlayerClick = { state.playbackState.isMiniPlayerMode = false },
                         aiFocusReturnTick = state.aiFocusReturnTick,
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 }
                     )
                 }
             }
 
-            if (!state.isPlaybackActive && !isSyncingInitial) {
+            if (!state.playbackState.isPlaybackActive && !isSyncingInitial) {
                 SyncProgressIndicator(
                     recordViewModel = recordViewModel,
                     modifier = Modifier

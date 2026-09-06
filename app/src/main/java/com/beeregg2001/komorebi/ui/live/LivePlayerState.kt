@@ -11,9 +11,11 @@ import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
+import com.beeregg2001.komorebi.ui.player.LivePlayerCropInputProfile
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
+import com.beeregg2001.komorebi.ui.player.PlayerCropState
+import com.beeregg2001.komorebi.ui.player.handleDirectAdjustKey
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class SignalMetadata(
@@ -27,13 +29,6 @@ data class SignalMetadata(
     val bufferDuration: String = "-",
     val droppedFrames: String = "0"
 )
-
-enum class LCropMode { HIDDEN, MENU, DIRECT_ADJUST }
-enum class ZoomOrigin { TopLeft, TopRight, BottomLeft, BottomRight }
-enum class DataBroadcastingColorKey { Blue, Red, Green, Yellow }
-
-private const val DATA_BROADCASTING_BACK_DOUBLE_TAP_MS = 350L
-private const val DATA_BROADCASTING_BACK_LONG_PRESS_MS = 500L
 
 @Stable
 class LivePlayerState(
@@ -76,19 +71,9 @@ class LivePlayerState(
 
     var backKeyDownTime by mutableLongStateOf(0L)
     var isBackKeyLongPressed by mutableStateOf(false)
-    private var pendingDataBroadcastingBackJob: Job? = null
-
     var previousStreamSource by mutableStateOf<StreamSource?>(null)
 
-    var isDataBroadcastingColorSelectorVisible by mutableStateOf(false)
-    var selectedDataBroadcastingColorKey by mutableStateOf(DataBroadcastingColorKey.Blue)
-
-    var lCropEnabled by mutableStateOf(false)
-    var lCropMode by mutableStateOf(LCropMode.HIDDEN)
-    var lCropZoom by mutableFloatStateOf(100f)
-    var lCropX by mutableFloatStateOf(0f)
-    var lCropY by mutableFloatStateOf(0f)
-    var lCropOrigin by mutableStateOf(ZoomOrigin.TopRight)
+    val crop = PlayerCropState()
 
     fun toggleDualScreenSize() {
         if (activeDualPlayerIndex == 0) {
@@ -141,72 +126,16 @@ class LivePlayerState(
         onShowToast: (String) -> Unit,
         onPiPRequested: () -> Unit,
         onBackPressed: () -> Unit,
-        isDataBroadcastingMode: Boolean = false,
-        onDataBroadcastingBack: () -> Unit = {},
-        onDataBroadcastingBlank: () -> Unit = {},
-        onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = {},
-        onDataBroadcastingRemoteKey: (String) -> Unit = {}
     ): Boolean {
-        if (lCropMode == LCropMode.DIRECT_ADJUST) {
-            val keyCode = keyEvent.nativeKeyEvent.keyCode
-            val isTargetKey = keyCode in listOf(
-                android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER,
-                android.view.KeyEvent.KEYCODE_BACK, android.view.KeyEvent.KEYCODE_ESCAPE
+        if (crop.mode == PlayerCropMode.DIRECT_ADJUST) {
+            return crop.handleDirectAdjustKey(
+                keyCode = keyEvent.nativeKeyEvent.keyCode,
+                isActionDown = keyEvent.type == KeyEventType.KeyDown,
+                profile = LivePlayerCropInputProfile
             )
-
-            if (isTargetKey) {
-                val isActionDown = keyEvent.type == KeyEventType.KeyDown
-                if (!isActionDown) return true
-
-                when (keyCode) {
-                    android.view.KeyEvent.KEYCODE_DPAD_UP -> lCropY -= 2f
-                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> lCropY += 2f
-                    android.view.KeyEvent.KEYCODE_DPAD_LEFT -> lCropX -= 2f
-                    android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> lCropX += 2f
-                    android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER -> {
-                        lCropZoom = when {
-                            lCropZoom < 125f -> 125f
-                            lCropZoom < 150f -> 150f
-                            lCropZoom < 175f -> 175f
-                            lCropZoom < 200f -> 200f
-                            else -> 100f
-                        }
-                    }
-
-                    android.view.KeyEvent.KEYCODE_BACK, android.view.KeyEvent.KEYCODE_ESCAPE -> lCropMode =
-                        LCropMode.MENU
-                }
-                return true
-            }
-            return false
         }
 
-        if (lCropMode == LCropMode.MENU) return false
-
-        val canHandleDataBroadcastingRemote =
-            isDataBroadcastingMode &&
-                !isDualDisplayMode &&
-                playerError == null &&
-                !isSubMenuOpen &&
-                !isMiniListOpen
-        if (canHandleDataBroadcastingRemote) {
-            if (handleDataBroadcastingRemoteKeyEvent(
-                    keyEvent = keyEvent,
-                    scope = scope,
-                    onDataBroadcastingBack = onDataBroadcastingBack,
-                    onDataBroadcastingBlank = onDataBroadcastingBlank,
-                    onDataBroadcastingColorKey = onDataBroadcastingColorKey,
-                    onDataBroadcastingRemoteKey = onDataBroadcastingRemoteKey
-                )
-            ) {
-                return true
-            }
-        } else {
-            closeDataBroadcastingColorSelector()
-            cancelPendingDataBroadcastingBack()
-        }
+        if (crop.mode == PlayerCropMode.MENU) return false
 
         if (this.playerError != null || isSubMenuOpen || isMiniListOpen) return false
 
@@ -369,197 +298,6 @@ class LivePlayerState(
         return false
     }
 
-    fun closeDataBroadcastingColorSelector() {
-        isDataBroadcastingColorSelectorVisible = false
-    }
-
-    fun resetDataBroadcastingInput() {
-        closeDataBroadcastingColorSelector()
-        cancelPendingDataBroadcastingBack()
-        backKeyDownTime = 0L
-        isBackKeyLongPressed = false
-    }
-
-    fun selectDataBroadcastingColorKey(colorKey: DataBroadcastingColorKey) {
-        selectedDataBroadcastingColorKey = colorKey
-    }
-
-    fun dispatchDataBroadcastingColorKey(
-        colorKey: DataBroadcastingColorKey,
-        onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit
-    ) {
-        onDataBroadcastingColorKey(colorKey)
-        closeDataBroadcastingColorSelector()
-    }
-
-    fun handleDataBroadcastingRemoteKeyEvent(
-        keyEvent: KeyEvent,
-        scope: CoroutineScope,
-        onDataBroadcastingBack: () -> Unit,
-        onDataBroadcastingBlank: () -> Unit,
-        onDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit,
-        onDataBroadcastingRemoteKey: (String) -> Unit
-    ): Boolean {
-        val keyCode = keyEvent.nativeKeyEvent.keyCode
-        val isActionDown = keyEvent.type == KeyEventType.KeyDown
-        val isActionUp = keyEvent.type == KeyEventType.KeyUp
-        val repeatCount = keyEvent.nativeKeyEvent.repeatCount
-
-        val hardwareColorKey = when (keyCode) {
-            android.view.KeyEvent.KEYCODE_PROG_BLUE -> DataBroadcastingColorKey.Blue
-            android.view.KeyEvent.KEYCODE_PROG_RED -> DataBroadcastingColorKey.Red
-            android.view.KeyEvent.KEYCODE_PROG_GREEN -> DataBroadcastingColorKey.Green
-            android.view.KeyEvent.KEYCODE_PROG_YELLOW -> DataBroadcastingColorKey.Yellow
-            else -> null
-        }
-        if (hardwareColorKey != null) {
-            if (isActionDown) {
-                cancelPendingDataBroadcastingBack()
-            } else if (isActionUp) {
-                dispatchDataBroadcastingColorKey(hardwareColorKey, onDataBroadcastingColorKey)
-            }
-            return true
-        }
-
-        if (isDataBroadcastingColorSelectorVisible) {
-            val isSelectorKey = keyCode in listOf(
-                android.view.KeyEvent.KEYCODE_DPAD_UP,
-                android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT,
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-                android.view.KeyEvent.KEYCODE_ENTER,
-                android.view.KeyEvent.KEYCODE_BACK,
-                android.view.KeyEvent.KEYCODE_ESCAPE
-            )
-            if (!isSelectorKey) return false
-            if (!isActionDown) return true
-
-            cancelPendingDataBroadcastingBack()
-            when (keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_UP -> selectDataBroadcastingColorKey(DataBroadcastingColorKey.Blue)
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT -> selectDataBroadcastingColorKey(DataBroadcastingColorKey.Red)
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> selectDataBroadcastingColorKey(DataBroadcastingColorKey.Green)
-                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> selectDataBroadcastingColorKey(DataBroadcastingColorKey.Yellow)
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-                android.view.KeyEvent.KEYCODE_ENTER -> dispatchDataBroadcastingColorKey(
-                    selectedDataBroadcastingColorKey,
-                    onDataBroadcastingColorKey
-                )
-                android.view.KeyEvent.KEYCODE_BACK,
-                android.view.KeyEvent.KEYCODE_ESCAPE -> closeDataBroadcastingColorSelector()
-            }
-            return true
-        }
-
-        if (keyCode == android.view.KeyEvent.KEYCODE_BACK || keyCode == android.view.KeyEvent.KEYCODE_ESCAPE) {
-            if (isActionDown) {
-                if (repeatCount == 0) {
-                    backKeyDownTime = System.currentTimeMillis()
-                    isBackKeyLongPressed = false
-                } else {
-                    val elapsed = System.currentTimeMillis() - backKeyDownTime
-                    if (!isBackKeyLongPressed && elapsed > DATA_BROADCASTING_BACK_LONG_PRESS_MS) {
-                        isBackKeyLongPressed = true
-                        cancelPendingDataBroadcastingBack()
-                        isDataBroadcastingColorSelectorVisible = true
-                        selectedDataBroadcastingColorKey = DataBroadcastingColorKey.Blue
-                    }
-                }
-                return true
-            }
-            if (isActionUp) {
-                val elapsed = System.currentTimeMillis() - backKeyDownTime
-                if (!isBackKeyLongPressed && elapsed < DATA_BROADCASTING_BACK_LONG_PRESS_MS) {
-                    handleDataBroadcastingBackTap(
-                        scope,
-                        onDataBroadcastingBack,
-                        onDataBroadcastingBlank
-                    )
-                }
-                backKeyDownTime = 0L
-                isBackKeyLongPressed = false
-                return true
-            }
-            return true
-        }
-
-        val direction = when (keyCode) {
-            android.view.KeyEvent.KEYCODE_DPAD_UP -> "up"
-            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
-            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "down"
-            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "left"
-            else -> null
-        }
-        if (direction != null) {
-            if (isActionDown) {
-                cancelPendingDataBroadcastingBack()
-                onDataBroadcastingRemoteKey(direction)
-            }
-            return true
-        }
-
-        val remoteKey = when (keyCode) {
-            android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-            android.view.KeyEvent.KEYCODE_ENTER -> "enter"
-            android.view.KeyEvent.KEYCODE_0,
-            android.view.KeyEvent.KEYCODE_NUMPAD_0 -> "0"
-            android.view.KeyEvent.KEYCODE_1,
-            android.view.KeyEvent.KEYCODE_NUMPAD_1 -> "1"
-            android.view.KeyEvent.KEYCODE_2,
-            android.view.KeyEvent.KEYCODE_NUMPAD_2 -> "2"
-            android.view.KeyEvent.KEYCODE_3,
-            android.view.KeyEvent.KEYCODE_NUMPAD_3 -> "3"
-            android.view.KeyEvent.KEYCODE_4,
-            android.view.KeyEvent.KEYCODE_NUMPAD_4 -> "4"
-            android.view.KeyEvent.KEYCODE_5,
-            android.view.KeyEvent.KEYCODE_NUMPAD_5 -> "5"
-            android.view.KeyEvent.KEYCODE_6,
-            android.view.KeyEvent.KEYCODE_NUMPAD_6 -> "6"
-            android.view.KeyEvent.KEYCODE_7,
-            android.view.KeyEvent.KEYCODE_NUMPAD_7 -> "7"
-            android.view.KeyEvent.KEYCODE_8,
-            android.view.KeyEvent.KEYCODE_NUMPAD_8 -> "8"
-            android.view.KeyEvent.KEYCODE_9,
-            android.view.KeyEvent.KEYCODE_NUMPAD_9 -> "9"
-            else -> null
-        }
-        if (remoteKey != null) {
-            if (isActionDown) {
-                cancelPendingDataBroadcastingBack()
-            } else if (isActionUp) {
-                onDataBroadcastingRemoteKey(remoteKey)
-            }
-            return true
-        }
-
-        return false
-    }
-
-    private fun handleDataBroadcastingBackTap(
-        scope: CoroutineScope,
-        onDataBroadcastingBack: () -> Unit,
-        onDataBroadcastingBlank: () -> Unit
-    ) {
-        val pendingJob = pendingDataBroadcastingBackJob
-        if (pendingJob != null) {
-            pendingJob.cancel()
-            pendingDataBroadcastingBackJob = null
-            onDataBroadcastingBlank()
-            return
-        }
-
-        pendingDataBroadcastingBackJob = scope.launch {
-            delay(DATA_BROADCASTING_BACK_DOUBLE_TAP_MS)
-            onDataBroadcastingBack()
-            pendingDataBroadcastingBackJob = null
-        }
-    }
-
-    private fun cancelPendingDataBroadcastingBack() {
-        pendingDataBroadcastingBackJob?.cancel()
-        pendingDataBroadcastingBackJob = null
-    }
 }
 
 @Composable

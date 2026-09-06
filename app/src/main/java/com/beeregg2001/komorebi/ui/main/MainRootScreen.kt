@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.main
 
+import com.beeregg2001.komorebi.ui.player.*
+
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ReportDrawnWhen
@@ -64,7 +66,7 @@ fun MainRootScreen(
         remoteControlViewModel.client.commands.collect { command ->
             when (command) {
                 is HonomiRemoteCommand.OpenLive -> {
-                    val intent = state.beginPlaybackOpenIntent()
+                    val intent = state.playbackState.beginPlaybackOpenIntent()
                     scope.launch {
                         val findChannel = {
                             channelViewModel.groupedChannels.value.values.flatten()
@@ -77,26 +79,26 @@ fun MainRootScreen(
                                 findChannel()
                             }
                         }
-                        if (channel != null && state.completePlaybackOpenIntent(intent)) {
+                        if (channel != null && state.playbackState.completePlaybackOpenIntent(intent)) {
                             onRemotePlaybackOpened()
-                            state.enterLive(channel)
+                            state.playbackState.enterLive(channel)
                             homeViewModel.saveLastChannel(channel)
-                        } else if (channel == null && state.failPlaybackOpenIntent(intent)) {
+                        } else if (channel == null && state.playbackState.failPlaybackOpenIntent(intent)) {
                             state.toastMessage = "リモートで指定されたチャンネルを開けませんでした"
                         }
                     }
                 }
                 is HonomiRemoteCommand.OpenRecording -> {
-                    val intent = state.beginPlaybackOpenIntent()
+                    val intent = state.playbackState.beginPlaybackOpenIntent()
                     scope.launch {
                         val program = recordViewModel.getRemoteProgram(command.recordedProgramId)
-                        if (program != null && state.completePlaybackOpenIntent(intent)) {
+                        if (program != null && state.playbackState.completePlaybackOpenIntent(intent)) {
                             onRemotePlaybackOpened()
                             val positionMs = (command.positionSeconds * 1_000).toLong()
-                            if (!state.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {
-                                state.enterRecorded(program, positionMs)
+                            if (!state.playbackState.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {
+                                state.playbackState.enterRecorded(program, positionMs)
                             }
-                        } else if (program == null && state.failPlaybackOpenIntent(intent)) {
+                        } else if (program == null && state.playbackState.failPlaybackOpenIntent(intent)) {
                             state.toastMessage = "リモートで指定された録画を開けませんでした"
                         }
                     }
@@ -189,9 +191,9 @@ fun MainRootScreen(
                     val target = channelViewModel.groupedChannels.value.values.flatten()
                         .find { it.id == action.channelId }
                     if (target != null) {
-                        state.isPlayerMiniListOpen = false; state.playerIsSubMenuOpen = false
-                        state.isPlayerSubMenuOpen = false; state.isPlayerSceneSearchOpen = false
-                        state.enterLive(target)
+                        state.playbackState.isPlayerMiniListOpen = false; state.playbackState.playerIsSubMenuOpen = false
+                        state.playbackState.isPlayerSubMenuOpen = false; state.playbackState.isPlayerSceneSearchOpen = false
+                        state.playbackState.enterLive(target)
                         homeViewModel.saveLastChannel(target)
                     }
                 }
@@ -201,9 +203,9 @@ fun MainRootScreen(
                     val target =
                         recordViewModel.recentRecordings.value.find { it.id == action.videoId }
                     if (target != null) {
-                        state.isPlayerMiniListOpen = false; state.playerIsSubMenuOpen = false
-                        state.isPlayerSubMenuOpen = false; state.isPlayerSceneSearchOpen = false
-                        state.enterRecorded(target)
+                        state.playbackState.isPlayerMiniListOpen = false; state.playbackState.playerIsSubMenuOpen = false
+                        state.playbackState.isPlayerSubMenuOpen = false; state.playbackState.isPlayerSceneSearchOpen = false
+                        state.playbackState.enterRecorded(target)
                     }
                 }
 
@@ -371,10 +373,10 @@ fun MainRootScreen(
         val channels = groupedChannels.values.flatten()
         channels.firstOrNull { it.type == "GR" } ?: channels.firstOrNull()
     }
-    val isPlaybackScreenOpen = state.isPlaybackActive
+    val isPlaybackScreenOpen = state.playbackState.isPlaybackActive
     IdleSystemMediaSession(enabled = !isPlaybackScreenOpen) {
         val channel = defaultSystemChannel ?: return@IdleSystemMediaSession
-        state.enterLive(channel)
+        state.playbackState.enterLive(channel)
         homeViewModel.saveLastChannel(channel)
     }
     val updateState by homeViewModel.updateState.collectAsState()
@@ -432,7 +434,7 @@ fun MainRootScreen(
                     flatChannels.find { it.id == lastHistory?.id } ?: flatChannels.first()
                 } else flatChannels.find { it.id == startupChannelSetting } ?: flatChannels.first()
 
-                state.enterLive(targetChannel)
+                state.playbackState.enterLive(targetChannel)
                 homeViewModel.saveLastChannel(targetChannel)
 
                 val liveIndex = tabs.indexOf("ライブ")
@@ -507,35 +509,10 @@ fun MainRootScreen(
                 null
 
             state.showDeleteConfirmDialog -> state.showDeleteConfirmDialog = false
-            state.isMiniPlayerMode -> {
-                state.exitMiniPlayer(); state.toastMessage = "フルスクリーンに戻りました"
-            }
-
-            state.isPlayerMiniListOpen -> state.isPlayerMiniListOpen = false
-            state.playerIsSubMenuOpen -> state.playerIsSubMenuOpen = false
-            state.livePlayback != null && state.playerShowOverlay -> {
-                state.playerShowOverlay = false
-                state.playerIsManualOverlay = false
-                state.playerIsPinnedOverlay = false
-            }
-
-            state.livePlayback != null && state.playerIsPinnedOverlay -> {
-                state.playerShowOverlay = false
-                state.playerIsManualOverlay = false
-                state.playerIsPinnedOverlay = false
-            }
-
-            state.isPlayerSubMenuOpen -> state.isPlayerSubMenuOpen = false
-            state.isPlayerSceneSearchOpen -> {
-                state.isPlayerSceneSearchOpen = false; state.showPlayerControls = false
-            }
-
-            state.livePlayback != null -> {
-                state.leavePlayback()
-            }
-
-            state.recordedPlayback != null || state.smbPlayback != null -> {
-                state.leavePlayback()
+            state.playbackState.isPlaybackActive -> {
+                if (state.playbackState.handleBack() == PlaybackBackResult.RestoredFullscreen) {
+                    state.toastMessage = "フルスクリーンに戻りました"
+                }
             }
 
             state.isSettingsOpen -> closeSettingsAndRefresh()
@@ -618,7 +595,7 @@ fun MainRootScreen(
         isSettingsInitialized = isSettingsInitialized,
         hasConnectionError = state.showConnectionErrorDialog,
         isSyncingInitial = isSyncingInitial,
-        isPlaybackActive = state.isPlaybackActive,
+        isPlaybackActive = state.playbackState.isPlaybackActive,
     )
     ReportDrawnWhen {
         startupRenderPlan.showMainContent ||
@@ -628,13 +605,13 @@ fun MainRootScreen(
 
     KomorebiTheme(theme = currentTheme) {
         RootSystemMediaSessionHost(
-            playbackSessionEpoch = state.playbackSessionEpoch,
+            playbackSessionEpoch = state.playbackState.playbackSessionEpoch,
             remoteContentType = when {
-                state.livePlayback != null -> "Live"
-                state.recordedPlayback != null -> "Recorded"
+                state.playbackState.livePlayback != null -> "Live"
+                state.playbackState.recordedPlayback != null -> "Recorded"
                 else -> "Idle"
             },
-            isPlaybackSwitching = state.playbackPhase is PlaybackPhase.Switching,
+            isPlaybackSwitching = state.playbackState.playbackPhase is PlaybackPhase.Switching,
             remoteControlClient = remoteControlViewModel.client,
         ) {
             val colors = KomorebiTheme.colors
@@ -651,8 +628,8 @@ fun MainRootScreen(
                     // ★ 追加: 「プレイヤーのUI（シークバーやボタン）が表示されている時」は、
                     // 親玉（MainRoot）がイベントを横取りせず、子要素（PlayerControlsの早送り連打など）にイベントを譲る！
                     val isVideoUiVisible =
-                        (state.recordedPlayback != null || state.smbPlayback != null) && state.showPlayerControls
-                    val isLiveUiVisible = state.livePlayback != null && state.playerShowOverlay
+                        (state.playbackState.recordedPlayback != null || state.playbackState.smbPlayback != null) && state.playbackState.showPlayerControls
+                    val isLiveUiVisible = state.playbackState.livePlayback != null && state.playbackState.playerShowOverlay
                     if ((isVideoUiVisible || isLiveUiVisible) && isCenterKey) {
                         return@onPreviewKeyEvent false // 横取りせず、子要素へスルーさせる
                     }
@@ -714,7 +691,7 @@ fun MainRootScreen(
                         onExitApp = onExitApp
                     )
 
-                    if (state.isPlaybackActive) {
+                    if (state.playbackState.isPlaybackActive) {
                         MainRootPlaybackHost(
                             state = state,
                             data = MainRootPlaybackHostData(

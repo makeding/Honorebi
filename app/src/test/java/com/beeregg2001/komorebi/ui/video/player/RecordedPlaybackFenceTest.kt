@@ -1,6 +1,6 @@
 package com.beeregg2001.komorebi.ui.video.player
 
-import com.beeregg2001.komorebi.ui.main.RecordedPlaybackToken
+import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

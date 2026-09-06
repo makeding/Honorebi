@@ -805,7 +805,6 @@ fun HomeLauncherScreen(
                                 channelViewModel = channelViewModel,
                                 epgViewModel = epgViewModel,
                                 groupedChannels = groupedChannels,
-                                selectedChannel = selectedChannel,
                                 onChannelClick = onChannelClick,
                                 onFocusChannelChange = { ui.internalLastPlayerChannelId = it },
                                 mirakurunIp = mirakurunIp,
@@ -814,14 +813,11 @@ fun HomeLauncherScreen(
                                 konomiPort = konomiPort,
                                 topNavFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                onPlayerStateChanged = { },
                                 lastFocusedChannelId = ui.internalLastPlayerChannelId
                                     ?: lastPlayerChannelId,
                                 isReturningFromPlayer = isReturningFromPlayer && currentTabLabel == "ライブ",
                                 onReturnFocusConsumed = onReturnFocusConsumed,
-                                reserveViewModel = reserveViewModel,
                                 timeFormat = timeFormat,
-                                isPiPMode = hasActivePlayer,
                                 aiFocusReturnTick = if (currentTabLabel == "ライブ") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )

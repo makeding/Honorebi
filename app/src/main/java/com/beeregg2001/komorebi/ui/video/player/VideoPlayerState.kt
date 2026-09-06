@@ -14,9 +14,10 @@ import androidx.compose.ui.input.key.*
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.CmSkipMode
-
-enum class LCropMode { HIDDEN, MENU, DIRECT_ADJUST }
-enum class ZoomOrigin { TopLeft, TopRight, BottomLeft, BottomRight }
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
+import com.beeregg2001.komorebi.ui.player.PlayerCropState
+import com.beeregg2001.komorebi.ui.player.RecordedPlayerCropInputProfile
+import com.beeregg2001.komorebi.ui.player.handleDirectAdjustKey
 
 data class ChapterInfo(
     val startTimeMs: Long,
@@ -61,12 +62,7 @@ class VideoPlayerState {
     var isSubtitleEnabled by mutableStateOf(false)
     var isCommentEnabled by mutableStateOf(false)
 
-    var lCropEnabled by mutableStateOf(false)
-    var lCropMode by mutableStateOf(LCropMode.HIDDEN)
-    var lCropZoom by mutableFloatStateOf(100f)
-    var lCropX by mutableFloatStateOf(0f)
-    var lCropY by mutableFloatStateOf(0f)
-    var lCropOrigin by mutableStateOf(ZoomOrigin.TopRight)
+    val crop = PlayerCropState()
     var playbackOffsetMs by mutableLongStateOf(0L)
     var pendingSeekPositionMs by mutableStateOf<Long?>(null)
 
@@ -141,40 +137,14 @@ class VideoPlayerState {
             isQuickSeeking = false
         }
 
-        if (lCropMode == LCropMode.DIRECT_ADJUST) {
+        if (crop.mode == PlayerCropMode.DIRECT_ADJUST) {
             resetMediaKeys()
-            if (isActionDown) {
-                when (keyCode) {
-                    NativeKeyEvent.KEYCODE_DPAD_UP -> {
-                        lCropY = (lCropY - 5f).coerceAtLeast(0f); return true
-                    }
-
-                    NativeKeyEvent.KEYCODE_DPAD_DOWN -> {
-                        lCropY = (lCropY + 5f).coerceAtMost(100f); return true
-                    }
-
-                    NativeKeyEvent.KEYCODE_DPAD_LEFT -> {
-                        lCropX = (lCropX - 5f).coerceAtLeast(0f); return true
-                    }
-
-                    NativeKeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        lCropX = (lCropX + 5f).coerceAtMost(100f); return true
-                    }
-
-                    NativeKeyEvent.KEYCODE_PAGE_UP, NativeKeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                        lCropZoom = (lCropZoom + 5f).coerceAtMost(200f); return true
-                    }
-
-                    NativeKeyEvent.KEYCODE_PAGE_DOWN, NativeKeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        lCropZoom = (lCropZoom - 5f).coerceAtLeast(100f); return true
-                    }
-
-                    NativeKeyEvent.KEYCODE_DPAD_CENTER, NativeKeyEvent.KEYCODE_ENTER, NativeKeyEvent.KEYCODE_BACK, NativeKeyEvent.KEYCODE_ESCAPE -> {
-                        lCropMode = LCropMode.MENU; onSubMenuToggle(true); return true
-                    }
-                }
-            }
-            return true
+            return crop.handleDirectAdjustKey(
+                keyCode = keyCode,
+                isActionDown = isActionDown,
+                profile = RecordedPlayerCropInputProfile,
+                onReturnToMenu = { onSubMenuToggle(true) }
+            )
         }
 
         if (isSubOverlayOpen) { resetMediaKeys(); return false }

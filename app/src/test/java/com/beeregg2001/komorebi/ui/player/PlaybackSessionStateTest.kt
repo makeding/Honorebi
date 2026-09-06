@@ -1,4 +1,6 @@
-package com.beeregg2001.komorebi.ui.main
+package com.beeregg2001.komorebi.ui.player
+
+import com.beeregg2001.komorebi.ui.player.*
 
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -10,11 +12,50 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MainRootPlaybackStateTest {
+class PlaybackSessionStateTest {
+
+    @Test
+    fun backClosesOneSurfaceBeforeLeavingPlayback() {
+        val state = PlaybackSessionState()
+        state.enterLive(channel())
+        state.enterMiniPlayer()
+        state.isPlayerMiniListOpen = true
+        state.playerIsSubMenuOpen = true
+        state.playerShowOverlay = true
+        assertEquals(PlaybackBackResult.RestoredFullscreen, state.handleBack())
+        assertTrue(state.isPlayerMiniListOpen)
+        assertEquals(PlaybackBackResult.Handled, state.handleBack())
+        assertFalse(state.isPlayerMiniListOpen)
+        assertTrue(state.playerIsSubMenuOpen)
+        state.handleBack()
+        assertFalse(state.playerIsSubMenuOpen)
+        assertTrue(state.playerShowOverlay)
+        state.handleBack()
+        assertFalse(state.playerShowOverlay)
+        assertTrue(state.isPlaybackActive)
+        state.handleBack()
+        assertFalse(state.isPlaybackActive)
+        assertEquals(PlaybackBackResult.Ignored, state.handleBack())
+    }
+
+    @Test
+    fun recordedBackRetiresSearchBeforeEndingSession() {
+        val state = PlaybackSessionState()
+        state.enterRecorded(recording())
+        state.isPlayerSubMenuOpen = true
+        state.isPlayerSceneSearchOpen = true
+        state.handleBack()
+        assertFalse(state.isPlayerSubMenuOpen)
+        assertTrue(state.isPlayerSceneSearchOpen)
+        state.handleBack()
+        assertFalse(state.isPlayerSceneSearchOpen)
+        assertFalse(state.showPlayerControls)
+        assertTrue(state.isPlaybackActive)
+    }
 
     @Test
     fun enterTransitions_keepExactlyOneTargetAndUpdateReturnState() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val channel = channel()
         val recording = recording()
 
@@ -31,7 +72,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun resetPlayback_onlyResetsPlaybackOwnedState() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         state.enterLive(channel())
         state.initialPlaybackPositionMs = 7_000L
         state.isMiniPlayerMode = true
@@ -63,7 +104,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun recordedSwitch_keepsTheSessionAndNeverClearsTheCurrentTarget() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val first = recording(id = 42)
         val next = recording(id = 43)
         state.enterRecorded(first, initialPositionMs = 1_000L)
@@ -94,7 +135,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun failedRecordedSwitch_restoresThePreviousRecordingAndSession() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val first = recording(id = 42)
         state.enterRecorded(first, initialPositionMs = 1_000L)
         val session = requireNotNull(state.playbackSession)
@@ -112,7 +153,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun recordedSwitch_rejectsTheCurrentProgram() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val current = recording(id = 42)
         state.enterRecorded(current)
 
@@ -127,7 +168,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun recordedSwitch_ignoresReadyAndFailureFromAnotherAttemptOrSession() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val first = recording(id = 42)
         state.enterRecorded(first)
         assertTrue(state.beginRecordedSwitch(recording(id = 43), reason = PlaybackSwitchReason.NextEpisode))
@@ -144,7 +185,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun leavePlayback_endsTheSessionAndReturnsToIdle() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         state.enterRecorded(recording())
 
         state.leavePlayback()
@@ -156,7 +197,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun recordedSwitch_isLatestWinsAndRejectsSupersededCallbacks() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val first = recording(id = 42)
         state.enterRecorded(first)
         val firstToken = state.recordedPlaybackToken
@@ -175,7 +216,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun failedRecordedSwitch_issuesANewTokenForTheRollbackProgram() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val first = recording(id = 42)
         state.enterRecorded(first)
         val originalToken = state.recordedPlaybackToken
@@ -191,7 +232,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun playbackOpenIntent_crossTypeRequestsAreLatestWinsAndLocalPlaybackInvalidatesIt() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         val recordingIntent = state.beginPlaybackOpenIntent()
         val liveIntent = state.beginPlaybackOpenIntent()
 
@@ -208,7 +249,7 @@ class MainRootPlaybackStateTest {
 
     @Test
     fun playbackSession_livesUntilLeaveEvenWhenOrdinaryEnterChangesTarget() {
-        val state = MainRootPlaybackState()
+        val state = PlaybackSessionState()
         state.enterLive(channel())
         val firstSession = requireNotNull(state.playbackSession)
 

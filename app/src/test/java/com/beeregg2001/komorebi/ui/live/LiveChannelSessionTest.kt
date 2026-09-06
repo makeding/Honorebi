@@ -9,6 +9,12 @@ import org.junit.Test
 
 class LiveChannelSessionTest {
     @Test
+    fun mainAndDualSlotsKeepTheirIndependentBackendStreamNumbers() {
+        assertEquals(0, LivePlaybackSlot.MAIN.streamNumber)
+        assertEquals(1, LivePlaybackSlot.DUAL.streamNumber)
+    }
+
+    @Test
     fun mainAndDualSlotsKeepIndependentCurrentSessions() {
         val coordinator = LiveChannelSessionCoordinator()
         val main = coordinator.begin(LivePlaybackSlot.MAIN, "main")

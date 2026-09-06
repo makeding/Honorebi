@@ -20,10 +20,10 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import androidx.tv.material3.MaterialTheme
-import com.beeregg2001.komorebi.ui.live.formatChannelType
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.PlayerChannelLogo
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
+import com.beeregg2001.komorebi.ui.player.formatChannelType
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -43,7 +43,6 @@ internal data class RecordedProgramPresentation(
     val logoUrl: String = "",
     val cropLogo: Boolean = false,
     val request: ProgramDetailRequest = ProgramDetailRequest(),
-    val reloadAvailable: Boolean = true,
     val retry: () -> Unit = {}
 )
 
@@ -52,7 +51,6 @@ internal fun rememberRecordedProgramPresentation(
     program: RecordedProgram,
     viewModel: VideoPlayerViewModel,
     backend: String,
-    localFile: Boolean
 ): RecordedProgramPresentation {
     val request by viewModel.programDetailRequest.collectAsState()
     val logo by produceState("", program.channel, backend) {
@@ -63,9 +61,8 @@ internal fun rememberRecordedProgramPresentation(
         catch (_: Exception) { /* Fixed logo slot displays the saved channel name. */ }
     }
     return RecordedProgramPresentation(logo, backend == "KONOMITV",
-        request.takeIf { !localFile && it.programId == program.id } ?: ProgramDetailRequest(),
-        reloadAvailable = !localFile,
-        retry = { if (!localFile) viewModel.fetchProgramDetail(program.id) })
+        request.takeIf { it.programId == program.id } ?: ProgramDetailRequest(),
+        retry = { viewModel.fetchProgramDetail(program.id) })
 }
 
 @Composable
@@ -137,9 +134,9 @@ internal fun ProgramInfoOverlay(
                 program.detail.isNullOrEmpty() -> "詳細情報なし  ·  上下キーでスクロール  ·  戻るで閉じる"
                 else -> "上下キーでスクロール  ·  戻るで閉じる"
             }, color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
-            Button(onClick = if (presentation.reloadAvailable) presentation.retry else onClose, enabled = !request.loading,
+            Button(onClick = presentation.retry, enabled = !request.loading,
                 modifier = Modifier.width(120.dp)) {
-                Text(if (!presentation.reloadAvailable) "閉じる" else if (request.error != null) "再試行" else "再読込")
+                Text(if (request.error != null) "再試行" else "再読込")
             }
         }
     )

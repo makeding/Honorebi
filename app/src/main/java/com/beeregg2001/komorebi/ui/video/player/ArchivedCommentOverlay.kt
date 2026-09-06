@@ -6,7 +6,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.beeregg2001.komorebi.data.model.ArchivedComment
-import com.beeregg2001.komorebi.ui.live.LiveCommentOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -90,12 +90,13 @@ fun ArchivedCommentOverlay(
         }
     }
 
-    LiveCommentOverlay(
+    DanmakuOverlay(
         modifier = modifier,
         useSoftwareRendering = useSoftwareRendering,
         speed = commentSpeed,
         opacity = commentOpacity,
         maxLines = commentMaxLines,
+        sessionKey = recordedPlaybackFence.identity,
         onViewCreated = { view ->
             if (recordedPlaybackFence.accepts()) {
                 danmakuViewRef.value = view

@@ -21,6 +21,8 @@ import com.beeregg2001.komorebi.data.model.RecordedChannel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.RecordedVideo
 import com.beeregg2001.komorebi.data.model.StreamQuality
+import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
+import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
@@ -88,6 +90,41 @@ class RecordedPlayerLayoutTest {
         composeRule.runOnIdle { visible.value = true }
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onNodeWithText("番組情報").assertIsFocused()
+    }
+
+    @Test
+    fun smbMenu_keepsCommonTilesInTheRecordedGeometry_andDisablesProviderOnlyActions() {
+        composeRule.setContent {
+            KomorebiTheme {
+                menu(
+                    mediaInfo = PlaybackMediaInfo(
+                        stableId = "smb:/media/test.ts",
+                        title = "local.ts",
+                    ),
+                    currentProgram = null,
+                    capabilities = PlaybackUiCapabilities.Smb,
+                )
+            }
+        }
+
+        val titles = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "再生速度", "字幕", "L字クロップ", "CMスキップ", "実況コメント", "HDR 表示", "データ放送", "画質")
+        // The row remains scrollable at TV widths: composition and enabled state must be
+        // stable even for tiles initially outside the viewport.
+        titles.forEach { title -> composeRule.onNodeWithText(title).assertExists() }
+        val bounds = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "再生速度")
+            .map { title -> composeRule.onNodeWithText(title).assertIsDisplayed().getUnclippedBoundsInRoot() }
+        assertEquals(bounds.first().bottom - bounds.first().top, bounds[3].bottom - bounds[3].top)
+        assertEquals(bounds.first().bottom - bounds.first().top, bounds.last().bottom - bounds.last().top)
+        composeRule.onNodeWithText("クイック選局").assertIsNotEnabled()
+        composeRule.onNodeWithText("サムネイル").assertIsNotEnabled()
+        composeRule.onNodeWithText("画質").assertIsNotEnabled()
+        composeRule.onNodeWithText("CMスキップ").assertIsNotEnabled()
+        composeRule.onNodeWithText("実況コメント").assertIsNotEnabled()
+        composeRule.onNodeWithText("音声切替").assertIsDisplayed()
+        composeRule.onNodeWithText("番組情報").assertIsDisplayed()
+        composeRule.onNodeWithText("再生速度").assertIsDisplayed()
+        composeRule.onNodeWithText("字幕").assertIsDisplayed()
+        composeRule.onNodeWithText("L字クロップ").assertIsDisplayed()
     }
 
     @Test
@@ -321,10 +358,14 @@ class RecordedPlayerLayoutTest {
         onCloseMenu: () -> Unit = {},
         quickPrograms: List<RecordedProgram> = emptyList(),
         openQuickVideosInitially: Boolean = false,
-        onVideoSelect: (RecordedProgram) -> Unit = {}
+        onVideoSelect: (RecordedProgram) -> Unit = {},
+        mediaInfo: PlaybackMediaInfo = PlaybackMediaInfo.recorded(testProgram()),
+        currentProgram: RecordedProgram? = testProgram(),
+        capabilities: PlaybackUiCapabilities = PlaybackUiCapabilities.Recorded,
     ) {
         VideoTopSubMenuUI(
-            currentProgram = testProgram(),
+            mediaInfo = mediaInfo,
+            currentProgram = currentProgram,
             seriesPrograms = emptyList(),
             quickPrograms = quickPrograms,
             backendType = "KonomiTV",
@@ -359,7 +400,8 @@ class RecordedPlayerLayoutTest {
             onVideoSelect = onVideoSelect,
             openQuickVideosInitially = openQuickVideosInitially,
             isVisible = isVisible,
-            onCloseMenu = onCloseMenu
+            onCloseMenu = onCloseMenu,
+            capabilities = capabilities,
         )
     }
 
@@ -373,7 +415,7 @@ class RecordedPlayerLayoutTest {
         bufferedProvider: () -> Long = { 180_000L },
     ) {
         PlayerControls(
-            program = testProgram(),
+            mediaInfo = PlaybackMediaInfo.recorded(testProgram()),
             timeFormat = "24H",
             allComments = emptyList(),
             tiledThumbnailUrl = null,

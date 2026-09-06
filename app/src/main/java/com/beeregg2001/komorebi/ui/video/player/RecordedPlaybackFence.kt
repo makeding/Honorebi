@@ -1,6 +1,6 @@
 package com.beeregg2001.komorebi.ui.video.player
 
-import com.beeregg2001.komorebi.ui.main.RecordedPlaybackToken
+import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
 import com.beeregg2001.komorebi.util.mmts.B62SubtitleSample
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationResource
 import com.beeregg2001.komorebi.util.mmts.B60BroadcastClock
