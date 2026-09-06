@@ -244,7 +244,7 @@ class RecordedPlayerLayoutTest {
         }
 
         composeRule.onNodeWithText("番組情報を読み込んでいます…").assertIsDisplayed()
-        composeRule.onNodeWithText("再読込").assertIsNotEnabled()
+        composeRule.onNodeWithText("再読込").assertDoesNotExist()
         val loadingBodyBounds = composeRule.onNodeWithTag("program-body").getUnclippedBoundsInRoot()
         val loadingFeedbackBounds = composeRule.onNodeWithTag("program-feedback").getUnclippedBoundsInRoot()
 
@@ -263,7 +263,7 @@ class RecordedPlayerLayoutTest {
     }
 
     @Test
-    fun controlsKeepTitleTimesAndTrackBoundsAcrossPlayingPausedAndSeekingPreview_inBothStyles() {
+    fun controlsOmitTitleAndKeepTimesAndTrackBoundsAcrossPlayingPausedAndSeekingPreview_inBothStyles() {
         val modern = mutableStateOf(true)
         val playing = mutableStateOf(true)
         val seekingPreview = mutableStateOf(false)
@@ -278,6 +278,7 @@ class RecordedPlayerLayoutTest {
         }
 
         val modernPlaying = controlBounds()
+        composeRule.onNodeWithTag("recorded-title").assertDoesNotExist()
         composeRule.runOnIdle {
             playing.value = false
             seekingPreview.value = true
@@ -438,7 +439,6 @@ class RecordedPlayerLayoutTest {
 
     private fun controlBounds() = listOf(
         composeRule.onNodeWithTag("recorded-controls").getUnclippedBoundsInRoot(),
-        composeRule.onNodeWithTag("recorded-title").getUnclippedBoundsInRoot(),
         composeRule.onNodeWithTag("playback-time").getUnclippedBoundsInRoot(),
         composeRule.onNodeWithTag("playback-duration").getUnclippedBoundsInRoot(),
         composeRule.onNodeWithTag("playback-track").getUnclippedBoundsInRoot()

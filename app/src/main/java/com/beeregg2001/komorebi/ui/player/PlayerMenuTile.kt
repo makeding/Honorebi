@@ -64,7 +64,12 @@ fun PlayerMenuTile(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = LocalContentColor.current,
+                modifier = Modifier.size(28.dp)
+            )
             Spacer(Modifier.height(8.dp))
             Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             if (subtitle.isNotEmpty()) {

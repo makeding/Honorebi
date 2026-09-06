@@ -9,7 +9,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
@@ -196,24 +195,6 @@ fun PlayerControls(
                     .testTag("recorded-controls")
                     .padding(horizontal = 48.dp, vertical = 40.dp)
             ) {
-                Text(
-                    text = mediaInfo.title,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 26.sp
-                    ),
-                    color = Color.White,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .fillMaxWidth().height(36.dp).testTag("recorded-title")
-                        .basicMarquee(
-                            iterations = if (isVisible) Int.MAX_VALUE else 0,
-                            initialDelayMillis = 2000,
-                        )
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
                 RecordedControlsProgressRow(
                     displayProgress = displayProgress,
                     displayPositionMsProvider = displayPositionMsProvider,

@@ -134,9 +134,12 @@ internal fun ProgramInfoOverlay(
                 program.detail.isNullOrEmpty() -> "詳細情報なし  ·  上下キーでスクロール  ·  戻るで閉じる"
                 else -> "上下キーでスクロール  ·  戻るで閉じる"
             }, color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
-            Button(onClick = presentation.retry, enabled = !request.loading,
-                modifier = Modifier.width(120.dp)) {
-                Text(if (request.error != null) "再試行" else "再読込")
+            Box(Modifier.width(120.dp)) {
+                if (request.error != null && !request.loading) {
+                    Button(onClick = presentation.retry, modifier = Modifier.width(120.dp)) {
+                        Text("再試行")
+                    }
+                }
             }
         }
     )
