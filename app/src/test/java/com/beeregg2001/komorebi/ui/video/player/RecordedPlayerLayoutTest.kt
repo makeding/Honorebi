@@ -107,11 +107,11 @@ class RecordedPlayerLayoutTest {
             }
         }
 
-        val titles = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "再生速度", "字幕", "L字クロップ", "CMスキップ", "実況コメント", "HDR 表示", "データ放送", "画質")
+        val titles = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "画質", "再生速度", "字幕", "L字クロップ", "CMスキップ", "実況コメント", "HDR 表示", "データ放送")
         // The row remains scrollable at TV widths: composition and enabled state must be
         // stable even for tiles initially outside the viewport.
         titles.forEach { title -> composeRule.onNodeWithText(title).assertExists() }
-        val bounds = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "再生速度")
+        val bounds = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "画質")
             .map { title -> composeRule.onNodeWithText(title).assertIsDisplayed().getUnclippedBoundsInRoot() }
         assertEquals(bounds.first().bottom - bounds.first().top, bounds[3].bottom - bounds[3].top)
         assertEquals(bounds.first().bottom - bounds.first().top, bounds.last().bottom - bounds.last().top)
@@ -134,8 +134,16 @@ class RecordedPlayerLayoutTest {
             keyDown(Key.DirectionRight)
             keyUp(Key.DirectionRight)
         }
+        composeRule.onNodeWithText("画質").assertIsFocused().performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
         composeRule.onNodeWithText("再生速度").assertIsFocused()
         composeRule.onNodeWithText("再生速度").performKeyInput {
+            keyDown(Key.DirectionLeft)
+            keyUp(Key.DirectionLeft)
+        }
+        composeRule.onNodeWithText("画質").assertIsFocused().performKeyInput {
             keyDown(Key.DirectionLeft)
             keyUp(Key.DirectionLeft)
         }
@@ -380,7 +388,7 @@ class RecordedPlayerLayoutTest {
             isHdrRenderModeSupported = false,
             isDataBroadcastingAvailable = false,
             isDataBroadcastingActive = false,
-            availableQualities = emptyList(),
+            availableQualities = listOf(StreamQuality("1080p", "1080p")),
             focusRequester = FocusRequester(),
             onAudioToggle = {},
             onSpeedToggle = {},

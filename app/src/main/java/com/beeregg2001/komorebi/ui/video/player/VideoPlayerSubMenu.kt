@@ -271,6 +271,25 @@ fun VideoTopSubMenuUI(
                     enabled = capabilities.programInfo
                 )
                 VideoMenuTileItem(
+                    title = "画質",
+                    icon = Icons.Default.HighQuality,
+                    subtitle = currentQuality.label,
+                    onClick = {
+                        if (capabilities.quality && availableQualities.isNotEmpty()) {
+                            selectedCategory =
+                                if (selectedCategory == SubMenuCategory.QUALITY) null else SubMenuCategory.QUALITY
+                        }
+                    },
+                    modifier = Modifier
+                        .focusRequester(qualityButtonRequester)
+                        .focusProperties {
+                            if (selectedCategory != SubMenuCategory.QUALITY) down =
+                                FocusRequester.Cancel
+                        },
+                    contentColor = colors.textPrimary,
+                    enabled = capabilities.quality && availableQualities.isNotEmpty()
+                )
+                VideoMenuTileItem(
                     title = "再生速度",
                     icon = Icons.Default.Speed,
                     subtitle = "${currentSpeed}x",
@@ -358,25 +377,7 @@ fun VideoTopSubMenuUI(
                         },
                         enabled = capabilities.dataBroadcasting && isDataBroadcastingAvailable,
                     )
-                VideoMenuTileItem(
-                    title = "画質",
-                    icon = Icons.Default.HighQuality,
-                    subtitle = currentQuality.label,
-                    onClick = {
-                        if (capabilities.quality && availableQualities.isNotEmpty()) {
-                            selectedCategory =
-                                if (selectedCategory == SubMenuCategory.QUALITY) null else SubMenuCategory.QUALITY
-                        }
-                    },
-                    modifier = Modifier
-                        .focusRequester(qualityButtonRequester)
-                        .focusProperties {
-                            if (selectedCategory != SubMenuCategory.QUALITY) down =
-                                FocusRequester.Cancel
-                        },
-                    contentColor = colors.textPrimary,
-                    enabled = capabilities.quality && availableQualities.isNotEmpty()
-                )
+
             }
 
             AnimatedVisibility(

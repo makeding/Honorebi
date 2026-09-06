@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -354,11 +355,8 @@ fun SceneSearchOverlay(
                     .fillMaxWidth()
                     .padding(top = 8.dp, start = 48.dp, end = 48.dp)
             ) {
-                val screenWidth = LocalConfiguration.current.screenWidthDp.dp
                 Row(
-                    modifier = Modifier
-                        .width(screenWidth / 3)
-                        .align(Alignment.CenterEnd),
+                    modifier = Modifier.fillMaxWidth().testTag("thumbnail-timeline"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -846,11 +844,8 @@ fun ChapterListOverlay(
                     .fillMaxWidth()
                     .padding(top = 8.dp, start = 48.dp, end = 48.dp)
             ) {
-                val screenWidth = LocalConfiguration.current.screenWidthDp.dp
                 Row(
-                    modifier = Modifier
-                        .width(screenWidth / 3)
-                        .align(Alignment.CenterEnd),
+                    modifier = Modifier.fillMaxWidth().testTag("thumbnail-timeline"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
