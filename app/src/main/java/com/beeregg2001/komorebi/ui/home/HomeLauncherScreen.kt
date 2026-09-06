@@ -32,6 +32,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
@@ -44,7 +45,6 @@ import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
 import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
 import com.beeregg2001.komorebi.ui.main.NetworkTransport
-import com.beeregg2001.komorebi.ui.main.NETWORK_STATUS_BUTTON_WIDTH_DP
 import com.beeregg2001.komorebi.ui.reserve.ReserveListScreen
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -57,6 +57,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private const val TAG = "HomeLauncher"
+internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
+internal const val NETWORK_STATUS_BUTTON_TEST_TAG = "network-status-button"
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -118,7 +120,7 @@ private fun PinnedSystemAppButton(
 }
 
 @Composable
-private fun NetworkStatusButton(
+internal fun NetworkStatusButton(
     status: NetworkConnectionStatus,
     focusRequester: FocusRequester,
     leftFocusRequester: FocusRequester,
@@ -127,18 +129,18 @@ private fun NetworkStatusButton(
     onClick: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
-    val (icon, label) = when (status.transport) {
-        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi"
-        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線"
-        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク"
-        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "オフライン"
+    val (icon, description) = when (status.transport) {
+        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi 設定"
+        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線ネットワーク設定"
+        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
+        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "オフライン。Wi-Fi 設定"
     }
 
-    Button(
+    IconButton(
         onClick = onClick,
         modifier = Modifier
-            .width(NETWORK_STATUS_BUTTON_WIDTH_DP.dp)
-            .height(48.dp)
+            .size(NETWORK_STATUS_BUTTON_SIZE_DP.dp)
+            .testTag(NETWORK_STATUS_BUTTON_TEST_TAG)
             .focusRequester(focusRequester)
             .focusProperties {
                 left = leftFocusRequester
@@ -146,24 +148,15 @@ private fun NetworkStatusButton(
                 up = FocusRequester.Cancel
                 canFocus = canTakeFocus
             },
-        colors = ButtonDefaults.colors(
+        colors = IconButtonDefaults.colors(
             containerColor = if (status.isAvailable) Color.Transparent
             else colors.accent.copy(alpha = 0.16f),
             focusedContainerColor = colors.textPrimary,
             focusedContentColor = if (colors.isDark) Color.Black else Color.White,
             contentColor = if (status.isAvailable) colors.textSecondary else colors.accent,
         ),
-        shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
-        contentPadding = PaddingValues(horizontal = 12.dp),
     ) {
-        Icon(icon, contentDescription = "$label 設定", modifier = Modifier.size(24.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            maxLines = 1,
-        )
+        Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
     }
 }
 

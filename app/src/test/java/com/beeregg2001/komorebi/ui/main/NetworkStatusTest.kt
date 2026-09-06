@@ -5,11 +5,6 @@ import org.junit.Test
 
 class NetworkStatusTest {
     @Test
-    fun networkButtonKeepsOneStableWidthAcrossStatuses() {
-        assertEquals(132, NETWORK_STATUS_BUTTON_WIDTH_DP)
-    }
-
-    @Test
     fun ethernetIsAvailableWhenItIsTheOnlyReportedNetwork() {
         assertEquals(
             NetworkConnectionStatus(NetworkTransport.ETHERNET, true),

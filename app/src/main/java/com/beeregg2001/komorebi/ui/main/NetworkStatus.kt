@@ -22,8 +22,6 @@ enum class NetworkTransport {
     DISCONNECTED
 }
 
-internal const val NETWORK_STATUS_BUTTON_WIDTH_DP = 132
-
 data class NetworkConnectionStatus(
     val transport: NetworkTransport,
     val isAvailable: Boolean
