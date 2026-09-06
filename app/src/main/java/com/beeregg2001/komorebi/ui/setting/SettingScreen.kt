@@ -139,6 +139,7 @@ fun SettingsScreen(
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
+                FocusRequester(),
                 FocusRequester()
             ),
             listOf(

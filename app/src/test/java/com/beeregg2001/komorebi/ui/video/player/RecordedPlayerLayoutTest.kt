@@ -53,13 +53,14 @@ class RecordedPlayerLayoutTest {
         composeRule.onNodeWithText("地デジ011").assertIsDisplayed()
         val card = composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot()
         val time = composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot()
-        assertEquals(androidx.compose.ui.unit.Dp(48f), card.height)
+        assertEquals(androidx.compose.ui.unit.Dp(48f), (card.bottom - card.top))
         assertEquals(card.bottom, time.top)
         composeRule.onNodeWithText(formatBroadcastTime(program.value.startTime, program.value.endTime, "24H")!!)
             .assertIsDisplayed()
         composeRule.runOnIdle { program.value = program.value.copy(channel = null) }
         assertEquals(time, composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot())
-        assertEquals(card.height, composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot().height)
+        val missingCard = composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot()
+        assertEquals(card.bottom - card.top, missingCard.bottom - missingCard.top)
     }
 
     @Test
