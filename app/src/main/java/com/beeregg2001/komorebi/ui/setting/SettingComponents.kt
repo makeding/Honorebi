@@ -64,6 +64,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 sealed class SettingDialogState {
     object None : SettingDialogState()
