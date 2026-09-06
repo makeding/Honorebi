@@ -33,13 +33,34 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(
     application = android.app.Application::class,
-    sdk = [35],
+    // Match the other Robolectric suites; mixed native runtimes collide on the font ZIP filesystem.
+    sdk = [28],
     qualifiers = "w960dp-h540dp-land-mdpi"
 )
 class RecordedPlayerLayoutTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun recordedChannelCard_keepsTimeBelowLiveStyleChannel_whenChannelIsMissing() {
+        val program = mutableStateOf(testProgram())
+        composeRule.setContent {
+            KomorebiTheme {
+                RecordedProgramStatus(program.value, "24H", RecordedProgramPresentation())
+            }
+        }
+        composeRule.onNodeWithText("地デジ011").assertIsDisplayed()
+        val card = composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot()
+        val time = composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot()
+        assertEquals(androidx.compose.ui.unit.Dp(48f), card.height)
+        assertEquals(card.bottom, time.top)
+        composeRule.onNodeWithText(formatBroadcastTime(program.value.startTime, program.value.endTime, "24H")!!)
+            .assertIsDisplayed()
+        composeRule.runOnIdle { program.value = program.value.copy(channel = null) }
+        assertEquals(time, composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot())
+        assertEquals(card.height, composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot().height)
+    }
 
     @Test
     fun quickMenu_defaultsAndReturnsToProgramInfo_andOpensItFromTheTile() {

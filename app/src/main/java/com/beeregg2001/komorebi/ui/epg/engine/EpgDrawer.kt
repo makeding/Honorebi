@@ -42,6 +42,54 @@ class EpgDrawer(
     private val config: EpgConfig,
     private val textMeasurer: TextMeasurer
 ) {
+    // ★ 最適化: 毎フレーム生成されていたオブジェクトをインスタンス field へ退避する。
+    //   dashPathEffect は予約枠のある番組ごと・毎フレーム生成されていた。
+    private val reserveDashEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
+
+    // ★ 最適化: フォーカス中番組の終了時刻の 1 件メモ。
+    //   従来はフォーカス枠の描画で毎フレーム OffsetDateTime.parse() を呼んでおり、
+    //   フォーカス移動アニメーション中に最も重い処理になっていた。
+    //   描画はメインスレッド単独なので単純な 1 件キャッシュで十分。
+    private var focusEndTimeKey: String? = null
+    private var focusEndTimeMs: Long = 0L
+
+    // ★ 最適化: baseTime / limitTime のエポックミリ秒メモ。
+    //   現在時刻線の判定で毎フレーム OffsetDateTime.now() と Duration.between を
+    //   呼んでいたのを、ミリ秒同士の比較・減算に置き換えるため。
+    private var cachedBaseTime: OffsetDateTime? = null
+    private var cachedBaseTimeMs: Long = 0L
+    private var cachedLimitTime: OffsetDateTime? = null
+    private var cachedLimitTimeMs: Long = 0L
+
+    private fun baseTimeMs(baseTime: OffsetDateTime): Long {
+        if (cachedBaseTime != baseTime) {
+            cachedBaseTime = baseTime
+            cachedBaseTimeMs = baseTime.toInstant().toEpochMilli()
+        }
+        return cachedBaseTimeMs
+    }
+
+    private fun limitTimeMs(limitTime: OffsetDateTime): Long {
+        if (cachedLimitTime != limitTime) {
+            cachedLimitTime = limitTime
+            cachedLimitTimeMs = limitTime.toInstant().toEpochMilli()
+        }
+        return cachedLimitTimeMs
+    }
+
+    private fun focusProgramEndMs(endTime: String?): Long {
+        val key = endTime ?: return 0L
+        if (focusEndTimeKey != key) {
+            focusEndTimeKey = key
+            focusEndTimeMs = try {
+                OffsetDateTime.parse(key).toInstant().toEpochMilli()
+            } catch (e: Exception) {
+                0L
+            }
+        }
+        return focusEndTimeMs
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     fun draw(
         drawScope: DrawScope,
@@ -56,7 +104,7 @@ class EpgDrawer(
         with(drawScope) {
             val curX = animValues.scrollX
             val curY = animValues.scrollY
-            val nowTime = OffsetDateTime.now()
+            // ★ 最適化: 毎フレームの OffsetDateTime.now() を廃止し、ミリ秒だけで判定する
             val nowMs = System.currentTimeMillis()
 
             val isDarkTheme = config.colorBg.luminance() < 0.5f
@@ -242,14 +290,12 @@ class EpgDrawer(
                                 if (reserve != null) {
                                     val borderColor =
                                         if (isPartial) config.colorReserveBorderPartial else config.colorReserveBorder
-                                    val dashEffect =
-                                        PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
                                     drawRoundRect(
                                         color = borderColor,
                                         topLeft = Offset(x + 2f, py + 2f),
                                         size = Size(config.cwPx - 4f, (ph - 4f).coerceAtLeast(0f)),
                                         cornerRadius = CornerRadius(4f),
-                                        style = Stroke(width = 5f, pathEffect = dashEffect)
+                                        style = Stroke(width = 5f, pathEffect = reserveDashEffect)
                                     )
                                 }
                             }
@@ -261,8 +307,10 @@ class EpgDrawer(
             // ==========================================
             // 2. 現在時刻線 (Current Time Line)
             // ==========================================
-            if (nowTime.isAfter(state.baseTime) && nowTime.isBefore(state.limitTime)) {
-                val nowOff = Duration.between(state.baseTime, nowTime).toMinutes().toFloat()
+            val baseMs = baseTimeMs(state.baseTime)
+            val limitMs = limitTimeMs(state.limitTime)
+            if (nowMs > baseMs && nowMs < limitMs) {
+                val nowOff = ((nowMs - baseMs) / 60_000L).toFloat()
                 val nowY = config.hhAreaPx + curY + (nowOff / 60f * config.hhPx)
                 if (nowY > config.hhAreaPx && nowY < size.height) {
                     drawLine(
@@ -303,11 +351,8 @@ class EpgDrawer(
                             ignoreCase = true
                         ))
 
-                    val endTimeMs = try {
-                        OffsetDateTime.parse(p.end_time).toInstant().toEpochMilli()
-                    } catch (e: Exception) {
-                        0L
-                    }
+                    // ★ 最適化: 毎フレームの OffsetDateTime.parse を 1 件メモに置換
+                    val endTimeMs = focusProgramEndMs(p.end_time)
                     val isPast = endTimeMs > 0 && endTimeMs < nowMs
                     val isEmpty = p.title == "（番組情報なし）"
 
@@ -449,13 +494,12 @@ class EpgDrawer(
                     if (reserve != null) {
                         val borderColor =
                             if (isPartial) config.colorReserveBorderPartial else config.colorReserveBorder
-                        val dashEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
                         drawRoundRect(
                             color = borderColor,
                             topLeft = Offset(fx + 2f, fy + 2f),
                             size = Size(config.cwPx - 4f, (fh - 4f).coerceAtLeast(0f)),
                             cornerRadius = CornerRadius(4f),
-                            style = Stroke(width = 5f, pathEffect = dashEffect)
+                            style = Stroke(width = 5f, pathEffect = reserveDashEffect)
                         )
                     }
 

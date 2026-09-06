@@ -7,6 +7,8 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessInterceptor
+import okhttp3.OkHttpClient
 import com.beeregg2001.komorebi.data.worker.RecordSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -17,8 +19,15 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    @Inject lateinit var cloudflareAccessInterceptor: CloudflareAccessInterceptor
+
     private val appImageLoader by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ImageLoader.Builder(this)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addNetworkInterceptor(cloudflareAccessInterceptor)
+                    .build()
+            }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizeBytes(IMAGE_MEMORY_CACHE_SIZE_BYTES)

@@ -2,6 +2,9 @@ package com.beeregg2001.komorebi.ui.video.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
@@ -11,9 +14,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
+import androidx.tv.material3.MaterialTheme
+import com.beeregg2001.komorebi.ui.live.formatChannelType
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.PlayerChannelLogo
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
@@ -67,9 +74,28 @@ internal fun RecordedProgramStatus(program: RecordedProgram, timeFormat: String,
         formatBroadcastTime(program.startTime, program.endTime, timeFormat) ?: "放送日時は保存されていません"
     }
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.End) {
-        PlayerChannelLogo(presentation.logoUrl, program.channel?.name.orEmpty(), presentation.cropLogo,
-            Modifier.size(80.dp, 45.dp))
-        Text(schedule, color = Color.White, modifier = Modifier.width(380.dp).height(52.dp).padding(top = 8.dp),
+        Row(
+            modifier = Modifier.height(48.dp)
+                .testTag("recorded-channel-status")
+                .background(Color.Black.copy(0.8f), RoundedCornerShape(8.dp))
+                .border(1.dp, Color.White.copy(0.15f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PlayerChannelLogo(presentation.logoUrl, program.channel?.name.orEmpty(), presentation.cropLogo,
+                Modifier.size(56.dp, 32.dp))
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = program.channel?.let { "${formatChannelType(it.type)}${it.channelNumber}" }
+                    ?: "チャンネル情報なし",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+        }
+        Text(schedule, color = Color.White, modifier = Modifier.width(380.dp).height(52.dp)
+            .testTag("recorded-status-time").padding(top = 8.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.End, maxLines = 2)
     }
 }

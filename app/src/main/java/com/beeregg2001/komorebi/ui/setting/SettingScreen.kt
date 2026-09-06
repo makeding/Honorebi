@@ -127,6 +127,7 @@ fun SettingsScreen(
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
+                FocusRequester(),
                 FocusRequester()
             ),
             listOf(
@@ -398,6 +399,8 @@ fun SettingsScreen(
                             prefs.mirakurunIp,
                             prefs.mirakurunPort,
                             prefs.preferredSource,
+                            prefs.cfAccessClientId,
+                            prefs.cfAccessClientSecret,
                             prefs.edcbRecordPlayMethod,
                             prefs.smbServerList,
                             honomiSession?.userName,
@@ -539,6 +542,16 @@ fun SettingsScreen(
                                     }
                                 }
                             },
+                            {
+                                uiState.activeDialog = SettingDialogState.CloudflareAccess(
+                                    prefs.cfAccessClientId,
+                                    prefs.cfAccessClientSecret,
+                                ) { clientId, clientSecret ->
+                                    scope.launch(Dispatchers.IO) {
+                                        repository.saveCloudflareAccessCredentials(clientId, clientSecret)
+                                    }
+                                }
+                            },
                             itemFocusRequesters[1][0],
                             itemFocusRequesters[1][1],
                             itemFocusRequesters[1][2],
@@ -547,6 +560,7 @@ fun SettingsScreen(
                             itemFocusRequesters[1][5],
                             itemFocusRequesters[1][6],
                             itemFocusRequesters[1][8],
+                            itemFocusRequesters[1][9],
                             categoryFocusRequesters[1]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 1 }
 
@@ -1090,6 +1104,13 @@ fun SettingsScreen(
                 state.initialValue,
                 { closeDialog() },
                 { state.onConfirm(it); closeDialog() })
+
+            is SettingDialogState.CloudflareAccess -> CloudflareAccessDialog(
+                state.clientId,
+                state.clientSecret,
+                { closeDialog() },
+                { clientId, clientSecret -> state.onConfirm(clientId, clientSecret); closeDialog() },
+            )
 
             is SettingDialogState.BatchInput -> BatchInputDialog(
                 { closeDialog() },

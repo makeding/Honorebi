@@ -741,7 +741,10 @@ internal fun handleRecordedPlayerKeyEvent(
     exoPlayerIsPlaying: Boolean,
     onPause: () -> Unit,
     onPlay: () -> Unit,
+    onSkipPreviousChapter: () -> Unit,
+    onSkipNextChapter: () -> Unit,
 ): Boolean {
+    if (isPiPMode || isSubOverlayOpen || isProgramInfoOpen) state.resetMediaKeys()
     if (isPiPMode) return false
     if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
         dataBroadcastingInput.resetDataBroadcastingInput()
@@ -836,7 +839,9 @@ internal fun handleRecordedPlayerKeyEvent(
         onQuickMenuRequested = onQuickMenuRequested,
         exoPlayerIsPlaying = exoPlayerIsPlaying,
         onPause = onPause,
-        onPlay = onPlay
+        onPlay = onPlay,
+        onSkipPreviousChapter = onSkipPreviousChapter,
+        onSkipNextChapter = onSkipNextChapter
     )
 }
 

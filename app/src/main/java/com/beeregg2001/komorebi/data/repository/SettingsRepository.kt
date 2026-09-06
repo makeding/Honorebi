@@ -8,9 +8,17 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.beeregg2001.komorebi.data.model.CmSkipMode
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,6 +36,18 @@ internal fun normalizeCmSkipMode(value: String?): String = CmSkipMode.fromPrefer
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _cloudflareAccessConfiguration = MutableStateFlow(CloudflareAccessConfiguration())
+    val cloudflareAccessConfiguration: StateFlow<CloudflareAccessConfiguration> = _cloudflareAccessConfiguration
+
+    init {
+        // Load once synchronously so the first network request observes persisted credentials;
+        // subsequent requests read the in-memory snapshot without blocking an OkHttp thread.
+        runBlocking { _cloudflareAccessConfiguration.value = context.dataStore.data.first().toCloudflareAccessConfiguration() }
+        settingsScope.launch {
+            context.dataStore.data.collect { _cloudflareAccessConfiguration.value = it.toCloudflareAccessConfiguration() }
+        }
+    }
     companion object {
         val BACKEND_TYPE = stringPreferencesKey("backend_type")
         val EDCB_IP = stringPreferencesKey("edcb_ip")
@@ -92,6 +112,8 @@ class SettingsRepository @Inject constructor(
         val EPG_COLUMN_COUNT = stringPreferencesKey("epg_column_count")
         val EPG_FONT_SIZE_SCALE = stringPreferencesKey("epg_font_size_scale")
         val EPG_VISIBLE_HOURS = stringPreferencesKey("epg_visible_hours")
+        val CF_ACCESS_CLIENT_ID = stringPreferencesKey("cf_access_client_id")
+        val CF_ACCESS_CLIENT_SECRET = stringPreferencesKey("cf_access_client_secret")
     }
 
     val isInitialized: Flow<Boolean> = context.dataStore.data
@@ -195,6 +217,8 @@ class SettingsRepository @Inject constructor(
     val epgColumnCount: Flow<String> = context.dataStore.data.map { it[EPG_COLUMN_COUNT] ?: "7" }
     val epgFontSizeScale: Flow<String> = context.dataStore.data.map { it[EPG_FONT_SIZE_SCALE] ?: "1.0" }
     val epgVisibleHours: Flow<String> = context.dataStore.data.map { it[EPG_VISIBLE_HOURS] ?: "6" }
+    val cfAccessClientId: Flow<String> = context.dataStore.data.map { it[CF_ACCESS_CLIENT_ID] ?: "" }
+    val cfAccessClientSecret: Flow<String> = context.dataStore.data.map { it[CF_ACCESS_CLIENT_SECRET] ?: "" }
 
     suspend fun saveString(
         key: androidx.datastore.preferences.core.Preferences.Key<String>,
@@ -208,6 +232,34 @@ class SettingsRepository @Inject constructor(
         value: Boolean
     ) {
         context.dataStore.edit { settings -> settings[key] = value }
+    }
+
+    /** Access credentials are an atomic pair: incomplete values are never persisted. */
+    suspend fun saveCloudflareAccessCredentials(clientId: String, clientSecret: String) {
+        val id = clientId.filterNot(Char::isWhitespace)
+        val secret = clientSecret.filterNot(Char::isWhitespace)
+        require((id.isBlank() && secret.isBlank()) || (id.isNotBlank() && secret.isNotBlank())) {
+            "Client ID と Client Secret を両方入力するか、両方消去してください。"
+        }
+        context.dataStore.edit { settings ->
+            settings[CF_ACCESS_CLIENT_ID] = id
+            settings[CF_ACCESS_CLIENT_SECRET] = secret
+        }
+    }
+
+    private fun androidx.datastore.preferences.core.Preferences.toCloudflareAccessConfiguration(): CloudflareAccessConfiguration {
+        val prefs = this
+        val origins = listOf(
+            CloudflareAccessConfiguration.origin(prefs[KONOMI_IP].orEmpty(), prefs[KONOMI_PORT] ?: "7000"),
+            CloudflareAccessConfiguration.origin(prefs[MIRAKURUN_IP].orEmpty(), prefs[MIRAKURUN_PORT] ?: "40772"),
+            CloudflareAccessConfiguration.origin(prefs[EDCB_IP].orEmpty(), prefs[EDCB_HTTP_PORT] ?: "5510"),
+            CloudflareAccessConfiguration.origin(prefs[EPGSTATION_IP].orEmpty(), prefs[EPGSTATION_PORT] ?: "8888"),
+        ).filterNotNull().toSet()
+        return CloudflareAccessConfiguration(
+            clientId = prefs[CF_ACCESS_CLIENT_ID].orEmpty().filterNot(Char::isWhitespace),
+            clientSecret = prefs[CF_ACCESS_CLIENT_SECRET].orEmpty().filterNot(Char::isWhitespace),
+            allowedOrigins = origins,
+        )
     }
 
     suspend fun getStreamSourceUrl(source: com.beeregg2001.komorebi.data.model.StreamSource): String {

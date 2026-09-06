@@ -1770,7 +1770,9 @@ fun VideoPlayerScreen(
                     onQuickMenuRequested = refreshQuickMenuVideos,
                     exoPlayerIsPlaying = exoPlayer.playWhenReady,
                     onPause = exoPlayer::pause,
-                    onPlay = exoPlayer::play
+                    onPlay = exoPlayer::play,
+                    onSkipPreviousChapter = { skipToPreviousChapter() },
+                    onSkipNextChapter = { skipToNextChapter() }
                 )
             }
     ) {

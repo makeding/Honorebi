@@ -241,19 +241,10 @@ fun ModernEpgCanvasEngine_Smooth(
                 isJumping = false
             }
         }
-
-        val scrollSpec = if (isJumping) snap() else spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = 2500f
+        val animationValues = epgDrawAnimation(
+            epgState.targetScrollX, epgState.targetScrollY,
+            epgState.targetAnimX, epgState.targetAnimY, epgState.targetAnimH, isJumping
         )
-
-        val scrollX by animateFloatAsState(epgState.targetScrollX, scrollSpec, label = "sX")
-        val scrollY by animateFloatAsState(epgState.targetScrollY, scrollSpec, label = "sY")
-        val animX by animateFloatAsState(epgState.targetAnimX, scrollSpec, label = "aX")
-        val animY by animateFloatAsState(epgState.targetAnimY, scrollSpec, label = "aY")
-        val animH by animateFloatAsState(epgState.targetAnimH, scrollSpec, label = "aH")
-
-        val animValues = EpgAnimValues(scrollX, scrollY, animX, animY, animH)
 
         Column(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(
@@ -416,17 +407,21 @@ fun ModernEpgCanvasEngine_Smooth(
                             .fillMaxSize()
                             .drawWithCache {
                                 onDrawBehind {
+                                    // ★ アニメーション値はここ（描画フェーズ）で初めて読む。
+                                    //   これにより値の変化は再コンポーズではなく再描画のみを誘発する。
                                     drawer.draw(
                                         drawScope = this,
                                         state = epgState,
-                                        animValues = animValues,
+                                        animValues = animationValues(),
                                         logoPainters = filteredLogoPainters,
                                         isGridFocused = isContentFocused || epgState.hasData,
                                         reserveMap = reserveMap,
                                         clockPainter = clockPainter,
                                         timeFormat = timeFormat
                                     )
-                                    hasRenderedFirstFrame = true
+                                    // 初回フレーム到達フラグ。毎フレーム書き込むと
+                                    // 描画フェーズからの state 書き込みが繰り返されるためガードする。
+                                    if (!hasRenderedFirstFrame) hasRenderedFirstFrame = true
                                 }
                             })
                 }

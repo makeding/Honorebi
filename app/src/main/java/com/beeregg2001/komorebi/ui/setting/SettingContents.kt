@@ -235,6 +235,8 @@ fun ConnectionSettingsContent(
     mIp: String,
     mPort: String,
     prefSrc: String,
+    cfAccessClientId: String,
+    cfAccessClientSecret: String,
     edcbPlayMethod: String,
     smbServerList: List<SmbServer>,
     honomiUserName: String?,
@@ -248,6 +250,7 @@ fun ConnectionSettingsContent(
     onEdit: (String, String) -> Unit,
     onSelectBackend: () -> Unit,
     onSelectSrc: () -> Unit,
+    onEditCloudflareAccess: () -> Unit,
     backendTypeR: FocusRequester,
     backendIpR: FocusRequester,
     backendPortR: FocusRequester,
@@ -256,6 +259,7 @@ fun ConnectionSettingsContent(
     overrideIpR: FocusRequester,
     overridePortR: FocusRequester,
     honomiAccountR: FocusRequester,
+    cloudflareAccessR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -503,6 +507,26 @@ fun ConnectionSettingsContent(
             }
         }
 
+        SettingsSection("Cloudflare Access") {
+            SettingItem(
+                title = "サービス トークン",
+                value = if (cfAccessClientId.isNotBlank() && cfAccessClientSecret.isNotBlank()) "設定済み" else "未設定",
+                icon = Icons.Default.Cloud,
+                modifier = Modifier.focusRequester(cloudflareAccessR).focusProperties {
+                    left = sidebarR
+                    up = if (hasOverride) overridePortR else prefSrcR
+                    down = addSmbR
+                },
+                onClick = { onClick(cloudflareAccessR); onEditCloudflareAccess() },
+            )
+            Text(
+                "Client Secret は画面に表示されません。HTTPS の設定済みバックエンドだけに送信します。",
+                modifier = Modifier.padding(horizontal = 24.dp),
+                color = colors.textSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+
         SettingsSection("ファイルライブラリ (SMB) 接続設定") {
             SettingItem(
                 title = "新しいSMBサーバーを追加",
@@ -512,7 +536,7 @@ fun ConnectionSettingsContent(
                     .focusRequester(addSmbR)
                     .focusProperties {
                         left = sidebarR
-                        up = if (hasOverride) overridePortR else prefSrcR
+                        up = cloudflareAccessR
                         down =
                             if (smbServerList.isEmpty()) FocusRequester.Cancel else smbItemRs.firstOrNull()
                                 ?: FocusRequester.Cancel

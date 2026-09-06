@@ -28,6 +28,12 @@
 * **EDCB を利用する場合**: 録画番組への「直接アクセス」や「トランスコード視聴」を利用するためには、連携スクリプトの配置が必要です。各リリースに添付されている `Komorebi Configurator`（Windows用）または `setup.sh`（Linux用）を実行し、最新の `resolver.lua` を設定してください。
 * **この fork の方針**: 上流由来のセットアップ手順は残しつつ、Android TV / Fire TV での日常利用に必要なバックエンド設定とプレイヤーまわりの安定性を優先して調整しています。
 
+### Cloudflare Access（Service Token）
+
+Cloudflare Access でバックエンドを保護する場合は、Access アプリケーションのポリシーで作成した Service Token を許可してください。[Cloudflare の Service Token 手順](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)に従い、設定画面の「接続」→「Cloudflare Access」へ Client ID と Client Secret を**両方**入力します。消去する場合も両方を空にして保存します。
+
+Access を使うバックエンドは `https://host` または `https://host:port` の完全な HTTPS アドレスで設定してください。ポートを省略した HTTPS origin は 443 として扱います。トークンは、設定された KonomiTV / Mirakurun / EDCB / EPGStation の一致する HTTPS origin に対する API、画像、ストリーム、SSE、HonomiTV WebSocket だけに送られます。SMB、第三者画像、更新先、HTTP 接続、別 origin へのリダイレクトには送られません。
+
 ---
 
 ## 💻 動作環境

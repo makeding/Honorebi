@@ -69,6 +69,11 @@ sealed class SettingDialogState {
     object None : SettingDialogState()
     data class Input(val title: String, val initialValue: String, val onConfirm: (String) -> Unit) :
         SettingDialogState()
+    data class CloudflareAccess(
+        val clientId: String,
+        val clientSecret: String,
+        val onConfirm: (String, String) -> Unit,
+    ) : SettingDialogState()
 
     data class BatchInput(val onConfirm: (String, String) -> Unit) : SettingDialogState()
     data class Selection(
@@ -429,6 +434,41 @@ fun InputDialog(
                         onClick = { isClosing = true; onConfirm(value) },
                         modifier = Modifier.weight(1f)
                     ) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CloudflareAccessDialog(
+    initialClientId: String,
+    initialClientSecret: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit,
+) {
+    val colors = KomorebiTheme.colors
+    var clientId by remember { mutableStateOf(initialClientId) }
+    var clientSecret by remember { mutableStateOf(initialClientSecret) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val clientIdFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(150); clientIdFocus.safeRequestFocus() }
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.8f)).focusGroup(), contentAlignment = Alignment.Center) {
+        Surface(shape = RoundedCornerShape(16.dp), colors = SurfaceDefaults.colors(containerColor = colors.surface), modifier = Modifier.width(620.dp)) {
+            Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Cloudflare Access", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("保護する HTTPS バックエンドだけにサービス トークンを送信します。ID と Secret は両方入力するか、両方消去してください。")
+                DialogTextField(clientId, { clientId = it; error = null }, "Client ID", focusRequester = clientIdFocus)
+                DialogTextField(clientSecret, { clientSecret = it; error = null }, "Client Secret", isPassword = true, focusRequester = remember { FocusRequester() })
+                error?.let { Text(it, color = Color(0xFFE53935), style = MaterialTheme.typography.bodyMedium) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("キャンセル") }
+                    Button(onClick = {
+                        val id = clientId.filterNot(Char::isWhitespace)
+                        val secret = clientSecret.filterNot(Char::isWhitespace)
+                        if (id.isBlank() != secret.isBlank()) error = "Client ID と Client Secret を両方入力するか、両方消去してください。"
+                        else onConfirm(id, secret)
+                    }, modifier = Modifier.weight(1f)) { Text("保存") }
                 }
             }
         }

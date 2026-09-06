@@ -81,6 +81,10 @@ class VideoPlayerState {
     var downKeyDownTime = 0L
     var isDownKeyLongPressed = false
 
+    private val mediaKeys = RecordedMediaKeys()
+
+    internal fun resetMediaKeys() = mediaKeys.reset()
+
     // ★ 新規追加: クイックシーク状態の追跡
     var isQuickSeeking by mutableStateOf(false)
 
@@ -115,9 +119,11 @@ class VideoPlayerState {
         onQuickMenuRequested: () -> Unit = {},
         exoPlayerIsPlaying: Boolean,
         onPause: () -> Unit,
-        onPlay: () -> Unit
+        onPlay: () -> Unit,
+        onSkipPreviousChapter: () -> Unit,
+        onSkipNextChapter: () -> Unit
     ): Boolean {
-        if (isPiPMode) return false
+        if (isPiPMode) { resetMediaKeys(); return false }
         val keyCode = keyEvent.nativeKeyEvent.keyCode
         val isActionDown = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_DOWN
         val isActionUp = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_UP
@@ -136,6 +142,7 @@ class VideoPlayerState {
         }
 
         if (lCropMode == LCropMode.DIRECT_ADJUST) {
+            resetMediaKeys()
             if (isActionDown) {
                 when (keyCode) {
                     NativeKeyEvent.KEYCODE_DPAD_UP -> {
@@ -170,7 +177,33 @@ class VideoPlayerState {
             return true
         }
 
-        if (isSubOverlayOpen) return false
+        if (isSubOverlayOpen) { resetMediaKeys(); return false }
+
+        if (mediaKeys.handle(keyEvent.nativeKeyEvent, chapters.isNotEmpty()) { action ->
+            onShowControlsChange(true)
+            when (action) {
+                RecordedMediaKeys.Action.PLAY -> if (!exoPlayerIsPlaying) {
+                    togglePlayPause(false)
+                    onPlay()
+                }
+                RecordedMediaKeys.Action.PAUSE -> if (exoPlayerIsPlaying) {
+                    togglePlayPause(true)
+                    onPause()
+                }
+                RecordedMediaKeys.Action.TOGGLE -> {
+                    togglePlayPause(exoPlayerIsPlaying)
+                    if (exoPlayerIsPlaying) onPause() else onPlay()
+                }
+                RecordedMediaKeys.Action.PREVIOUS -> onSkipPreviousChapter()
+                RecordedMediaKeys.Action.NEXT -> onSkipNextChapter()
+                RecordedMediaKeys.Action.BACK, RecordedMediaKeys.Action.FORWARD -> {
+                    val base = pendingSeekPositionMs ?: getCurrentPositionMs()
+                    val delta = if (action == RecordedMediaKeys.Action.BACK) -10_000L else 30_000L
+                    performSeek((base + delta).coerceIn(0L, totalDurationMs.takeIf { it > 0 } ?: Long.MAX_VALUE))
+                    triggerSeekingPreview()
+                }
+            }
+        }) return true
 
         if (keyCode == NativeKeyEvent.KEYCODE_BACK || keyCode == NativeKeyEvent.KEYCODE_ESCAPE) {
             if (isActionDown) {

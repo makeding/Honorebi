@@ -5,6 +5,8 @@ import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.api.KonomiApi
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessInterceptor
 import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
@@ -32,7 +34,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(settingsRepository: SettingsRepository, sessionStore: HonomiSessionStore): OkHttpClient {
+    fun provideOkHttpClient(settingsRepository: SettingsRepository, sessionStore: HonomiSessionStore, cloudflareAccessInterceptor: CloudflareAccessInterceptor): OkHttpClient {
         val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
             override fun checkClientTrusted(
                 chain: Array<out X509Certificate>?,
@@ -55,6 +57,8 @@ object NetworkModule {
 
         val logging = HttpLoggingInterceptor().apply {
             redactHeader("Authorization")
+            redactHeader(CloudflareAccessConfiguration.CLIENT_ID_HEADER)
+            redactHeader(CloudflareAccessConfiguration.CLIENT_SECRET_HEADER)
             level =
                 if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
         }
@@ -99,6 +103,10 @@ object NetworkModule {
                 } else request
                 chain.proceed(authenticated)
             })
+            // WebSocket handshakes execute application interceptors but not network
+            // interceptors, so scope the first handshake here as well.
+            .addInterceptor(cloudflareAccessInterceptor)
+            .addNetworkInterceptor(cloudflareAccessInterceptor)
             .build()
     }
 
