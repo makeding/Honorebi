@@ -1,0 +1,352 @@
+package com.beeregg2001.komorebi.ui.video.player
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.requestFocus
+import androidx.compose.ui.focus.FocusRequester
+import com.beeregg2001.komorebi.data.model.AudioMode
+import com.beeregg2001.komorebi.data.model.CmSkipMode
+import com.beeregg2001.komorebi.data.model.RecordedChannel
+import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.model.RecordedVideo
+import com.beeregg2001.komorebi.data.model.StreamQuality
+import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
+import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(
+    application = android.app.Application::class,
+    sdk = [35],
+    qualifiers = "w960dp-h540dp-land-mdpi"
+)
+class RecordedPlayerLayoutTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Test
+    fun quickMenu_defaultsAndReturnsToProgramInfo_andOpensItFromTheTile() {
+        val visible = mutableStateOf(true)
+        var opened = 0
+        composeRule.setContent {
+            KomorebiTheme {
+                menu(
+                    isVisible = visible.value,
+                    onProgramInfo = { opened += 1 },
+                    onCloseMenu = {}
+                )
+            }
+        }
+
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText("番組情報").assertIsFocused().performKeyInput {
+            keyDown(Key.DirectionCenter)
+            keyUp(Key.DirectionCenter)
+        }
+        composeRule.runOnIdle { assertEquals(1, opened) }
+
+        composeRule.runOnIdle { visible.value = false }
+        composeRule.runOnIdle { visible.value = true }
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+    }
+
+    @Test
+    fun quickMenu_keepsTheRequiredTileOrder_forHorizontalRemoteNavigation() {
+        composeRule.setContent {
+            KomorebiTheme { menu() }
+        }
+
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+        composeRule.onNodeWithText("番組情報").performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.onNodeWithText("再生速度").assertIsFocused()
+        composeRule.onNodeWithText("再生速度").performKeyInput {
+            keyDown(Key.DirectionLeft)
+            keyUp(Key.DirectionLeft)
+        }
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+        composeRule.onNodeWithText("番組情報").performKeyInput {
+            keyDown(Key.DirectionLeft)
+            keyUp(Key.DirectionLeft)
+        }
+        composeRule.onNodeWithText("音声切替").assertIsFocused()
+        composeRule.onNodeWithText("音声切替").performKeyInput {
+            keyDown(Key.DirectionLeft)
+            keyUp(Key.DirectionLeft)
+        }
+        composeRule.onNodeWithText("サムネイル").assertIsFocused()
+        composeRule.onNodeWithText("サムネイル").performKeyInput {
+            keyDown(Key.DirectionLeft)
+            keyUp(Key.DirectionLeft)
+        }
+        composeRule.onNodeWithText("クイック選局").assertIsFocused()
+
+        composeRule.onNodeWithText("クイック選局").performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.onNodeWithText("サムネイル").assertIsFocused()
+        composeRule.onNodeWithText("サムネイル").performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.onNodeWithText("音声切替").assertIsFocused()
+        composeRule.onNodeWithText("音声切替").performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+        }
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+    }
+
+    @Test
+    fun dedicatedQuickEntry_focusesAQuickRecordingAndSelectsItWithConfirm() {
+        val selected = mutableStateOf<RecordedProgram?>(null)
+        val quickRecording = testProgram(title = "専用入口番組")
+        composeRule.setContent {
+            KomorebiTheme {
+                menu(
+                    quickPrograms = listOf(quickRecording),
+                    openQuickVideosInitially = true,
+                    onVideoSelect = { selected.value = it }
+                )
+            }
+        }
+
+        composeRule.mainClock.advanceTimeBy(200)
+        composeRule.onNodeWithText("専用入口番組").assertIsFocused().performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
+        composeRule.runOnIdle { assertEquals(quickRecording.id, selected.value?.id) }
+    }
+
+    @Test
+    fun programPanel_keepsItsPanelAndFeedbackBoundsForMissingAndLongContent() {
+        val missing = mutableStateOf(false)
+        composeRule.setContent {
+            KomorebiTheme {
+                PlayerProgramPanel(
+                    channelName = "NHK総合",
+                    logoUrl = "",
+                    shouldCropLogo = false,
+                    title = if (missing.value) "番組情報なし" else "長い番組タイトル".repeat(16),
+                    description = if (missing.value) null else "本文".repeat(600),
+                    detail = if (missing.value) null else mapOf("出演者" to "出演者情報".repeat(200)),
+                    metadata = listOf("放送日時" to "2026/08/10(月) 23:55 - 2026/08/11(火) 00:25"),
+                    scrollState = rememberScrollState()
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("program-panel").assertIsDisplayed()
+        val readyPanelBounds = composeRule.onNodeWithTag("program-panel").getUnclippedBoundsInRoot()
+        val readyFeedbackBounds = composeRule.onNodeWithTag("program-feedback").getUnclippedBoundsInRoot()
+
+        composeRule.runOnIdle { missing.value = true }
+
+        assertEquals(readyPanelBounds, composeRule.onNodeWithTag("program-panel").getUnclippedBoundsInRoot())
+        assertEquals(readyFeedbackBounds, composeRule.onNodeWithTag("program-feedback").getUnclippedBoundsInRoot())
+        composeRule.onNodeWithText("番組の紹介は保存されていません。").assertIsDisplayed()
+        composeRule.onNodeWithText("詳細な番組情報は保存されていません。").assertIsDisplayed()
+    }
+
+    @Test
+    fun programDetailLoadingErrorAndRetry_keepBodyAndFeedbackGeometryStable() {
+        val request = mutableStateOf(ProgramDetailRequest(programId = 1, loading = true))
+        var retries = 0
+        composeRule.setContent {
+            KomorebiTheme {
+                ProgramInfoOverlay(
+                    program = testProgram(),
+                    timeFormat = "24H",
+                    presentation = RecordedProgramPresentation(
+                        request = request.value,
+                        retry = { retries += 1 }
+                    ),
+                    onClose = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("番組情報を読み込んでいます…").assertIsDisplayed()
+        composeRule.onNodeWithText("再読込").assertIsNotEnabled()
+        val loadingBodyBounds = composeRule.onNodeWithTag("program-body").getUnclippedBoundsInRoot()
+        val loadingFeedbackBounds = composeRule.onNodeWithTag("program-feedback").getUnclippedBoundsInRoot()
+
+        composeRule.runOnIdle {
+            request.value = ProgramDetailRequest(programId = 1, error = "NETWORK")
+        }
+
+        assertEquals(loadingBodyBounds, composeRule.onNodeWithTag("program-body").getUnclippedBoundsInRoot())
+        assertEquals(loadingFeedbackBounds, composeRule.onNodeWithTag("program-feedback").getUnclippedBoundsInRoot())
+        composeRule.onNodeWithText("番組情報の取得に失敗しました。NETWORK").assertIsDisplayed()
+        composeRule.onNodeWithText("再試行").assertIsDisplayed().requestFocus().assertIsFocused().performKeyInput {
+            keyDown(Key.DirectionCenter)
+            keyUp(Key.DirectionCenter)
+        }
+        composeRule.runOnIdle { assertEquals(1, retries) }
+    }
+
+    @Test
+    fun controlsKeepTitleTimesAndTrackBoundsAcrossPlayingPausedAndSeekingPreview_inBothStyles() {
+        val modern = mutableStateOf(true)
+        val playing = mutableStateOf(true)
+        val seekingPreview = mutableStateOf(false)
+        composeRule.setContent {
+            KomorebiTheme {
+                controls(
+                    modern = modern.value,
+                    playing = playing.value,
+                    seekingPreview = seekingPreview.value
+                )
+            }
+        }
+
+        val modernPlaying = controlBounds()
+        composeRule.runOnIdle {
+            playing.value = false
+            seekingPreview.value = true
+        }
+        composeRule.mainClock.advanceTimeBy(500)
+        assertEquals(modernPlaying, controlBounds())
+
+        composeRule.runOnIdle {
+            modern.value = false
+            playing.value = true
+            seekingPreview.value = false
+        }
+        composeRule.mainClock.advanceTimeBy(500)
+        val legacyPlaying = controlBounds()
+        composeRule.runOnIdle {
+            playing.value = false
+            seekingPreview.value = true
+        }
+        composeRule.mainClock.advanceTimeBy(500)
+        assertEquals(legacyPlaying, controlBounds())
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun menu(
+        isVisible: Boolean = true,
+        onProgramInfo: () -> Unit = {},
+        onCloseMenu: () -> Unit = {},
+        quickPrograms: List<RecordedProgram> = emptyList(),
+        openQuickVideosInitially: Boolean = false,
+        onVideoSelect: (RecordedProgram) -> Unit = {}
+    ) {
+        VideoTopSubMenuUI(
+            currentProgram = testProgram(),
+            seriesPrograms = emptyList(),
+            quickPrograms = quickPrograms,
+            backendType = "KonomiTV",
+            konomiIp = "127.0.0.1",
+            konomiPort = "7000",
+            currentAudioMode = AudioMode.MAIN,
+            currentSpeed = 1f,
+            isSubtitleEnabled = true,
+            subtitleLanguages = emptyList(),
+            currentSubtitleLanguageId = 1,
+            currentQuality = StreamQuality("1080p", "1080p"),
+            isCommentEnabled = false,
+            isLCropEnabled = false,
+            cmSkipMode = CmSkipMode.OFF,
+            hdrRenderMode = "None",
+            isHdrRenderModeSupported = false,
+            isDataBroadcastingAvailable = false,
+            isDataBroadcastingActive = false,
+            availableQualities = emptyList(),
+            focusRequester = FocusRequester(),
+            onAudioToggle = {},
+            onSpeedToggle = {},
+            onProgramInfo = onProgramInfo,
+            onSubtitleToggle = {},
+            onSubtitleLanguageToggle = {},
+            onQualitySelect = {},
+            onCommentToggle = {},
+            onLCropToggle = {},
+            onCmSkipModeToggle = {},
+            onHdrRenderModeToggle = {},
+            onDataBroadcastingToggle = {},
+            onVideoSelect = onVideoSelect,
+            openQuickVideosInitially = openQuickVideosInitially,
+            isVisible = isVisible,
+            onCloseMenu = onCloseMenu
+        )
+    }
+
+    @androidx.compose.runtime.Composable
+    private fun controls(modern: Boolean, playing: Boolean, seekingPreview: Boolean) {
+        PlayerControls(
+            program = testProgram(),
+            timeFormat = "24H",
+            allComments = emptyList(),
+            tiledThumbnailUrl = null,
+            isVisible = true,
+            isSeekingPreviewVisible = seekingPreview,
+            isModernUi = modern,
+            isPlaying = playing,
+            hasChapters = false,
+            currentPositionMs = 120_000L,
+            totalDurationMs = 1_800_000L,
+            bufferedPositionMs = 180_000L,
+            controlsFocusRequester = remember { FocusRequester() },
+            onSeekBarFocusChanged = {},
+            onPlayPauseToggle = {},
+            onSeekBack = {},
+            onSeekForward = {},
+            onSeekRequested = {},
+            onChapterListToggle = {},
+            onInfoToggle = {},
+            onSettingsToggle = {}
+        )
+    }
+
+    private fun controlBounds() = listOf(
+        composeRule.onNodeWithTag("recorded-controls").getUnclippedBoundsInRoot(),
+        composeRule.onNodeWithTag("recorded-title").getUnclippedBoundsInRoot(),
+        composeRule.onNodeWithTag("playback-time").getUnclippedBoundsInRoot(),
+        composeRule.onNodeWithTag("playback-duration").getUnclippedBoundsInRoot(),
+        composeRule.onNodeWithTag("playback-track").getUnclippedBoundsInRoot()
+    )
+
+    private fun testProgram(title: String = "番組") = RecordedProgram(
+        id = 1,
+        title = title,
+        description = "説明",
+        startTime = "2026-08-10T13:05:00+09:00",
+        endTime = "2026-08-10T13:35:00+09:00",
+        duration = 1_800.0,
+        isPartiallyRecorded = false,
+        channel = RecordedChannel("1", displayChannelId = "GR011", type = "GR", name = "NHK総合", channelNumber = "011"),
+        recordedVideo = RecordedVideo(
+            id = 1,
+            status = "Recorded",
+            filePath = "/recorded.ts",
+            duration = 1_800.0,
+            containerFormat = "MPEG-TS",
+            videoCodec = "H.264",
+            audioCodec = "AAC"
+        )
+    )
+}

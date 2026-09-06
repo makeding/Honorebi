@@ -225,7 +225,6 @@ fun StatusOverlay(
     timeFormatSetting: String = "24H"
 ) {
     var currentTime by remember { mutableStateOf("") }
-    val imageLoader = rememberChannelLogoImageLoader()
 
     val displaySdf = remember(timeFormatSetting) {
         if (timeFormatSetting == "12H") SimpleDateFormat("a h:mm", Locale.getDefault())
@@ -252,16 +251,8 @@ fun StatusOverlay(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                imageLoader = imageLoader,
-                model = logoUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(56.dp, 32.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White),
-                // ★ 修正: フラグに基づいてスケールを変更
-                contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit
+            com.beeregg2001.komorebi.ui.player.PlayerChannelLogo(
+                logoUrl, channel.name, shouldCropLogo, Modifier.size(56.dp, 32.dp)
             )
             Spacer(Modifier.width(16.dp))
             Text(
@@ -313,6 +304,36 @@ fun LiveOverlayUI(
                 }
             }
         }
+    }
+
+    if (showDesc) {
+        com.beeregg2001.komorebi.ui.player.PlayerProgramPanel(
+            channelName = "${formatChannelType(channel.type)}${channel.channelNumber}  ${channel.name}",
+            logoUrl = logoUrl, shouldCropLogo = shouldCropLogo, title = programTitle,
+            description = program?.description, detail = program?.detail,
+            metadata = listOf("放送日時" to (program?.let {
+                com.beeregg2001.komorebi.ui.video.player.formatBroadcastTime(it.startTime, it.endTime, timeFormatSetting)
+            } ?: "番組情報なし")), scrollState = scrollState,
+            channelAdornment = { if (isRecording) RecordingIndicator() },
+            feedback = {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        val start = runCatching { program?.startTime?.let { sdf.parse(it) }?.let { displaySdf.format(it) } }.getOrNull()
+                        val end = runCatching { program?.endTime?.let { sdf.parse(it) }?.let { displaySdf.format(it) } }.getOrNull()
+                        Text(start ?: "時刻不明", color = Color.White.copy(0.6f))
+                        Box(Modifier.weight(1f).padding(horizontal = 20.dp).height(4.dp)
+                            .background(Color.White.copy(0.15f), RoundedCornerShape(2.dp))) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth(progress.coerceIn(0f, 1f))
+                                .background(Color.White, RoundedCornerShape(2.dp)))
+                        }
+                        Text(end ?: "時刻不明", color = Color.White.copy(0.6f))
+                    }
+                    Text("上下キーでスクロール  ·  戻るで閉じる", color = Color.White.copy(0.7f),
+                        modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        )
+        return
     }
 
     Box(
@@ -368,43 +389,6 @@ fun LiveOverlayUI(
                 color = Color.White,
                 modifier = Modifier.padding(vertical = 16.dp)
             )
-
-            if (showDesc && program != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 240.dp)
-                        .padding(vertical = 8.dp)
-                ) {
-                    Column(modifier = Modifier.verticalScroll(scrollState)) {
-                        if (!program.description.isNullOrEmpty()) {
-                            Text(
-                                text = program.description,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Color.White.copy(0.9f),
-                                modifier = Modifier.padding(bottom = 20.dp)
-                            )
-                        }
-                        program.detail?.forEach { (k, v) ->
-                            Column(Modifier.padding(bottom = 14.dp)) {
-                                Text(
-                                    text = "◆ $k",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(0.5f)
-                                    )
-                                )
-                                Text(
-                                    text = v,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(0.85f),
-                                    modifier = Modifier.padding(start = 12.dp, top = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
 
             if (progress >= 0f) {
                 val start =

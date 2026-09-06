@@ -52,6 +52,7 @@ class VideoPlayerViewModel @Inject constructor(
     private val historyRepository: WatchHistoryRepository,
     private val settingsRepository: SettingsRepository,
     private val konomiRepository: KonomiRepository,
+    private val channelLogoCache: com.beeregg2001.komorebi.data.repository.ChannelLogoCache,
 ) : ViewModel() {
 
     companion object {
@@ -64,6 +65,15 @@ class VideoPlayerViewModel @Inject constructor(
     private val gson = Gson()
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
+
+    private val _programDetailRequest = MutableStateFlow(com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest())
+    val programDetailRequest = _programDetailRequest.asStateFlow()
+
+    suspend fun recordedChannelLogo(channel: com.beeregg2001.komorebi.data.model.RecordedChannel): String {
+        val id = if (settingsRepository.backendType.first() == "MIRAKURUN_ONLY") channel.id
+            else channel.displayChannelId.ifBlank { channel.id }
+        return channelLogoCache.getChannelLogoUrl(id)
+    }
 
     private val _tiledThumbnailUrl = MutableStateFlow<String?>(null)
     val tiledThumbnailUrl: StateFlow<String?> = _tiledThumbnailUrl.asStateFlow()
@@ -297,9 +307,23 @@ class VideoPlayerViewModel @Inject constructor(
 
     fun fetchProgramDetail(videoId: Int) {
         detailFetchJob?.cancel()
-        detailFetchJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(300)
-            recordProvider.getRecordedProgram(videoId).onSuccess { program ->
+        _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId, loading = true)
+        detailFetchJob = viewModelScope.launch {
+            val result = try {
+                kotlinx.coroutines.withTimeout(15_000) {
+                    withContext(Dispatchers.IO) { recordProvider.getRecordedProgram(videoId) }
+                }
+            } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                Result.failure(error)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+            if (!isActive) return@launch
+            result.onSuccess { program ->
+                _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId)
+
                 _programDetail.value = program
 
                 Log.i(TAG, "[DataCheck] Fetched Program Detail. Title: ${program.title}")
@@ -308,18 +332,26 @@ class VideoPlayerViewModel @Inject constructor(
                     "[DataCheck] CM Sections from API: ${program.recordedVideo.cmSections?.size ?: 0} sections found."
                 )
 
-                val tileUrl = recordProvider.getTiledThumbnailUrl(videoId)
+                val tileUrl = withContext(Dispatchers.IO) { recordProvider.getTiledThumbnailUrl(videoId) }
+                if (!isActive || _programDetailRequest.value.programId != videoId) return@launch
                 _tiledThumbnailUrl.value = tileUrl
 
                 val durationMs = (program.recordedVideo.duration * 1000).toLong()
                 val cmSections = program.recordedVideo.cmSections ?: emptyList()
                 _chapters.value = calculateChapters(durationMs, cmSections)
 
-            }.onFailure { Log.e(TAG, "Failed to fetch program detail", it) }
+            }.onFailure {
+                if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it
+                _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(
+                    videoId, error = com.beeregg2001.komorebi.ui.video.player.programDetailFailureMessage(it))
+                Log.e(TAG, "Failed to fetch program detail", it)
+            }
         }
     }
 
     fun clearProgramDetail() {
+        detailFetchJob?.cancel()
+        _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest()
         _programDetail.value = null
         _tiledThumbnailUrl.value = null
         _chapters.value = emptyList()

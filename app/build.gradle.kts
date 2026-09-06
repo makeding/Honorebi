@@ -94,6 +94,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
         buildConfig = true // ★ BuildConfigクラスの生成を有効化
@@ -141,6 +143,8 @@ ksp {
 dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // 1. Compose BOM を最新に近いバージョンに更新 (ここが最重要)
     // 2023.10.01 だと Tv-Foundation 1.0.0-alpha11 と互換性がありません

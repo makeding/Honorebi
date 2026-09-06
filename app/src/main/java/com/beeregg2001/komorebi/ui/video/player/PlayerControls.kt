@@ -35,6 +35,10 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -86,11 +90,16 @@ fun PlayerControls(
     onKeyframeGridToggle: () -> Unit = {},
     onChapterListToggle: () -> Unit,
     onInfoToggle: () -> Unit,
-    onSettingsToggle: () -> Unit
+    onSettingsToggle: () -> Unit,
+    onControlsTopChanged: (Float) -> Unit = {},
+    infoFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val context = LocalContext.current
     val colors = KomorebiTheme.colors
     val loader = remember { TileSheetLoader(context) }
+    val density = LocalDensity.current
+    var rootHeight by remember { mutableIntStateOf(1) }
+    var controlsHeight by remember { mutableStateOf(0.dp) }
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
 
@@ -110,10 +119,7 @@ fun PlayerControls(
         label = "playHeadSize"
     )
     val playHeadVerticalOffset = (playHeadSize - trackHeight) / 2
-    val graphHeight by animateDpAsState(
-        if (isSeekBarFocused) 80.dp else 48.dp,
-        label = "graphHeight"
-    )
+    val graphHeight = 48.dp
     LaunchedEffect(currentPositionMs) {
         if (kotlin.math.abs(displayPositionMs - currentPositionMs) > 1000) {
             displayPositionMs = currentPositionMs
@@ -133,13 +139,106 @@ fun PlayerControls(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().onSizeChanged { rootHeight = it.height.coerceAtLeast(1) }
             .graphicsLayer {
                 alpha = if (isVisible) 1f else 0f
                 translationY = if (isVisible) 0f else 80f
             }
             .focusProperties { canFocus = isVisible }
     ) {
+        AnimatedVisibility(
+            visible = isSeekingPreviewVisible && isModernUi,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 128.dp, end = 128.dp, bottom = controlsHeight),
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .padding(bottom = 12.dp)
+            ) {
+                val progress =
+                    if (totalDurationMs > 0) (displayPositionMs.toFloat() / totalDurationMs).coerceIn(
+                        0f,
+                        1f
+                    ) else 0f
+                val horizontalBias = (progress * 2f) - 1f
+
+                var thumbnailRegion by remember { mutableStateOf<TileSheetRegion?>(null) }
+
+                val timeSec = displayPositionMs / 1000
+                val tileIndex = floor(timeSec / tileInterval).toInt()
+                val col = tileIndex % tileColumns
+                val row = tileIndex / tileColumns
+
+                LaunchedEffect(tiledThumbnailUrl, col, row) {
+                    if (tiledThumbnailUrl.isNullOrBlank()) {
+                        return@LaunchedEffect
+                    }
+                    val res = loader.loadRegion(
+                        tiledThumbnailUrl,
+                        col,
+                        row,
+                        tileWidth,
+                        tileHeight,
+                    )
+                    if (res != null) {
+                        thumbnailRegion = res
+                    }
+                }
+
+                if (thumbnailRegion != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
+                            .size(144.dp, 81.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.DarkGray.copy(alpha = 0.8f))
+                            .border(2.dp, colors.accent, RoundedCornerShape(6.dp))
+                    ) {
+                        TileSheetRegionImage(
+                            region = thumbnailRegion!!,
+                            contentDescription = "Seek Preview",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Text(
+                            text = formatMillisToTime(displayPositionMs),
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Color.Black.copy(alpha = 0.7f),
+                                    RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        text = formatMillisToTime(displayPositionMs),
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
+                            .background(
+                                Color.Black.copy(alpha = 0.8f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .border(
+                                1.dp,
+                                colors.accent.copy(alpha = 0.5f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -158,18 +257,18 @@ fun PlayerControls(
                         }
                     }
                     false
-                }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f)),
-                        startY = 500f
-                    )
-                ),
+                },
             contentAlignment = Alignment.BottomStart
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onGloballyPositioned {
+                        controlsHeight = with(density) { it.size.height.toDp() }
+                        onControlsTopChanged(((rootHeight - it.size.height).toFloat() / rootHeight).coerceIn(0f, 1f))
+                    }
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))))
+                    .testTag("recorded-controls")
                     .padding(horizontal = 48.dp, vertical = 40.dp)
             ) {
                 Text(
@@ -181,127 +280,11 @@ fun PlayerControls(
                     color = Color.White,
                     maxLines = 1,
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth().height(36.dp).testTag("recorded-title")
                         .basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2000)
                 )
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatPlaybackProgramMeta(program, timeFormat),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.72f),
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (!isModernUi) {
-                        Text(
-                            text = "INFO  番組情報",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.72f),
-                            modifier = Modifier.padding(start = 24.dp)
-                        )
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(18.dp))
-
-                AnimatedVisibility(
-                    visible = isSeekingPreviewVisible && isModernUi,
-                    enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom),
-                    exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp)
-                            .padding(bottom = 12.dp)
-                    ) {
-                        val progress =
-                            if (totalDurationMs > 0) (displayPositionMs.toFloat() / totalDurationMs).coerceIn(
-                                0f,
-                                1f
-                            ) else 0f
-                        val horizontalBias = (progress * 2f) - 1f
-
-                        var thumbnailRegion by remember { mutableStateOf<TileSheetRegion?>(null) }
-
-                        val timeSec = displayPositionMs / 1000
-                        val tileIndex = floor(timeSec / tileInterval).toInt()
-                        val col = tileIndex % tileColumns
-                        val row = tileIndex / tileColumns
-
-                        LaunchedEffect(tiledThumbnailUrl, col, row) {
-                            if (tiledThumbnailUrl.isNullOrBlank()) {
-                                return@LaunchedEffect
-                            }
-                            val res = loader.loadRegion(
-                                tiledThumbnailUrl,
-                                col,
-                                row,
-                                tileWidth,
-                                tileHeight,
-                            )
-                            if (res != null) {
-                                thumbnailRegion = res
-                            }
-                        }
-
-                        if (thumbnailRegion != null) {
-                            Box(
-                                modifier = Modifier
-                                    .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
-                                    .size(144.dp, 81.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color.DarkGray.copy(alpha = 0.8f))
-                                    .border(2.dp, colors.accent, RoundedCornerShape(6.dp))
-                            ) {
-                                TileSheetRegionImage(
-                                    region = thumbnailRegion!!,
-                                    contentDescription = "Seek Preview",
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                Text(
-                                    text = formatMillisToTime(displayPositionMs),
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .background(
-                                            Color.Black.copy(alpha = 0.7f),
-                                            RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        } else {
-                            Text(
-                                text = formatMillisToTime(displayPositionMs),
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
-                                    .background(
-                                        Color.Black.copy(alpha = 0.8f),
-                                        RoundedCornerShape(4.dp)
-                                    )
-                                    .border(
-                                        1.dp,
-                                        colors.accent.copy(alpha = 0.5f),
-                                        RoundedCornerShape(4.dp)
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
-                }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -311,7 +294,7 @@ fun PlayerControls(
                         text = formatMillisToTime(displayPositionMs),
                         color = Color.White.copy(alpha = 0.9f),
                         fontWeight = FontWeight.Medium,
-                        modifier = Modifier.width(64.dp)
+                        modifier = Modifier.width(64.dp).testTag("playback-time")
                     )
 
                     Spacer(modifier = Modifier.width(16.dp))
@@ -319,7 +302,7 @@ fun PlayerControls(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(graphHeight)
+                            .height(graphHeight).testTag("playback-track")
                             .onFocusChanged {
                                 isSeekBarFocused = it.isFocused
                                 onSeekBarFocusChanged(it.isFocused)
@@ -504,7 +487,7 @@ fun PlayerControls(
                         text = formatMillisToTime(totalDurationMs),
                         color = Color.White.copy(alpha = 0.9f),
                         fontWeight = FontWeight.Medium,
-                        modifier = Modifier.width(64.dp)
+                        modifier = Modifier.width(64.dp).testTag("playback-duration")
                     )
                 }
 
@@ -519,7 +502,8 @@ fun PlayerControls(
                             OsdIconButton(
                                 icon = Icons.Default.Info,
                                 label = "番組詳細",
-                                onClick = onInfoToggle
+                                onClick = onInfoToggle,
+                                modifier = Modifier.focusRequester(infoFocusRequester)
                             )
                             if (hasChapters) {
                                 OsdIconButton(

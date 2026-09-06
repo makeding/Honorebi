@@ -222,6 +222,9 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     isSubtitleBlockingOverlayOpen: Boolean,
     subtitleOffset: Dp,
     subtitleAvoidanceStartFraction: Float,
+    onControlsTopChanged: (Float) -> Unit,
+    infoFocusRequester: FocusRequester,
+    presentation: RecordedProgramPresentation,
     subtitleCommentLayer: String,
     isBuffering: Boolean,
     onLCropClose: () -> Unit,
@@ -358,9 +361,15 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         }
     }
 
+    if (showControls && !isSubOverlayOpen && state.lCropMode == LCropMode.HIDDEN) {
+        RecordedProgramStatus(program, timeFormat, presentation)
+    }
+
     PlayerControls(
         program = program,
         timeFormat = timeFormat,
+        onControlsTopChanged = onControlsTopChanged,
+        infoFocusRequester = infoFocusRequester,
         tiledThumbnailUrl = tiledThumbnailUrl,
         allComments = comments,
         isVisible = showControls && !isSubOverlayOpen && state.lCropMode == LCropMode.HIDDEN,
@@ -391,6 +400,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         ProgramInfoOverlay(
             program = program,
             timeFormat = timeFormat,
+            presentation = presentation,
             onClose = onCloseProgramInfo
         )
     }
@@ -488,6 +498,7 @@ internal fun RecordedPlayerMenus(
     subMenuFocusRequester: FocusRequester,
     onAudioToggle: () -> Unit,
     onSpeedToggle: () -> Unit,
+    onProgramInfo: () -> Unit,
     onSubtitleToggle: () -> Unit,
     onSubtitleLanguageToggle: () -> Unit,
     onQualitySelect: (StreamQuality) -> Unit,
@@ -557,6 +568,7 @@ internal fun RecordedPlayerMenus(
             focusRequester = subMenuFocusRequester,
             onAudioToggle = onAudioToggle,
             onSpeedToggle = onSpeedToggle,
+            onProgramInfo = onProgramInfo,
             onSubtitleToggle = onSubtitleToggle,
             onSubtitleLanguageToggle = onSubtitleLanguageToggle,
             onQualitySelect = onQualitySelect,

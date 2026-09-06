@@ -21,11 +21,6 @@ internal data class PlaybackProgramInfoRow(
     val value: String
 )
 
-internal fun formatPlaybackProgramMeta(program: RecordedProgram, timeFormat: String): String =
-    PlaybackProgramInfoFormatter.format(program, timeFormat)
-        .filter { it.label != "長さ" }
-        .joinToString(" · ") { it.value }
-
 /** Row API used by the detailed program-information panel. */
 internal object PlaybackProgramInfoFormatter {
     fun format(program: RecordedProgram, timeFormat: String): List<PlaybackProgramInfoRow> =
@@ -40,6 +35,17 @@ private fun formatPlaybackProgramMetaRows(
     formatChannel(program)?.let { add(PlaybackProgramInfoRow("チャンネル", it)) }
     formatBroadcastTime(program.startTime, program.endTime, timeFormat, zoneId)
         ?.let { add(PlaybackProgramInfoRow("放送日時", it)) }
+    val actualStart = program.recordedVideo.recordingStartTime.orEmpty()
+    val actualEnd = program.recordedVideo.recordingEndTime.orEmpty()
+    val startKnown = parseDateTime(actualStart, zoneId) != null
+    val endKnown = parseDateTime(actualEnd, zoneId) != null
+    val actual = when {
+        startKnown && endKnown -> formatBroadcastTime(actualStart, actualEnd, timeFormat, zoneId)!!
+        startKnown -> "${formatBroadcastTime(actualStart, "", timeFormat, zoneId)} - 終了時刻未記録"
+        endKnown -> "開始時刻未記録 - ${formatBroadcastTime(actualEnd, "", timeFormat, zoneId)}"
+        else -> "記録されていません"
+    }
+    add(PlaybackProgramInfoRow("実際の録画日時", actual))
     formatDuration(program.recordedVideo.duration.takeIf { it > 0.0 } ?: program.duration)
         ?.let { add(PlaybackProgramInfoRow("長さ", it)) }
     formatStatus(program)?.let { add(PlaybackProgramInfoRow("状態", it)) }
@@ -55,17 +61,19 @@ private fun formatChannel(program: RecordedProgram): String? {
         .ifEmpty { null }
 }
 
-private fun formatBroadcastTime(
+internal fun formatBroadcastTime(
     startTime: String,
     endTime: String,
     timeFormat: String,
-    zoneId: ZoneId
+    zoneId: ZoneId = ZoneId.systemDefault()
 ): String? {
     val start = parseDateTime(startTime, zoneId) ?: return null
     val startPattern = if (timeFormat == "12H") "yyyy/MM/dd(E) a h:mm" else "yyyy/MM/dd(E) HH:mm"
     val formattedStart = DateTimeFormatter.ofPattern(startPattern, Locale.JAPANESE).format(start)
     val end = parseDateTime(endTime, zoneId) ?: return formattedStart
-    val endPattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
+    val crossesDate = java.time.LocalDate.from(start) != java.time.LocalDate.from(end)
+    val endPattern = (if (crossesDate) "yyyy/MM/dd(E) " else "") +
+        (if (timeFormat == "12H") "a h:mm" else "HH:mm")
     return "$formattedStart - ${DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE).format(end)}"
 }
 

@@ -70,7 +70,6 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
 private const val TAG = "VideoPlayerScreen"
-private const val PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
 private val PLAYER_CONTROLS_SUBTITLE_OFFSET = 96.dp
 
 @UnstableApi
@@ -331,6 +330,10 @@ fun VideoPlayerScreen(
     val playerControlsFocusRequester = remember { FocusRequester() }
 
     var isProgramInfoOpen by remember { mutableStateOf(false) }
+    var infoFromMenu by remember { mutableStateOf(false) }
+    var infoFromButton by remember { mutableStateOf(false) }
+    val infoFocusRequester = remember { FocusRequester() }
+    var controlsTopFraction by remember { mutableFloatStateOf(1f) }
     var isModernSettingsOpen by remember { mutableStateOf(false) }
 
     var videoWidth by remember { mutableStateOf(0) }
@@ -343,15 +346,19 @@ fun VideoPlayerScreen(
     var seekingPreviewJob by remember { mutableStateOf<Job?>(null) }
 
     val openProgramInfo: () -> Unit = {
+        infoFromMenu = isSubMenuOpen
+        infoFromButton = false
+        onSubMenuToggle(false)
         isProgramInfoOpen = true
         onShowControlsChange(true)
     }
     val closeProgramInfo: () -> Unit = {
         isProgramInfoOpen = false
         onShowControlsChange(true)
+        if (infoFromMenu) onSubMenuToggle(true)
         scope.launch {
             delay(150)
-            mainFocusRequester.safeRequestFocus(TAG)
+            (if (infoFromMenu) subMenuFocusRequester else if (infoFromButton) infoFocusRequester else mainFocusRequester).safeRequestFocus(TAG)
         }
     }
 
@@ -1810,8 +1817,10 @@ fun VideoPlayerScreen(
                 superimposeCue = superimposeCue.value,
                 isSubtitleBlockingOverlayOpen = isSubtitleBlockingOverlayOpen,
                 subtitleOffset = subtitleOffset,
-                subtitleAvoidanceStartFraction =
-                    PLAYER_CONTROLS_SUBTITLE_AVOIDANCE_START_FRACTION,
+                subtitleAvoidanceStartFraction = controlsTopFraction,
+                onControlsTopChanged = { controlsTopFraction = it },
+                infoFocusRequester = infoFocusRequester,
+                presentation = rememberRecordedProgramPresentation(currentProgram, videoPlayerViewModel, backendType, smbItem != null),
                 subtitleCommentLayer = subtitleCommentLayer,
                 isBuffering = isBuffering,
                 onLCropClose = {
@@ -1872,7 +1881,7 @@ fun VideoPlayerScreen(
                     isChapterListOpen = true
                     onShowControlsChange(true)
                 },
-                onOpenProgramInfo = openProgramInfo,
+                onOpenProgramInfo = { openProgramInfo(); infoFromButton = true },
                 onOpenSettings = {
                     if (isModern) {
                         isModernSettingsOpen = true
@@ -1911,6 +1920,7 @@ fun VideoPlayerScreen(
                 subMenuFocusRequester = subMenuFocusRequester,
                 onAudioToggle = toggleAudio,
                 onSpeedToggle = toggleSpeed,
+                onProgramInfo = openProgramInfo,
                 onSubtitleToggle = toggleSubtitle,
                 onSubtitleLanguageToggle = toggleSubtitleLanguage,
                 onQualitySelect = selectQuality,
