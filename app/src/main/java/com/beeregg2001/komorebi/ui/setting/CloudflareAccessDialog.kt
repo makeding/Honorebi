@@ -76,11 +76,10 @@ fun CloudflareAccessDialog(
                             finally { saving = false }
                             }
                         }
-                    }, modifier = Modifier.weight(1f), enabled = !saving && valid
+                    }, modifier = Modifier.weight(1f).testTag("access-save"), enabled = !saving && valid
                     ) { Text(if (saving) "保存中…" else "保存") }
                 }
             }
         }
     }
 }
-

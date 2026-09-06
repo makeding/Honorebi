@@ -4,11 +4,12 @@ import android.app.Application
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -34,15 +35,20 @@ class CloudflareAccessDialogTest {
             }
         }
         val statusBounds = compose.onNodeWithTag("access-status").getUnclippedBoundsInRoot()
-        val fieldBounds = compose.onNodeWithText("Client ID", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val fieldBounds = compose.onNodeWithText("client", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val saveBounds = compose.onNodeWithText("保存").getUnclippedBoundsInRoot()
-        compose.onNodeWithText("保存").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.onNodeWithTag("access-save").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick) {
+            assertEquals(true, it())
+        }
         compose.waitForIdle()
+        assertEquals(1, attempts)
         compose.onNodeWithText("端末に設定を書き込めませんでした。空き容量を確認して再試行してください。", useUnmergedTree = true).assertIsDisplayed()
         assertEquals(statusBounds, compose.onNodeWithTag("access-status").getUnclippedBoundsInRoot())
-        assertEquals(fieldBounds, compose.onNodeWithText("Client ID", useUnmergedTree = true).getUnclippedBoundsInRoot())
+        assertEquals(fieldBounds, compose.onNodeWithText("client", useUnmergedTree = true).getUnclippedBoundsInRoot())
         assertEquals(saveBounds, compose.onNodeWithText("保存").getUnclippedBoundsInRoot())
-        compose.onNodeWithText("保存").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.onNodeWithTag("access-save").performSemanticsAction(SemanticsActions.OnClick) {
+            assertEquals(true, it())
+        }
         compose.waitForIdle()
         assertEquals(2, attempts)
         assertEquals(true, dismissed)

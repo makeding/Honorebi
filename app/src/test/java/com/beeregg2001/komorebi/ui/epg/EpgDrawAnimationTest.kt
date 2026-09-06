@@ -29,14 +29,17 @@ class EpgDrawAnimationTest {
     @Test fun animationDrawsIntermediateFramesWithoutRecomposingOrMovingItsSurface() {
         val target = mutableFloatStateOf(0f)
         var compositions = 0
-        val frames = mutableListOf<EpgAnimValues>()
+        var readAnimatedValues: (() -> EpgAnimValues)? = null
         compose.mainClock.autoAdvance = false
         compose.setContent {
             val values = epgDrawAnimation(target.floatValue, -target.floatValue,
                 target.floatValue, target.floatValue, 40f + target.floatValue, false)
-            SideEffect { compositions++ }
+            SideEffect {
+                compositions++
+                readAnimatedValues = values
+            }
             Box(Modifier.size(300.dp).testTag("grid").drawBehind {
-                frames.add(values())
+                values()
                 drawRect(Color.Black)
             })
         }
@@ -50,15 +53,17 @@ class EpgDrawAnimationTest {
             compose.waitForIdle()
         }
         val afterTargetChange = compositions
+        val sampledFrames = mutableListOf<EpgAnimValues>()
         repeat(30) {
             compose.mainClock.advanceTimeByFrame()
             compose.waitForIdle()
+            sampledFrames += requireNotNull(readAnimatedValues).invoke()
         }
         assertEquals(afterTargetChange, compositions)
-        assertTrue(frames.any { it.scrollX > 0f && it.scrollX < 100f })
-        assertEquals(100f, frames.last().scrollX, 0.1f)
-        assertEquals(-100f, frames.last().scrollY, 0.1f)
-        assertEquals(140f, frames.last().animH, 0.1f)
+        assertTrue(sampledFrames.any { it.scrollX > 0f && it.scrollX < 100f })
+        assertEquals(100f, sampledFrames.last().scrollX, 0.1f)
+        assertEquals(-100f, sampledFrames.last().scrollY, 0.1f)
+        assertEquals(140f, sampledFrames.last().animH, 0.1f)
         assertEquals(bounds, compose.onNodeWithTag("grid").getUnclippedBoundsInRoot())
     }
 }

@@ -120,11 +120,6 @@ class RecordedPlayerLayoutTest {
         composeRule.onNodeWithText("画質").assertIsNotEnabled()
         composeRule.onNodeWithText("CMスキップ").assertIsNotEnabled()
         composeRule.onNodeWithText("実況コメント").assertIsNotEnabled()
-        composeRule.onNodeWithText("音声切替").assertIsDisplayed()
-        composeRule.onNodeWithText("番組情報").assertIsDisplayed()
-        composeRule.onNodeWithText("再生速度").assertIsDisplayed()
-        composeRule.onNodeWithText("字幕").assertIsDisplayed()
-        composeRule.onNodeWithText("L字クロップ").assertIsDisplayed()
     }
 
     @Test

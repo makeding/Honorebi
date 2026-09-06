@@ -1155,9 +1155,7 @@ internal fun RecordedPlayerScreen(
         initialUrlRetryNonce,
         recordedPlaybackToken,
     ) {
-        val playbackKey = "video:${currentProgram.id}:${vs.currentQuality.value}:$isRecordingChasePlayback" else {
-            "video:${currentProgram.id}:${vs.currentQuality.value}:$isRecordingChasePlayback"
-        }
+        val playbackKey = "video:${currentProgram.id}:${vs.currentQuality.value}:$isRecordingChasePlayback"
         if (preparedPlaybackKey == playbackKey && exoPlayer.mediaItemCount > 0) {
             return@LaunchedEffect
         }

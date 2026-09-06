@@ -18,8 +18,8 @@ class LivePlayerProfileTest {
         assertEquals(1_000, profile.buffer.bufferForPlaybackMs)
         assertEquals(1_500, profile.buffer.bufferForPlaybackAfterRebufferMs)
         assertEquals(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER, profile.extensionRendererMode)
-        assertEquals(10_000, profile.releaseTimeoutMs)
-        assertEquals(10_000, profile.detachSurfaceTimeoutMs)
+        assertEquals(10_000L, profile.releaseTimeoutMs)
+        assertEquals(10_000L, profile.detachSurfaceTimeoutMs)
         assertEquals("STEREO", profile.audioOutputMode)
         assertFalse(profile.enableHdrToSdrToneMapping)
     }
