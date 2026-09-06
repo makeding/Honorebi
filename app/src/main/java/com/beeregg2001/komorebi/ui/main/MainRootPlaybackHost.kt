@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
@@ -159,6 +160,8 @@ fun MainRootPlaybackHost(
                     (state.playbackTarget as? PlaybackTarget.Recorded)?.program?.id == selectedProgram.id
                 androidx.compose.runtime.key(playbackToken) {
                     VideoPlayerScreen(
+                        videoPlayerViewModel = hiltViewModel(),
+                        settingsViewModel = hiltViewModel(),
                         program = selectedProgram,
                         initialPositionMs = state.renderInitialPlaybackPositionMs,
                         initialQuality = data.defaultVideoQuality,
@@ -230,6 +233,8 @@ fun MainRootPlaybackHost(
                         description = "SMBネットワーク再生: ${target.item.path}",
                     )
                     VideoPlayerScreen(
+                        videoPlayerViewModel = hiltViewModel(),
+                        settingsViewModel = hiltViewModel(),
                         program = dummyProgram,
                         smbItem = target.item,
                         initialPositionMs = state.initialPlaybackPositionMs,

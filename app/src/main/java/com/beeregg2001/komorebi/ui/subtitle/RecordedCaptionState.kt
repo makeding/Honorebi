@@ -38,7 +38,7 @@ fun UpdateRecordedCaptionState(state: RecordedCaptionState, enabled: Boolean, la
             val currentPosition = position.value().coerceAtLeast(0L)
             state.caption.value = state.timeline.current(NativeCaptionCue.TYPE_CAPTION, currentPosition)
             state.superimpose.value = state.timeline.current(NativeCaptionCue.TYPE_SUPERIMPOSE, currentPosition)
-            delay(16L)
+            delay(33L)
         }
     }
 }

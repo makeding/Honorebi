@@ -31,7 +31,7 @@ temp_root="${TMPDIR:-/tmp}"
 work_root="$temp_root/komorebi-media3-build"
 source_dir="$work_root/androidx-media"
 staging_repo="$work_root/maven"
-work_budget_kib=$((1536 * 1024))
+work_budget_kib=$((1024 * 1024))
 monitor_pid=""
 cleanup() {
   if [[ -n "$monitor_pid" ]]; then
@@ -64,7 +64,7 @@ parent_pid="$$"
       continue
     fi
     if (( current_kib > work_budget_kib )); then
-      echo "Media3 build work directory exceeded 1.5 GiB: ${current_kib} KiB" >&2
+      echo "Media3 build work directory exceeded 1 GiB: ${current_kib} KiB" >&2
       kill -TERM "$parent_pid"
       exit 1
     fi
@@ -75,7 +75,8 @@ monitor_pid="$!"
 
 git clone --filter=blob:none --no-checkout --sparse https://github.com/androidx/media.git "$source_dir"
 git -C "$source_dir" fetch --depth 1 origin "$MEDIA3_UPSTREAM_COMMIT"
-git -C "$source_dir" sparse-checkout set \
+git -C "$source_dir" sparse-checkout set --no-cone \
+  '/*' '!/*/' \
   build.gradle.kts \
   build-logic \
   build-logic-settings \
@@ -102,7 +103,9 @@ git -C "$source_dir" sparse-checkout set \
   libraries/muxer \
   libraries/test_data \
   libraries/test_utils \
-  libraries/test_utils_robolectric
+  libraries/test_utils_robolectric \
+  '!libraries/*/src/test/' \
+  '!libraries/*/src/androidTest/'
 git -C "$source_dir" checkout --detach "$MEDIA3_UPSTREAM_COMMIT"
 
 # Media3 1.11 registers every external module from build logic. Keep this

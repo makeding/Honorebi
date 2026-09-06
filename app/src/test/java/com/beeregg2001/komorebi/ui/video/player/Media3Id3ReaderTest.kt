@@ -56,12 +56,15 @@ class Media3Id3ReaderTest {
         }
         var input = inputAt(0)
         val holder = PositionHolder()
-        repeat(1_000) {
+        var ended = false
+        var readCount = 0
+        while (!ended && readCount++ < 1_000) {
             when (extractor.read(input, holder)) {
-                Extractor.RESULT_END_OF_INPUT -> return@repeat
+                Extractor.RESULT_END_OF_INPUT -> ended = true
                 Extractor.RESULT_SEEK -> input = inputAt(holder.position)
             }
         }
+        assertTrue("TsExtractor did not finish within the bounded read loop", ended)
         extractor.release()
 
         val metadataTrack = output.tracks.values.single { it.format?.sampleMimeType == "application/id3" }

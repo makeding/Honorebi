@@ -6,7 +6,7 @@ The upstream checkout itself is not vendored.
 
 The patches preserve broadcast-specific behavior:
 
-1. discard initial AAC/ADTS samples that arrive before the first PES timestamp;
+1. retain complete AAC/ADTS bytes across PES boundaries and suppress metadata only for frames that finish without a timestamp;
 2. resynchronize large broadcast audio timestamp discontinuities without reporting an audio-sink error;
 3. avoid dropping late video frames or GOPs on the target Android TV, submitting direct output
    immediately while preserving timestamped release into a video graph;
@@ -23,5 +23,5 @@ To bump Media3:
 
 `--check` uses a sparse checkout of the pinned commit and applies every patch with
 `git apply --check`, without building or changing `local_repo`. The build uses one deterministic
-system-temporary path, enforces a 1.5 GiB limit, and removes the checkout, caches, and staging
+system-temporary path, enforces a 1 GiB limit, and removes the checkout, caches, and staging
 repository on success, failure, or interruption.

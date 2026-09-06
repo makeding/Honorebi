@@ -21,7 +21,6 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.*
@@ -104,8 +103,8 @@ fun VideoPlayerScreen(
     onShowToast: (String) -> Unit,
     isPiPMode: Boolean = false,
     onPiPRequested: () -> Unit = {},
-    videoPlayerViewModel: VideoPlayerViewModel = hiltViewModel(),
-    settingsViewModel: SettingsViewModel = hiltViewModel()
+    videoPlayerViewModel: VideoPlayerViewModel,
+    settingsViewModel: SettingsViewModel
 ) {
     val recordedPlaybackFence = remember(recordedPlaybackToken, smbItem?.path) {
         RecordedPlaybackFence(
