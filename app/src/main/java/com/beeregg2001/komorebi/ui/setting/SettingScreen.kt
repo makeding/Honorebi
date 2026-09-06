@@ -547,11 +547,7 @@ fun SettingsScreen(
                                 uiState.activeDialog = SettingDialogState.CloudflareAccess(
                                     prefs.cfAccessClientId,
                                     prefs.cfAccessClientSecret,
-                                ) { clientId, clientSecret ->
-                                    scope.launch(Dispatchers.IO) {
-                                        repository.saveCloudflareAccessCredentials(clientId, clientSecret)
-                                    }
-                                }
+                                ) { clientId, clientSecret -> repository.saveCloudflareAccessCredentials(clientId, clientSecret) }
                             },
                             itemFocusRequesters[1][0],
                             itemFocusRequesters[1][1],
@@ -1110,7 +1106,7 @@ fun SettingsScreen(
                 state.clientId,
                 state.clientSecret,
                 { closeDialog() },
-                { clientId, clientSecret -> state.onConfirm(clientId, clientSecret); closeDialog() },
+                { clientId, clientSecret -> state.onConfirm(clientId, clientSecret) },
             )
 
             is SettingDialogState.BatchInput -> BatchInputDialog(

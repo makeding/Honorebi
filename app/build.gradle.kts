@@ -115,7 +115,10 @@ configurations.configureEach {
     resolutionStrategy {
         // Jellyfin decoder 等の推移依存も、同じローカルパッチ版へ揃える。
         eachDependency {
-            if (requested.group == "androidx.media3") {
+            if (requested.group == "androidx.media3" && requested.name == "media3-datasource-okhttp") {
+                // The HTTP adapter has no broadcast patches; align its upstream base version.
+                useVersion(media3Version.substringBefore("-komorebi"))
+            } else if (requested.group == "androidx.media3") {
                 useVersion(media3Version)
                 because("Komorebi broadcast playback patches")
             }
@@ -142,6 +145,7 @@ ksp {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:${libs.versions.okhttp.get()}")
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
@@ -195,6 +199,7 @@ dependencies {
     implementation("androidx.media3:media3-effect:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
+    implementation("androidx.media3:media3-datasource-okhttp:${media3Version.substringBefore("-komorebi")}")
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")

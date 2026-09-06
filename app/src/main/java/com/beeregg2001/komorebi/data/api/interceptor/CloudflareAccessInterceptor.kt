@@ -8,12 +8,15 @@ import javax.inject.Singleton
 
 /** Adds Access headers only after the backend URL rewrite has selected a trusted origin. */
 @Singleton
-class CloudflareAccessInterceptor @Inject constructor(
-    private val settingsRepository: SettingsRepository,
+class CloudflareAccessInterceptor internal constructor(
+    private val configuration: () -> CloudflareAccessConfiguration,
 ) : Interceptor {
+    @Inject constructor(settingsRepository: SettingsRepository) : this(
+        { settingsRepository.cloudflareAccessConfiguration.value }
+    )
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val headers = settingsRepository.cloudflareAccessConfiguration.value.headersFor(request.url.toString())
+        val headers = configuration().headersFor(request.url.toString())
         val scoped = request.newBuilder().apply {
             // A redirect follow-up can carry copied request headers. Remove them before
             // deciding again for its exact destination.

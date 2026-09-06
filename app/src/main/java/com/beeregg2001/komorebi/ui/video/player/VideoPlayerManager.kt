@@ -25,7 +25,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import com.beeregg2001.komorebi.util.playbackHttpDataSourceFactory
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -342,12 +342,10 @@ fun rememberManagedExoPlayer(
             setEnableDecoderFallback(true)
         }
 
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory().apply {
-            setUserAgent("DTVClient/1.0")
-            setAllowCrossProtocolRedirects(true)
-            setConnectTimeoutMs(15_000)
-            setReadTimeoutMs(60_000)
-        }
+        val httpDataSourceFactory = playbackHttpDataSourceFactory(context)
+        val accessSettings = dagger.hilt.android.EntryPointAccessors.fromApplication(
+            context.applicationContext, com.beeregg2001.komorebi.util.PlaybackHttpEntryPoint::class.java
+        ).settingsRepository()
 
         val nativeLib = NativeLib()
 
@@ -356,6 +354,7 @@ fun rememberManagedExoPlayer(
         val dataSourceFactory = buildRecordedDataSourceFactory(
             nativeLib = nativeLib,
             httpDataSourceFactory = httpDataSourceFactory,
+            accessConfiguration = { accessSettings.cloudflareAccessConfiguration.value },
             constructionKey = constructionKey,
             smbServerList = smbServerList,
             scope = scope,

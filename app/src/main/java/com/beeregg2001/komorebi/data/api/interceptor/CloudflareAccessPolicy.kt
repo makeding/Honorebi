@@ -13,7 +13,7 @@ data class CloudflareAccessConfiguration(
 ) {
     data class Origin(val host: String, val port: Int)
 
-    fun headersFor(url: String): Map<String, String> = headersFor(URI(url))
+    fun headersFor(url: String): Map<String, String> = runCatching { headersFor(URI(url)) }.getOrDefault(emptyMap())
 
     fun headersFor(uri: URI): Map<String, String> {
         if (clientId.isBlank() || clientSecret.isBlank() || !uri.scheme.equals("https", ignoreCase = true)) {
@@ -32,7 +32,7 @@ data class CloudflareAccessConfiguration(
         const val CLIENT_SECRET_HEADER = "CF-Access-Client-Secret"
 
         fun origin(url: String, fallbackPort: String): Origin? = runCatching {
-            val uri = URI(url)
+            val uri = URI(com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(url, fallbackPort, "http"))
             if (!uri.scheme.equals("https", ignoreCase = true)) return@runCatching null
             val host = uri.host?.lowercase() ?: return@runCatching null
             val port = if (uri.port == -1) 443 else uri.port

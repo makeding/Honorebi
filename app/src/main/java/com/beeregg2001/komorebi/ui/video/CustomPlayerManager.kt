@@ -23,7 +23,9 @@ class CustomPlayerManager(private val context: Context) {
 
         // 2. プレイヤーの構築
         player = ExoPlayer.Builder(context, renderersFactory)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(
+                com.beeregg2001.komorebi.util.playbackHttpDataSourceFactory(context)
+            ))
             .build()
 
         // 3. 音声属性の設定（必要に応じて）

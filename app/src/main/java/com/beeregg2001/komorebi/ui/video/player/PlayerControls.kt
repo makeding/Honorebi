@@ -75,9 +75,11 @@ fun PlayerControls(
     isPlaying: Boolean,
     hasChapters: Boolean,
     externalChapters: List<ChapterInfo> = emptyList(),
-    currentPositionMs: Long,
+    initialPositionMs: Long,
     totalDurationMs: Long,
-    bufferedPositionMs: Long,
+    initialBufferedPositionMs: Long,
+    displayPositionMsProvider: () -> Long,
+    displayBufferedPositionMsProvider: () -> Long,
     controlsFocusRequester: FocusRequester,
     onSeekBarFocusChanged: (Boolean) -> Unit,
     onPlayPauseToggle: () -> Unit,
@@ -103,8 +105,13 @@ fun PlayerControls(
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
 
-    val bufferedPosition = bufferedPositionMs.coerceAtLeast(0L)
-    var displayPositionMs by remember { mutableStateOf(currentPositionMs) }
+    val displayProgress = rememberRecordedControlsDisplayProgress(
+        isVisible = isVisible,
+        initialPositionMs = initialPositionMs,
+        initialBufferedPositionMs = initialBufferedPositionMs,
+        positionMs = displayPositionMsProvider,
+        bufferedPositionMs = displayBufferedPositionMsProvider,
+    )
 
     val tileInfo = program.recordedVideo.thumbnailInfo?.tile
     val tileColumns = tileInfo?.columnCount ?: 1
@@ -120,12 +127,6 @@ fun PlayerControls(
     )
     val playHeadVerticalOffset = (playHeadSize - trackHeight) / 2
     val graphHeight = 48.dp
-    LaunchedEffect(currentPositionMs) {
-        if (kotlin.math.abs(displayPositionMs - currentPositionMs) > 1000) {
-            displayPositionMs = currentPositionMs
-        }
-    }
-
     LaunchedEffect(isVisible, isModernUi) {
         if (isVisible && isModernUi) {
             delay(100)
@@ -146,98 +147,18 @@ fun PlayerControls(
             }
             .focusProperties { canFocus = isVisible }
     ) {
-        AnimatedVisibility(
+        RecordedSeekingPreview(
             visible = isSeekingPreviewVisible && isModernUi,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 128.dp, end = 128.dp, bottom = controlsHeight),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-                    .padding(bottom = 12.dp)
-            ) {
-                val progress =
-                    if (totalDurationMs > 0) (displayPositionMs.toFloat() / totalDurationMs).coerceIn(
-                        0f,
-                        1f
-                    ) else 0f
-                val horizontalBias = (progress * 2f) - 1f
-
-                var thumbnailRegion by remember { mutableStateOf<TileSheetRegion?>(null) }
-
-                val timeSec = displayPositionMs / 1000
-                val tileIndex = floor(timeSec / tileInterval).toInt()
-                val col = tileIndex % tileColumns
-                val row = tileIndex / tileColumns
-
-                LaunchedEffect(tiledThumbnailUrl, col, row) {
-                    if (tiledThumbnailUrl.isNullOrBlank()) {
-                        return@LaunchedEffect
-                    }
-                    val res = loader.loadRegion(
-                        tiledThumbnailUrl,
-                        col,
-                        row,
-                        tileWidth,
-                        tileHeight,
-                    )
-                    if (res != null) {
-                        thumbnailRegion = res
-                    }
-                }
-
-                if (thumbnailRegion != null) {
-                    Box(
-                        modifier = Modifier
-                            .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
-                            .size(144.dp, 81.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.DarkGray.copy(alpha = 0.8f))
-                            .border(2.dp, colors.accent, RoundedCornerShape(6.dp))
-                    ) {
-                        TileSheetRegionImage(
-                            region = thumbnailRegion!!,
-                            contentDescription = "Seek Preview",
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        Text(
-                            text = formatMillisToTime(displayPositionMs),
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Color.Black.copy(alpha = 0.7f),
-                                    RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
-                    }
-                } else {
-                    Text(
-                        text = formatMillisToTime(displayPositionMs),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
-                            .background(
-                                Color.Black.copy(alpha = 0.8f),
-                                RoundedCornerShape(4.dp)
-                            )
-                            .border(
-                                1.dp,
-                                colors.accent.copy(alpha = 0.5f),
-                                RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-            }
-        }
+            controlsHeight = controlsHeight,
+            displayProgress = displayProgress,
+            totalDurationMs = totalDurationMs,
+            tiledThumbnailUrl = tiledThumbnailUrl,
+            tileColumns = tileColumns,
+            tileInterval = tileInterval,
+            tileWidth = tileWidth,
+            tileHeight = tileHeight,
+            loader = loader,
+        )
 
         Box(
             modifier = Modifier
@@ -281,215 +202,34 @@ fun PlayerControls(
                     maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth().height(36.dp).testTag("recorded-title")
-                        .basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 2000)
+                        .basicMarquee(
+                            iterations = if (isVisible) Int.MAX_VALUE else 0,
+                            initialDelayMillis = 2000,
+                        )
                 )
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = formatMillisToTime(displayPositionMs),
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.width(64.dp).testTag("playback-time")
-                    )
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(graphHeight).testTag("playback-track")
-                            .onFocusChanged {
-                                isSeekBarFocused = it.isFocused
-                                onSeekBarFocusChanged(it.isFocused)
-                            }
-                            .focusProperties {
-                                left = FocusRequester.Cancel
-                                right = FocusRequester.Cancel
-                            }
-                            .focusable(isModernUi)
-                            // ★ シークバーでのシークができない問題の修正
-                            // フォーカスが当たっている間に左右キーが押された際、onSeekRequested へ新しい時間を渡してシークさせる
-                            .onKeyEvent { event ->
-                                if (isSeekBarFocused && event.type == KeyEventType.KeyDown) {
-                                    val repeatCount = event.nativeKeyEvent.repeatCount
-                                    val seekStepMs = (10_000L * (1 + repeatCount / 5)).coerceAtMost(60_000L)
-                                    when (event.key) {
-                                        Key.DirectionLeft -> {
-                                            val newPos =
-                                                (currentPositionMs - seekStepMs).coerceAtLeast(0L)
-                                            onSeekRequested(newPos)
-                                            return@onKeyEvent true
-                                        }
-
-                                        Key.DirectionRight -> {
-                                            val limit =
-                                                if (totalDurationMs > 0) totalDurationMs else Long.MAX_VALUE
-                                            val newPos =
-                                                (currentPositionMs + seekStepMs).coerceAtMost(limit)
-                                            onSeekRequested(newPos)
-                                            return@onKeyEvent true
-                                        }
-                                    }
-                                }
-                                false
-                            },
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (allComments.isNotEmpty() && totalDurationMs > 0) {
-                            CommentMomentumGraph(
-                                comments = allComments,
-                                totalDurationMs = totalDurationMs,
-                                currentPositionMs = displayPositionMs,
-                                playedColor = colors.accent.copy(alpha = 0.6f),
-                                unplayedColor = Color.White.copy(alpha = 0.2f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight()
-                                    .align(Alignment.BottomStart)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(trackHeight)
-                                .align(Alignment.BottomStart)
-                                .background(
-                                    Color.White.copy(alpha = 0.3f),
-                                    RoundedCornerShape(4.dp)
-                                )
-                        )
-
-                        if (hasChapters && totalDurationMs > 0L) {
-                            val apiCmSections = program.recordedVideo.cmSections ?: emptyList()
-                            val renderSections = if (apiCmSections.isNotEmpty()) {
-                                apiCmSections.map {
-                                    ChapterInfo(
-                                        (it.startTime * 1000).toLong(),
-                                        (it.endTime * 1000).toLong(),
-                                        isCm = true
-                                    )
-                                }
-                            } else {
-                                externalChapters
-                            }
-
-                            Canvas(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(trackHeight)
-                                    .align(Alignment.BottomStart)
-                            ) {
-                                val canvasWidth = size.width
-                                val canvasHeight = size.height
-
-                                renderSections.filter { it.isCm && !it.isMarkerOnly }
-                                    .forEach { section ->
-                                        val startRatio =
-                                            (section.startTimeMs.toFloat() / totalDurationMs).coerceIn(
-                                                0f,
-                                                1f
-                                            )
-                                        val endRatio =
-                                            (section.endTimeMs.toFloat() / totalDurationMs).coerceIn(
-                                                0f,
-                                                1f
-                                            )
-                                        val startX = startRatio * canvasWidth
-                                        val sectionWidth = (endRatio * canvasWidth) - startX
-
-                                        drawRect(
-                                            color = Color.Red.copy(alpha = 0.5f),
-                                            topLeft = Offset(startX, 0f),
-                                            size = Size(sectionWidth, canvasHeight)
-                                        )
-                                    }
-                                renderSections.forEach { section ->
-                                    val startRatio =
-                                        (section.startTimeMs.toFloat() / totalDurationMs).coerceIn(
-                                            0f,
-                                            1f
-                                        )
-                                    drawRect(
-                                        color = Color.White.copy(alpha = 0.8f),
-                                        topLeft = Offset(startRatio * canvasWidth, 0f),
-                                        size = Size(2.dp.toPx(), canvasHeight)
-                                    )
-                                }
-                            }
-                        }
-
-                        val exoDuration = totalDurationMs.coerceAtLeast(1L)
-                        val bufferProgress =
-                            if (exoDuration.coerceAtLeast(1L) > 0) (bufferedPosition.toFloat() / exoDuration.coerceAtLeast(
-                                1L
-                            )).coerceIn(0f, 1f) else 0f
-
-                        if (bufferProgress > 0f) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(bufferProgress)
-                                    .height(trackHeight)
-                                    .align(Alignment.BottomStart)
-                                    .background(
-                                        Color.White.copy(alpha = 0.5f),
-                                        RoundedCornerShape(4.dp)
-                                    )
-                            )
-                        }
-
-                        val playProgress =
-                            if (totalDurationMs > 0) (displayPositionMs.toFloat() / totalDurationMs).coerceIn(
-                                0f,
-                                1f
-                            ) else 0f
-
-                        if (playProgress > 0f) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(playProgress)
-                                    .height(trackHeight)
-                                    .align(Alignment.BottomStart)
-                                    .background(
-                                        if (isSeekBarFocused) colors.accent else colors.accent.copy(
-                                            alpha = 0.8f
-                                        ), RoundedCornerShape(4.dp)
-                                    )
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(playProgress)
-                                .fillMaxHeight(),
-                            contentAlignment = Alignment.BottomEnd
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .offset(x = (playHeadSize / 2), y = playHeadVerticalOffset)
-                                    .size(playHeadSize)
-                                    .background(
-                                        if (isSeekBarFocused) colors.accent else Color.White,
-                                        CircleShape
-                                    )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Text(
-                        text = formatMillisToTime(totalDurationMs),
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.width(64.dp).testTag("playback-duration")
-                    )
-                }
+                RecordedControlsProgressRow(
+                    displayProgress = displayProgress,
+                    displayPositionMsProvider = displayPositionMsProvider,
+                    totalDurationMs = totalDurationMs,
+                    allComments = allComments,
+                    hasChapters = hasChapters,
+                    program = program,
+                    externalChapters = externalChapters,
+                    isModernUi = isModernUi,
+                    isSeekBarFocused = isSeekBarFocused,
+                    onSeekBarFocusChanged = {
+                        isSeekBarFocused = it
+                        onSeekBarFocusChanged(it)
+                    },
+                    trackHeight = trackHeight,
+                    playHeadSize = playHeadSize,
+                    playHeadVerticalOffset = playHeadVerticalOffset,
+                    graphHeight = graphHeight,
+                    onSeekRequested = onSeekRequested,
+                )
 
                 if (isModernUi) {
                     Spacer(modifier = Modifier.height(24.dp))
@@ -583,6 +323,230 @@ fun PlayerControls(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BoxScope.RecordedSeekingPreview(
+    visible: Boolean,
+    controlsHeight: Dp,
+    displayProgress: State<RecordedControlsDisplayProgress>,
+    totalDurationMs: Long,
+    tiledThumbnailUrl: String?,
+    tileColumns: Int,
+    tileInterval: Double,
+    tileWidth: Int,
+    tileHeight: Int,
+    loader: TileSheetLoader,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = Modifier.align(Alignment.BottomStart)
+            .padding(start = 128.dp, end = 128.dp, bottom = controlsHeight),
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
+        val displayPositionMs = displayProgress.value.positionMs
+        val colors = KomorebiTheme.colors
+        val progress = if (totalDurationMs > 0) {
+            (displayPositionMs.toFloat() / totalDurationMs).coerceIn(0f, 1f)
+        } else 0f
+        val horizontalBias = (progress * 2f) - 1f
+        var thumbnailRegion by remember { mutableStateOf<TileSheetRegion?>(null) }
+        val timeSec = displayPositionMs / 1000
+        val tileIndex = floor(timeSec / tileInterval).toInt()
+        val col = tileIndex % tileColumns
+        val row = tileIndex / tileColumns
+
+        LaunchedEffect(tiledThumbnailUrl, col, row) {
+            if (tiledThumbnailUrl.isNullOrBlank()) return@LaunchedEffect
+            loader.loadRegion(tiledThumbnailUrl, col, row, tileWidth, tileHeight)?.let {
+                thumbnailRegion = it
+            }
+        }
+
+        Box(
+            modifier = Modifier.fillMaxWidth().height(100.dp).padding(bottom = 12.dp),
+        ) {
+            val previewModifier = Modifier
+                .align(androidx.compose.ui.BiasAlignment(horizontalBias, 1f))
+            if (thumbnailRegion != null) {
+                Box(
+                    modifier = previewModifier
+                        .size(144.dp, 81.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.DarkGray.copy(alpha = 0.8f))
+                        .border(2.dp, colors.accent, RoundedCornerShape(6.dp)),
+                ) {
+                    TileSheetRegionImage(
+                        region = thumbnailRegion!!,
+                        contentDescription = "Seek Preview",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Text(
+                        text = formatMillisToTime(displayPositionMs),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                            .background(
+                                Color.Black.copy(alpha = 0.7f),
+                                RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp),
+                            )
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            } else {
+                Text(
+                    text = formatMillisToTime(displayPositionMs),
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = previewModifier
+                        .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                        .border(1.dp, colors.accent.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordedControlsProgressRow(
+    displayProgress: State<RecordedControlsDisplayProgress>,
+    displayPositionMsProvider: () -> Long,
+    totalDurationMs: Long,
+    allComments: List<ArchivedComment>,
+    hasChapters: Boolean,
+    program: RecordedProgram,
+    externalChapters: List<ChapterInfo>,
+    isModernUi: Boolean,
+    isSeekBarFocused: Boolean,
+    onSeekBarFocusChanged: (Boolean) -> Unit,
+    trackHeight: Dp,
+    playHeadSize: Dp,
+    playHeadVerticalOffset: Dp,
+    graphHeight: Dp,
+    onSeekRequested: (Long) -> Unit,
+) {
+    val displayPositionMs = displayProgress.value.positionMs
+    val bufferedPositionMs = displayProgress.value.bufferedPositionMs
+    val colors = KomorebiTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = formatMillisToTime(displayPositionMs),
+            color = Color.White.copy(alpha = 0.9f),
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(64.dp).testTag("playback-time"),
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Box(
+            modifier = Modifier.weight(1f).height(graphHeight).testTag("playback-track")
+                .onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
+                .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
+                .focusable(isModernUi)
+                .onKeyEvent { event ->
+                    if (isSeekBarFocused && event.type == KeyEventType.KeyDown) {
+                        val step = (10_000L * (1 + event.nativeKeyEvent.repeatCount / 5)).coerceAtMost(60_000L)
+                        when (event.key) {
+                            Key.DirectionLeft -> {
+                                onSeekRequested(
+                                    resolveRecordedControlsSeekTarget(
+                                        latestPositionMs = displayPositionMsProvider(),
+                                        stepMs = step,
+                                        totalDurationMs = totalDurationMs,
+                                        forward = false,
+                                    )
+                                )
+                                return@onKeyEvent true
+                            }
+                            Key.DirectionRight -> {
+                                onSeekRequested(
+                                    resolveRecordedControlsSeekTarget(
+                                        latestPositionMs = displayPositionMsProvider(),
+                                        stepMs = step,
+                                        totalDurationMs = totalDurationMs,
+                                        forward = true,
+                                    )
+                                )
+                                return@onKeyEvent true
+                            }
+                        }
+                    }
+                    false
+                },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (allComments.isNotEmpty() && totalDurationMs > 0) {
+                CommentMomentumGraph(
+                    comments = allComments,
+                    totalDurationMs = totalDurationMs,
+                    currentPositionMs = displayPositionMs,
+                    playedColor = colors.accent.copy(alpha = 0.6f),
+                    unplayedColor = Color.White.copy(alpha = 0.2f),
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight().align(Alignment.BottomStart),
+                )
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth().height(trackHeight).align(Alignment.BottomStart)
+                    .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp)),
+            )
+            if (hasChapters && totalDurationMs > 0L) {
+                val apiCmSections = program.recordedVideo.cmSections ?: emptyList()
+                val renderSections = if (apiCmSections.isNotEmpty()) {
+                    apiCmSections.map { ChapterInfo((it.startTime * 1000).toLong(), (it.endTime * 1000).toLong(), isCm = true) }
+                } else externalChapters
+                Canvas(modifier = Modifier.fillMaxWidth().height(trackHeight).align(Alignment.BottomStart)) {
+                    renderSections.filter { it.isCm && !it.isMarkerOnly }.forEach { section ->
+                        val start = (section.startTimeMs.toFloat() / totalDurationMs).coerceIn(0f, 1f) * size.width
+                        val end = (section.endTimeMs.toFloat() / totalDurationMs).coerceIn(0f, 1f) * size.width
+                        drawRect(Color.Red.copy(alpha = 0.5f), Offset(start, 0f), Size(end - start, size.height))
+                    }
+                    renderSections.forEach { section ->
+                        val start = (section.startTimeMs.toFloat() / totalDurationMs).coerceIn(0f, 1f) * size.width
+                        drawRect(Color.White.copy(alpha = 0.8f), Offset(start, 0f), Size(2.dp.toPx(), size.height))
+                    }
+                }
+            }
+            val duration = totalDurationMs.coerceAtLeast(1L)
+            val bufferedProgress = (bufferedPositionMs.toFloat() / duration).coerceIn(0f, 1f)
+            if (bufferedProgress > 0f) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(bufferedProgress).height(trackHeight).align(Alignment.BottomStart)
+                        .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(4.dp)),
+                )
+            }
+            val playProgress = if (totalDurationMs > 0) {
+                (displayPositionMs.toFloat() / totalDurationMs).coerceIn(0f, 1f)
+            } else 0f
+            if (playProgress > 0f) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(playProgress).height(trackHeight).align(Alignment.BottomStart)
+                        .background(
+                            if (isSeekBarFocused) colors.accent else colors.accent.copy(alpha = 0.8f),
+                            RoundedCornerShape(4.dp),
+                        ),
+                )
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth(playProgress).fillMaxHeight(),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                Box(
+                    modifier = Modifier.offset(x = playHeadSize / 2, y = playHeadVerticalOffset)
+                        .size(playHeadSize)
+                        .background(if (isSeekBarFocused) colors.accent else Color.White, CircleShape),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = formatMillisToTime(totalDurationMs),
+            color = Color.White.copy(alpha = 0.9f),
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(64.dp).testTag("playback-duration"),
+        )
     }
 }
 

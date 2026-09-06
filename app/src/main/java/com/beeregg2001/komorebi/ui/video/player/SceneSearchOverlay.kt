@@ -39,6 +39,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessUrlConnection
+import com.beeregg2001.komorebi.util.PlaybackHttpEntryPoint
+import dagger.hilt.android.EntryPointAccessors
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,7 +54,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.net.URL
 import java.security.MessageDigest
 import kotlin.math.floor
 
@@ -83,7 +86,15 @@ internal data class TileSheetRegion(
     val bounds: TileBounds,
 )
 
-class TileSheetLoader(private val context: Context) {
+class TileSheetLoader(
+    private val context: Context,
+    private val cloudflareAccessConfiguration: () -> CloudflareAccessConfiguration = {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            PlaybackHttpEntryPoint::class.java,
+        ).settingsRepository().cloudflareAccessConfiguration.value
+    },
+) {
     private var isReleased = false
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -148,7 +159,10 @@ class TileSheetLoader(private val context: Context) {
                         "[TileLoader] Downloading sheet to local cache file: ${file.absolutePath}"
                     )
                     withContext(Dispatchers.IO) {
-                        URL(url).openStream().use { input ->
+                        CloudflareAccessUrlConnection.open(
+                            initialUrl = url,
+                            configuration = cloudflareAccessConfiguration,
+                        ).inputStream.use { input ->
                             FileOutputStream(file).use { output ->
                                 input.copyTo(output)
                             }

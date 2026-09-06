@@ -1,8 +1,8 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import android.util.Log
-import android.view.View
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.beeregg2001.komorebi.data.model.ArchivedComment
@@ -14,14 +14,13 @@ import kotlinx.coroutines.withContext
 import master.flame.danmaku.controller.IDanmakuView
 import master.flame.danmaku.danmaku.model.BaseDanmaku
 import android.graphics.Color as AndroidColor
-import kotlin.math.abs
 
 private const val TAG = "ArchivedCommentOverlay"
 
 @Composable
 fun ArchivedCommentOverlay(
     modifier: Modifier = Modifier,
-    comments: List<ArchivedComment>,
+    comments: SnapshotStateList<ArchivedComment>,
     currentPositionProvider: () -> Long,
     isPlaying: Boolean,
     isCommentEnabled: Boolean,
@@ -55,89 +54,37 @@ fun ArchivedCommentOverlay(
     val latestIsPlaying by rememberUpdatedState(isPlaying)
     val latestIsCommentEnabled by rememberUpdatedState(isCommentEnabled)
 
-    // コメント同期・描画予約ロジック
-    LaunchedEffect(recordedPlaybackFence.identity) {
+    val latestPositionProvider by rememberUpdatedState(currentPositionProvider)
+    val latestFontScale by rememberUpdatedState(commentFontSizeScale)
+    val snapshots = remember(comments, recordedPlaybackFence.identity) { ArchivedCommentSnapshots(comments) }
+    LaunchedEffect(snapshots, recordedPlaybackFence.identity) { snapshots.observe(recordedPlaybackFence) }
 
-        var currentIndex = 0
-        var lastPlayerSec = withContext(Dispatchers.Main) { currentPositionProvider() / 1000.0 }
-        val lookAheadSec = 2.0 // 2秒先まで先読みして描画予約する
-
+    // Chase playback may populate/merge the list after this coroutine starts.
+    // Read the latest immutable snapshot; never copy the whole list on a timer.
+    LaunchedEffect(snapshots, recordedPlaybackFence.identity) {
+        val schedule = ArchivedCommentSchedule()
         while (isActive) {
-            if (latestIsPlaying && latestIsCommentEnabled && recordedPlaybackFence.accepts()) {
-                // ★ 修正1: ExoPlayerへのアクセス(currentPositionProvider)は必ずメインスレッドで行う
-                val currentSec =
-                    withContext(Dispatchers.Main) { currentPositionProvider() / 1000.0 }
-                val commentsSnapshot = comments.toList()
-
-                // ★ 修正2: 重い検索処理やインスタンス化はバックグラウンドスレッドで行う
+            val view = danmakuViewRef.value
+            if (latestIsPlaying && latestIsCommentEnabled && recordedPlaybackFence.accepts() && view?.isPrepared == true) {
+                val currentSec = latestPositionProvider() / 1000.0 // ExoPlayer access stays on Main.
+                val commentsSnapshot = snapshots.current
+                val fontScale = latestFontScale
                 withContext(Dispatchers.Default) {
-                    // シーク検知: 現在位置と最後に処理した時間が1.5秒以上乖離している場合
-                    if (abs(currentSec - lastPlayerSec) > 1.5) {
-                        if (recordedPlaybackFence.accepts()) {
-                            danmakuViewRef.value?.removeAllDanmakus(true)
-                        }
-                        currentIndex = commentsSnapshot.findFirstIndexAtOrAfter(currentSec)
-                        Log.i(
-                            TAG,
-                            "Comment overlay seek reset. [current_sec=$currentSec, index=$currentIndex, " +
-                                "comments=${commentsSnapshot.size}]"
-                        )
+                    if (!recordedPlaybackFence.accepts()) return@withContext
+                    val batch = schedule.next(commentsSnapshot, currentSec)
+                    if (batch.reset) {
+                        if (!recordedPlaybackFence.accepts()) return@withContext
+                        view.removeAllDanmakus(true)
+                        Log.i(TAG, "Comment overlay seek reset. [current_sec=$currentSec, comments=${commentsSnapshot.size}]")
                     }
-
-                    danmakuViewRef.value?.let { view ->
-                        if (view.isPrepared) {
-                            val targetTimeSec = currentSec + lookAheadSec
-                            val danmakusToAdd = mutableListOf<BaseDanmaku>()
-                            var eligibleCommentCount = 0
-
-                            if (currentIndex > commentsSnapshot.size) {
-                                currentIndex = commentsSnapshot.findFirstIndexAtOrAfter(currentSec)
-                            }
-                            while (currentIndex < commentsSnapshot.size) {
-                                val comment = commentsSnapshot[currentIndex]
-                                if (comment.time > targetTimeSec) break // 2秒以上先ならループを抜ける
-
-                                // シーク直後の過去すぎるコメントを捨てる
-                                if (comment.time >= currentSec - 0.5) {
-                                    eligibleCommentCount++
-                                    val d =
-                                        createDanmaku(
-                                            view,
-                                            comment,
-                                            commentFontSizeScale,
-                                            density,
-                                            colorCache
-                                        )
-                                    if (d != null) {
-                                        // 現在時刻との差分を計算し、DanmakuViewの内部時計で正確な表示時刻を予約
-                                        val futureMs = ((comment.time - currentSec) * 1000).toLong()
-                                        d.setTime(view.currentTime + futureMs)
-                                        danmakusToAdd.add(d)
-                                    }
-                                }
-                                currentIndex++
-                            }
-
-                            // コメントの追加(addDanmaku)は内部的にスレッドセーフなのでバックグラウンドから呼んでもOK
-                            danmakusToAdd.forEach { danmaku ->
-                                if (
-                                    recordedPlaybackFence.accepts() &&
-                                    danmakuViewRef.value === view
-                                ) view.addDanmaku(danmaku)
-                            }
-                            if (eligibleCommentCount > 0) {
-                                Log.i(
-                                    TAG,
-                                    "Comment overlay scheduled. [current_sec=$currentSec, target_sec=$targetTimeSec, " +
-                                        "eligible=$eligibleCommentCount, added=${danmakusToAdd.size}, index=$currentIndex, " +
-                                        "total=${commentsSnapshot.size}, first=${commentsSnapshot.first().time}, " +
-                                        "last=${commentsSnapshot.last().time}]"
-                                )
-                            }
+                    batch.comments.forEach { comment ->
+                        val danmaku = createDanmaku(view, comment, fontScale, density, colorCache)
+                        if (danmaku != null && recordedPlaybackFence.accepts() && danmakuViewRef.value === view) {
+                            danmaku.setTime(view.currentTime + ((comment.time - currentSec) * 1000).toLong())
+                            view.addDanmaku(danmaku)
                         }
                     }
                 }
-                lastPlayerSec = currentSec
             }
             delay(500)
         }
@@ -184,18 +131,4 @@ private fun createDanmaku(
 
     danmaku.textShadowColor = AndroidColor.BLACK
     return danmaku
-}
-
-private fun List<ArchivedComment>.findFirstIndexAtOrAfter(timeSec: Double): Int {
-    var low = 0
-    var high = size
-    while (low < high) {
-        val mid = (low + high) ushr 1
-        if (this[mid].time < timeSec) {
-            low = mid + 1
-        } else {
-            high = mid
-        }
-    }
-    return low
 }

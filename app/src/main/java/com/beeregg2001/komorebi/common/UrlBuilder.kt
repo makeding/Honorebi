@@ -10,13 +10,16 @@ object UrlBuilder {
     /**
      * ベースURLを組み立てる
      */
-    private fun formatBaseUrl(ip: String, port: String, defaultProtocol: String): String {
-        val cleanIp = ip.removeSuffix("/")
-        return if (cleanIp.startsWith("http://") || cleanIp.startsWith("https://")) {
-            "$cleanIp:$port"
-        } else {
-            "$defaultProtocol://$cleanIp:$port"
+    fun formatBaseUrl(ip: String, port: String, defaultProtocol: String): String {
+        val configured = ip.trim().removeSuffix("/").let {
+            if (it.startsWith("http://") || it.startsWith("https://")) it else "$defaultProtocol://$it"
         }
+        return runCatching {
+            val uri = java.net.URI(configured)
+            val effectivePort = if (uri.port >= 0) uri.port else port.toInt()
+            java.net.URI(uri.scheme, null, requireNotNull(uri.host), effectivePort,
+                uri.path, null, null).toASCIIString().removeSuffix("/")
+        }.getOrDefault(configured)
     }
 
     /**

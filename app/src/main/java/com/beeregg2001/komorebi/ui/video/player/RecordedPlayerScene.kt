@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -208,7 +209,7 @@ internal fun BoxScope.RecordedMediaSurface(
 internal fun BoxScope.RecordedPlaybackOverlays(
     isHeavyUiReady: Boolean,
     state: VideoPlayerState,
-    comments: List<ArchivedComment>,
+    comments: SnapshotStateList<ArchivedComment>,
     currentPositionMs: () -> Long,
     commentPositionMs: () -> Long,
     commentSpeed: Float,
@@ -245,7 +246,10 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     isPlaying: Boolean,
     chapters: List<ChapterInfo>,
     totalDurationMs: Long,
-    bufferedPositionMs: Long,
+    initialControlsPositionMs: Long,
+    initialBufferedPositionMs: Long,
+    controlsPositionMs: () -> Long,
+    controlsBufferedPositionMs: () -> Long,
     playerControlsFocusRequester: FocusRequester,
     onSeekBarFocusChanged: (Boolean) -> Unit,
     onPlayPauseToggle: () -> Unit,
@@ -378,9 +382,11 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         isPlaying = isPlaying,
         hasChapters = chapters.isNotEmpty(),
         externalChapters = chapters,
-        currentPositionMs = currentPositionMs(),
+        initialPositionMs = initialControlsPositionMs,
         totalDurationMs = totalDurationMs,
-        bufferedPositionMs = bufferedPositionMs,
+        initialBufferedPositionMs = initialBufferedPositionMs,
+        displayPositionMsProvider = controlsPositionMs,
+        displayBufferedPositionMsProvider = controlsBufferedPositionMs,
         controlsFocusRequester = playerControlsFocusRequester,
         onSeekBarFocusChanged = onSeekBarFocusChanged,
         onPlayPauseToggle = onPlayPauseToggle,

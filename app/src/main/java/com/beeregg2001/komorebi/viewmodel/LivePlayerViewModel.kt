@@ -12,7 +12,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.*
 import androidx.media3.common.util.TimestampAdjuster
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import com.beeregg2001.komorebi.util.playbackHttpDataSourceFactory
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -99,6 +99,7 @@ class LivePlayerViewModel @Inject constructor(
     private val liveProvider: LiveProvider,
     private val recordProvider: RecordProvider,
     private val settingsRepository: SettingsRepository,
+    @javax.inject.Named("access") private val accessHttpClient: OkHttpClient,
     private val livePlayerFactory: LivePlayerFactory,
     private val liveJikkyoManager: LiveJikkyoManager
 ) : ViewModel() {
@@ -129,8 +130,12 @@ class LivePlayerViewModel @Inject constructor(
     private val _dualSessionToken = MutableStateFlow<LiveChannelSessionToken?>(null)
     val dualSessionToken: StateFlow<LiveChannelSessionToken?> = _dualSessionToken.asStateFlow()
 
-    private val mainTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
-    private val dualTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray())
+    private val mainTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray()).apply {
+        cloudflareAccessConfiguration = { settingsRepository.cloudflareAccessConfiguration.value }
+    }
+    private val dualTsDataSourceFactory = TsReadExDataSourceFactory(NativeLib(), emptyArray()).apply {
+        cloudflareAccessConfiguration = { settingsRepository.cloudflareAccessConfiguration.value }
+    }
     private val mainRawMmtsLayerController = RawMmtsLayerController()
     private val dualRawMmtsLayerController = RawMmtsLayerController()
 
@@ -248,7 +253,7 @@ class LivePlayerViewModel @Inject constructor(
     private val mainPlaybackMutex = Mutex()
     private val dualPlaybackMutex = Mutex()
     private val hdrToneMappingRecoveryRunning = AtomicBoolean(false)
-    private val okHttpClient = OkHttpClient.Builder()
+    private val okHttpClient = accessHttpClient.newBuilder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
@@ -1174,8 +1179,7 @@ class LivePlayerViewModel @Inject constructor(
         val mediaSource = when {
             request.quality.isRawMmts -> {
                 rawMmtsLayerController?.reset()
-                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                    .setAllowCrossProtocolRedirects(true)
+                val httpDataSourceFactory = playbackHttpDataSourceFactory(context)
                 if (request.source == StreamSource.MIRAKURUN) {
                     httpDataSourceFactory.setDefaultRequestProperties(
                         mapOf("X-Mirakurun-Priority" to "0")
@@ -1217,14 +1221,15 @@ class LivePlayerViewModel @Inject constructor(
             request.source == StreamSource.EDCB && !request.isEdcbDirect -> {
                         val uri = Uri.parse(request.url)
                         val ctok = uri.getQueryParameter("ctok") ?: ""
-                        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                        val httpDataSourceFactory = playbackHttpDataSourceFactory(context)
                             .setDefaultRequestProperties(mapOf("Cookie" to "ctok=$ctok"))
-                            .setAllowCrossProtocolRedirects(true)
                         HlsMediaSource.Factory(httpDataSourceFactory)
                             .setAllowChunklessPreparation(false).createMediaSource(mediaItem)
                     }
 
-            else -> DefaultMediaSourceFactory(context).createMediaSource(mediaItem)
+            else -> DefaultMediaSourceFactory(context)
+                .setDataSourceFactory(playbackHttpDataSourceFactory(context))
+                .createMediaSource(mediaItem)
         }
         if (request.quality.isRawMmts && player != null && rawMmtsLayerController != null) {
             player.addListener(object : Player.Listener {

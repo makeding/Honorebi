@@ -9,7 +9,6 @@ import androidx.media3.common.C
 import androidx.media3.common.util.TimestampAdjuster
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -218,7 +217,9 @@ private class PrefetchedSegmentDataSource(
     override fun close() = Unit
 }
 
-private class SegmentPrefetchCache {
+private class SegmentPrefetchCache(
+    private val accessConfiguration: () -> com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
+) {
     private val segments = ConcurrentHashMap<String, CompletableFuture<ByteArray>>()
 
     fun take(uri: Uri): ByteArray? {
@@ -239,7 +240,9 @@ private class SegmentPrefetchCache {
             scope.launch(Dispatchers.IO) {
                 var connection: HttpURLConnection? = null
                 try {
-                    connection = (URL(prefetchUrl).openConnection() as HttpURLConnection).apply {
+                    connection = com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessUrlConnection.open(
+                        prefetchUrl, accessConfiguration
+                    ) {
                         requestMethod = "GET"
                         connectTimeout = 1_000_000
                         readTimeout = 1_000_000
@@ -270,7 +273,8 @@ private class SegmentPrefetchCache {
 
 internal fun buildRecordedDataSourceFactory(
     nativeLib: NativeLib,
-    httpDataSourceFactory: DefaultHttpDataSource.Factory,
+    httpDataSourceFactory: HttpDataSource.Factory,
+    accessConfiguration: () -> com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration,
     constructionKey: RecordedPlayerConstructionKey,
     smbServerList: List<SmbServer>,
     scope: CoroutineScope,
@@ -279,7 +283,7 @@ internal fun buildRecordedDataSourceFactory(
     programRef: AtomicReference<RecordedProgram?>,
     programDurationUsRef: AtomicLong,
 ): DataSource.Factory {
-    val segmentPrefetchCache = SegmentPrefetchCache()
+    val segmentPrefetchCache = SegmentPrefetchCache(accessConfiguration)
     return DataSource.Factory {
         object : DataSource {
             private var activeDataSource: DataSource? = null
@@ -310,6 +314,7 @@ internal fun buildRecordedDataSourceFactory(
                         ),
                         fileSizeBytesRef = fileSizeBytesRef,
                         requestHeaders = mapOf("User-Agent" to "DTVClient/1.0"),
+                        cloudflareAccessConfiguration = accessConfiguration,
                         growingHttpStream = constructionKey.isOriginalMpegTsPlayback &&
                             constructionKey.isRecordingChasePlayback,
                     )

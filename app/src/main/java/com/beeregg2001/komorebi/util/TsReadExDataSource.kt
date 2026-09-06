@@ -7,6 +7,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSpec
 import com.beeregg2001.komorebi.NativeLib
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
+import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessUrlConnection
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -26,6 +28,7 @@ class TsReadExDataSource(
     var tsArgs: Array<String>,
     private val fileSizeBytesRef: AtomicLong? = null,
     private val requestHeaders: Map<String, String> = emptyMap(),
+    private val cloudflareAccessConfiguration: () -> CloudflareAccessConfiguration = { CloudflareAccessConfiguration() },
     private val growingHttpStream: Boolean = false,
 ) : BaseDataSource(true) {
 
@@ -103,17 +106,15 @@ class TsReadExDataSource(
     }
 
     private fun openHttpStream(dataSpec: DataSpec) {
-        val url = java.net.URL(dataSpec.uri.toString())
-        connection = (url.openConnection() as HttpURLConnection).apply {
+        connection = CloudflareAccessUrlConnection.open(
+            initialUrl = dataSpec.uri.toString(),
+            configuration = cloudflareAccessConfiguration,
+            requestHeaders = requestHeaders + dataSpec.httpRequestHeaders +
+                if (dataSpec.position > 0) mapOf("Range" to "bytes=${dataSpec.position}-") else emptyMap(),
+        ) {
             connectTimeout = 8000
             readTimeout = 8000
             doInput = true
-
-            requestHeaders.forEach { (name, value) -> setRequestProperty(name, value) }
-            dataSpec.httpRequestHeaders.forEach { (name, value) -> setRequestProperty(name, value) }
-            if (dataSpec.position > 0) {
-                setRequestProperty("Range", "bytes=${dataSpec.position}-")
-            }
         }
         val responseCode = connection?.responseCode ?: -1
         if (!HttpByteRangePolicy.acceptsResponse(dataSpec.position, responseCode)) {

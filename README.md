@@ -32,7 +32,7 @@
 
 Cloudflare Access でバックエンドを保護する場合は、Access アプリケーションのポリシーで作成した Service Token を許可してください。[Cloudflare の Service Token 手順](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)に従い、設定画面の「接続」→「Cloudflare Access」へ Client ID と Client Secret を**両方**入力します。消去する場合も両方を空にして保存します。
 
-Access を使うバックエンドは `https://host` または `https://host:port` の完全な HTTPS アドレスで設定してください。ポートを省略した HTTPS origin は 443 として扱います。トークンは、設定された KonomiTV / Mirakurun / EDCB / EPGStation の一致する HTTPS origin に対する API、画像、ストリーム、SSE、HonomiTV WebSocket だけに送られます。SMB、第三者画像、更新先、HTTP 接続、別 origin へのリダイレクトには送られません。
+Access を使うバックエンドは、端末が信頼する証明書を提示する `https://host` または `https://host:port` の完全な HTTPS アドレスで設定してください。アドレス内でポートを省略した場合は、接続設定のポート番号を使います（Cloudflare の通常の HTTPS 公開先は `443`）。明示したポートはアドレス側が優先されます。トークンは、設定された KonomiTV / Mirakurun / EDCB / EPGStation の一致する HTTPS origin に対する API、画像、ストリーム、SSE、HonomiTV WebSocket だけに送られます。SMB、第三者画像、更新先、HTTP 接続、別 origin へのリダイレクトには送られません。
 
 ---
 

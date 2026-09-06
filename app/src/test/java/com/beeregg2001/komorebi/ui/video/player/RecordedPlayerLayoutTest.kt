@@ -268,6 +268,52 @@ class RecordedPlayerLayoutTest {
         assertEquals(legacyPlaying, controlBounds())
     }
 
+    @Test
+    fun controlsProgress_updatesOnlyTheControlsAndDoesNotPollWhileHidden() {
+        val visible = mutableStateOf(false)
+        var hostCompositions = 0
+        var positionReads = 0
+        var bufferedReads = 0
+        var sourcePositionMs = 120_000L
+        composeRule.setContent {
+            hostCompositions++
+            KomorebiTheme {
+                controls(
+                    modern = false,
+                    playing = true,
+                    seekingPreview = false,
+                    isVisible = visible.value,
+                    positionProvider = { positionReads++; sourcePositionMs },
+                    bufferedProvider = { bufferedReads++; 180_000L },
+                )
+            }
+        }
+
+        composeRule.mainClock.advanceTimeBy(750)
+        assertEquals(0, positionReads)
+        assertEquals(0, bufferedReads)
+
+        composeRule.runOnIdle { visible.value = true }
+        composeRule.waitForIdle()
+        val compositionsAfterShowing = hostCompositions
+        sourcePositionMs = 122_000L
+        composeRule.mainClock.advanceTimeBy(750)
+
+        assertEquals(compositionsAfterShowing, hostCompositions)
+        composeRule.onNodeWithText("02:02").assertIsDisplayed()
+
+        composeRule.runOnIdle { visible.value = false }
+        composeRule.waitForIdle()
+        val positionReadsAfterHide = positionReads
+        val bufferedReadsAfterHide = bufferedReads
+        val hiddenBounds = controlBounds()
+        composeRule.mainClock.advanceTimeBy(750)
+
+        assertEquals(positionReadsAfterHide, positionReads)
+        assertEquals(bufferedReadsAfterHide, bufferedReads)
+        assertEquals(hiddenBounds, controlBounds())
+    }
+
     @androidx.compose.runtime.Composable
     private fun menu(
         isVisible: Boolean = true,
@@ -318,20 +364,29 @@ class RecordedPlayerLayoutTest {
     }
 
     @androidx.compose.runtime.Composable
-    private fun controls(modern: Boolean, playing: Boolean, seekingPreview: Boolean) {
+    private fun controls(
+        modern: Boolean,
+        playing: Boolean,
+        seekingPreview: Boolean,
+        isVisible: Boolean = true,
+        positionProvider: () -> Long = { 120_000L },
+        bufferedProvider: () -> Long = { 180_000L },
+    ) {
         PlayerControls(
             program = testProgram(),
             timeFormat = "24H",
             allComments = emptyList(),
             tiledThumbnailUrl = null,
-            isVisible = true,
+            isVisible = isVisible,
             isSeekingPreviewVisible = seekingPreview,
             isModernUi = modern,
             isPlaying = playing,
             hasChapters = false,
-            currentPositionMs = 120_000L,
+            initialPositionMs = 120_000L,
             totalDurationMs = 1_800_000L,
-            bufferedPositionMs = 180_000L,
+            initialBufferedPositionMs = 180_000L,
+            displayPositionMsProvider = positionProvider,
+            displayBufferedPositionMsProvider = bufferedProvider,
             controlsFocusRequester = remember { FocusRequester() },
             onSeekBarFocusChanged = {},
             onPlayPauseToggle = {},

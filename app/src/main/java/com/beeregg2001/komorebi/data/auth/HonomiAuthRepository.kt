@@ -81,8 +81,8 @@ class HonomiAuthRepository @Inject constructor(
     private suspend fun currentOrigin(): HttpUrl {
         val ip = settingsRepository.konomiIp.first().trimEnd('/')
         val port = settingsRepository.konomiPort.first().toIntOrNull() ?: error("ポート番号が不正です")
-        val base = (if (ip.startsWith("http://") || ip.startsWith("https://")) ip else "http://$ip").toHttpUrl()
-        return base.newBuilder().port(port).encodedPath("/").query(null).fragment(null).build()
+        val base = com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port.toString(), "http").toHttpUrl()
+        return base.newBuilder().encodedPath("/").query(null).fragment(null).build()
     }
 
     private fun canonicalOrigin(url: HttpUrl): String = "${url.scheme}://${url.host}:${url.port}"

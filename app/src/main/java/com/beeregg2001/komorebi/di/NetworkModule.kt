@@ -20,13 +20,9 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
+import javax.inject.Named
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -35,26 +31,6 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(settingsRepository: SettingsRepository, sessionStore: HonomiSessionStore, cloudflareAccessInterceptor: CloudflareAccessInterceptor): OkHttpClient {
-        val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(
-                chain: Array<out X509Certificate>?,
-                authType: String?
-            ) {
-            }
-
-            override fun checkServerTrusted(
-                chain: Array<out X509Certificate>?,
-                authType: String?
-            ) {
-            }
-
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-
-        val sslContext = SSLContext.getInstance("TLS").apply {
-            init(null, trustAllCerts, SecureRandom())
-        }
-
         val logging = HttpLoggingInterceptor().apply {
             redactHeader("Authorization")
             redactHeader(CloudflareAccessConfiguration.CLIENT_ID_HEADER)
@@ -64,8 +40,6 @@ object NetworkModule {
         }
 
         return OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -77,11 +51,7 @@ object NetworkModule {
                     // KonomiTVのベースURLを動的に取得して組み立てる
                     val ip = settingsRepository.konomiIp.first()
                     val port = settingsRepository.konomiPort.first()
-                    if (ip.startsWith("http://") || ip.startsWith("https://")) {
-                        "$ip:$port"
-                    } else {
-                        "http://$ip:$port"
-                    }
+                    com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port, "http")
                 }
                 val newUrl = baseUrlString.toHttpUrlOrNull() ?: originalRequest.url
                 val modifiedUrl = originalRequest.url.newBuilder()
@@ -109,6 +79,15 @@ object NetworkModule {
             .addNetworkInterceptor(cloudflareAccessInterceptor)
             .build()
     }
+
+    @Provides
+    @Singleton
+    @Named("access")
+    fun provideAccessOkHttpClient(cloudflareAccessInterceptor: CloudflareAccessInterceptor): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(cloudflareAccessInterceptor)
+            .addNetworkInterceptor(cloudflareAccessInterceptor)
+            .build()
 
     @Provides
     @Singleton

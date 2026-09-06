@@ -818,13 +818,21 @@ fun VideoPlayerScreen(
         }.coerceAtLeast(0L)
     }
 
-    val playbackStatePollIntervalMs = if (
-        showControls || isSeekingPreviewVisible || cmSkipMode == CmSkipMode.MANUAL
-    ) {
-        ACTIVE_PLAYBACK_STATE_POLL_MS
-    } else {
-        IDLE_PLAYBACK_STATE_POLL_MS
+    val getBufferedPositionMs: () -> Long = {
+        val rawBufferedPosition = exoPlayer.bufferedPosition
+        val position = getCurrentPositionMs()
+        if (rawBufferedPosition == C.TIME_UNSET) {
+            position
+        } else if (isLiveStream && !isRecordingChasePlayback) {
+            vs.playbackOffsetMs + rawBufferedPosition
+        } else {
+            rawBufferedPosition
+        }.coerceAtLeast(position)
     }
+
+    // This state feeds playback recovery and persistence.  Display-only progress is
+    // sampled by PlayerControls while visible so it cannot recompose the whole player.
+    val playbackStatePollIntervalMs = IDLE_PLAYBACK_STATE_POLL_MS
     LaunchedEffect(
         exoPlayer,
         currentProgram.id,
@@ -838,14 +846,7 @@ fun VideoPlayerScreen(
                 playbackPositionMs = currentPosition
             }
 
-            val rawBufferedPosition = exoPlayer.bufferedPosition
-            bufferedPositionMs = if (rawBufferedPosition == C.TIME_UNSET) {
-                playbackPositionMs
-            } else if (isLiveStream && !isRecordingChasePlayback) {
-                vs.playbackOffsetMs + rawBufferedPosition
-            } else {
-                rawBufferedPosition
-            }.coerceAtLeast(playbackPositionMs)
+            bufferedPositionMs = getBufferedPositionMs()
 
             val rawDuration = exoPlayer.duration
             if (rawDuration != C.TIME_UNSET && rawDuration > 0L) {
@@ -1849,7 +1850,10 @@ fun VideoPlayerScreen(
                 isPlaying = exoPlayer.playWhenReady,
                 chapters = chapters,
                 totalDurationMs = totalDurationForControls,
-                bufferedPositionMs = bufferedPositionMs,
+                initialControlsPositionMs = getEffectivePositionMs(),
+                initialBufferedPositionMs = bufferedPositionMs,
+                controlsPositionMs = getEffectivePositionMs,
+                controlsBufferedPositionMs = getBufferedPositionMs,
                 playerControlsFocusRequester = playerControlsFocusRequester,
                 onSeekBarFocusChanged = { vs.isSeekBarFocused = it },
                 onPlayPauseToggle = {

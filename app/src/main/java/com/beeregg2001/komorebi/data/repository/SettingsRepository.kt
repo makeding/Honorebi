@@ -242,10 +242,13 @@ class SettingsRepository @Inject constructor(
         require((id.isBlank() && secret.isBlank()) || (id.isNotBlank() && secret.isNotBlank())) {
             "Client ID と Client Secret を両方入力するか、両方消去してください。"
         }
-        context.dataStore.edit { settings ->
+        require((id + secret).all { it.code in 33..126 }) { "トークンには半角英数字・記号を入力してください。" }
+        val saved = context.dataStore.edit { settings ->
             settings[CF_ACCESS_CLIENT_ID] = id
             settings[CF_ACCESS_CLIENT_SECRET] = secret
-        }
+        }.toCloudflareAccessConfiguration()
+        // Await the ordered DataStore collector before acknowledging the save.
+        cloudflareAccessConfiguration.first { it == saved }
     }
 
     private fun androidx.datastore.preferences.core.Preferences.toCloudflareAccessConfiguration(): CloudflareAccessConfiguration {
@@ -283,24 +286,16 @@ class SettingsRepository @Inject constructor(
                 port = prefs[EDCB_PORT] ?: "4510"
             }
         }
-        if (!ip.startsWith("http://") && !ip.startsWith("https://")) {
-            ip = "http://$ip"
-        }
-        return "$ip:$port"
+        return com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port, "http")
     }
 
     suspend fun getEdcbFullUrl(): String {
         val prefs = context.dataStore.data.first()
-        var ip = prefs[EDCB_IP] ?: ""
+        val ip = prefs[EDCB_IP] ?: ""
         val port = prefs[EDCB_HTTP_PORT] ?: "5510"
         if (ip.isEmpty()) return ""
-
-        if (ip.startsWith("http://") || ip.startsWith("https://")) return "$ip:$port"
-
-        val isSsl = port == "5511" || port.endsWith("s")
-        val scheme = if (isSsl) "https://" else "http://"
-
-        return "$scheme$ip:$port"
+        val protocol = if (port == "5511" || port.endsWith("s")) "https" else "http"
+        return com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port.removeSuffix("s"), protocol)
     }
 
     suspend fun getStartupTabOnce(): String {

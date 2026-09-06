@@ -72,7 +72,7 @@ sealed class SettingDialogState {
     data class CloudflareAccess(
         val clientId: String,
         val clientSecret: String,
-        val onConfirm: (String, String) -> Unit,
+        val onConfirm: suspend (String, String) -> Unit,
     ) : SettingDialogState()
 
     data class BatchInput(val onConfirm: (String, String) -> Unit) : SettingDialogState()
@@ -445,30 +445,46 @@ fun CloudflareAccessDialog(
     initialClientId: String,
     initialClientSecret: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit,
+    onConfirm: suspend (String, String) -> Unit,
 ) {
     val colors = KomorebiTheme.colors
     var clientId by remember { mutableStateOf(initialClientId) }
     var clientSecret by remember { mutableStateOf(initialClientSecret) }
     var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val clientIdFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(150); clientIdFocus.safeRequestFocus() }
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(0.8f)).focusGroup(), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(0.8f)).focusGroup().onKeyEvent {
+            saving && it.type == KeyEventType.KeyDown && it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK
+        },
+        contentAlignment = Alignment.Center,
+    ) {
         Surface(shape = RoundedCornerShape(16.dp), colors = SurfaceDefaults.colors(containerColor = colors.surface), modifier = Modifier.width(620.dp)) {
             Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Cloudflare Access", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("保護する HTTPS バックエンドだけにサービス トークンを送信します。ID と Secret は両方入力するか、両方消去してください。")
-                DialogTextField(clientId, { clientId = it; error = null }, "Client ID", focusRequester = clientIdFocus)
-                DialogTextField(clientSecret, { clientSecret = it; error = null }, "Client Secret", isPassword = true, focusRequester = remember { FocusRequester() })
-                error?.let { Text(it, color = Color(0xFFE53935), style = MaterialTheme.typography.bodyMedium) }
+                DialogTextField(clientId, { if (!saving) { clientId = it; error = null } }, "Client ID", focusRequester = clientIdFocus)
+                DialogTextField(clientSecret, { if (!saving) { clientSecret = it; error = null } }, "Client Secret", isPassword = true, focusRequester = remember { FocusRequester() })
+                Box(Modifier.fillMaxWidth().height(24.dp), contentAlignment = Alignment.CenterStart) {
+                    if (error != null) Text(error!!, color = Color(0xFFE53935), style = MaterialTheme.typography.bodyMedium)
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Button(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("キャンセル") }
+                    Button(onClick = onDismiss, modifier = Modifier.weight(1f), enabled = !saving) { Text("キャンセル") }
                     Button(onClick = {
                         val id = clientId.filterNot(Char::isWhitespace)
                         val secret = clientSecret.filterNot(Char::isWhitespace)
                         if (id.isBlank() != secret.isBlank()) error = "Client ID と Client Secret を両方入力するか、両方消去してください。"
-                        else onConfirm(id, secret)
-                    }, modifier = Modifier.weight(1f)) { Text("保存") }
+                        else scope.launch {
+                            saving = true
+                            try { onConfirm(id, secret); onDismiss() }
+                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                            catch (_: Throwable) { error = "設定の保存に失敗しました。もう一度お試しください。" }
+                            finally { saving = false }
+                        }
+                    }, modifier = Modifier.weight(1f), enabled = !saving && ((clientId.isBlank() && clientSecret.isBlank()) || (clientId.isNotBlank() && clientSecret.isNotBlank()))
+                    ) { Text(if (saving) "保存中…" else "保存") }
                 }
             }
         }

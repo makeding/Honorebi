@@ -83,6 +83,8 @@ class HonomiRemoteControlClient @Inject constructor(
     private val sessionStore: HonomiSessionStore,
 ) {
     private val webSocketClient = okHttpClient.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
     private val _commands = MutableSharedFlow<HonomiRemoteCommand>(extraBufferCapacity = 16)

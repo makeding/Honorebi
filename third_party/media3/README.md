@@ -4,6 +4,11 @@ Komorebi consumes an upstream AndroidX Media checkout plus the ordered patches i
 Generated AARs are published under the `-komorebi` version in the repository's `local_repo`.
 The upstream checkout itself is not vendored.
 
+The unmodified `media3-datasource-okhttp` adapter comes from Google Maven at the same
+upstream base version (the app derives it from the `-komorebi` version). It has no
+broadcast patch; its transitive Media3 modules still resolve to our local patched
+artifacts. HTTP/HLS traffic uses the app's scoped Access client through this adapter.
+
 The patches preserve broadcast-specific behavior:
 
 1. retain complete AAC/ADTS bytes across PES boundaries and suppress metadata only for frames that finish without a timestamp;

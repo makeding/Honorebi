@@ -42,8 +42,13 @@ class EpgDrawAnimationTest {
         }
         val bounds = compose.onNodeWithTag("grid").getUnclippedBoundsInRoot()
         compose.runOnIdle { target.floatValue = 100f }
-        compose.mainClock.advanceTimeByFrame()
-        compose.waitForIdle()
+        // The target invalidation and the first animation frame are distinct with a
+        // manual test clock. Drain both before establishing the no-recomposition
+        // baseline; later frames must remain draw-only.
+        repeat(2) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
         val afterTargetChange = compositions
         repeat(30) {
             compose.mainClock.advanceTimeByFrame()

@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.data.util.EpgUtils
-import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.*
