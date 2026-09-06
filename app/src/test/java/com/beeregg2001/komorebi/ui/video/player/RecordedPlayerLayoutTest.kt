@@ -271,22 +271,29 @@ class RecordedPlayerLayoutTest {
     }
 
     @Test
-    fun controlsOmitTitleAndKeepTimesAndTrackBoundsAcrossPlayingPausedAndSeekingPreview_inBothStyles() {
+    fun controlsShowCompactTitleAndKeepTimesAndTrackBoundsAcrossPlayingPausedAndSeekingPreview_inBothStyles() {
         val modern = mutableStateOf(true)
         val playing = mutableStateOf(true)
         val seekingPreview = mutableStateOf(false)
+        val title = mutableStateOf("番組")
         composeRule.setContent {
             KomorebiTheme {
                 controls(
                     modern = modern.value,
                     playing = playing.value,
-                    seekingPreview = seekingPreview.value
+                    seekingPreview = seekingPreview.value,
+                    title = title.value,
                 )
             }
         }
 
         val modernPlaying = controlBounds()
-        composeRule.onNodeWithTag("recorded-title").assertDoesNotExist()
+        composeRule.onNodeWithText("番組").assertIsDisplayed()
+        val titleBounds = composeRule.onNodeWithTag("recorded-title").getUnclippedBoundsInRoot()
+        assertEquals(androidx.compose.ui.unit.Dp(24f), titleBounds.bottom - titleBounds.top)
+        composeRule.runOnIdle { title.value = "長い番組タイトル".repeat(30) }
+        composeRule.onNodeWithTag("recorded-title").assertIsDisplayed()
+        assertEquals(modernPlaying, controlBounds())
         composeRule.runOnIdle {
             playing.value = false
             seekingPreview.value = true
@@ -301,6 +308,9 @@ class RecordedPlayerLayoutTest {
         }
         composeRule.mainClock.advanceTimeBy(500)
         val legacyPlaying = controlBounds()
+        composeRule.runOnIdle { title.value = "" }
+        composeRule.onNodeWithText("タイトルなし").assertIsDisplayed()
+        assertEquals(legacyPlaying, controlBounds())
         composeRule.runOnIdle {
             playing.value = false
             seekingPreview.value = true
@@ -417,9 +427,10 @@ class RecordedPlayerLayoutTest {
         isVisible: Boolean = true,
         positionProvider: () -> Long = { 120_000L },
         bufferedProvider: () -> Long = { 180_000L },
+        title: String = "番組",
     ) {
         PlayerControls(
-            mediaInfo = PlaybackMediaInfo.recorded(testProgram()),
+            mediaInfo = PlaybackMediaInfo.recorded(testProgram(title)),
             timeFormat = "24H",
             allComments = emptyList(),
             tiledThumbnailUrl = null,
@@ -446,6 +457,7 @@ class RecordedPlayerLayoutTest {
     }
 
     private fun controlBounds() = listOf(
+        composeRule.onNodeWithTag("recorded-title").getUnclippedBoundsInRoot(),
         composeRule.onNodeWithTag("recorded-controls").getUnclippedBoundsInRoot(),
         composeRule.onNodeWithTag("playback-time").getUnclippedBoundsInRoot(),
         composeRule.onNodeWithTag("playback-duration").getUnclippedBoundsInRoot(),
