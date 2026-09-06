@@ -34,8 +34,8 @@ private fun regionsOverlap(
 ): Boolean =
     first.x < second.x + second.width &&
         first.x + first.width > second.x &&
-        firstTop < second.y + second.height &&
-        firstBottom > second.y
+        firstTop <= second.y + second.height &&
+        firstBottom >= second.y
 
 internal fun calculateBottomAvoidanceMask(
     regions: List<NativeCaptionRegion>,
@@ -70,6 +70,24 @@ internal fun calculateBottomAvoidanceMask(
         }
     } while (changed)
     return shouldAvoid
+}
+
+internal fun captionAvoidanceRegions(image: NativeCaptionImage): List<NativeCaptionRegion> =
+    image.regions.ifEmpty {
+        listOf(NativeCaptionRegion(image.x, image.y, image.width, image.height))
+    }
+
+internal fun calculateCueBottomAvoidanceMasks(
+    imageRegions: List<List<NativeCaptionRegion>>,
+    avoidanceStartY: Float,
+    avoidanceOffset: Float
+): List<BooleanArray> {
+    if (avoidanceOffset <= 0f) return imageRegions.map { BooleanArray(it.size) }
+    val mask = calculateBottomAvoidanceMask(imageRegions.flatten(), avoidanceStartY, avoidanceOffset)
+    var start = 0
+    return imageRegions.map { regions ->
+        mask.copyOfRange(start, start + regions.size).also { start += regions.size }
+    }
 }
 
 @Composable
@@ -158,7 +176,13 @@ fun NativeCaptionOverlay(
         if (!visible || cue == null) return@Canvas
         val scaleX = size.width / cue.planeWidth.coerceAtLeast(1).toFloat()
         val scaleY = size.height / cue.planeHeight.coerceAtLeast(1).toFloat()
-        bitmaps.forEach { (image, bitmap) ->
+        // B24 supplies separate images without region metadata. Include their bounds
+        // in the same collision closure as B62 regions before drawing any image.
+        val imageRegions = bitmaps.map { (image, _) -> captionAvoidanceRegions(image) }
+        val avoidanceMasks = calculateCueBottomAvoidanceMasks(
+            imageRegions, avoidanceStartY, bottomAvoidanceOffsetPx / scaleY
+        )
+        bitmaps.forEachIndexed { imageIndex, (image, bitmap) ->
             val imageDstOffset = IntOffset(
                 x = (image.x * scaleX).toInt(),
                 y = (image.y * scaleY).toInt()
@@ -168,83 +192,58 @@ fun NativeCaptionOverlay(
                 height = (image.height * scaleY).toInt().coerceAtLeast(1)
             )
 
-            if (bottomAvoidanceOffsetPx <= 0 || image.regions.isNotEmpty()) {
-                if (bottomAvoidanceOffsetPx <= 0) {
+            if (bottomAvoidanceOffsetPx <= 0) {
+                drawImage(
+                    image = bitmap,
+                    dstOffset = imageDstOffset,
+                    dstSize = imageDstSize
+                )
+                return@forEachIndexed
+            }
+
+            val stationaryRegions = Path()
+            val shiftedRegions = Path()
+            var hasStationaryRegions = false
+            var hasShiftedRegions = false
+            val avoidanceMask = avoidanceMasks[imageIndex]
+            imageRegions[imageIndex].forEachIndexed { index, region ->
+                val shouldAvoid = avoidanceMask[index]
+                val verticalOffset = if (shouldAvoid) bottomAvoidanceOffsetPx else 0
+                val regionRect = Rect(
+                    left = region.x * scaleX,
+                    top = region.y * scaleY - verticalOffset,
+                    right = (region.x + region.width) * scaleX,
+                    bottom = (region.y + region.height) * scaleY - verticalOffset
+                )
+                if (shouldAvoid) {
+                    shiftedRegions.addRect(regionRect)
+                    hasShiftedRegions = true
+                } else {
+                    stationaryRegions.addRect(regionRect)
+                    hasStationaryRegions = true
+                }
+            }
+            if (hasStationaryRegions) {
+                clipPath(stationaryRegions) {
                     drawImage(
                         image = bitmap,
                         dstOffset = imageDstOffset,
                         dstSize = imageDstSize
                     )
-                    return@forEach
                 }
-
-                val stationaryRegions = Path()
-                val shiftedRegions = Path()
-                var hasStationaryRegions = false
-                var hasShiftedRegions = false
-                val avoidanceMask = calculateBottomAvoidanceMask(
-                    image.regions,
-                    avoidanceStartY,
-                    avoidanceOffset = bottomAvoidanceOffsetPx / scaleY
-                )
-                image.regions.forEachIndexed { index, region ->
-                    val shouldAvoid = avoidanceMask[index]
-                    val verticalOffset = if (shouldAvoid) bottomAvoidanceOffsetPx else 0
-                    val regionRect = Rect(
-                        left = region.x * scaleX,
-                        top = region.y * scaleY - verticalOffset,
-                        right = (region.x + region.width) * scaleX,
-                        bottom = (region.y + region.height) * scaleY - verticalOffset
+            }
+            if (hasShiftedRegions) {
+                clipPath(shiftedRegions) {
+                    drawImage(
+                        image = bitmap,
+                        dstOffset = IntOffset(
+                            x = imageDstOffset.x,
+                            y = imageDstOffset.y - bottomAvoidanceOffsetPx
+                        ),
+                        dstSize = imageDstSize
                     )
-                    if (shouldAvoid) {
-                        shiftedRegions.addRect(regionRect)
-                        hasShiftedRegions = true
-                    } else {
-                        stationaryRegions.addRect(regionRect)
-                        hasStationaryRegions = true
-                    }
                 }
-                if (hasStationaryRegions) {
-                    clipPath(stationaryRegions) {
-                        drawImage(
-                            image = bitmap,
-                            dstOffset = imageDstOffset,
-                            dstSize = imageDstSize
-                        )
-                    }
-                }
-                if (hasShiftedRegions) {
-                    clipPath(shiftedRegions) {
-                        drawImage(
-                            image = bitmap,
-                            dstOffset = IntOffset(
-                                x = imageDstOffset.x,
-                                y = (imageDstOffset.y - bottomAvoidanceOffsetPx).coerceAtLeast(0)
-                            ),
-                            dstSize = imageDstSize
-                        )
-                    }
-                }
-                return@forEach
             }
-
-            val overlapsBottomAvoidanceArea = image.y + image.height > avoidanceStartY
-            val avoidanceOffset = if (overlapsBottomAvoidanceArea) {
-                bottomAvoidanceOffsetPx
-            } else {
-                0
-            }
-            drawImage(
-                image = bitmap,
-                dstOffset = IntOffset(
-                    x = (image.x * scaleX).toInt(),
-                    y = ((image.y * scaleY).toInt() - avoidanceOffset).coerceAtLeast(0)
-                ),
-                dstSize = IntSize(
-                    width = (image.width * scaleX).toInt().coerceAtLeast(1),
-                    height = (image.height * scaleY).toInt().coerceAtLeast(1)
-                )
-            )
         }
     }
 }
