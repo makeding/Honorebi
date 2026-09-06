@@ -20,6 +20,9 @@ object RecordedMpegTsPassthroughPolicy {
         "-b", "5",
         "-c", "5",
         "-u", "1",
-        "-d", "13",
+        // Enable ID3 conversion and monotonic timestamps without inserting the
+        // legacy five-byte PES payload prefix. Media3's Id3Reader requires ID3
+        // to begin exactly at 9 + PES_header_data_length.
+        "-d", "9",
     )
 }

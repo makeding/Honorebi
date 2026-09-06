@@ -141,20 +141,21 @@ fun NativeCaptionOverlay(
     bottomAvoidanceOffset: Dp = 0.dp,
     bottomAvoidanceStartFraction: Float = 1f
 ) {
-    if (!visible || cue == null) return
+    // Keep the overlay bounds allocated through empty, disabled and transition states.
 
     val bottomAvoidanceOffsetPx = with(LocalDensity.current) {
         bottomAvoidanceOffset.roundToPx()
     }
     val avoidanceStartY =
-        cue.planeHeight.coerceAtLeast(1) * bottomAvoidanceStartFraction.coerceIn(0f, 1f)
+        (cue?.planeHeight ?: 1).coerceAtLeast(1) * bottomAvoidanceStartFraction.coerceIn(0f, 1f)
     val bitmaps = remember(cue) {
-        cue.images.map { image ->
+        cue?.images.orEmpty().map { image ->
             image to image.bitmap.asImageBitmap()
         }
     }
 
     Canvas(modifier = modifier) {
+        if (!visible || cue == null) return@Canvas
         val scaleX = size.width / cue.planeWidth.coerceAtLeast(1).toFloat()
         val scaleY = size.height / cue.planeHeight.coerceAtLeast(1).toFloat()
         bitmaps.forEach { (image, bitmap) ->

@@ -68,7 +68,7 @@ class RecordedMpegTsPassthroughPolicyTest {
                 "-b", "5",
                 "-c", "5",
                 "-u", "1",
-                "-d", "13",
+                "-d", "9",
             ),
             RecordedMpegTsPassthroughPolicy.tsReadExArguments(101),
         )

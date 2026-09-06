@@ -29,6 +29,7 @@ struct Stream {
 struct PrivSample {
     int64_t pts;
     bool dataAligned;
+    size_t id3PayloadOffset;
     std::string owner;
     std::vector<uint8_t> payload;
 };
@@ -216,14 +217,20 @@ std::vector<PrivSample> parsePrivSamples(const std::vector<uint8_t>& packets, in
         const uint8_t* pes = payloadStart(packet);
         const size_t available = static_cast<size_t>(packets.data() + offset + 188 - pes);
         if (available < 34 || pes[0] != 0 || pes[1] != 0 || pes[2] != 1 || pes[3] != 0xbd) continue;
+        require(pes[6] == 0x84, "ID3 PES flags must set data_alignment_indicator (0x84)");
+        require(pes[7] == 0x80, "ID3 PES must retain PTS-only flags");
         const int64_t pts = (static_cast<int64_t>(pes[9] & 0x0e) << 29) |
             (static_cast<int64_t>(pes[10]) << 22) |
             (static_cast<int64_t>(pes[11] & 0xfe) << 14) |
             (static_cast<int64_t>(pes[12]) << 7) |
             ((pes[13] & 0xfe) >> 1);
-        const uint8_t marker[] = {'I', 'D', '3'};
-        const uint8_t* id3 = std::search(pes + 9, pes + available, marker, marker + 3);
-        if (id3 == pes + available || static_cast<size_t>(pes + available - id3) < 20) continue;
+        const size_t pesHeaderDataLength = pes[8];
+        const size_t id3PayloadOffset = 9 + pesHeaderDataLength;
+        require(pesHeaderDataLength == 5, "ID3 PES must have the PTS-only header length");
+        require(id3PayloadOffset + 20 <= available, "ID3 PES payload is truncated");
+        const uint8_t* id3 = pes + id3PayloadOffset;
+        require(id3[0] == 'I' && id3[1] == 'D' && id3[2] == '3',
+                "ID3 must begin exactly at 9 + PES_header_data_length");
         const uint8_t* frame = id3 + 10;
         require(frame[0] == 'P' && frame[1] == 'R' && frame[2] == 'I' && frame[3] == 'V',
                 "metadata frame must be PRIV");
@@ -234,6 +241,7 @@ std::vector<PrivSample> parsePrivSamples(const std::vector<uint8_t>& packets, in
         samples.push_back({
             pts,
             (pes[6] & 0x04) != 0,
+            id3PayloadOffset,
             std::string(reinterpret_cast<const char*>(owner), reinterpret_cast<const char*>(ownerEnd)),
             std::vector<uint8_t>(ownerEnd + 1, owner + frameLength),
         });
@@ -250,7 +258,9 @@ std::vector<uint8_t> runPipeline()
     serviceFilter.SetCaptionMode(5);
     serviceFilter.SetSuperimposeMode(1);
     CID3Converter id3Converter;
-    id3Converter.SetOption(13);
+    // -d 9: ID3 conversion + monotonic PTS, without the legacy five-byte
+    // payload prefix that makes Media3 reject the sample.
+    id3Converter.SetOption(9);
 
     std::vector<std::vector<uint8_t>> input;
     input.push_back(makePsiPacket(0, makePat()));
@@ -302,6 +312,8 @@ void verifyPipeline(const std::vector<uint8_t>& output)
     require(samples.size() == 2, "caption and superimpose must produce distinct ID3 samples");
     require(samples[0].dataAligned, "caption ID3 PES must set data_alignment_indicator");
     require(samples[1].dataAligned, "superimpose ID3 PES must set data_alignment_indicator");
+    require(samples[0].id3PayloadOffset == 14 && samples[1].id3PayloadOffset == 14,
+            "ID3 payload offset must be the PES header boundary without a zero prefix");
     require(samples[0].pts == 180'000 && samples[1].pts == 270'000,
             "ID3 samples must preserve PES PTS");
     require(samples[0].owner == "aribb24.js" && samples[1].owner == "aribb24.js",
@@ -315,7 +327,7 @@ void verifyPipeline(const std::vector<uint8_t>& output)
 void verifyOtherPrivateStreamIsNotConsumedById3Converter()
 {
     CID3Converter converter;
-    converter.SetOption(13);
+    converter.SetOption(9);
     const std::vector<std::vector<uint8_t>> packets = {
         makePsiPacket(0, makePat()),
         makePsiPacket(kPmtPid, makePmt()),
@@ -336,13 +348,21 @@ void verifyOtherPrivateStreamIsNotConsumedById3Converter()
 
 } // namespace
 
-int main()
+int main(int argc, char* argv[])
 {
     const std::vector<uint8_t> firstOpen = runPipeline();
     verifyPipeline(firstOpen);
     const std::vector<uint8_t> reopenedAfterSeek = runPipeline();
     verifyPipeline(reopenedAfterSeek);
     verifyOtherPrivateStreamIsNotConsumedById3Converter();
+    if (argc == 2 && std::string(argv[1]) == "--emit-hex") {
+        static const char kHex[] = "0123456789abcdef";
+        for (uint8_t byte : firstOpen) {
+            std::cout << kHex[byte >> 4] << kHex[byte & 0x0f];
+        }
+        std::cout << std::endl;
+        return 0;
+    }
     std::cout << "PASS: MPEG-2 tsreadex passthrough pipeline" << std::endl;
     return 0;
 }

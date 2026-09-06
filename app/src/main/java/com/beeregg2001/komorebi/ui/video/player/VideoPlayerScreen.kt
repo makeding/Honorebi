@@ -45,7 +45,6 @@ import com.beeregg2001.komorebi.ui.live.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.live.rememberLivePlayerState
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
-import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.ui.video.player.policy.NEXT_EPISODE_COUNTDOWN_WINDOW_MS
 import com.beeregg2001.komorebi.ui.video.player.policy.calculateNextEpisodeCountdownStartMs
@@ -65,8 +64,6 @@ import kotlinx.coroutines.channels.Channel as CommentChannel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -171,7 +168,7 @@ fun VideoPlayerScreen(
     }
     var playbackDurationMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
     var bufferedPositionMs by remember(currentProgram.id) { mutableLongStateOf(0L) }
-    var hdrModeResumePositionMs by remember(currentProgram.id) {
+    var pendingPlayerResumePositionMs by remember(currentProgram.id) {
         mutableStateOf<Long?>(null)
     }
     var armedManualCmSkipTargetMs by remember(currentProgram.id) {
@@ -324,18 +321,8 @@ fun VideoPlayerScreen(
         mutableStateOf(UUID.randomUUID().toString())
     }
     val currentStreamUrlRef = remember(recordedPlaybackToken) { AtomicReference<String?>(null) }
-    val subtitleEvents = remember {
-        MutableSharedFlow<NativeCaptionCue>(
-            extraBufferCapacity = 4,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST
-        )
-    }
-    val captionEvents = remember(subtitleEvents) {
-        subtitleEvents.filter { it.type == NativeCaptionCue.TYPE_CAPTION }
-    }
-    val superimposeEvents = remember(subtitleEvents) {
-        subtitleEvents.filter { it.type == NativeCaptionCue.TYPE_SUPERIMPOSE }
-    }
+    val recordedCaptions = com.beeregg2001.komorebi.ui.subtitle.rememberRecordedCaptionState(recordedPlaybackToken to currentProgram.id)
+    val captionSourceGeneration = recordedCaptions.timeline.generation
     var subtitleLanguages by remember(recordedPlaybackToken) {
         mutableStateOf(emptyList<NativeCaptionLanguage>())
     }
@@ -637,8 +624,9 @@ fun VideoPlayerScreen(
         vs = vs,
         isLiveStream = isLiveStream,
         scope = scope,
-        onSubtitleCue = { subtitleEvents.tryEmit(it) },
+        onSubtitleCue = { recordedCaptions.timeline.offer(captionSourceGeneration, it) },
         subtitleLanguageId = currentSubtitleLanguageId,
+        subtitleResetSerial = recordedCaptions.resetSerial,
         onSubtitleLanguagesChanged = { subtitleLanguages = it },
         onVideoSizeChanged = { w, h, ratio ->
             videoWidth = w
@@ -659,7 +647,7 @@ fun VideoPlayerScreen(
                 val currentPosition = player.currentPosition
                     .takeUnless { it == C.TIME_UNSET || it < 0L }
                     ?: playbackPositionMs
-                hdrModeResumePositionMs = currentPosition
+                pendingPlayerResumePositionMs = currentPosition
                 playbackPositionMs = currentPosition
                 videoPlayerViewModel.setHdrRenderMode(HdrToneMapping.RENDER_MODE_ORIGINAL)
                 onShowToast(
@@ -802,20 +790,11 @@ fun VideoPlayerScreen(
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    val subtitleCue = rememberNativeCaptionCue(
-        events = captionEvents,
-        enabled = vs.isSubtitleEnabled,
-        resetKey = currentProgram.id to currentSubtitleLanguageId,
-        clockRunning = vs.isPlayerPlaying,
-        positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
-    )
-    val superimposeCue = rememberNativeCaptionCue(
-        events = superimposeEvents,
-        enabled = true,
-        resetKey = currentProgram.id,
-        clockRunning = vs.isPlayerPlaying,
-        positionMsProvider = { exoPlayer.currentPosition.coerceAtLeast(0L) }
-    )
+    com.beeregg2001.komorebi.ui.subtitle.UpdateRecordedCaptionState(
+        recordedCaptions, vs.isSubtitleEnabled, currentSubtitleLanguageId,
+    ) { exoPlayer.currentPosition }
+    val subtitleCue = recordedCaptions.caption
+    val superimposeCue = recordedCaptions.superimpose
 
     val getCurrentPositionMs: () -> Long = {
         val rawPosition = exoPlayer.currentPosition
@@ -1055,6 +1034,7 @@ fun VideoPlayerScreen(
             onShowToast("シーク情報を準備しています")
             return@seek
         }
+        recordedCaptions.seek()
         val safeTarget = targetMs.coerceIn(
             0L,
             if (totalDurationForControls > 0) totalDurationForControls else Long.MAX_VALUE
@@ -1185,7 +1165,7 @@ fun VideoPlayerScreen(
         currentStreamUrlRef.set(null)
         vs.playbackOffsetMs = 0L
         vs.pendingSeekPositionMs = null
-        hdrModeResumePositionMs = null
+        pendingPlayerResumePositionMs = null
         playbackPositionMs = effectiveInitialPositionMs.coerceAtLeast(0L)
         playbackDurationMs = 0L
         bufferedPositionMs = 0L
@@ -1226,7 +1206,7 @@ fun VideoPlayerScreen(
             isBuffering = true
             vs.playbackOffsetMs = 0L
             val mediaItem = MediaItem.fromUri(smbItem.path)
-            val startPositionMs = hdrModeResumePositionMs
+            val startPositionMs = pendingPlayerResumePositionMs
                 ?: effectiveInitialPositionMs.takeIf { isFirstLoad && it > 0L }
             if (startPositionMs != null) {
                 exoPlayer.setMediaItem(mediaItem, startPositionMs)
@@ -1237,7 +1217,7 @@ fun VideoPlayerScreen(
             exoPlayer.prepare()
             preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
-            hdrModeResumePositionMs = null
+            pendingPlayerResumePositionMs = null
             return@LaunchedEffect
         }
 
@@ -1246,7 +1226,7 @@ fun VideoPlayerScreen(
 
         isBuffering = true
         val resumePositionMs = resolveRecreatedPlayerStartPositionMs(
-            explicitResumePositionMs = hdrModeResumePositionMs,
+            explicitResumePositionMs = pendingPlayerResumePositionMs,
             isFirstLoad = isFirstLoad,
             retainedPlaybackPositionMs = playbackPositionMs,
         )
@@ -1291,7 +1271,7 @@ fun VideoPlayerScreen(
             exoPlayer.prepare()
             preparedPlaybackKey = playbackKey
             exoPlayer.playWhenReady = true
-            hdrModeResumePositionMs = null
+            pendingPlayerResumePositionMs = null
         } else {
             if (
                 networkRecoveryGate.onFailure(
@@ -1676,6 +1656,7 @@ fun VideoPlayerScreen(
     }
     val toggleSubtitle: () -> Unit = {
         toggleRecordedSubtitle(vs, onShowToast)
+        if (!vs.isSubtitleEnabled) recordedCaptions.clear(NativeCaptionCue.TYPE_CAPTION)
     }
     val toggleSubtitleLanguage: () -> Unit = {
         val (languageId, message) = nextRecordedSubtitleLanguage(
@@ -1693,6 +1674,9 @@ fun VideoPlayerScreen(
             return@selectQuality
         }
         if (vs.currentQuality != quality) {
+            Log.i(TAG, "Caption quality transition: ${vs.currentQuality.value} -> ${quality.value}, elapsed_ms=${android.os.SystemClock.elapsedRealtime()}")
+            recordedCaptions.switchQuality()
+            pendingPlayerResumePositionMs = getCurrentPositionMs()
             vs.playbackOffsetMs = getCurrentPositionMs()
             vs.currentQuality = quality
             if (
@@ -1700,35 +1684,6 @@ fun VideoPlayerScreen(
                 quality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
             ) {
                 videoPlayerViewModel.saveVideoQuality(quality.value)
-            }
-            val player = exoPlayer
-            val currentPosition = getCurrentPositionMs()
-            if (!isEdcbDirect) {
-                vs.playbackOffsetMs = currentPosition - effectiveInitialPositionMs
-            }
-            scope.launch {
-                val actionFence = recordedPlaybackFence
-                isBuffering = true
-                val newUrl = videoPlayerViewModel.resolveStreamUrl(
-                    currentProgram.id,
-                    quality.value,
-                    currentSessionId,
-                    if (isEdcbDirect) 0.0 else currentPosition / 1000.0,
-                    isRecordingChasePlayback
-                )
-                if (!actionFence.accepts()) return@launch
-                currentStreamUrlRef.set(newUrl)
-                player.setMediaItem(buildVideoMediaItem(newUrl))
-                player.prepare()
-                if (
-                    isEdcbDirect ||
-                    quality.isRawMmts ||
-                    quality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE ||
-                    isRecordingChasePlayback
-                ) {
-                    player.seekTo(currentPosition)
-                }
-                player.play()
             }
             onShowToast("画質を ${quality.label} に変更しました")
         }
@@ -1752,8 +1707,8 @@ fun VideoPlayerScreen(
     }
     val toggleHdrRenderMode: () -> Unit = {
         val nextMode = nextRecordedHdrRenderMode(hdrRenderMode)
-        hdrModeResumePositionMs = getCurrentPositionMs()
-        playbackPositionMs = hdrModeResumePositionMs ?: playbackPositionMs
+        pendingPlayerResumePositionMs = getCurrentPositionMs()
+        playbackPositionMs = pendingPlayerResumePositionMs ?: playbackPositionMs
         videoPlayerViewModel.setHdrRenderMode(nextMode)
         onShowToast(recordedHdrRenderModeMessage(nextMode))
     }

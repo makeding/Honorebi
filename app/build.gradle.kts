@@ -140,6 +140,7 @@ ksp {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
 
     // 1. Compose BOM を最新に近いバージョンに更新 (ここが最重要)
     // 2023.10.01 だと Tv-Foundation 1.0.0-alpha11 と互換性がありません

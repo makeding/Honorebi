@@ -153,6 +153,7 @@ fun rememberManagedExoPlayer(
     scope: CoroutineScope,
     onSubtitleCue: (NativeCaptionCue) -> Unit,
     subtitleLanguageId: Int,
+    subtitleResetSerial: Int,
     onSubtitleLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
     onVideoSizeChanged: (Int, Int, Float) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
@@ -169,77 +170,6 @@ fun rememberManagedExoPlayer(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ): ExoPlayer {
     val context = LocalContext.current
-    val captionDecoder = remember { NativeCaptionDecoder(context) }
-    val superimposeDecoder = remember {
-        NativeCaptionDecoder(
-            captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE,
-            context = context
-        )
-    }
-    val b62SubtitleSamples = remember(recordedPlaybackFence.identity) {
-        Channel<FencedB62SubtitleSample>(
-            capacity = 4,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST
-        )
-    }
-    val currentOnSubtitleCue = rememberUpdatedState(onSubtitleCue)
-    val currentOnSubtitleLanguagesChanged = rememberUpdatedState(onSubtitleLanguagesChanged)
-    val currentOnVideoSizeChanged = rememberUpdatedState(onVideoSizeChanged)
-    val currentOnBufferingChanged = rememberUpdatedState(onBufferingChanged)
-    val currentOnDurationChanged = rememberUpdatedState(onDurationChanged)
-    val currentOnPlaybackEnded = rememberUpdatedState(onPlaybackEnded)
-    val currentOnStreamSessionExpired = rememberUpdatedState(onStreamSessionExpired)
-    val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
-    val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
-    LaunchedEffect(captionDecoder, b62SubtitleSamples, recordedPlaybackFence.identity) {
-        captionDecoder.reset(subtitleLanguageId)
-        superimposeDecoder.reset()
-        currentOnSubtitleLanguagesChanged.value(emptyList())
-        for (fencedSample in b62SubtitleSamples) {
-            if (!recordedPlaybackFence.accepts(fencedSample.token)) continue
-            val sample = fencedSample.sample
-            val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
-            val decoder = when (sample.type) {
-                NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
-                NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
-                else -> continue
-            }
-            val (decoded, languages) = withContext(Dispatchers.Default) {
-                decoder.decodeB62(
-                    data = sample.data,
-                    ptsMs = sample.timeUs / 1_000L,
-                    operationMode = sample.operationMode,
-                    timingMode = sample.timingMode,
-                    referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
-                    mpuSequenceNumber = sample.mpuSequenceNumber,
-                    resources = sample.resources,
-                    discontinuity = sample.discontinuity
-                ) to decoder.availableLanguages()
-            }
-            if (!recordedPlaybackFence.accepts(fencedSample.token)) continue
-            if (isCaption) currentOnSubtitleLanguagesChanged.value(languages)
-            if (!isCaption || vs.isSubtitleEnabled) {
-                decoded.forEach { cue ->
-                    if (recordedPlaybackFence.accepts(fencedSample.token)) {
-                        currentOnSubtitleCue.value(cue)
-                    }
-                }
-            }
-        }
-    }
-    LaunchedEffect(subtitleLanguageId, recordedPlaybackFence.identity) {
-        if (recordedPlaybackFence.accepts()) {
-            captionDecoder.switchLanguage(subtitleLanguageId)
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            b62SubtitleSamples.close()
-            captionDecoder.close()
-            superimposeDecoder.close()
-        }
-    }
-
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val backendType by settingsViewModel.backendType.collectAsState()
@@ -287,6 +217,86 @@ fun rememberManagedExoPlayer(
         enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
     )
 
+    val captionQuality = vs.currentQuality.value
+    val captionDecoder = remember(recordedPlaybackFence.identity, captionQuality, constructionKey) { NativeCaptionDecoder(context) }
+    val superimposeDecoder = remember(recordedPlaybackFence.identity, captionQuality, constructionKey) {
+        NativeCaptionDecoder(
+            captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE,
+            context = context
+        )
+    }
+    val b62SubtitleSamples = remember(recordedPlaybackFence.identity, captionQuality, constructionKey) {
+        Channel<FencedB62SubtitleSample>(
+            capacity = 4,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST
+        )
+    }
+    val captionSource = remember(captionDecoder) {
+        com.beeregg2001.komorebi.ui.subtitle.RecordedCaptionSource {
+            captionQuality == vs.currentQuality.value && recordedPlaybackFence.accepts()
+        }
+    }
+    val currentOnSubtitleLanguagesChanged = rememberUpdatedState(onSubtitleLanguagesChanged)
+    val currentOnVideoSizeChanged = rememberUpdatedState(onVideoSizeChanged)
+    val currentOnBufferingChanged = rememberUpdatedState(onBufferingChanged)
+    val currentOnDurationChanged = rememberUpdatedState(onDurationChanged)
+    val currentOnPlaybackEnded = rememberUpdatedState(onPlaybackEnded)
+    val currentOnStreamSessionExpired = rememberUpdatedState(onStreamSessionExpired)
+    val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
+    val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
+    LaunchedEffect(captionSource, subtitleResetSerial) {
+        captionSource.reset()
+        captionDecoder.reset(subtitleLanguageId)
+        superimposeDecoder.reset()
+        currentOnSubtitleLanguagesChanged.value(emptyList())
+    }
+    LaunchedEffect(captionDecoder, b62SubtitleSamples, recordedPlaybackFence.identity) {
+        for (fencedSample in b62SubtitleSamples) {
+            if (!(captionSource.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) continue
+            val sample = fencedSample.sample
+            val isCaption = sample.type == NativeCaptionDecoder.TYPE_CAPTION
+            val decoder = when (sample.type) {
+                NativeCaptionDecoder.TYPE_CAPTION -> captionDecoder
+                NativeCaptionDecoder.TYPE_SUPERIMPOSE -> superimposeDecoder
+                else -> continue
+            }
+            val (decoded, languages) = withContext(Dispatchers.Default) {
+                decoder.decodeB62(
+                    data = sample.data,
+                    ptsMs = sample.timeUs / 1_000L,
+                    operationMode = sample.operationMode,
+                    timingMode = sample.timingMode,
+                    referenceStartPtsMs = sample.referenceStartTimeUs?.div(1_000L),
+                    mpuSequenceNumber = sample.mpuSequenceNumber,
+                    resources = sample.resources,
+                    discontinuity = sample.discontinuity
+                ) to decoder.availableLanguages()
+            }
+            if (!(captionSource.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) continue
+            if (isCaption) currentOnSubtitleLanguagesChanged.value(languages)
+            if (!isCaption || vs.isSubtitleEnabled) {
+                decoded.forEach { cue ->
+                    if ((captionSource.accepts(fencedSample.epoch) && recordedPlaybackFence.accepts(fencedSample.token))) {
+                        onSubtitleCue(cue)
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(subtitleLanguageId, recordedPlaybackFence.identity) {
+        if (recordedPlaybackFence.accepts()) {
+            captionDecoder.switchLanguage(subtitleLanguageId)
+        }
+    }
+    DisposableEffect(captionDecoder, b62SubtitleSamples) {
+        onDispose {
+            captionSource.retire()
+            b62SubtitleSamples.close()
+            captionDecoder.close()
+            superimposeDecoder.close()
+        }
+    }
+
     val applyAudioSelectionAndMatrix = { mode: AudioMode, player: ExoPlayer ->
         val audioGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
 
@@ -319,6 +329,7 @@ fun rememberManagedExoPlayer(
     val exoPlayer = remember(
         recordedPlaybackFence.identity,
         constructionKey,
+        captionQuality,
         smbServerList,
         dataBroadcastingCallback,
     ) {
@@ -361,9 +372,9 @@ fun rememberManagedExoPlayer(
             fileSizeBytesRef = fileSizeBytesRef,
             fileSizeReferenceDurationUsRef = fileSizeReferenceDurationUsRef,
             onRawMmtsSubtitleData = { sample ->
-                if (recordedPlaybackFence.accepts()) {
+                if (captionSource.accepts()) {
                     b62SubtitleSamples.trySend(
-                        FencedB62SubtitleSample(recordedPlaybackFence.tokenOrNull(), sample)
+                        FencedB62SubtitleSample(recordedPlaybackFence.tokenOrNull(), sample, captionSource.token())
                     )
                 }
             },
@@ -439,6 +450,8 @@ fun rememberManagedExoPlayer(
                         if (!recordedPlaybackFence.accepts() ||
                             !AribId3PrivPayloadRouter.shouldResetForPositionDiscontinuity(reason)
                         ) return
+                        if (!captionSource.accepts()) return
+                        captionSource.reset()
                         captionDecoder.reset(subtitleLanguageId)
                         superimposeDecoder.reset()
                         currentOnSubtitleLanguagesChanged.value(emptyList())
@@ -500,7 +513,7 @@ fun rememberManagedExoPlayer(
                     }
 
                     override fun onMetadata(metadata: Metadata) {
-                        if (!recordedPlaybackFence.accepts()) return
+                        if (!captionSource.accepts()) return
                         for (i in 0 until metadata.length()) {
                             val entry = metadata.get(i)
                             if (entry !is PrivFrame) continue
@@ -520,7 +533,8 @@ fun rememberManagedExoPlayer(
                                         captionDecoder.availableLanguages()
                                     )
                                     if (route.render && cue != null) {
-                                        currentOnSubtitleCue.value(cue)
+                                        Log.i(TAG, "ARIB metadata caption: quality=$captionQuality, pts_ms=${cue.ptsMs}, duration_ms=${cue.durationMs}, clear=${cue.clearScreen}, images=${cue.images.size}")
+                                        onSubtitleCue(cue)
                                     }
                                 }
                                 AribId3PrivPayloadRouter.Route.Superimpose -> {
@@ -529,8 +543,9 @@ fun rememberManagedExoPlayer(
                                         currentPosition,
                                         renderCaptions = true,
                                     )
-                                    if (cue != null && recordedPlaybackFence.accepts()) {
-                                        currentOnSubtitleCue.value(cue)
+                                    if (cue != null && captionSource.accepts()) {
+                                        Log.i(TAG, "ARIB metadata superimpose: quality=$captionQuality, pts_ms=${cue.ptsMs}, clear=${cue.clearScreen}, images=${cue.images.size}")
+                                        onSubtitleCue(cue)
                                     }
                                 }
                                 AribId3PrivPayloadRouter.Route.Ignore -> Unit

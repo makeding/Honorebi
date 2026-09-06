@@ -23,6 +23,7 @@ class RecordedPlaybackFence(
 internal data class FencedB62SubtitleSample(
     val token: RecordedPlaybackToken?,
     val sample: B62SubtitleSample,
+    val epoch: Long = 0L,
 )
 
 internal class FencedB60DataBroadcastingCallback(
