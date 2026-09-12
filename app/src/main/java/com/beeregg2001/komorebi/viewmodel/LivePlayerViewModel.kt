@@ -1572,7 +1572,10 @@ class LivePlayerViewModel @Inject constructor(
             }
 
             cause is IOException -> String.format(AppStrings.ERR_DATA_READ, cause.message)
-            else -> error.message?.takeIf { it.isNotBlank() } ?: AppStrings.ERR_UNKNOWN
+            // ★ 修正: DtvProviderProxy.getLiveStreamUrl() が EDCB 側の具体的な失敗理由を
+            // 例外として伝搬するようになったため、その message をそのまま表示する。
+            !error.message.isNullOrBlank() -> error.message!!
+            else -> "${AppStrings.ERR_UNKNOWN}\n(${error.errorCodeName})"
         }
         val safeCode = (cause as? HttpDataSource.InvalidResponseCodeException)
             ?.let { "HTTP_${it.responseCode}" }

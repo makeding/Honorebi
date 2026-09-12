@@ -289,6 +289,11 @@ class SettingsRepository @Inject constructor(
         return com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port, "http")
     }
 
+    // ★ 修正: 以前は素朴な文字列連結("$ip:$port"等)で組み立てており、
+    // スキーム付きURL・末尾スラッシュ付き・ポート込みURLを入力すると不正なURL
+    // (例: "https://example.com/:5510"、ポート重複、パスへのポート混入)になっていた。
+    // EPGStation側は既にUrlBuilder.formatBaseUrl()でこれらを正しく処理しているため、
+    // EDCBも同じ関数に統一する(SSL自動判定のヒューリスティックはそのまま維持)。
     suspend fun getEdcbFullUrl(): String {
         val prefs = context.dataStore.data.first()
         val ip = prefs[EDCB_IP] ?: ""
