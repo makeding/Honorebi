@@ -158,6 +158,7 @@ fun rememberManagedExoPlayer(
     onSubtitleLanguagesChanged: (List<NativeCaptionLanguage>) -> Unit,
     onVideoSizeChanged: (Int, Int, Float) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
+    onVideoTracksChanged: (Tracks) -> Unit = {},
     onDurationChanged: (Long) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
     dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
@@ -238,6 +239,7 @@ fun rememberManagedExoPlayer(
         }
     }
     val currentOnSubtitleLanguagesChanged = rememberUpdatedState(onSubtitleLanguagesChanged)
+    val currentOnVideoTracksChanged = rememberUpdatedState(onVideoTracksChanged)
     val currentOnVideoSizeChanged = rememberUpdatedState(onVideoSizeChanged)
     val currentOnBufferingChanged = rememberUpdatedState(onBufferingChanged)
     val currentOnDurationChanged = rememberUpdatedState(onDurationChanged)
@@ -399,6 +401,7 @@ fun rememberManagedExoPlayer(
 
                     override fun onTracksChanged(tracks: Tracks) {
                         if (!recordedPlaybackFence.accepts()) return
+                        currentOnVideoTracksChanged.value(tracks)
                         applyAudioSelectionAndMatrix(vs.currentAudioMode, managedPlayer)
                     }
 

@@ -48,6 +48,7 @@ class RecordedPlayerLayoutTest {
     fun hdrTileIsAbsentForIneligibleContent() {
         val eligible = mutableStateOf(false)
         composeRule.setContent { KomorebiTheme { menu(hdrSupported = eligible.value) } }
+        composeRule.mainClock.advanceTimeBy(100)
         composeRule.onNodeWithText("HDR 表示").assertDoesNotExist()
         composeRule.onNodeWithText("番組情報").assertIsFocused()
         val bounds = composeRule.onNodeWithText("番組情報").getUnclippedBoundsInRoot()
@@ -55,6 +56,8 @@ class RecordedPlayerLayoutTest {
         composeRule.onNodeWithText("HDR 表示").assertExists()
         composeRule.onNodeWithText("番組情報").assertIsFocused()
         assertEquals(bounds, composeRule.onNodeWithText("番組情報").getUnclippedBoundsInRoot())
+        composeRule.onNodeWithText("HDR 表示").requestFocus()
+        composeRule.onNodeWithText("HDR 表示").assertIsFocused()
         composeRule.runOnIdle { eligible.value = false }
         composeRule.onNodeWithText("HDR 表示").assertDoesNotExist()
         composeRule.onNodeWithText("番組情報").assertIsFocused()
@@ -123,10 +126,11 @@ class RecordedPlayerLayoutTest {
             }
         }
 
-        val titles = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "画質", "再生速度", "字幕", "L字クロップ", "CMスキップ", "実況コメント", "HDR 表示", "データ放送")
+        val titles = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "画質", "再生速度", "字幕", "L字クロップ", "CMスキップ", "実況コメント", "データ放送")
         // The row remains scrollable at TV widths: composition and enabled state must be
         // stable even for tiles initially outside the viewport.
         titles.forEach { title -> composeRule.onNodeWithText(title).assertExists() }
+        composeRule.onNodeWithText("HDR 表示").assertDoesNotExist()
         val bounds = listOf("クイック選局", "サムネイル", "音声切替", "番組情報", "画質")
             .map { title -> composeRule.onNodeWithText(title).assertIsDisplayed().getUnclippedBoundsInRoot() }
         assertEquals(bounds.first().bottom - bounds.first().top, bounds[3].bottom - bounds[3].top)

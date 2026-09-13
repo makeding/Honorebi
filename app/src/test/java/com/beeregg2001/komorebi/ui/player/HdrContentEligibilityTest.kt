@@ -10,6 +10,8 @@ import androidx.media3.common.Tracks
 import org.junit.Assert.*
 import org.junit.Test
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(application = android.app.Application::class, sdk = [28])
 class HdrContentEligibilityTest {
     private fun format(width: Int, height: Int, transfer: Int) = Format.Builder()
         .setSampleMimeType(MimeTypes.VIDEO_H265).setWidth(width).setHeight(height)

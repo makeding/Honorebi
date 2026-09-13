@@ -369,7 +369,8 @@ internal fun RecordedPlayerScreen(
         targetValue = if (
             showControls &&
             !isSubOverlayOpen &&
-            vs.crop.mode == PlayerCropMode.HIDDEN
+            vs.crop.mode == PlayerCropMode.HIDDEN &&
+            subtitleAvoidanceObstacles.isNotEmpty()
         ) {
             1f
         } else {
@@ -619,6 +620,7 @@ internal fun RecordedPlayerScreen(
     ) {
         FencedB60DataBroadcastingCallback(dataBroadcastingStore, recordedPlaybackFence)
     }
+    var videoTracks by remember(currentProgram.id) { mutableStateOf(androidx.media3.common.Tracks.EMPTY) }
     val exoPlayer = rememberManagedExoPlayer(
         program = currentProgram,
         recordedPlaybackFence = recordedPlaybackFence,
@@ -629,6 +631,7 @@ internal fun RecordedPlayerScreen(
         subtitleLanguageId = currentSubtitleLanguageId,
         subtitleResetSerial = recordedCaptions.resetSerial,
         onSubtitleLanguagesChanged = { subtitleLanguages = it },
+        onVideoTracksChanged = { videoTracks = it },
         onVideoSizeChanged = { w, h, ratio ->
             videoWidth = w
             videoHeight = h
@@ -714,7 +717,7 @@ internal fun RecordedPlayerScreen(
     )
 
     val showHdrRenderMode = isHdrRenderModeSupported &&
-        rememberHlgToneMappingContent(exoPlayer, currentProgram.id)
+        rememberHlgToneMappingContent(videoTracks, currentProgram.id)
 
     LaunchedEffect(isNetworkAvailable, exoPlayer, networkRecoveryGate, recordedPlaybackToken) {
         when (val decision = networkRecoveryGate.onNetworkChanged(isNetworkAvailable)) {

@@ -78,7 +78,8 @@ internal fun SmbPlayerScreen(
     var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
     val subtitleAvoidanceProgress by animateFloatAsState(
         targetValue = if (
-            showControls && !isSubMenuOpen && !isProgramInfoOpen && !state.crop.isEnabled
+            showControls && !isSubMenuOpen && !isProgramInfoOpen &&
+                !state.crop.isEnabled && subtitleAvoidanceObstacles.isNotEmpty()
         ) 1f else 0f,
         label = "smbControlsSubtitleAvoidance",
     )

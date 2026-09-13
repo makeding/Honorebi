@@ -184,8 +184,8 @@ fun LivePlayerScreen(
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
     val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
-    val isHlgContent = rememberHlgToneMappingContent(mainPlayer, currentChannelItem.id)
     val mainRuntimeState by livePlayerViewModel.mainRuntimeState.collectAsState()
+    val isHlgContent = rememberHlgToneMappingContent(mainRuntimeState.tracks, currentChannelItem.id)
     val dualRuntimeState by livePlayerViewModel.dualRuntimeState.collectAsState()
     val isMainPlaying = mainRuntimeState.isPlaying
     val isDualPlaying = dualRuntimeState.isPlaying

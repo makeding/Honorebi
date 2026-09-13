@@ -356,7 +356,7 @@ fun VideoTopSubMenuUI(
                     enabled = capabilities.comments
                 )
                 if (showHdrTile) {
-                VideoMenuTileItem(
+                    VideoMenuTileItem(
                         title = "HDR 表示",
                         icon = Icons.Default.HighQuality,
                         subtitle = if (hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {

@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -116,8 +117,18 @@ fun PlayerControls(
         )
     }
 
-    LaunchedEffect(isVisible, avoidanceBounds.toMap()) {
-        onAvoidanceObstaclesChanged(if (isVisible) avoidanceBounds.values.toList() else emptyList())
+    val buttonObstacleKeys = remember {
+        setOf(
+            "info", "chapter-list", "keyframe-grid", "previous-chapter", "seek-back",
+            "play-pause", "seek-forward", "next-chapter", "settings",
+        )
+    }
+    LaunchedEffect(isVisible, isModernUi, allComments.isNotEmpty(), avoidanceBounds.toMap()) {
+        val currentBounds = avoidanceBounds.filterKeys { key ->
+            (isModernUi || key !in buttonObstacleKeys) &&
+                (allComments.isNotEmpty() || key != "comment-heatmap")
+        }.values.toList()
+        onAvoidanceObstaclesChanged(if (isVisible) currentBounds else emptyList())
     }
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
@@ -210,6 +221,13 @@ fun PlayerControls(
                     .testTag("recorded-controls")
                     .padding(horizontal = 48.dp, vertical = 40.dp)
             ) {
+                var titleOrigin by remember { mutableStateOf(Offset.Zero) }
+                var titleGlyphBounds by remember { mutableStateOf<Rect?>(null) }
+                LaunchedEffect(titleOrigin, titleGlyphBounds) {
+                    titleGlyphBounds?.let { glyphBounds ->
+                        recordAvoidanceBounds("title", glyphBounds.translate(titleOrigin))
+                    }
+                }
                 Text(
                     text = mediaInfo.title.ifBlank { "タイトルなし" },
                     fontSize = 18.sp,
@@ -220,12 +238,24 @@ fun PlayerControls(
                     modifier = Modifier
                         .fillMaxWidth().height(24.dp).testTag("recorded-title")
                         .onGloballyPositioned { coordinates ->
-                            recordAvoidanceBounds("title", coordinates.boundsInRoot())
+                            titleOrigin = coordinates.positionInRoot()
                         }
                         .basicMarquee(
                             iterations = if (isVisible) Int.MAX_VALUE else 0,
                             initialDelayMillis = 2000,
                         ),
+                    onTextLayout = { layout ->
+                        titleGlyphBounds = if (layout.lineCount == 0) {
+                            null
+                        } else {
+                            Rect(
+                                layout.getLineLeft(0),
+                                layout.getLineTop(0),
+                                layout.getLineRight(0),
+                                layout.getLineBottom(0),
+                            )
+                        }
+                    },
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -249,6 +279,9 @@ fun PlayerControls(
                     graphHeight = graphHeight,
                     onSeekRequested = onSeekRequested,
                     onProgressBoundsChanged = { bounds -> recordAvoidanceBounds("progress", bounds) },
+                    onElapsedTimeBoundsChanged = { bounds -> recordAvoidanceBounds("elapsed-time", bounds) },
+                    onDurationBoundsChanged = { bounds -> recordAvoidanceBounds("duration", bounds) },
+                    onHeatmapBoundsChanged = { bounds -> recordAvoidanceBounds("comment-heatmap", bounds) },
                 )
 
                 if (isModernUi) {
@@ -456,6 +489,9 @@ private fun RecordedControlsProgressRow(
     graphHeight: Dp,
     onSeekRequested: (Long) -> Unit,
     onProgressBoundsChanged: (Rect) -> Unit,
+    onElapsedTimeBoundsChanged: (Rect) -> Unit,
+    onDurationBoundsChanged: (Rect) -> Unit,
+    onHeatmapBoundsChanged: (Rect) -> Unit,
 ) {
     val displayPositionMs = displayProgress.value.positionMs
     val bufferedPositionMs = displayProgress.value.bufferedPositionMs
@@ -465,12 +501,12 @@ private fun RecordedControlsProgressRow(
             text = formatMillisToTime(displayPositionMs),
             color = Color.White.copy(alpha = 0.9f),
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(64.dp).testTag("playback-time"),
+            modifier = Modifier.width(64.dp).testTag("playback-time")
+                .onGloballyPositioned { coordinates -> onElapsedTimeBoundsChanged(coordinates.boundsInRoot()) },
         )
         Spacer(modifier = Modifier.width(16.dp))
         Box(
             modifier = Modifier.weight(1f).height(graphHeight).testTag("playback-track")
-                .onGloballyPositioned { coordinates -> onProgressBoundsChanged(coordinates.boundsInRoot()) }
                 .onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
                 .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
                 .focusable(isModernUi)
@@ -513,11 +549,13 @@ private fun RecordedControlsProgressRow(
                     currentPositionMs = displayPositionMs,
                     playedColor = colors.accent.copy(alpha = 0.6f),
                     unplayedColor = Color.White.copy(alpha = 0.2f),
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight().align(Alignment.BottomStart),
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight().align(Alignment.BottomStart)
+                        .onGloballyPositioned { coordinates -> onHeatmapBoundsChanged(coordinates.boundsInRoot()) },
                 )
             }
             Box(
                 modifier = Modifier.fillMaxWidth().height(trackHeight).align(Alignment.BottomStart)
+                    .onGloballyPositioned { coordinates -> onProgressBoundsChanged(coordinates.boundsInRoot()) }
                     .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp)),
             )
             if (hasChapters && totalDurationMs > 0L) {
@@ -573,7 +611,8 @@ private fun RecordedControlsProgressRow(
             text = formatMillisToTime(totalDurationMs),
             color = Color.White.copy(alpha = 0.9f),
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(64.dp).testTag("playback-duration"),
+            modifier = Modifier.width(64.dp).testTag("playback-duration")
+                .onGloballyPositioned { coordinates -> onDurationBoundsChanged(coordinates.boundsInRoot()) },
         )
     }
 }

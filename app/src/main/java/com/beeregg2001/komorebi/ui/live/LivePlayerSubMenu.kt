@@ -98,6 +98,14 @@ fun LiveTopSubMenuUI(
     val listFocusRequester = remember { FocusRequester() }
     val quickChannelButtonRequester = remember { FocusRequester() }
     val audioButtonRequester = remember { FocusRequester() }
+    val showHdrTile = isHdrToSdrToneMappingSupported
+    var hdrTileFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(showHdrTile) {
+        if (!showHdrTile && hdrTileFocused) {
+            audioButtonRequester.requestFocus()
+            hdrTileFocused = false
+        }
+    }
     val mainQualityButtonRequester = remember { FocusRequester() }
     val mainSourceButtonRequester = remember { FocusRequester() }
 
@@ -199,15 +207,7 @@ fun LiveTopSubMenuUI(
                 currentStreamSource == StreamSource.MIRAKURUN -> "Mirakurun"
                 else -> "KonomiTV"
             }
-            val showHdrTile = isHdrToSdrToneMappingSupported
-    var hdrTileFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(showHdrTile) {
-        if (!showHdrTile && hdrTileFocused) {
-            audioButtonRequester.requestFocus()
-            hdrTileFocused = false
-        }
-    }
-    val currentSubtitleLanguage = subtitleLanguages.firstOrNull {
+            val currentSubtitleLanguage = subtitleLanguages.firstOrNull {
                 it.id == currentSubtitleLanguageId
             } ?: subtitleLanguages.firstOrNull()
 
@@ -364,7 +364,7 @@ fun LiveTopSubMenuUI(
                             subtitle = if (hdrRenderMode == "SDR_TONE_MAP") "SDR 変換" else "HLG そのまま",
                             onClick = onHdrRenderModeToggle,
                             modifier = Modifier.onFocusChanged { if (showHdrTile) hdrTileFocused = it.isFocused }
-                            .focusProperties { down = FocusRequester.Cancel },
+                                .focusProperties { down = FocusRequester.Cancel },
                             contentColor = if (hdrRenderMode == "SDR_TONE_MAP") colors.accent else colors.textPrimary
                         )
                     }
