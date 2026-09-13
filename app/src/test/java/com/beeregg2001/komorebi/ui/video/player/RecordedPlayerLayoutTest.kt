@@ -45,6 +45,22 @@ class RecordedPlayerLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun hdrTileIsAbsentForIneligibleContent() {
+        val eligible = mutableStateOf(false)
+        composeRule.setContent { KomorebiTheme { menu(hdrSupported = eligible.value) } }
+        composeRule.onNodeWithText("HDR 表示").assertDoesNotExist()
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+        val bounds = composeRule.onNodeWithText("番組情報").getUnclippedBoundsInRoot()
+        composeRule.runOnIdle { eligible.value = true }
+        composeRule.onNodeWithText("HDR 表示").assertExists()
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+        assertEquals(bounds, composeRule.onNodeWithText("番組情報").getUnclippedBoundsInRoot())
+        composeRule.runOnIdle { eligible.value = false }
+        composeRule.onNodeWithText("HDR 表示").assertDoesNotExist()
+        composeRule.onNodeWithText("番組情報").assertIsFocused()
+    }
+
+    @Test
     fun recordedChannelCard_keepsTimeBelowLiveStyleChannel_whenChannelIsMissing() {
         val program = mutableStateOf(testProgram())
         composeRule.setContent {
@@ -368,6 +384,7 @@ class RecordedPlayerLayoutTest {
     @androidx.compose.runtime.Composable
     private fun menu(
         isVisible: Boolean = true,
+        hdrSupported: Boolean = false,
         onProgramInfo: () -> Unit = {},
         onCloseMenu: () -> Unit = {},
         quickPrograms: List<RecordedProgram> = emptyList(),
@@ -395,7 +412,7 @@ class RecordedPlayerLayoutTest {
             isLCropEnabled = false,
             cmSkipMode = CmSkipMode.OFF,
             hdrRenderMode = "None",
-            isHdrRenderModeSupported = false,
+            isHdrRenderModeSupported = hdrSupported,
             isDataBroadcastingAvailable = false,
             isDataBroadcastingActive = false,
             availableQualities = listOf(StreamQuality("1080p", "1080p")),

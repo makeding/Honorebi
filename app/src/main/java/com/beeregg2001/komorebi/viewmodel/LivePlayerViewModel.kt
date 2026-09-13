@@ -667,7 +667,7 @@ class LivePlayerViewModel @Inject constructor(
                     if (!channelSessions.isCurrent(token)) return@withLock
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        val runtime = PlayerRuntime(context, livePlayerProfile(audioOutputMode, hdrRenderMode))
+                        val runtime = PlayerRuntime(context, livePlayerProfile(audioOutputMode, hdrRenderMode, channel.type == "BS4K"))
                         if (!channelSessions.isCurrent(token)) {
                             runtime.release()
                             return@withContext
@@ -758,7 +758,7 @@ class LivePlayerViewModel @Inject constructor(
                     if (!channelSessions.isCurrent(token)) return@withLock
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        val runtime = PlayerRuntime(context, livePlayerProfile(audioOutputMode, hdrRenderMode))
+                        val runtime = PlayerRuntime(context, livePlayerProfile(audioOutputMode, hdrRenderMode, channel.type == "BS4K"))
                         if (!channelSessions.isCurrent(token)) {
                             runtime.release()
                             return@withContext

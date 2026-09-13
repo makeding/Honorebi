@@ -199,7 +199,15 @@ fun LiveTopSubMenuUI(
                 currentStreamSource == StreamSource.MIRAKURUN -> "Mirakurun"
                 else -> "KonomiTV"
             }
-            val currentSubtitleLanguage = subtitleLanguages.firstOrNull {
+            val showHdrTile = isHdrToSdrToneMappingSupported
+    var hdrTileFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(showHdrTile) {
+        if (!showHdrTile && hdrTileFocused) {
+            audioButtonRequester.requestFocus()
+            hdrTileFocused = false
+        }
+    }
+    val currentSubtitleLanguage = subtitleLanguages.firstOrNull {
                 it.id == currentSubtitleLanguageId
             } ?: subtitleLanguages.firstOrNull()
 
@@ -349,13 +357,14 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
 
-                    if (isHdrToSdrToneMappingSupported) {
+                    if (showHdrTile) {
                         LiveMenuTileItem(
                             title = "HDR 表示",
                             icon = Icons.Default.HighQuality,
                             subtitle = if (hdrRenderMode == "SDR_TONE_MAP") "SDR 変換" else "HLG そのまま",
                             onClick = onHdrRenderModeToggle,
-                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                            modifier = Modifier.onFocusChanged { if (showHdrTile) hdrTileFocused = it.isFocused }
+                            .focusProperties { down = FocusRequester.Cancel },
                             contentColor = if (hdrRenderMode == "SDR_TONE_MAP") colors.accent else colors.textPrimary
                         )
                     }

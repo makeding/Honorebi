@@ -17,11 +17,13 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
@@ -72,8 +74,14 @@ internal fun SmbPlayerScreen(
     val captions = rememberRecordedCaptionState(metadata.stableId)
     var subtitleLanguages by remember(metadata.stableId) { mutableStateOf(emptyList<NativeCaptionLanguage>()) }
     var subtitleLanguageId by remember(metadata.stableId) { mutableLongStateOf(1L) }
-    var controlsTopFraction by remember { mutableStateOf(0.75f) }
     var isProgramInfoOpen by remember(metadata.stableId) { mutableStateOf(false) }
+    var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
+    val subtitleAvoidanceProgress by animateFloatAsState(
+        targetValue = if (
+            showControls && !isSubMenuOpen && !isProgramInfoOpen && !state.crop.isEnabled
+        ) 1f else 0f,
+        label = "smbControlsSubtitleAvoidance",
+    )
     val subMenuFocusRequester = remember { FocusRequester() }
     val controlsFocusRequester = remember { FocusRequester() }
     LaunchedEffect(showControls, isSubMenuOpen) {
@@ -177,8 +185,8 @@ internal fun SmbPlayerScreen(
             cue = captions.caption.value,
             visible = state.isSubtitleEnabled,
             modifier = Modifier.fillMaxSize(),
-            bottomAvoidanceOffset = if (showControls) 96.dp else 0.dp,
-            bottomAvoidanceStartFraction = controlsTopFraction,
+            avoidanceObstacles = subtitleAvoidanceObstacles,
+            avoidanceProgress = subtitleAvoidanceProgress,
         )
         NativeCaptionOverlay(
             cue = captions.superimpose.value,
@@ -210,7 +218,9 @@ internal fun SmbPlayerScreen(
             onChapterListToggle = {},
             onInfoToggle = { isProgramInfoOpen = true; onSubMenuToggle(false) },
             onSettingsToggle = { onSubMenuToggle(true) },
-            onControlsTopChanged = { controlsTopFraction = it },
+            onAvoidanceObstaclesChanged = { obstacles ->
+                if (obstacles.isNotEmpty()) subtitleAvoidanceObstacles = obstacles
+            },
         )
         VideoTopSubMenuUI(
             mediaInfo = PlaybackMediaInfo.smb(metadata),

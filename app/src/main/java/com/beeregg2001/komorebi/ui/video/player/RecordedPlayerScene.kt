@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -202,9 +203,9 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     subtitleCue: NativeCaptionCue?,
     superimposeCue: NativeCaptionCue?,
     isSubtitleBlockingOverlayOpen: Boolean,
-    subtitleOffset: Dp,
-    subtitleAvoidanceStartFraction: Float,
-    onControlsTopChanged: (Float) -> Unit,
+    subtitleAvoidanceObstacles: List<Rect>,
+    subtitleAvoidanceProgress: Float,
+    onAvoidanceObstaclesChanged: (List<Rect>) -> Unit,
     infoFocusRequester: FocusRequester,
     presentation: RecordedProgramPresentation,
     subtitleCommentLayer: String,
@@ -287,8 +288,8 @@ internal fun BoxScope.RecordedPlaybackOverlays(
                 cue = subtitleCue,
                 visible = state.isSubtitleEnabled && !isSubtitleBlockingOverlayOpen,
                 modifier = Modifier.fillMaxSize(),
-                bottomAvoidanceOffset = subtitleOffset,
-                bottomAvoidanceStartFraction = subtitleAvoidanceStartFraction
+                avoidanceObstacles = subtitleAvoidanceObstacles,
+                avoidanceProgress = subtitleAvoidanceProgress,
             )
         }
     }
@@ -354,7 +355,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     PlayerControls(
         mediaInfo = mediaInfo,
         timeFormat = timeFormat,
-        onControlsTopChanged = onControlsTopChanged,
+        onAvoidanceObstaclesChanged = onAvoidanceObstaclesChanged,
         infoFocusRequester = infoFocusRequester,
         tiledThumbnailUrl = tiledThumbnailUrl,
         allComments = comments,

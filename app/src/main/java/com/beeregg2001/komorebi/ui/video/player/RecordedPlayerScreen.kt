@@ -8,7 +8,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +38,7 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
+import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.B60MediaPlane
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
@@ -71,8 +73,6 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
 private const val TAG = "VideoPlayerScreen"
-private val PLAYER_CONTROLS_SUBTITLE_OFFSET = 96.dp
-
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -332,7 +332,7 @@ internal fun RecordedPlayerScreen(
     var infoFromMenu by remember { mutableStateOf(false) }
     var infoFromButton by remember { mutableStateOf(false) }
     val infoFocusRequester = remember { FocusRequester() }
-    var controlsTopFraction by remember { mutableFloatStateOf(1f) }
+    var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
     var isModernSettingsOpen by remember { mutableStateOf(false) }
 
     var videoWidth by remember { mutableStateOf(0) }
@@ -365,18 +365,18 @@ internal fun RecordedPlayerScreen(
         isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
     val isSubtitleBlockingOverlayOpen =
         isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
-    val subtitleOffset by animateDpAsState(
+    val subtitleAvoidanceProgress by animateFloatAsState(
         targetValue = if (
             showControls &&
             !isSubOverlayOpen &&
             vs.crop.mode == PlayerCropMode.HIDDEN
         ) {
-            PLAYER_CONTROLS_SUBTITLE_OFFSET
+            1f
         } else {
-            0.dp
+            0f
         },
         animationSpec = tween(durationMillis = 180),
-        label = "playerControlsSubtitleOffset"
+        label = "playerControlsSubtitleAvoidance"
     )
 
     val buildVideoMediaItem: (String) -> MediaItem = { url ->
@@ -712,6 +712,9 @@ internal fun RecordedPlayerScreen(
             }
         }
     )
+
+    val showHdrRenderMode = isHdrRenderModeSupported &&
+        rememberHlgToneMappingContent(exoPlayer, currentProgram.id)
 
     LaunchedEffect(isNetworkAvailable, exoPlayer, networkRecoveryGate, recordedPlaybackToken) {
         when (val decision = networkRecoveryGate.onNetworkChanged(isNetworkAvailable)) {
@@ -1752,9 +1755,11 @@ internal fun RecordedPlayerScreen(
                 subtitleCue = subtitleCue.value,
                 superimposeCue = superimposeCue.value,
                 isSubtitleBlockingOverlayOpen = isSubtitleBlockingOverlayOpen,
-                subtitleOffset = subtitleOffset,
-                subtitleAvoidanceStartFraction = controlsTopFraction,
-                onControlsTopChanged = { controlsTopFraction = it },
+                subtitleAvoidanceObstacles = subtitleAvoidanceObstacles,
+                subtitleAvoidanceProgress = subtitleAvoidanceProgress,
+                onAvoidanceObstaclesChanged = { obstacles ->
+                    if (obstacles.isNotEmpty()) subtitleAvoidanceObstacles = obstacles
+                },
                 infoFocusRequester = infoFocusRequester,
                 presentation = rememberRecordedProgramPresentation(currentProgram, videoPlayerViewModel, backendType),
                 subtitleCommentLayer = subtitleCommentLayer,
@@ -1853,7 +1858,7 @@ internal fun RecordedPlayerScreen(
                 currentSubtitleLanguageId = currentSubtitleLanguageId,
                 cmSkipMode = cmSkipMode,
                 hdrRenderMode = hdrRenderMode,
-                isHdrRenderModeSupported = isHdrRenderModeSupported,
+                isHdrRenderModeSupported = showHdrRenderMode,
                 isDataBroadcastingAvailable = isDataBroadcastingAvailable,
                 isDataBroadcastingActive = isDataBroadcastingActive,
                 availableQualities = availableQualities,

@@ -113,6 +113,14 @@ fun VideoTopSubMenuUI(
     val qualityButtonRequester = remember { FocusRequester() }
     val qualityListRequester = remember { FocusRequester() }
     val quickVideoListRequester = remember { FocusRequester() }
+    val showHdrTile = capabilities.hdr && isHdrRenderModeSupported
+    var hdrTileFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(showHdrTile) {
+        if (!showHdrTile && hdrTileFocused) {
+            focusRequester.requestFocus()
+            hdrTileFocused = false
+        }
+    }
     val currentSubtitleLanguage = subtitleLanguages.firstOrNull {
         it.id == currentSubtitleLanguageId
     } ?: subtitleLanguages.firstOrNull()
@@ -347,6 +355,7 @@ fun VideoTopSubMenuUI(
                     contentColor = colors.textPrimary,
                     enabled = capabilities.comments
                 )
+                if (showHdrTile) {
                 VideoMenuTileItem(
                         title = "HDR 表示",
                         icon = Icons.Default.HighQuality,
@@ -356,7 +365,8 @@ fun VideoTopSubMenuUI(
                             "HLG そのまま"
                         },
                         onClick = onHdrRenderModeToggle,
-                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        modifier = Modifier.onFocusChanged { if (showHdrTile) hdrTileFocused = it.isFocused }
+                            .focusProperties { down = FocusRequester.Cancel },
                         contentColor = if (capabilities.hdr && isHdrRenderModeSupported && hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
                             colors.accent
                         } else {
@@ -364,6 +374,7 @@ fun VideoTopSubMenuUI(
                         },
                         enabled = capabilities.hdr && isHdrRenderModeSupported,
                     )
+                }
                 VideoMenuTileItem(
                         title = "データ放送",
                         icon = Icons.Default.Tv,

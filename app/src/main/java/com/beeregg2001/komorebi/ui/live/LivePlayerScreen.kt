@@ -7,17 +7,19 @@ import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -66,9 +68,6 @@ import org.json.JSONObject
 import master.flame.danmaku.controller.IDanmakuView
 
 private const val TAG = "LivePlayerScreen"
-private const val LIVE_SUBTITLE_AVOIDANCE_START_FRACTION = 0.75f
-private val LIVE_PROGRAM_INFO_SUBTITLE_OFFSET = 200.dp
-
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun LivePlayerScreen(
@@ -185,6 +184,7 @@ fun LivePlayerScreen(
     val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
     val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
+    val isHlgContent = rememberHlgToneMappingContent(mainPlayer, currentChannelItem.id)
     val mainRuntimeState by livePlayerViewModel.mainRuntimeState.collectAsState()
     val dualRuntimeState by livePlayerViewModel.dualRuntimeState.collectAsState()
     val isMainPlaying = mainRuntimeState.isPlaying
@@ -619,13 +619,11 @@ fun LivePlayerScreen(
     // surface, so captions must not be drawn over its cards.
     val isSubtitleBlockingUiVisible =
         ps.crop.mode != PlayerCropMode.HIDDEN || isMiniListOpen
-    val subtitleBottomAvoidanceOffset by animateDpAsState(
-        targetValue = when {
-            showOverlay -> LIVE_PROGRAM_INFO_SUBTITLE_OFFSET
-            else -> 0.dp
-        },
+    var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
+    val subtitleAvoidanceProgress by animateFloatAsState(
+        targetValue = if (showOverlay && subtitleAvoidanceObstacles.isNotEmpty()) 1f else 0f,
         animationSpec = tween(durationMillis = 180),
-        label = "liveOverlaySubtitleOffset"
+        label = "liveOverlaySubtitleAvoidance"
     )
 
     LaunchedEffect(isUiVisible) {
@@ -845,8 +843,8 @@ fun LivePlayerScreen(
                             .zIndex(
                                 if (showOverlay || isPinnedOverlay || isMiniListOpen) 3f else 0f
                             ),
-                        bottomAvoidanceOffset = subtitleBottomAvoidanceOffset,
-                        bottomAvoidanceStartFraction = LIVE_SUBTITLE_AVOIDANCE_START_FRACTION
+                        avoidanceObstacles = subtitleAvoidanceObstacles,
+                        avoidanceProgress = subtitleAvoidanceProgress,
                     )
                 }
 
@@ -994,7 +992,10 @@ fun LivePlayerScreen(
                 showDesc = isManualOverlay,
                 isRecording = isRecording,
                 scrollState = scrollState,
-                timeFormatSetting = timeFormat
+                timeFormatSetting = timeFormat,
+                onAvoidanceObstaclesChanged = { obstacles ->
+                    if (showOverlay) subtitleAvoidanceObstacles = obstacles
+                },
             )
         }
 
@@ -1065,7 +1066,7 @@ fun LivePlayerScreen(
                 canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
                 hdrRenderMode = hdrRenderMode,
-                isHdrToSdrToneMappingSupported = isHdrToSdrToneMappingSupported,
+                isHdrToSdrToneMappingSupported = isHdrToSdrToneMappingSupported && isHlgContent,
                 isDualDisplayMode = ps.isDualDisplayMode,
                 isDataBroadcastingAvailable = isB60Channel,
                 groupedChannels = groupedChannels,

@@ -10,6 +10,11 @@ import org.junit.Test
 /** Locks the configuration formerly held by LivePlayerFactory. */
 class LivePlayerProfileTest {
     @Test
+    fun savedSdrPreferenceDoesNotEnableToneMappingFor2k() {
+        assertFalse(livePlayerProfile("STEREO", HdrToneMapping.RENDER_MODE_SDR).enableHdrToSdrToneMapping)
+    }
+
+    @Test
     fun preservesLiveBufferRendererAndTeardownConfiguration() {
         val profile = livePlayerProfile("STEREO", HdrToneMapping.RENDER_MODE_ORIGINAL)
 
@@ -26,7 +31,7 @@ class LivePlayerProfileTest {
 
     @Test
     fun keepsPassthroughAndHdrToneMappingAsIndependentChoices() {
-        val profile = livePlayerProfile("PASSTHROUGH", HdrToneMapping.RENDER_MODE_SDR)
+        val profile = livePlayerProfile("PASSTHROUGH", HdrToneMapping.RENDER_MODE_SDR, isUhdChannel = true)
 
         assertEquals("PASSTHROUGH", profile.audioOutputMode)
         assertEquals(HdrToneMapping.isSupported, profile.enableHdrToSdrToneMapping)

@@ -9,9 +9,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import java.util.TreeMap
@@ -21,69 +24,10 @@ private const val TIMELINE_TICK_MS = 33L
 private const val PAUSED_TIMELINE_TICK_MS = 100L
 private const val MAX_TIMELINE_CUES = 12
 
-private fun regionsOverlap(
-    first: NativeCaptionRegion,
-    second: NativeCaptionRegion,
-    firstTop: Float = first.y.toFloat(),
-    firstBottom: Float = (first.y + first.height).toFloat()
-): Boolean =
-    first.x < second.x + second.width &&
-        first.x + first.width > second.x &&
-        firstTop <= second.y + second.height &&
-        firstBottom >= second.y
-
-internal fun calculateBottomAvoidanceMask(
-    regions: List<NativeCaptionRegion>,
-    avoidanceStartY: Float,
-    avoidanceOffset: Float
-): BooleanArray {
-    val shouldAvoid = BooleanArray(regions.size) { index ->
-        val region = regions[index]
-        region.y + region.height > avoidanceStartY
-    }
-    if (avoidanceOffset <= 0f) return shouldAvoid
-
-    var changed: Boolean
-    do {
-        changed = false
-        regions.indices.filter { shouldAvoid[it] }.forEach { movingIndex ->
-            val moving = regions[movingIndex]
-            val sweptTop = moving.y - avoidanceOffset
-            val sweptBottom = (moving.y + moving.height).toFloat()
-            regions.indices.filter { !shouldAvoid[it] }.forEach { stationaryIndex ->
-                if (regionsOverlap(
-                        first = moving,
-                        second = regions[stationaryIndex],
-                        firstTop = sweptTop,
-                        firstBottom = sweptBottom
-                    )
-                ) {
-                    shouldAvoid[stationaryIndex] = true
-                    changed = true
-                }
-            }
-        }
-    } while (changed)
-    return shouldAvoid
-}
-
 internal fun captionAvoidanceRegions(image: NativeCaptionImage): List<NativeCaptionRegion> =
     image.regions.ifEmpty {
         listOf(NativeCaptionRegion(image.x, image.y, image.width, image.height))
     }
-
-internal fun calculateCueBottomAvoidanceMasks(
-    imageRegions: List<List<NativeCaptionRegion>>,
-    avoidanceStartY: Float,
-    avoidanceOffset: Float
-): List<BooleanArray> {
-    if (avoidanceOffset <= 0f) return imageRegions.map { BooleanArray(it.size) }
-    val mask = calculateBottomAvoidanceMask(imageRegions.flatten(), avoidanceStartY, avoidanceOffset)
-    var start = 0
-    return imageRegions.map { regions ->
-        mask.copyOfRange(start, start + regions.size).also { start += regions.size }
-    }
-}
 
 @Composable
 fun rememberNativeCaptionCue(
@@ -151,18 +95,19 @@ fun NativeCaptionOverlay(
     cue: NativeCaptionCue?,
     visible: Boolean,
     modifier: Modifier = Modifier,
-    bottomAvoidanceOffset: Dp = 0.dp,
-    bottomAvoidanceStartFraction: Float = 1f
+    avoidanceObstacles: List<Rect> = emptyList(),
+    avoidanceProgress: Float = 0f
 ) {
     // Keep the overlay bounds allocated through empty, disabled and transition states.
 
-    val bottomAvoidanceOffsetPx = with(LocalDensity.current) {
-        bottomAvoidanceOffset.roundToPx()
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val localObstacles = remember(avoidanceObstacles, origin) {
+        avoidanceObstacles.map { it.translate(-origin) }
     }
     val drawCache = remember(cue) { NativeCaptionDrawCache(cue) }
-    Canvas(modifier = modifier) {
+    Canvas(modifier = modifier.onGloballyPositioned { origin = it.positionInRoot() }) {
         if (!visible || cue == null) return@Canvas
-        drawCache.get(size, bottomAvoidanceOffsetPx, bottomAvoidanceStartFraction).forEach { draw ->
+        drawCache.get(size, localObstacles, avoidanceProgress).forEach { draw ->
             if (draw.clip == null) {
                 drawImage(draw.bitmap, dstOffset = draw.offset, dstSize = draw.size)
             } else {

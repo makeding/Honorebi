@@ -20,29 +20,35 @@ internal class NativeCaptionDrawCache(private val cue: NativeCaptionCue?) {
     private val bitmaps = cue?.images.orEmpty().map { it.bitmap.asImageBitmap() }
     private val regions = cue?.images.orEmpty().map(::captionAvoidanceRegions)
     private var viewport = Size.Unspecified
-    private var offsetPx = Int.MIN_VALUE
-    private var startFraction = Float.NaN
+    private var obstacles = emptyList<Rect>()
+    private var targetOffsets = emptyList<List<Float>>()
+    private var progress = Float.NaN
     private var draws = emptyList<CaptionImageDraw>()
 
-    fun get(size: Size, avoidanceOffsetPx: Int, avoidanceStartFraction: Float): List<CaptionImageDraw> {
-        if (size == viewport && avoidanceOffsetPx == offsetPx && avoidanceStartFraction == startFraction) {
-            return draws
+    fun get(size: Size, avoidanceObstacles: List<Rect>, avoidanceProgress: Float): List<CaptionImageDraw> {
+        val targetChanged = size != viewport || obstacles != avoidanceObstacles
+        val nextProgress = avoidanceProgress.coerceIn(0f, 1f)
+        if (!targetChanged && nextProgress == progress) return draws
+        if (targetChanged) {
+            viewport = size
+            obstacles = avoidanceObstacles.toList()
+            targetOffsets = if (cue == null || size.width <= 0 || size.height <= 0) emptyList() else {
+                val scaleX = size.width / cue.planeWidth.coerceAtLeast(1)
+                val scaleY = size.height / cue.planeHeight.coerceAtLeast(1)
+                calculateCaptionObstacleOffsets(regions, obstacles.map {
+                    Rect(it.left / scaleX, it.top / scaleY, it.right / scaleX, it.bottom / scaleY)
+                })
+            }
         }
-        viewport = size
-        offsetPx = avoidanceOffsetPx
-        startFraction = avoidanceStartFraction
-        draws = buildDraws(size, avoidanceOffsetPx, avoidanceStartFraction)
+        progress = nextProgress
+        draws = buildDraws(size, nextProgress)
         return draws
     }
 
-    private fun buildDraws(size: Size, offset: Int, start: Float): List<CaptionImageDraw> {
+    private fun buildDraws(size: Size, progress: Float): List<CaptionImageDraw> {
         if (cue == null || size.width <= 0 || size.height <= 0) return emptyList()
         val scaleX = size.width / cue.planeWidth.coerceAtLeast(1)
         val scaleY = size.height / cue.planeHeight.coerceAtLeast(1)
-        // All images participate before any clipping, preserving body/ruby propagation.
-        val masks = if (offset > 0) calculateCueBottomAvoidanceMasks(
-            regions, cue.planeHeight.coerceAtLeast(1) * start.coerceIn(0f, 1f), offset / scaleY
-        ) else emptyList()
         return buildList {
             cue.images.forEachIndexed { imageIndex, image ->
                 val destination = IntOffset((image.x * scaleX).toInt(), (image.y * scaleY).toInt())
@@ -50,27 +56,23 @@ internal class NativeCaptionDrawCache(private val cue: NativeCaptionCue?) {
                     (image.width * scaleX).toInt().coerceAtLeast(1),
                     (image.height * scaleY).toInt().coerceAtLeast(1)
                 )
-                if (offset <= 0) {
+                val offsets = targetOffsets[imageIndex].map { (it * scaleY * progress).toInt() }
+                if (offsets.all { it == 0 }) {
                     add(CaptionImageDraw(bitmaps[imageIndex], destination, destinationSize))
                 } else {
-                    val stationary = Path()
-                    val shifted = Path()
-                    var hasStationary = false
-                    var hasShifted = false
-                    regions[imageIndex].forEachIndexed { regionIndex, region ->
-                        val moving = masks[imageIndex][regionIndex]
-                        val dy = if (moving) offset else 0
-                        val bounds = Rect(
-                            region.x * scaleX, region.y * scaleY - dy,
-                            (region.x + region.width) * scaleX, (region.y + region.height) * scaleY - dy
-                        )
-                        if (moving) { shifted.addRect(bounds); hasShifted = true }
-                        else { stationary.addRect(bounds); hasStationary = true }
+                    // Independent groups within a bitmap may have different shifts.
+                    // Every region is drawn, with body, background and ruby unchanged.
+                    offsets.distinct().forEach { dy ->
+                        val clip = Path()
+                        regions[imageIndex].forEachIndexed { regionIndex, region ->
+                            if (offsets[regionIndex] == dy) clip.addRect(Rect(
+                                region.x * scaleX, region.y * scaleY - dy,
+                                (region.x + region.width) * scaleX, (region.y + region.height) * scaleY - dy
+                            ))
+                        }
+                        add(CaptionImageDraw(bitmaps[imageIndex],
+                            IntOffset(destination.x, destination.y - dy), destinationSize, clip))
                     }
-                    if (hasStationary) add(CaptionImageDraw(bitmaps[imageIndex], destination, destinationSize, stationary))
-                    if (hasShifted) add(CaptionImageDraw(
-                        bitmaps[imageIndex], IntOffset(destination.x, destination.y - offset), destinationSize, shifted
-                    ))
                 }
             }
         }

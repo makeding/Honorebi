@@ -11,6 +11,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -18,6 +19,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -166,7 +170,8 @@ fun LiveOverlayUI(
     showDesc: Boolean,
     isRecording: Boolean,
     scrollState: ScrollState,
-    timeFormatSetting: String = "24H"
+    timeFormatSetting: String = "24H",
+    onAvoidanceObstaclesChanged: (List<Rect>) -> Unit = {},
 ) {
     val program = channel.programPresent
     val imageLoader = rememberChannelLogoImageLoader()
@@ -176,6 +181,21 @@ fun LiveOverlayUI(
         else SimpleDateFormat("HH:mm", Locale.getDefault())
     }
     var progress by remember { mutableFloatStateOf(-1f) }
+    val density = LocalDensity.current
+    val obstaclePaddingPx = with(density) { 8.dp.toPx() }
+    val avoidanceBounds = remember { mutableStateMapOf<String, Rect>() }
+    val recordAvoidanceBounds: (String, Rect) -> Unit = { key, bounds ->
+        avoidanceBounds[key] = Rect(
+            left = bounds.left - obstaclePaddingPx,
+            top = bounds.top - obstaclePaddingPx,
+            right = bounds.right + obstaclePaddingPx,
+            bottom = bounds.bottom + obstaclePaddingPx,
+        )
+    }
+
+    LaunchedEffect(showDesc, avoidanceBounds.toMap()) {
+        onAvoidanceObstaclesChanged(if (showDesc) emptyList() else avoidanceBounds.values.toList())
+    }
 
     LaunchedEffect(program) {
         if (program != null && !program.startTime.isNullOrEmpty() && !program.endTime.isNullOrEmpty()) {
@@ -273,7 +293,11 @@ fun LiveOverlayUI(
                     fontSize = 28.sp
                 ),
                 color = Color.White,
-                modifier = Modifier.padding(vertical = 16.dp)
+                modifier = Modifier
+                    .padding(vertical = 16.dp)
+                    .onGloballyPositioned { coordinates ->
+                        recordAvoidanceBounds("program-title", coordinates.boundsInRoot())
+                    }
             )
 
             if (progress >= 0f) {
@@ -298,6 +322,9 @@ fun LiveOverlayUI(
                             .padding(horizontal = 20.dp)
                             .height(4.dp)
                             .background(Color.White.copy(0.15f), RoundedCornerShape(2.dp))
+                            .onGloballyPositioned { coordinates ->
+                                recordAvoidanceBounds("program-progress", coordinates.boundsInRoot())
+                            }
                     ) {
                         Box(
                             modifier = Modifier

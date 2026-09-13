@@ -6,7 +6,7 @@ import com.beeregg2001.komorebi.ui.player.PlayerBufferProfile
 import com.beeregg2001.komorebi.ui.player.PlayerProfile
 
 /** Live slots share one profile; main and dual only differ by their source/session. */
-fun livePlayerProfile(audioOutputMode: String, hdrRenderMode: String): PlayerProfile =
+fun livePlayerProfile(audioOutputMode: String, hdrRenderMode: String, isUhdChannel: Boolean = false): PlayerProfile =
     PlayerProfile(
         buffer = PlayerBufferProfile(
             minBufferMs = 3_000,
@@ -16,7 +16,7 @@ fun livePlayerProfile(audioOutputMode: String, hdrRenderMode: String): PlayerPro
         ),
         extensionRendererMode = DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER,
         enableHdrToSdrToneMapping =
-            hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR && HdrToneMapping.isSupported,
+            isUhdChannel && hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR && HdrToneMapping.isSupported,
         audioOutputMode = audioOutputMode,
         releaseTimeoutMs = 10_000,
         detachSurfaceTimeoutMs = 10_000,

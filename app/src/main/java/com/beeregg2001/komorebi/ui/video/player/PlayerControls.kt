@@ -26,6 +26,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -95,15 +97,28 @@ fun PlayerControls(
     onChapterListToggle: () -> Unit,
     onInfoToggle: () -> Unit,
     onSettingsToggle: () -> Unit,
-    onControlsTopChanged: (Float) -> Unit = {},
+    onAvoidanceObstaclesChanged: (List<Rect>) -> Unit = {},
     infoFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val context = LocalContext.current
     val colors = KomorebiTheme.colors
     val loader = remember { TileSheetLoader(context) }
     val density = LocalDensity.current
-    var rootHeight by remember { mutableIntStateOf(1) }
     var controlsHeight by remember { mutableStateOf(0.dp) }
+    val avoidanceBounds = remember { mutableStateMapOf<String, Rect>() }
+    val obstaclePaddingPx = with(density) { 8.dp.toPx() }
+    val recordAvoidanceBounds: (String, Rect) -> Unit = { key, bounds ->
+        avoidanceBounds[key] = Rect(
+            left = bounds.left - obstaclePaddingPx,
+            top = bounds.top - obstaclePaddingPx,
+            right = bounds.right + obstaclePaddingPx,
+            bottom = bounds.bottom + obstaclePaddingPx,
+        )
+    }
+
+    LaunchedEffect(isVisible, avoidanceBounds.toMap()) {
+        onAvoidanceObstaclesChanged(if (isVisible) avoidanceBounds.values.toList() else emptyList())
+    }
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
 
@@ -144,7 +159,7 @@ fun PlayerControls(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize().onSizeChanged { rootHeight = it.height.coerceAtLeast(1) }
+        modifier = Modifier.fillMaxSize()
             .graphicsLayer {
                 alpha = if (isVisible) 1f else 0f
                 translationY = if (isVisible) 0f else 80f
@@ -190,7 +205,6 @@ fun PlayerControls(
                     .fillMaxWidth()
                     .onGloballyPositioned {
                         controlsHeight = with(density) { it.size.height.toDp() }
-                        onControlsTopChanged(((rootHeight - it.size.height).toFloat() / rootHeight).coerceIn(0f, 1f))
                     }
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))))
                     .testTag("recorded-controls")
@@ -205,6 +219,9 @@ fun PlayerControls(
                     maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth().height(24.dp).testTag("recorded-title")
+                        .onGloballyPositioned { coordinates ->
+                            recordAvoidanceBounds("title", coordinates.boundsInRoot())
+                        }
                         .basicMarquee(
                             iterations = if (isVisible) Int.MAX_VALUE else 0,
                             initialDelayMillis = 2000,
@@ -231,6 +248,7 @@ fun PlayerControls(
                     playHeadVerticalOffset = playHeadVerticalOffset,
                     graphHeight = graphHeight,
                     onSeekRequested = onSeekRequested,
+                    onProgressBoundsChanged = { bounds -> recordAvoidanceBounds("progress", bounds) },
                 )
 
                 if (isModernUi) {
@@ -247,18 +265,21 @@ fun PlayerControls(
                                 onClick = onInfoToggle,
                                 modifier = Modifier.focusRequester(infoFocusRequester),
                                 enabled = capabilities.programInfo,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("info", bounds) },
                             )
                             OsdIconButton(
                                 icon = Icons.Default.FormatListBulleted,
                                 label = "チャプター",
                                 onClick = onChapterListToggle,
                                 enabled = chapterControlsEnabled,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("chapter-list", bounds) },
                             )
                             OsdIconButton(
                                 icon = Icons.Default.GridView,
                                 label = "サムネイル",
                                 onClick = onKeyframeGridToggle,
                                 enabled = keyframeGridEnabled,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("keyframe-grid", bounds) },
                             )
                         }
 
@@ -274,6 +295,7 @@ fun PlayerControls(
                                 iconSize = 24.dp,
                                 allowContinuousPress = true,
                                 enabled = chapterControlsEnabled,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("previous-chapter", bounds) },
                             )
 
                             OsdIconButton(
@@ -282,7 +304,8 @@ fun PlayerControls(
                                 onClick = onSeekBack,
                                 buttonSize = 56.dp,
                                 iconSize = 32.dp,
-                                allowContinuousPress = true
+                                allowContinuousPress = true,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("seek-back", bounds) },
                             )
                             OsdIconButton(
                                 icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -291,7 +314,8 @@ fun PlayerControls(
                                 buttonSize = 64.dp,
                                 iconSize = 36.dp,
                                 isPrimary = true,
-                                modifier = Modifier.focusRequester(controlsFocusRequester)
+                                modifier = Modifier.focusRequester(controlsFocusRequester),
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("play-pause", bounds) },
                             )
                             OsdIconButton(
                                 icon = Icons.Default.FastForward,
@@ -299,7 +323,8 @@ fun PlayerControls(
                                 onClick = onSeekForward,
                                 buttonSize = 56.dp,
                                 iconSize = 32.dp,
-                                allowContinuousPress = true
+                                allowContinuousPress = true,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("seek-forward", bounds) },
                             )
 
                             OsdIconButton(
@@ -310,13 +335,15 @@ fun PlayerControls(
                                 iconSize = 24.dp,
                                 allowContinuousPress = true,
                                 enabled = chapterControlsEnabled,
+                                onBoundsChanged = { bounds -> recordAvoidanceBounds("next-chapter", bounds) },
                             )
                         }
 
                         OsdIconButton(
                             icon = Icons.Default.Settings,
                             label = "設定",
-                            onClick = onSettingsToggle
+                            onClick = onSettingsToggle,
+                            onBoundsChanged = { bounds -> recordAvoidanceBounds("settings", bounds) },
                         )
                     }
                 }
@@ -428,6 +455,7 @@ private fun RecordedControlsProgressRow(
     playHeadVerticalOffset: Dp,
     graphHeight: Dp,
     onSeekRequested: (Long) -> Unit,
+    onProgressBoundsChanged: (Rect) -> Unit,
 ) {
     val displayPositionMs = displayProgress.value.positionMs
     val bufferedPositionMs = displayProgress.value.bufferedPositionMs
@@ -442,6 +470,7 @@ private fun RecordedControlsProgressRow(
         Spacer(modifier = Modifier.width(16.dp))
         Box(
             modifier = Modifier.weight(1f).height(graphHeight).testTag("playback-track")
+                .onGloballyPositioned { coordinates -> onProgressBoundsChanged(coordinates.boundsInRoot()) }
                 .onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
                 .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
                 .focusable(isModernUi)
@@ -561,6 +590,7 @@ fun OsdIconButton(
     isPrimary: Boolean = false,
     allowContinuousPress: Boolean = false,
     enabled: Boolean = true,
+    onBoundsChanged: (Rect) -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     var lastRepeatTime by remember { mutableLongStateOf(0L) }
@@ -578,6 +608,7 @@ fun OsdIconButton(
         ),
         modifier = modifier
             .size(buttonSize)
+            .onGloballyPositioned { coordinates -> onBoundsChanged(coordinates.boundsInRoot()) }
             // ★ 恩恵のトップダウン処理: SurfaceがKeyDownイベントを内部消費してアニメーションする「直前」に
             // 連打イベントをインターセプトし、onClick を 200ms 間隔で連続発火させます。
             .onPreviewKeyEvent { event ->
