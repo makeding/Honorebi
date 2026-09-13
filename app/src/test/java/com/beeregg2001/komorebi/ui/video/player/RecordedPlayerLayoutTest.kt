@@ -66,7 +66,7 @@ class RecordedPlayerLayoutTest {
             KomorebiTheme {
                 Box(Modifier.size(960.dp, 540.dp)) {
                     if (visible.value) {
-                        RecordedWallClock(format.value, Modifier.offset(24.dp, 24.dp), now)
+                        RecordedWallClock(format.value, Modifier.offset(24.dp, 24.dp), now, durationMs = 3_600_000)
                         RecordedProgramStatus(testProgram(), format.value, RecordedProgramPresentation())
                     }
                     controls(modern.value, playing.value, seeking.value)
@@ -74,23 +74,24 @@ class RecordedPlayerLayoutTest {
             }
         }
         composeRule.onNodeWithText("23:59").assertIsDisplayed()
+        composeRule.onNodeWithText("翌日 00:59 終了予定").assertIsDisplayed()
         val clockBounds = composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot()
         assertEquals(24.dp, clockBounds.left)
         assertEquals(24.dp, clockBounds.top)
-        assertEquals(160.dp, clockBounds.width)
-        assertEquals(48.dp, clockBounds.bottom - clockBounds.top)
+        assertEquals(256.dp, clockBounds.width)
+        assertEquals(76.dp, clockBounds.bottom - clockBounds.top)
         val statusBounds = composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot()
         for (style in listOf(false, true)) {
             composeRule.runOnIdle { modern.value = style; playing.value = true; seeking.value = false }
             composeRule.mainClock.advanceTimeBy(500)
-            composeRule.onNodeWithTag("playback-track").requestFocus()
+            if (style) composeRule.onNodeWithTag("playback-track").requestFocus()
             val bounds = controlBounds()
             composeRule.runOnIdle { time = time.plusMinutes(1); playing.value = false; seeking.value = true }
             composeRule.mainClock.advanceTimeBy(1_100)
             composeRule.onNodeWithText(formatRecordedWallClock(time, "24H")).assertIsDisplayed()
             assertEquals(bounds, controlBounds())
             assertEquals(clockBounds, composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot())
-            composeRule.onNodeWithTag("playback-track").assertIsFocused()
+            if (style) composeRule.onNodeWithTag("playback-track").assertIsFocused()
         }
         composeRule.runOnIdle { format.value = "12H" }
         composeRule.onNodeWithText("午前 12:01").assertIsDisplayed()
@@ -107,6 +108,7 @@ class RecordedPlayerLayoutTest {
         composeRule.onNodeWithTag("recorded-wall-clock").assertDoesNotExist()
         composeRule.runOnIdle { time = time.plusHours(2); visible.value = true }
         composeRule.onNodeWithText("午後 5:01").assertIsDisplayed()
+        composeRule.onNodeWithText("午後 6:01 終了予定").assertIsDisplayed()
     }
 
     @Test
