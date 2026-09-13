@@ -11,6 +11,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -19,8 +20,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +37,7 @@ import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
 import com.beeregg2001.komorebi.ui.player.formatChannelType
+import com.beeregg2001.komorebi.ui.subtitle.rememberCaptionTextBounds
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -171,6 +174,7 @@ fun LiveOverlayUI(
     isRecording: Boolean,
     scrollState: ScrollState,
     timeFormatSetting: String = "24H",
+    restingRootOrigin: Offset = Offset.Zero,
     onAvoidanceObstaclesChanged: (List<Rect>) -> Unit = {},
 ) {
     val program = channel.programPresent
@@ -183,18 +187,32 @@ fun LiveOverlayUI(
     var progress by remember { mutableFloatStateOf(-1f) }
     val density = LocalDensity.current
     val obstaclePaddingPx = with(density) { 8.dp.toPx() }
-    val avoidanceBounds = remember { mutableStateMapOf<String, Rect>() }
+    val animatedBounds = remember { mutableStateMapOf<String, Rect>() }
+    var overlayRootOrigin by remember { mutableStateOf(Offset.Zero) }
     val recordAvoidanceBounds: (String, Rect) -> Unit = { key, bounds ->
-        avoidanceBounds[key] = Rect(
-            left = bounds.left - obstaclePaddingPx,
-            top = bounds.top - obstaclePaddingPx,
-            right = bounds.right + obstaclePaddingPx,
-            bottom = bounds.bottom + obstaclePaddingPx,
-        )
+        animatedBounds[key] = bounds
+    }
+    val recordTextBounds: (String, List<Rect>) -> Unit = { prefix, lineBounds ->
+        animatedBounds.keys.filter { it.startsWith("$prefix-") }.forEach(animatedBounds::remove)
+        lineBounds.forEachIndexed { index, bounds -> recordAvoidanceBounds("$prefix-$index", bounds) }
     }
 
-    LaunchedEffect(showDesc, avoidanceBounds.toMap()) {
-        onAvoidanceObstaclesChanged(if (showDesc) emptyList() else avoidanceBounds.values.toList())
+    LaunchedEffect(
+        showDesc, isRecording, progress >= 0f, restingRootOrigin, overlayRootOrigin, animatedBounds.toMap()
+    ) {
+        val currentBounds = animatedBounds.filterKeys { key ->
+            (isRecording || key != "recording-indicator") &&
+                (progress >= 0f || (key != "program-progress" && !key.startsWith("start-time-") && !key.startsWith("end-time-")))
+        }.values.map { bounds ->
+            val restingBounds = bounds.translate(restingRootOrigin - overlayRootOrigin)
+            Rect(
+                left = restingBounds.left - obstaclePaddingPx,
+                top = restingBounds.top - obstaclePaddingPx,
+                right = restingBounds.right + obstaclePaddingPx,
+                bottom = restingBounds.bottom + obstaclePaddingPx,
+            )
+        }
+        onAvoidanceObstaclesChanged(if (showDesc) emptyList() else currentBounds)
     }
 
     LaunchedEffect(program) {
@@ -243,7 +261,9 @@ fun LiveOverlayUI(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coordinates -> overlayRootOrigin = coordinates.positionInRoot() },
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
@@ -270,21 +290,37 @@ fun LiveOverlayUI(
                     modifier = Modifier
                         .size(80.dp, 45.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White),
+                        .background(Color.White)
+                        .onGloballyPositioned { coordinates ->
+                            recordAvoidanceBounds("channel-logo", Rect(coordinates.positionInRoot(), Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())))
+                        },
                     // ★ 修正: フラグに基づいてスケールを変更
                     contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit
                 )
                 Spacer(Modifier.width(24.dp))
+                val channelNameBounds = rememberCaptionTextBounds { bounds ->
+                    recordTextBounds("channel-name", bounds)
+                }
                 Text(
                     text = "${formatChannelType(channel.type)}${channel.channelNumber}  ${channel.name}",
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White.copy(0.8f),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .onGloballyPositioned(channelNameBounds::onPositioned),
+                    onTextLayout = channelNameBounds::onTextLayout,
                 )
 
                 if (isRecording) {
-                    RecordingIndicator()
+                    RecordingIndicator(
+                        onBoundsChanged = { bounds ->
+                            recordAvoidanceBounds("recording-indicator", bounds)
+                        },
+                    )
                 }
+            }
+            val programTitleBounds = rememberCaptionTextBounds { bounds ->
+                recordTextBounds("program-title", bounds)
             }
             Text(
                 text = programTitle,
@@ -295,9 +331,8 @@ fun LiveOverlayUI(
                 color = Color.White,
                 modifier = Modifier
                     .padding(vertical = 16.dp)
-                    .onGloballyPositioned { coordinates ->
-                        recordAvoidanceBounds("program-title", coordinates.boundsInRoot())
-                    }
+                    .onGloballyPositioned(programTitleBounds::onPositioned),
+                onTextLayout = programTitleBounds::onTextLayout,
             )
 
             if (progress >= 0f) {
@@ -305,6 +340,12 @@ fun LiveOverlayUI(
                     program?.startTime?.let { sdf.parse(it) }?.let { displaySdf.format(it) } ?: ""
                 val end =
                     program?.endTime?.let { sdf.parse(it) }?.let { displaySdf.format(it) } ?: ""
+                val startTimeBounds = rememberCaptionTextBounds { bounds ->
+                    recordTextBounds("start-time", bounds)
+                }
+                val endTimeBounds = rememberCaptionTextBounds { bounds ->
+                    recordTextBounds("end-time", bounds)
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -314,7 +355,9 @@ fun LiveOverlayUI(
                     Text(
                         text = start,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(0.5f)
+                        color = Color.White.copy(0.5f),
+                        modifier = Modifier.onGloballyPositioned(startTimeBounds::onPositioned),
+                        onTextLayout = startTimeBounds::onTextLayout,
                     )
                     Box(
                         modifier = Modifier
@@ -323,7 +366,7 @@ fun LiveOverlayUI(
                             .height(4.dp)
                             .background(Color.White.copy(0.15f), RoundedCornerShape(2.dp))
                             .onGloballyPositioned { coordinates ->
-                                recordAvoidanceBounds("program-progress", coordinates.boundsInRoot())
+                                recordAvoidanceBounds("program-progress", Rect(coordinates.positionInRoot(), Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())))
                             }
                     ) {
                         Box(
@@ -336,7 +379,9 @@ fun LiveOverlayUI(
                     Text(
                         text = end,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(0.5f)
+                        color = Color.White.copy(0.5f),
+                        modifier = Modifier.onGloballyPositioned(endTimeBounds::onPositioned),
+                        onTextLayout = endTimeBounds::onTextLayout,
                     )
                 }
             }
@@ -345,9 +390,10 @@ fun LiveOverlayUI(
 }
 
 @Composable
-fun RecordingIndicator() {
+fun RecordingIndicator(onBoundsChanged: (Rect) -> Unit = {}) {
     Box(
         modifier = Modifier
+            .onGloballyPositioned { coordinates -> onBoundsChanged(Rect(coordinates.positionInRoot(), Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))) }
             .background(Color.Black.copy(0.5f), RoundedCornerShape(16.dp))
             .border(1.dp, Color(0xFFFF5252).copy(0.5f), RoundedCornerShape(16.dp))
             .padding(horizontal = 12.dp, vertical = 4.dp)

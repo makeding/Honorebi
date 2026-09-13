@@ -37,8 +37,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
+import com.beeregg2001.komorebi.ui.subtitle.rememberCaptionTextBounds
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -106,15 +106,13 @@ fun PlayerControls(
     val loader = remember { TileSheetLoader(context) }
     val density = LocalDensity.current
     var controlsHeight by remember { mutableStateOf(0.dp) }
-    val avoidanceBounds = remember { mutableStateMapOf<String, Rect>() }
+    val avoidanceBounds = remember { mutableStateMapOf<String, List<Rect>>() }
     val obstaclePaddingPx = with(density) { 8.dp.toPx() }
+    val recordTextBounds: (String, List<Rect>) -> Unit = { key, bounds ->
+        avoidanceBounds[key] = bounds.map { it.inflate(obstaclePaddingPx) }
+    }
     val recordAvoidanceBounds: (String, Rect) -> Unit = { key, bounds ->
-        avoidanceBounds[key] = Rect(
-            left = bounds.left - obstaclePaddingPx,
-            top = bounds.top - obstaclePaddingPx,
-            right = bounds.right + obstaclePaddingPx,
-            bottom = bounds.bottom + obstaclePaddingPx,
-        )
+        recordTextBounds(key, listOf(bounds))
     }
 
     val buttonObstacleKeys = remember {
@@ -126,8 +124,8 @@ fun PlayerControls(
     LaunchedEffect(isVisible, isModernUi, allComments.isNotEmpty(), avoidanceBounds.toMap()) {
         val currentBounds = avoidanceBounds.filterKeys { key ->
             (isModernUi || key !in buttonObstacleKeys) &&
-                (allComments.isNotEmpty() || key != "comment-heatmap")
-        }.values.toList()
+                ((allComments.isNotEmpty() && totalDurationMs > 0) || key != "comment-heatmap")
+        }.values.flatten()
         onAvoidanceObstaclesChanged(if (isVisible) currentBounds else emptyList())
     }
 
@@ -221,13 +219,7 @@ fun PlayerControls(
                     .testTag("recorded-controls")
                     .padding(horizontal = 48.dp, vertical = 40.dp)
             ) {
-                var titleOrigin by remember { mutableStateOf(Offset.Zero) }
-                var titleGlyphBounds by remember { mutableStateOf<Rect?>(null) }
-                LaunchedEffect(titleOrigin, titleGlyphBounds) {
-                    titleGlyphBounds?.let { glyphBounds ->
-                        recordAvoidanceBounds("title", glyphBounds.translate(titleOrigin))
-                    }
-                }
+                val titleBounds = rememberCaptionTextBounds { recordTextBounds("title", it) }
                 Text(
                     text = mediaInfo.title.ifBlank { "タイトルなし" },
                     fontSize = 18.sp,
@@ -237,25 +229,12 @@ fun PlayerControls(
                     maxLines = 1,
                     modifier = Modifier
                         .fillMaxWidth().height(24.dp).testTag("recorded-title")
-                        .onGloballyPositioned { coordinates ->
-                            titleOrigin = coordinates.positionInRoot()
-                        }
+                        .onGloballyPositioned(titleBounds::onPositioned)
                         .basicMarquee(
                             iterations = if (isVisible) Int.MAX_VALUE else 0,
                             initialDelayMillis = 2000,
                         ),
-                    onTextLayout = { layout ->
-                        titleGlyphBounds = if (layout.lineCount == 0) {
-                            null
-                        } else {
-                            Rect(
-                                layout.getLineLeft(0),
-                                layout.getLineTop(0),
-                                layout.getLineRight(0),
-                                layout.getLineBottom(0),
-                            )
-                        }
-                    },
+                    onTextLayout = titleBounds::onTextLayout,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -279,8 +258,9 @@ fun PlayerControls(
                     graphHeight = graphHeight,
                     onSeekRequested = onSeekRequested,
                     onProgressBoundsChanged = { bounds -> recordAvoidanceBounds("progress", bounds) },
-                    onElapsedTimeBoundsChanged = { bounds -> recordAvoidanceBounds("elapsed-time", bounds) },
-                    onDurationBoundsChanged = { bounds -> recordAvoidanceBounds("duration", bounds) },
+                    onPlayHeadBoundsChanged = { bounds -> recordAvoidanceBounds("play-head", bounds) },
+                    onElapsedTimeBoundsChanged = { bounds -> recordTextBounds("elapsed-time", bounds) },
+                    onDurationBoundsChanged = { bounds -> recordTextBounds("duration", bounds) },
                     onHeatmapBoundsChanged = { bounds -> recordAvoidanceBounds("comment-heatmap", bounds) },
                 )
 
@@ -489,20 +469,24 @@ private fun RecordedControlsProgressRow(
     graphHeight: Dp,
     onSeekRequested: (Long) -> Unit,
     onProgressBoundsChanged: (Rect) -> Unit,
-    onElapsedTimeBoundsChanged: (Rect) -> Unit,
-    onDurationBoundsChanged: (Rect) -> Unit,
+    onPlayHeadBoundsChanged: (Rect) -> Unit,
+    onElapsedTimeBoundsChanged: (List<Rect>) -> Unit,
+    onDurationBoundsChanged: (List<Rect>) -> Unit,
     onHeatmapBoundsChanged: (Rect) -> Unit,
 ) {
     val displayPositionMs = displayProgress.value.positionMs
     val bufferedPositionMs = displayProgress.value.bufferedPositionMs
     val colors = KomorebiTheme.colors
+    val elapsedBounds = rememberCaptionTextBounds(onElapsedTimeBoundsChanged)
+    val durationBounds = rememberCaptionTextBounds(onDurationBoundsChanged)
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
             text = formatMillisToTime(displayPositionMs),
             color = Color.White.copy(alpha = 0.9f),
             fontWeight = FontWeight.Medium,
             modifier = Modifier.width(64.dp).testTag("playback-time")
-                .onGloballyPositioned { coordinates -> onElapsedTimeBoundsChanged(coordinates.boundsInRoot()) },
+                .onGloballyPositioned(elapsedBounds::onPositioned),
+            onTextLayout = elapsedBounds::onTextLayout,
         )
         Spacer(modifier = Modifier.width(16.dp))
         Box(
@@ -602,6 +586,7 @@ private fun RecordedControlsProgressRow(
                 Box(
                     modifier = Modifier.offset(x = playHeadSize / 2, y = playHeadVerticalOffset)
                         .size(playHeadSize)
+                        .onGloballyPositioned { onPlayHeadBoundsChanged(it.boundsInRoot()) }
                         .background(if (isSeekBarFocused) colors.accent else Color.White, CircleShape),
                 )
             }
@@ -612,7 +597,8 @@ private fun RecordedControlsProgressRow(
             color = Color.White.copy(alpha = 0.9f),
             fontWeight = FontWeight.Medium,
             modifier = Modifier.width(64.dp).testTag("playback-duration")
-                .onGloballyPositioned { coordinates -> onDurationBoundsChanged(coordinates.boundsInRoot()) },
+                .onGloballyPositioned(durationBounds::onPositioned),
+            onTextLayout = durationBounds::onTextLayout,
         )
     }
 }

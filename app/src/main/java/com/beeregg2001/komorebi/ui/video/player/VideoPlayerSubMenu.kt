@@ -115,8 +115,9 @@ fun VideoTopSubMenuUI(
     val quickVideoListRequester = remember { FocusRequester() }
     val showHdrTile = capabilities.hdr && isHdrRenderModeSupported
     var hdrTileFocused by remember { mutableStateOf(false) }
+    val restoreFocusAfterHdrRemoval = !showHdrTile && hdrTileFocused
     LaunchedEffect(showHdrTile) {
-        if (!showHdrTile && hdrTileFocused) {
+        if (restoreFocusAfterHdrRemoval) {
             focusRequester.requestFocus()
             hdrTileFocused = false
         }

@@ -19,11 +19,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -655,9 +658,11 @@ fun LivePlayerScreen(
         }
     }
 
+    var playerRootOrigin by remember { mutableStateOf(Offset.Zero) }
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { coordinates -> playerRootOrigin = coordinates.positionInRoot() }
             .background(Color.Black)
             .onKeyEvent { keyEvent ->
                 if (isPiPMode) return@onKeyEvent false
@@ -993,6 +998,7 @@ fun LivePlayerScreen(
                 isRecording = isRecording,
                 scrollState = scrollState,
                 timeFormatSetting = timeFormat,
+                restingRootOrigin = playerRootOrigin,
                 onAvoidanceObstaclesChanged = { obstacles ->
                     if (showOverlay) subtitleAvoidanceObstacles = obstacles
                 },

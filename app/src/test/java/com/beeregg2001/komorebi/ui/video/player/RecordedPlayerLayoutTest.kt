@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.ui.video.player
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.width
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsDisplayed
@@ -26,6 +27,13 @@ import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -340,6 +348,47 @@ class RecordedPlayerLayoutTest {
     }
 
     @Test
+    fun obstaclesUseContentWithEightDpMarginAndPreserveGapsInBothStylesAndViewports() {
+        val modern = mutableStateOf(false)
+        val visible = mutableStateOf(true)
+        val width = mutableStateOf(900.dp)
+        var obstacles = emptyList<Rect>()
+        composeRule.setContent {
+            KomorebiTheme {
+                Box(Modifier.offset(20.dp, 10.dp).size(width.value, 500.dp)) {
+                    controls(modern.value, true, false, isVisible = visible.value,
+                        onObstacles = { obstacles = it })
+                }
+            }
+        }
+        for (isModern in listOf(false, true)) {
+            for (viewport in listOf(900.dp, 800.dp)) {
+                composeRule.runOnIdle { modern.value = isModern; width.value = viewport }
+                composeRule.mainClock.advanceTimeBy(500)
+                val title = composeRule.onNodeWithTag("recorded-title").getUnclippedBoundsInRoot()
+                val track = composeRule.onNodeWithTag("playback-track").getUnclippedBoundsInRoot()
+                composeRule.runOnIdle {
+                    // Test is mdpi: root dp and physical px coincide. The title slot
+                    // stays full-width while only the short title is an obstacle.
+                    val titleObstacle = obstacles.first { it.top < title.bottom.value && it.bottom > title.top.value }
+                    assertEquals(title.left.value - 8f, titleObstacle.left, 0.1f)
+                    assertTrue(titleObstacle.width < (title.right.value - title.left.value) / 2)
+                    assertTrue(obstacles.none { it.contains(androidx.compose.ui.geometry.Offset(title.right.value - 20f, title.top.value + 10f)) })
+                    // Empty upper seek focus area is not a solid obstacle.
+                    assertTrue(obstacles.none { it.contains(androidx.compose.ui.geometry.Offset((track.left.value + track.right.value) / 2, track.top.value + 2f)) })
+                    assertTrue(obstacles.any { it.left == track.left.value - 8f && it.right == track.right.value + 8f })
+                }
+                val before = controlBounds()
+                composeRule.runOnIdle { visible.value = false }
+                composeRule.runOnIdle { assertTrue(obstacles.isEmpty()) }
+                composeRule.runOnIdle { visible.value = true }
+                composeRule.mainClock.advanceTimeBy(500)
+                assertEquals(before, controlBounds())
+            }
+        }
+    }
+
+    @Test
     fun controlsProgress_updatesOnlyTheControlsAndDoesNotPollWhileHidden() {
         val visible = mutableStateOf(false)
         var hostCompositions = 0
@@ -449,6 +498,7 @@ class RecordedPlayerLayoutTest {
         positionProvider: () -> Long = { 120_000L },
         bufferedProvider: () -> Long = { 180_000L },
         title: String = "番組",
+        onObstacles: (List<Rect>) -> Unit = {},
     ) {
         PlayerControls(
             mediaInfo = PlaybackMediaInfo.recorded(testProgram(title)),
@@ -473,7 +523,8 @@ class RecordedPlayerLayoutTest {
             onSeekRequested = {},
             onChapterListToggle = {},
             onInfoToggle = {},
-            onSettingsToggle = {}
+            onSettingsToggle = {},
+            onAvoidanceObstaclesChanged = onObstacles,
         )
     }
 

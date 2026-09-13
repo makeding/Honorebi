@@ -100,8 +100,9 @@ fun LiveTopSubMenuUI(
     val audioButtonRequester = remember { FocusRequester() }
     val showHdrTile = isHdrToSdrToneMappingSupported
     var hdrTileFocused by remember { mutableStateOf(false) }
+    val restoreFocusAfterHdrRemoval = !showHdrTile && hdrTileFocused
     LaunchedEffect(showHdrTile) {
-        if (!showHdrTile && hdrTileFocused) {
+        if (restoreFocusAfterHdrRemoval) {
             audioButtonRequester.requestFocus()
             hdrTileFocused = false
         }
