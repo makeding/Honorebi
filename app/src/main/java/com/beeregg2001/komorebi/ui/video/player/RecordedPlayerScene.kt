@@ -350,6 +350,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
 
     if (showControls && !isSubOverlayOpen && state.crop.mode == PlayerCropMode.HIDDEN) {
         RecordedProgramStatus(program, timeFormat, presentation)
+        RecordedWallClock(timeFormat, Modifier.align(Alignment.TopStart).padding(24.dp))
     }
 
     PlayerControls(

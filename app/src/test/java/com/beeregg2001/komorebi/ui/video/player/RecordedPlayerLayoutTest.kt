@@ -53,6 +53,63 @@ class RecordedPlayerLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun wallClockTracksSystemTimeAndZoneAndStopsWhenHiddenWithoutMovingControls() {
+        val visible = mutableStateOf(true)
+        val format = mutableStateOf("24H")
+        val modern = mutableStateOf(false)
+        val playing = mutableStateOf(true)
+        val seeking = mutableStateOf(false)
+        var time = java.time.ZonedDateTime.parse("2026-09-13T23:59:59+09:00[Asia/Tokyo]")
+        var reads = 0
+        val now = { reads++; time }
+        composeRule.setContent {
+            KomorebiTheme {
+                Box(Modifier.size(960.dp, 540.dp)) {
+                    if (visible.value) {
+                        RecordedWallClock(format.value, Modifier.offset(24.dp, 24.dp), now)
+                        RecordedProgramStatus(testProgram(), format.value, RecordedProgramPresentation())
+                    }
+                    controls(modern.value, playing.value, seeking.value)
+                }
+            }
+        }
+        composeRule.onNodeWithText("23:59").assertIsDisplayed()
+        val clockBounds = composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot()
+        assertEquals(24.dp, clockBounds.left)
+        assertEquals(24.dp, clockBounds.top)
+        assertEquals(160.dp, clockBounds.width)
+        assertEquals(48.dp, clockBounds.bottom - clockBounds.top)
+        val statusBounds = composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot()
+        for (style in listOf(false, true)) {
+            composeRule.runOnIdle { modern.value = style; playing.value = true; seeking.value = false }
+            composeRule.mainClock.advanceTimeBy(500)
+            composeRule.onNodeWithTag("playback-track").requestFocus()
+            val bounds = controlBounds()
+            composeRule.runOnIdle { time = time.plusMinutes(1); playing.value = false; seeking.value = true }
+            composeRule.mainClock.advanceTimeBy(1_100)
+            composeRule.onNodeWithText(formatRecordedWallClock(time, "24H")).assertIsDisplayed()
+            assertEquals(bounds, controlBounds())
+            assertEquals(clockBounds, composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot())
+            composeRule.onNodeWithTag("playback-track").assertIsFocused()
+        }
+        composeRule.runOnIdle { format.value = "12H" }
+        composeRule.onNodeWithText("午前 12:01").assertIsDisplayed()
+        composeRule.runOnIdle { time = time.withZoneSameInstant(java.time.ZoneId.of("UTC")) }
+        composeRule.mainClock.advanceTimeBy(1_100)
+        composeRule.onNodeWithText("午後 3:01").assertIsDisplayed()
+        assertEquals(statusBounds, composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot())
+        assertEquals(clockBounds, composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot())
+        composeRule.runOnIdle { visible.value = false }
+        composeRule.waitForIdle()
+        val hiddenReads = reads
+        composeRule.mainClock.advanceTimeBy(3_000)
+        assertEquals(hiddenReads, reads)
+        composeRule.onNodeWithTag("recorded-wall-clock").assertDoesNotExist()
+        composeRule.runOnIdle { time = time.plusHours(2); visible.value = true }
+        composeRule.onNodeWithText("午後 5:01").assertIsDisplayed()
+    }
+
+    @Test
     fun hdrTileIsAbsentForIneligibleContent() {
         val eligible = mutableStateOf(false)
         composeRule.setContent { KomorebiTheme { menu(hdrSupported = eligible.value) } }
