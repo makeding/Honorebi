@@ -23,7 +23,6 @@ import androidx.tv.material3.MaterialTheme
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.PlayerChannelLogo
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
-import com.beeregg2001.komorebi.ui.player.formatChannelType
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -83,8 +82,9 @@ internal fun RecordedProgramStatus(program: RecordedProgram, timeFormat: String,
                 Modifier.size(56.dp, 32.dp))
             Spacer(Modifier.width(16.dp))
             Text(
-                text = program.channel?.let { "${formatChannelType(it.type)}${it.channelNumber}" }
+                text = program.channel?.name?.takeIf { it.isNotBlank() }
                     ?: "チャンネル情報なし",
+                modifier = Modifier.testTag("recorded-channel-name"),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,

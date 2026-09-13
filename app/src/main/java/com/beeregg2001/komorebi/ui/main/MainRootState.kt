@@ -123,7 +123,7 @@ class MainRootState {
     }
 
     fun getVisibleTabs(): List<String> {
-        return listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
+        return listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約", "放送中")
     }
 }
 

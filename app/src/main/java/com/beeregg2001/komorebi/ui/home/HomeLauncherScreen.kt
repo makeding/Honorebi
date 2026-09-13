@@ -197,6 +197,7 @@ fun HomeLauncherScreen(
     lastPlayerProgramId: String? = null,
     isSettingsOpen: Boolean = false,
     onSettingsToggle: (Boolean) -> Unit = {},
+    onConnectionSettings: () -> Unit = { onSettingsToggle(true) },
     isRecordListOpen: Boolean = false,
     onShowAllRecordings: () -> Unit = {},
     onCloseRecordList: () -> Unit = {},
@@ -234,7 +235,7 @@ fun HomeLauncherScreen(
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
     val tabs = remember {
-        listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
+        listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約", "放送中")
     }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
@@ -393,12 +394,12 @@ fun HomeLauncherScreen(
     }
 
     LaunchedEffect(isReturningFromPlayer) {
-        if (isReturningFromPlayer && !isFullScreenMode) {
+        if (isReturningFromPlayer && !isFullScreenMode && tabs.getOrNull(safeTabIndex) != "放送中") {
             ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
             delay(150)
 
             val currentTabName = tabs.getOrNull(safeTabIndex)
-            if (currentTabName != "ライブ" && currentTabName != "ビデオ") {
+            if (currentTabName != "ライブ" && currentTabName != "ビデオ" && currentTabName != "放送中") {
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
                 if (currentTabName == "ホーム" && section != null && itemId != null) {
@@ -471,7 +472,7 @@ fun HomeLauncherScreen(
                 ticketManager.consume(HomeFocusTicket.TAB_BAR)
 
                 val currentTabName = tabs.getOrNull(safeTabIndex)
-                if (isReturningFromPlayer && currentTabName != "ライブ" && currentTabName != "ビデオ") {
+                if (isReturningFromPlayer && currentTabName != "ライブ" && currentTabName != "ビデオ" && currentTabName != "放送中") {
                     onReturnFocusConsumed()
                 }
             }
@@ -605,7 +606,7 @@ fun HomeLauncherScreen(
                                 Text(
                                     text = title,
                                     modifier = Modifier.padding(
-                                        horizontal = 16.dp,
+                                        horizontal = 10.dp,
                                         vertical = 8.dp
                                     ),
                                     style = MaterialTheme.typography.titleMedium,
@@ -850,6 +851,21 @@ fun HomeLauncherScreen(
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
                             LaunchedEffect(Unit) { delay(500); handleUiReady() }
+                        }
+
+                        "放送中" -> {
+                            com.beeregg2001.komorebi.ui.onair.OnAirScreen(
+                                konomiIp = konomiIp,
+                                konomiPort = konomiPort,
+                                timeFormat = timeFormat,
+                                onProgramClick = { onProgramSelected(it) },
+                                onBack = { ui.tabFocusRequesters[activeRenderIndex].safeRequestFocus(TAG) },
+                                onSettings = onConnectionSettings,
+                                initialFocusRequester = ui.contentFirstItemRequesters[activeRenderIndex],
+                                isReturningFromPlayer = isReturningFromPlayer,
+                                onReturnFocusConsumed = onReturnFocusConsumed,
+                            )
+                            LaunchedEffect(Unit) { handleUiReady() }
                         }
 
                         "番組表" -> {

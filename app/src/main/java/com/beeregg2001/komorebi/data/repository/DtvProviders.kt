@@ -55,6 +55,20 @@ interface RecordProvider {
 }
 
 /**
+ * A backend capability rather than a derivation from the recorded-program list.
+ * Only HonomiTV currently exposes the server-owned On Air classifier.
+ */
+interface OnAirProvider {
+    suspend fun getOnAirSeries(): OnAirSeriesApiResponse
+    suspend fun getSeriesSummary(seriesId: Int): SeriesProgram
+    suspend fun getRecordedProgramsBySeries(seriesId: Int, page: Int, order: String): RecordedApiResponse
+}
+
+class OnAirUnsupportedException(
+    message: String = "現在選択されているバックエンドは放送中一覧に対応していません。"
+) : UnsupportedOperationException(message)
+
+/**
  * 3. 録画予約・自動予約ルールの機能を提供するインターフェース
  */
 interface ReserveProvider {

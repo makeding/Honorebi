@@ -37,7 +37,7 @@ class KonomiRepository @Inject constructor(
     private val settingsRepository: SettingsRepository,
     @param:ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient
-) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider { // ★ インターフェースを実装
+) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider, OnAirProvider { // ★ インターフェースを実装
 
     // ==========================================
     // ユーザー設定・セッション管理
@@ -148,6 +148,12 @@ class KonomiRepository @Inject constructor(
     override suspend fun getSeriesList(page: Int, order: String): SeriesApiResponse {
         return apiService.getSeriesList(page = page, order = order)
     }
+
+    override suspend fun getOnAirSeries(): OnAirSeriesApiResponse =
+        apiService.getOnAirSeries()
+
+    override suspend fun getSeriesSummary(seriesId: Int): SeriesProgram =
+        apiService.getSeriesSummary(seriesId)
 
     @OptIn(UnstableApi::class)
     override suspend fun keepAlive(videoId: Int, quality: String, sessionId: String) {

@@ -55,6 +55,14 @@ interface KonomiApi {
         @Query("order") order: String = "desc"
     ): SeriesApiResponse
 
+    /** Series which HonomiTV has classified as currently airing/recently airing. */
+    @GET("api/series/on-air")
+    suspend fun getOnAirSeries(): OnAirSeriesApiResponse
+
+    /** Lightweight metadata used by the expanded On Air detail panel. */
+    @GET("api/series/{series_id}/summary")
+    suspend fun getSeriesSummary(@Path("series_id") seriesId: Int): SeriesProgram
+
     // ★追加: 個別の録画番組詳細を取得 (詳細情報を含む完全なデータ)
     @GET("api/videos/{video_id}")
     suspend fun getRecordedProgram(@Path("video_id") videoId: Int): RecordedProgram

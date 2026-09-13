@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.di
 import com.beeregg2001.komorebi.data.repository.DtvProviderProxy
 import com.beeregg2001.komorebi.data.repository.EpgProvider
 import com.beeregg2001.komorebi.data.repository.LiveProvider
+import com.beeregg2001.komorebi.data.repository.OnAirProvider
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.ReserveProvider
 import dagger.Binds
@@ -21,6 +22,9 @@ abstract class DtvProviderModule {
 
     @Binds
     abstract fun bindRecordProvider(impl: DtvProviderProxy): RecordProvider
+
+    @Binds
+    abstract fun bindOnAirProvider(impl: DtvProviderProxy): OnAirProvider
 
     @Binds
     abstract fun bindReserveProvider(impl: DtvProviderProxy): ReserveProvider

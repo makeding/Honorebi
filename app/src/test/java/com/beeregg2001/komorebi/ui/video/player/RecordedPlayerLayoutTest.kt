@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.width
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -79,7 +80,7 @@ class RecordedPlayerLayoutTest {
         assertEquals(24.dp, clockBounds.left)
         assertEquals(24.dp, clockBounds.top)
         assertEquals(256.dp, clockBounds.width)
-        assertEquals(76.dp, clockBounds.bottom - clockBounds.top)
+        assertEquals(56.dp, clockBounds.bottom - clockBounds.top)
         val statusBounds = composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot()
         for (style in listOf(false, true)) {
             composeRule.runOnIdle { modern.value = style; playing.value = true; seeking.value = false }
@@ -138,7 +139,8 @@ class RecordedPlayerLayoutTest {
                 RecordedProgramStatus(program.value, "24H", RecordedProgramPresentation())
             }
         }
-        composeRule.onNodeWithText("地デジ011").assertIsDisplayed()
+        composeRule.onNodeWithTag("recorded-channel-name").assertTextEquals("NHK総合").assertIsDisplayed()
+        composeRule.onNodeWithText("地デジ011").assertDoesNotExist()
         val card = composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot()
         val time = composeRule.onNodeWithTag("recorded-status-time").getUnclippedBoundsInRoot()
         assertEquals(androidx.compose.ui.unit.Dp(48f), (card.bottom - card.top))

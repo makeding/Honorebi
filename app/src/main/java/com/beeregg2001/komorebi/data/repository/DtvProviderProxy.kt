@@ -27,7 +27,7 @@ class DtvProviderProxy @Inject constructor(
     private val edcbRecordRepository: EdcbRecordRepository,
     private val edcbReserveRepository: EdcbReserveRepository,
     private val edcbEpgRepository: EdcbEpgRepository
-) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider {
+) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider, OnAirProvider {
 
     // --- ルーティングロジック（インターフェースごとに特化） ---
 
@@ -60,6 +60,13 @@ class DtvProviderProxy @Inject constructor(
             "EDCB" -> edcbEpgRepository
             "EPGSTATION" -> epgStationRepository
             else -> konomiRepository
+        }
+    }
+
+    private suspend fun getOnAirProvider(): OnAirProvider {
+        return when (settingsRepository.backendType.first()) {
+            "KONOMITV" -> konomiRepository
+            else -> throw OnAirUnsupportedException()
         }
     }
 
@@ -124,6 +131,11 @@ class DtvProviderProxy @Inject constructor(
 
     override suspend fun getSeriesList(page: Int, order: String) =
         getRecordProvider().getSeriesList(page, order)
+
+    override suspend fun getOnAirSeries() = getOnAirProvider().getOnAirSeries()
+
+    override suspend fun getSeriesSummary(seriesId: Int) =
+        getOnAirProvider().getSeriesSummary(seriesId)
 
     override suspend fun getRecordStreamUrl(
         videoId: Int,

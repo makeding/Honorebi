@@ -239,6 +239,12 @@ fun MainRootBackground(
                         lastPlayerProgramId = state.playbackState.lastSelectedProgramId,
                         isSettingsOpen = state.isSettingsOpen,
                         onSettingsToggle = { state.isSettingsOpen = it },
+                        onConnectionSettings = {
+                            state.settingsInitialCategoryIndex = 1
+                            state.settingsInitialFocusItemIndex = null
+                            state.settingsOpenDeviceCapabilities = false
+                            state.isSettingsOpen = true
+                        },
                         isRecordListOpen = state.isRecordListOpen,
                         onShowAllRecordings = { state.isRecordListOpen = true },
                         onCloseRecordList = { state.isRecordListOpen = false },

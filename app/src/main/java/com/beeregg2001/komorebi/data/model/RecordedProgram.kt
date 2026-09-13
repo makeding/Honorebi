@@ -12,6 +12,29 @@ data class SeriesApiResponse(
     @SerializedName("series_list") val seriesList: List<SeriesProgram>
 )
 
+/** HonomiTV's authoritative weekly On Air classification.  Weekday is Monday = 0. */
+data class OnAirSeriesApiResponse(
+    @SerializedName("series_list") private val seriesListValue: List<OnAirSeries>? = emptyList(),
+) {
+    val seriesList: List<OnAirSeries> get() = seriesListValue.orEmpty()
+}
+
+data class OnAirSeries(
+    val id: Int,
+    val title: String,
+    @SerializedName("thumbnail_recorded_program_ids") private val thumbnailRecordedProgramIdsValue: List<Int>? = emptyList(),
+    @SerializedName("channel_ids") private val channelIdsValue: List<String>? = emptyList(),
+    @SerializedName("recorded_episodes_count") val recordedEpisodesCount: Int = 0,
+    @SerializedName("missing_episodes_count") val missingEpisodesCount: Int = 0,
+    @SerializedName("partially_recorded_episodes_count") val partiallyRecordedEpisodesCount: Int = 0,
+    val weekday: Int,
+    @SerializedName("broadcast_time") val broadcastTime: String,
+    @SerializedName("latest_broadcast_at") val latestBroadcastAt: String,
+) {
+    val thumbnailRecordedProgramIds: List<Int> get() = thumbnailRecordedProgramIdsValue.orEmpty()
+    val channelIds: List<String> get() = channelIdsValue.orEmpty()
+}
+
 data class SeriesProgram(
     val id: Int,
     val title: String,
