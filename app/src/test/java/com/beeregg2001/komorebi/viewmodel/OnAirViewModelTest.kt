@@ -20,6 +20,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 @RunWith(RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(application = android.app.Application::class, sdk = [28], qualifiers = "w960dp-h540dp-land")
 class OnAirViewModelTest {
     @Test
     fun refreshRejectsANonCooperativeLateListResponse() {
@@ -139,10 +140,10 @@ class OnAirViewModelTest {
     private fun recording(id: Int) = RecordedProgram(
         id = id, title = "録画$id", description = "", startTime = "2026-09-13T00:00:00+09:00",
         endTime = "2026-09-13T00:30:00+09:00", duration = 1800.0, isPartiallyRecorded = false,
-        recordedVideo = RecordedVideo(id, "Recorded", "/recording/$id.ts", 1800.0, "MPEG-TS", "H.264", "AAC-LC"),
+        recordedVideo = RecordedVideo(id, "Recorded", "/recording/$id.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC-LC"),
     )
 
-    private class FakeOnAirProvider : OnAirProvider {
+    private inner class FakeOnAirProvider : OnAirProvider {
         private var firstListContinuation: Continuation<OnAirSeriesApiResponse>? = null
         private var listCalls = 0
         var programPages: Map<Int, RecordedApiResponse> = emptyMap()
