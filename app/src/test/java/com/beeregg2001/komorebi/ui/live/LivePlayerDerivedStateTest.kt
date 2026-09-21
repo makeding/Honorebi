@@ -12,6 +12,35 @@ import org.junit.Test
 
 class LivePlayerDerivedStateTest {
     @Test
+    fun iptvChannelTitleOmitsNumberPlaceholderAndSpacing() {
+        val iptv = channel(id = "CCTV", type = "IPTV").copy(channelNumber = "--")
+        assertNull(com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel(iptv))
+        assertEquals("CCTV", com.beeregg2001.komorebi.ui.player.liveChannelTitle(iptv))
+        assertEquals("地デジ1  1", com.beeregg2001.komorebi.ui.player.liveChannelTitle(channel(id = "1")))
+    }
+
+    @Test
+    fun slotQualitiesRemainIndependentAcrossIptvBroadcastAndBs4k() {
+        val qualities = listOf(StreamQuality("Full HD", "1080p"), StreamQuality("HD", "720p"))
+        val iptv = channel(type = "IPTV").copy(
+            capabilities = com.beeregg2001.komorebi.data.model.ChannelCapabilities(liveStreamSession = true)
+        )
+        val broadcast = channel()
+        for ((left, right) in listOf(iptv to broadcast, broadcast to iptv, iptv to iptv,
+            broadcast to broadcast, iptv to channel(type = "BS4K"))) {
+            val leftQuality = liveSlotQuality(qualities, left, "720p")
+            val rightQuality = liveSlotQuality(qualities, right, "720p")
+            for ((channel, quality) in listOf(left to leftQuality, right to rightQuality)) {
+                when {
+                    channel.supportsLiveStreamSession() -> assertEquals("direct", quality.value)
+                    channel.type == "BS4K" -> assertTrue(quality.isRawMmts)
+                    else -> assertEquals("720p", quality.value)
+                }
+            }
+        }
+    }
+
+    @Test
     fun navigationUsesDisplayChannelInstancesAndWrapsAtBothEnds() {
         val first = channel(id = "1", networkId = 1, serviceId = 1)
         val second = channel(id = "2", networkId = 1, serviceId = 2)

@@ -80,6 +80,14 @@ private data class SessionB62SubtitleSample(
     val sample: B62SubtitleSample
 )
 
+private data class LiveSlotIntent(
+    val channel: Channel,
+    val source: StreamSource,
+    val isEdcbDirect: Boolean,
+    val quality: StreamQuality,
+    val uiContext: Context,
+)
+
 @RequiresApi(Build.VERSION_CODES.O)
 @HiltViewModel
 class LivePlayerViewModel @Inject constructor(
@@ -266,6 +274,7 @@ class LivePlayerViewModel @Inject constructor(
     private var mainCurrentQuality: StreamQuality? = null
     private var mainUpstreamSession: com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease? = null
     private var mainAutoRetryCount = 0
+    private var mainIntent: LiveSlotIntent? = null
 
     private var dualCurrentSource = StreamSource.KONOMITV
     private var dualIsEdcbDirect = false
@@ -273,6 +282,7 @@ class LivePlayerViewModel @Inject constructor(
     private var dualCurrentQuality: StreamQuality? = null
     private var dualUpstreamSession: com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease? = null
     private var dualAutoRetryCount = 0
+    private var dualIntent: LiveSlotIntent? = null
 
     init {
         viewModelScope.launch {
@@ -392,6 +402,7 @@ class LivePlayerViewModel @Inject constructor(
         reason: String = "unspecified",
         endSession: Boolean = true,
         releaseSlot: Boolean = true,
+        preserveTerminalStatus: Boolean = false,
     ) {
         Log.w(
             TAG,
@@ -412,7 +423,9 @@ class LivePlayerViewModel @Inject constructor(
         clearMainRuntimeState()
         mainRawMmtsLayerController.reset()
 
-        _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
+        if (!preserveTerminalStatus) {
+            _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
+        }
         liveJikkyoManager.stopJikkyo()
         mainUpstreamSession = null
         if (endSession) {
@@ -424,6 +437,7 @@ class LivePlayerViewModel @Inject constructor(
         reason: String = "unspecified",
         endSession: Boolean = true,
         releaseSlot: Boolean = true,
+        preserveTerminalStatus: Boolean = false,
     ) {
         Log.w(
             TAG,
@@ -444,7 +458,9 @@ class LivePlayerViewModel @Inject constructor(
         clearDualRuntimeState()
         dualRawMmtsLayerController.reset()
 
-        _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
+        if (!preserveTerminalStatus) {
+            _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
+        }
         dualUpstreamSession = null
         if (endSession) {
             endChannelSession(LivePlaybackSlot.DUAL)
@@ -511,7 +527,7 @@ class LivePlayerViewModel @Inject constructor(
             if (mainAutoRetryCount < MAX_AUTO_RETRY) {
                 mainAutoRetryCount++; _mainSseDetail.value =
                     "通信復旧中... ($mainAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopMainPlaybackSafely("main_player_error_retry", endSession = false); delay(2000)
+                stopMainPlaybackSafely("main_player_error_retry", endSession = false, releaseSlot = false); delay(2000)
                 if (!channelSessions.isCurrent(token)) return@launch
                 if (mainCurrentChannel != null && mainCurrentQuality != null) {
                     playMainChannel(
@@ -526,7 +542,7 @@ class LivePlayerViewModel @Inject constructor(
             } else {
                 _mainPlayerError.value = errorMsg
                 _mainPlayerErrorIsCapabilityRelated.value = isCapabilityRelatedError(error)
-                stopMainPlaybackSafely("main_player_error_exhausted")
+                stopMainPlaybackSafely("main_player_error_exhausted", preserveTerminalStatus = true)
             }
         }
     }
@@ -560,7 +576,7 @@ class LivePlayerViewModel @Inject constructor(
             if (dualAutoRetryCount < MAX_AUTO_RETRY) {
                 dualAutoRetryCount++; _dualSseDetail.value =
                     "通信復旧中... ($dualAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopDualPlaybackSafely("dual_player_error_retry", endSession = false); delay(2000)
+                stopDualPlaybackSafely("dual_player_error_retry", endSession = false, releaseSlot = false); delay(2000)
                 if (!channelSessions.isCurrent(token)) return@launch
                 if (dualCurrentChannel != null && dualCurrentQuality != null) {
                     playDualChannel(
@@ -574,7 +590,7 @@ class LivePlayerViewModel @Inject constructor(
                 }
             } else {
                 _dualSseStatus.value = "Error"; _dualSseDetail.value = errorMsg
-                stopDualPlaybackSafely("dual_player_error_exhausted")
+                stopDualPlaybackSafely("dual_player_error_exhausted", preserveTerminalStatus = true)
             }
         }
     }
@@ -633,6 +649,7 @@ class LivePlayerViewModel @Inject constructor(
         onPlaybackRequestCommitted: (Channel) -> Unit = {}
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
+        if (!isAutoRetry) mainIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.MAIN, channel.id)
         if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
         if (!isAutoRetry) {
@@ -648,8 +665,8 @@ class LivePlayerViewModel @Inject constructor(
             if (channelSessions.isCurrent(token)) _currentLogoUrl.value = logoUrl
         }
 
-        mainPlaybackJob?.cancel()
-        mainPlaybackJob = viewModelScope.launch(Dispatchers.IO) {
+        val mainRun = mainSlot.begin()
+        val mainJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 // チャンネル名は UI 側で即時更新し、ストリームだけを短くデバウンスする。
                 // 連続切替ではこの Job がキャンセルされるため、最後のチャンネルだけを要求する。
@@ -663,26 +680,36 @@ class LivePlayerViewModel @Inject constructor(
                 mainPlaybackMutex.withLock {
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        stopMainPlaybackSafely(endSession = false); _mainSseStatus.value =
+                        stopMainPlaybackSafely(endSession = false, releaseSlot = false); _mainSseStatus.value =
                         "Standby"; _mainSseDetail.value = "ストリームを準備中..."
                     }
 
-                    val request = livePlaybackSourceResolver.resolve(
-                        channel = channel,
-                        requestedSource = source,
-                        requestedIsEdcbDirect = isEdcbDirect,
-                        requestedQuality = quality,
-                        streamNumber = LivePlaybackSlot.MAIN.streamNumber,
-                        factory = mainTsDataSourceFactory
-                    )
-                    if (!channelSessions.isCurrent(token)) {
-                        releaseUpstreamLiveSession(request.upstreamSessionId)
+                    var request: LivePlaybackSourceResolver.Request? = null
+                    var leaseInstalled = false
+                    try {
+                        request = withContext(NonCancellable) {
+                            withTimeout(30_000) {
+                                livePlaybackSourceResolver.resolve(
+                                    channel, source, isEdcbDirect, quality,
+                                    LivePlaybackSlot.MAIN.streamNumber, mainTsDataSourceFactory
+                                ).also { request = it }
+                            }
+                        }
+                        Log.i(TAG, "main resolve channel=${channel.id} source=${request.source} quality=${request.quality.value} token=${token.epoch} session=${request.upstreamSession?.id}")
+                        request.upstreamSession?.let { leaseInstalled = mainRun.installLease(it) }
+                    } finally {
+                        if (!leaseInstalled) request?.upstreamSession?.let { lease ->
+                            withContext(NonCancellable) { lease.close() }
+                        }
+                    }
+                    val resolvedRequest = request ?: return@withLock
+                    if (!channelSessions.isCurrent(token) || !mainRun.isCurrent()) {
                         return@withLock
                     }
-                    mainCurrentSource = request.source
-                    mainIsEdcbDirect = request.isEdcbDirect
-                    mainCurrentQuality = request.quality
-                    mainUpstreamSessionId = request.upstreamSessionId
+                    mainCurrentSource = resolvedRequest.source
+                    mainIsEdcbDirect = resolvedRequest.isEdcbDirect
+                    mainCurrentQuality = resolvedRequest.quality
+                    mainUpstreamSession = resolvedRequest.upstreamSession
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val hdrRenderMode = settingsRepository.hdrRenderMode.first()
@@ -694,24 +721,25 @@ class LivePlayerViewModel @Inject constructor(
                             runtime.release()
                             return@withContext
                         }
+                        if (!mainRun.installRuntime(runtime)) return@withContext
                         mainRuntime = runtime
                         _mainPlayer.value = runtime.player
                         bindMainRuntimeState(runtime)
-                        attachMainRuntimeListeners(runtime, request.source, token, uiContext)
-                        if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
+                        attachMainRuntimeListeners(runtime, resolvedRequest.source, token, uiContext)
+                        if (resolvedRequest.source == StreamSource.MIRAKURUN || resolvedRequest.source == StreamSource.EDCB) {
                             _mainSseStatus.value = "ONAir"; _mainSseDetail.value = ""
-                        } else if (!channel.supportsLiveStreamSession() && request.config is BackendConfig.KonomiTv) {
+                        } else if (!channel.supportsLiveStreamSession() && resolvedRequest.config is BackendConfig.KonomiTv) {
                             startMainSse(
                                 uiContext,
                                 channel.displayChannelId,
-                                request.apiQuality,
-                                request.config,
-                                token
+                                resolvedRequest.apiQuality,
+                                resolvedRequest.config,
+                                token, mainRun
                             )
                         }
                         startPlayback(
                             runtime,
-                            request,
+                            resolvedRequest,
                             mainTsDataSourceFactory,
                             { pts, data -> decodeAndEmitMainSubtitle(token, pts, data) },
                             { sample -> decodeAndEmitMainB62Subtitle(token, sample) },
@@ -722,7 +750,7 @@ class LivePlayerViewModel @Inject constructor(
                             token
                         )
                         if (!channel.isJellyfin) {
-                            liveJikkyoManager.startJikkyo(channel, request.source, token, channelSessions::isCurrent)
+                            liveJikkyoManager.startJikkyo(channel, resolvedRequest.source, token, channelSessions::isCurrent)
                         }
                     }
                 }
@@ -739,6 +767,8 @@ class LivePlayerViewModel @Inject constructor(
                 }
             }
         }
+        mainRun.attachStartupJob(mainJob)
+        mainPlaybackJob = mainJob
     }
 
     fun playDualChannel(
@@ -746,38 +776,49 @@ class LivePlayerViewModel @Inject constructor(
         isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false
     ) {
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
+        if (!isAutoRetry) dualIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.DUAL, channel.id)
         if (!isAutoRetry) dualAutoRetryCount = 0
         dualCurrentChannel = channel
 
-        dualPlaybackJob?.cancel()
-        dualPlaybackJob = viewModelScope.launch(Dispatchers.IO) {
+        val dualRun = dualSlot.begin()
+        val dualJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 dualPlaybackMutex.withLock {
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        stopDualPlaybackSafely(endSession = false); _dualSseStatus.value =
+                        stopDualPlaybackSafely(endSession = false, releaseSlot = false); _dualSseStatus.value =
                         "Standby"; _dualSseDetail.value = "ストリームを準備中..."
                     }
                     delay(if (isAutoRetry) 0 else 600)
                     if (!channelSessions.isCurrent(token)) return@withLock
 
-                    val request = livePlaybackSourceResolver.resolve(
-                        channel = channel,
-                        requestedSource = source,
-                        requestedIsEdcbDirect = isEdcbDirect,
-                        requestedQuality = quality,
-                        streamNumber = LivePlaybackSlot.DUAL.streamNumber,
-                        factory = dualTsDataSourceFactory
-                    )
-                    if (!channelSessions.isCurrent(token)) {
-                        releaseUpstreamLiveSession(request.upstreamSessionId)
+                    var request: LivePlaybackSourceResolver.Request? = null
+                    var leaseInstalled = false
+                    try {
+                        request = withContext(NonCancellable) {
+                            withTimeout(30_000) {
+                                livePlaybackSourceResolver.resolve(
+                                    channel, source, isEdcbDirect, quality,
+                                    LivePlaybackSlot.DUAL.streamNumber, dualTsDataSourceFactory
+                                ).also { request = it }
+                            }
+                        }
+                        Log.i(TAG, "dual resolve channel=${channel.id} source=${request.source} quality=${request.quality.value} token=${token.epoch} session=${request.upstreamSession?.id}")
+                        request.upstreamSession?.let { leaseInstalled = dualRun.installLease(it) }
+                    } finally {
+                        if (!leaseInstalled) request?.upstreamSession?.let { lease ->
+                            withContext(NonCancellable) { lease.close() }
+                        }
+                    }
+                    val resolvedRequest = request ?: return@withLock
+                    if (!channelSessions.isCurrent(token) || !dualRun.isCurrent()) {
                         return@withLock
                     }
-                    dualCurrentSource = request.source
-                    dualIsEdcbDirect = request.isEdcbDirect
-                    dualCurrentQuality = request.quality
-                    dualUpstreamSessionId = request.upstreamSessionId
+                    dualCurrentSource = resolvedRequest.source
+                    dualIsEdcbDirect = resolvedRequest.isEdcbDirect
+                    dualCurrentQuality = resolvedRequest.quality
+                    dualUpstreamSession = resolvedRequest.upstreamSession
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val hdrRenderMode = settingsRepository.hdrRenderMode.first()
@@ -789,24 +830,25 @@ class LivePlayerViewModel @Inject constructor(
                             runtime.release()
                             return@withContext
                         }
+                        if (!dualRun.installRuntime(runtime)) return@withContext
                         dualRuntime = runtime
                         _dualPlayer.value = runtime.player
                         bindDualRuntimeState(runtime)
-                        attachDualRuntimeListeners(runtime, request.source, token, uiContext)
-                        if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
+                        attachDualRuntimeListeners(runtime, resolvedRequest.source, token, uiContext)
+                        if (resolvedRequest.source == StreamSource.MIRAKURUN || resolvedRequest.source == StreamSource.EDCB) {
                             _dualSseStatus.value = "ONAir"; _dualSseDetail.value = ""
-                        } else if (!channel.supportsLiveStreamSession() && request.config is BackendConfig.KonomiTv) {
+                        } else if (!channel.supportsLiveStreamSession() && resolvedRequest.config is BackendConfig.KonomiTv) {
                             startDualSse(
                                 uiContext,
                                 channel.displayChannelId,
-                                request.apiQuality,
-                                request.config,
-                                token
+                                resolvedRequest.apiQuality,
+                                resolvedRequest.config,
+                                token, dualRun
                             )
                         }
                         startPlayback(
                             runtime,
-                            request,
+                            resolvedRequest,
                             dualTsDataSourceFactory,
                             { pts, data -> decodeAndEmitDualSubtitle(token, pts, data) },
                             { sample -> decodeAndEmitDualB62Subtitle(token, sample) },
@@ -828,16 +870,17 @@ class LivePlayerViewModel @Inject constructor(
                 }
             }
         }
+        dualRun.attachStartupJob(dualJob)
+        dualPlaybackJob = dualJob
     }
 
     fun stopAllPlayers() {
         endChannelSession(LivePlaybackSlot.MAIN)
         endChannelSession(LivePlaybackSlot.DUAL)
-        mainPlaybackJob?.cancel(); dualPlaybackJob?.cancel()
-        viewModelScope.launch {
-            mainPlaybackMutex.withLock { stopMainPlaybackSafely(endSession = false) }
-            dualPlaybackMutex.withLock { stopDualPlaybackSafely(endSession = false) }
-        }
+        mainSlot.stop("stop_all"); dualSlot.stop("stop_all")
+        mainPlaybackJob = null; dualPlaybackJob = null
+        stopMainPlaybackSafely("stop_all", endSession = false, releaseSlot = false)
+        stopDualPlaybackSafely("stop_all", endSession = false, releaseSlot = false)
     }
 
     fun setHdrRenderMode(uiContext: Context, mode: String) {
@@ -862,10 +905,9 @@ class LivePlayerViewModel @Inject constructor(
 
     fun stopDualPlayer() {
         endChannelSession(LivePlaybackSlot.DUAL)
-        dualPlaybackJob?.cancel()
-        viewModelScope.launch {
-            dualPlaybackMutex.withLock { stopDualPlaybackSafely(endSession = false) }
-        }
+        dualSlot.stop("stop_dual")
+        dualPlaybackJob = null
+        stopDualPlaybackSafely("stop_dual", endSession = false, releaseSlot = false)
     }
 
     fun setSubtitlesEnabled(enabled: Boolean) {
@@ -1011,6 +1053,20 @@ class LivePlayerViewModel @Inject constructor(
         _mainPlayerErrorIsCapabilityRelated.value = false
     }
 
+    fun retryMain(uiContext: Context) {
+        val intent = mainIntent ?: return
+        mainAutoRetryCount = 0
+        _mainPlayerError.value = null
+        _mainPlayerErrorIsCapabilityRelated.value = false
+        playMainChannel(uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality)
+    }
+
+    fun retryDual(uiContext: Context) {
+        val intent = dualIntent ?: return
+        dualAutoRetryCount = 0
+        playDualChannel(uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality)
+    }
+
     /** The scene consumes this snapshot; runtime remains the only basic event listener. */
     private fun bindMainRuntimeState(runtime: PlayerRuntime) {
         mainRuntimeStateJob?.cancel()
@@ -1020,7 +1076,8 @@ class LivePlayerViewModel @Inject constructor(
                 if (mainRuntime === runtime) {
                     _mainRuntimeState.value = state
                     // セッション再生には放送 SSE がないため、Media3 の準備完了で待機表示を解除する。
-                    if (mainUpstreamSessionId != null && state.playbackState == Player.STATE_READY) {
+                    if (mainUpstreamSession != null && state.playbackState == Player.STATE_READY) {
+                        Log.i(TAG, "main READY channel=${mainCurrentChannel?.id} session=${mainUpstreamSession?.id}")
                         _mainSseStatus.value = "ONAir"
                         _mainSseDetail.value = ""
                     }
@@ -1037,7 +1094,8 @@ class LivePlayerViewModel @Inject constructor(
                 if (dualRuntime === runtime) {
                     _dualRuntimeState.value = state
                     // 二画面目も独立したセッションの準備完了を使う。
-                    if (dualUpstreamSessionId != null && state.playbackState == Player.STATE_READY) {
+                    if (dualUpstreamSession != null && state.playbackState == Player.STATE_READY) {
+                        Log.i(TAG, "dual READY channel=${dualCurrentChannel?.id} session=${dualUpstreamSession?.id}")
                         _dualSseStatus.value = "ONAir"
                         _dualSseDetail.value = ""
                     }
@@ -1146,13 +1204,14 @@ class LivePlayerViewModel @Inject constructor(
         channelId: String,
         quality: String,
         config: BackendConfig.KonomiTv,
-        token: LiveChannelSessionToken
+        token: LiveChannelSessionToken,
+        run: LivePlaybackSlotController.Run,
     ) {
         val eventUrl =
             UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality)
         val request =
             Request.Builder().url(eventUrl).header("User-Agent", "Komorebi/1.0 (Main)").build()
-        mainEventSource = EventSources.createFactory(okHttpClient)
+        val eventSource = EventSources.createFactory(okHttpClient)
             .newEventSource(request, object : EventSourceListener() {
                 override fun onFailure(
                     eventSource: EventSource,
@@ -1219,6 +1278,7 @@ class LivePlayerViewModel @Inject constructor(
                     }
                 }
             })
+        if (run.installEventSource(eventSource)) mainEventSource = eventSource
     }
 
     private fun startDualSse(
@@ -1226,13 +1286,14 @@ class LivePlayerViewModel @Inject constructor(
         channelId: String,
         quality: String,
         config: BackendConfig.KonomiTv,
-        token: LiveChannelSessionToken
+        token: LiveChannelSessionToken,
+        run: LivePlaybackSlotController.Run,
     ) {
         val eventUrl =
             UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality)
         val request =
             Request.Builder().url(eventUrl).header("User-Agent", "Komorebi/1.0 (Dual)").build()
-        dualEventSource = EventSources.createFactory(okHttpClient)
+        val eventSource = EventSources.createFactory(okHttpClient)
             .newEventSource(request, object : EventSourceListener() {
                 override fun onFailure(
                     eventSource: EventSource,
@@ -1297,6 +1358,7 @@ class LivePlayerViewModel @Inject constructor(
                     }
                 }
             })
+        if (run.installEventSource(eventSource)) dualEventSource = eventSource
     }
 
     private fun startSignalPolling() {

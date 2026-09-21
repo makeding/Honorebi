@@ -143,11 +143,13 @@ fun LastWatchedChannelCard(
                         overflow = TextOverflow.Ellipsis,
                         color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.9f)
                     )
-                    Text(
-                        text = "${typeLabels[channel.type] ?: channel.type} ${channel.channelNumber}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.textPrimary.copy(alpha = 0.6f)
-                    )
+                    if (com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel(channel) != null) {
+                        Text(
+                            text = "${typeLabels[channel.type] ?: channel.type} ${channel.channelNumber}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textPrimary.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             }
         }

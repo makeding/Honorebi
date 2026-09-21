@@ -73,7 +73,10 @@ fun DualDisplayPlayer(
     dualCaptionCue: NativeCaptionCue?,
     dualSuperimposeCue: NativeCaptionCue?,
     isDualBuffering: Boolean,
-    isSubtitleEnabled: Boolean
+    isSubtitleEnabled: Boolean,
+    mainError: String?,
+    onRetryMain: () -> Unit,
+    onRetryDual: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
     val animatedLeftWeight by animateFloatAsState(
@@ -136,46 +139,16 @@ fun DualDisplayPlayer(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                val showMainLoading = if (state.currentStreamSource == StreamSource.KONOMITV) {
-                    state.sseStatus == "Standby" || state.sseStatus == "Offline"
-                } else {
-                    isMainBuffering
-                }
-                val mainLoadingText =
-                    if (state.currentStreamSource == StreamSource.KONOMITV) state.sseDetail else AppStrings.STATUS_LOADING
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = showMainLoading,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                    modifier = Modifier.align(Alignment.Center)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(
-                            color = colors.textPrimary,
-                            modifier = Modifier.size(32.dp),
-                            strokeWidth = 3.dp
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = mainLoadingText,
-                            color = colors.textPrimary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            } else {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        color = colors.textPrimary,
-                        modifier = Modifier.size(32.dp),
-                        strokeWidth = 3.dp
-                    )
-                }
             }
+            LiveSlotStatus(
+                error = mainError ?: state.sseDetail.takeIf { state.sseStatus == "Error" },
+                loading = mainPlayer == null || isMainBuffering ||
+                    (!leftChannel.supportsLiveStreamSession() &&
+                        (state.sseStatus == "Standby" || state.sseStatus == "Offline")),
+                message = state.sseDetail,
+                onRetry = onRetryMain,
+                modifier = Modifier.align(Alignment.Center)
+            )
 
             if (isSubtitleEnabled) {
                 NativeCaptionOverlay(
@@ -222,46 +195,16 @@ fun DualDisplayPlayer(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    val showDualLoading = if (state.currentStreamSource == StreamSource.KONOMITV) {
-                        state.dualSseStatus == "Standby" || state.dualSseStatus == "Offline"
-                    } else {
-                        isDualBuffering
-                    }
-                    val dualLoadingText =
-                        if (state.currentStreamSource == StreamSource.KONOMITV) state.dualSseDetail else AppStrings.STATUS_LOADING
-
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showDualLoading,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
-                        modifier = Modifier.align(Alignment.Center)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            CircularProgressIndicator(
-                                color = colors.textPrimary,
-                                modifier = Modifier.size(32.dp),
-                                strokeWidth = 3.dp
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                text = dualLoadingText,
-                                color = colors.textPrimary,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            color = colors.textPrimary,
-                            modifier = Modifier.size(32.dp),
-                            strokeWidth = 3.dp
-                        )
-                    }
                 }
+                LiveSlotStatus(
+                    error = state.dualSseDetail.takeIf { state.dualSseStatus == "Error" },
+                    loading = dualPlayer == null || isDualBuffering ||
+                        (state.dualRightChannel?.supportsLiveStreamSession() != true &&
+                            (state.dualSseStatus == "Standby" || state.dualSseStatus == "Offline")),
+                    message = state.dualSseDetail,
+                    onRetry = onRetryDual,
+                    modifier = Modifier.align(Alignment.Center)
+                )
 
                 if (isSubtitleEnabled) {
                     NativeCaptionOverlay(
@@ -297,6 +240,32 @@ fun DualDisplayPlayer(
                         style = MaterialTheme.typography.headlineSmall
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LiveSlotStatus(
+    error: String?, loading: Boolean, message: String, onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (error != null || loading) {
+        Column(
+            modifier = modifier.widthIn(max = 360.dp).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (error == null) {
+                CircularProgressIndicator(modifier = Modifier.size(32.dp), color = Color.White)
+            }
+            Text(
+                text = error ?: message.ifBlank { AppStrings.STATUS_LOADING },
+                color = Color.White,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (error != null) {
+                androidx.tv.material3.Button(onClick = onRetry) { Text("再試行") }
             }
         }
     }
@@ -491,8 +460,6 @@ fun DualChannelInfoOverlay(
         logoUrl = getLogoUrl(channel.id)
     }
 
-    val displayType =
-        if (channel.type.uppercase() == "GR") AppStrings.CHANNEL_TYPE_GR else channel.type
 
     Row(
         modifier = modifier
@@ -520,13 +487,15 @@ fun DualChannelInfoOverlay(
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
-                androidx.tv.material3.Text(
-                    text = "$displayType ${channel.channelNumber}",
-                    style = androidx.tv.material3.MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
+                com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel(channel)?.let { label ->
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
                 androidx.tv.material3.Text(
                     text = channel.name,
                     style = androidx.tv.material3.MaterialTheme.typography.titleLarge,

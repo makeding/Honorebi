@@ -36,7 +36,8 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
-import com.beeregg2001.komorebi.ui.player.formatChannelType
+import com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel
+import com.beeregg2001.komorebi.ui.player.liveChannelTitle
 import com.beeregg2001.komorebi.ui.subtitle.rememberCaptionTextBounds
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
@@ -148,13 +149,15 @@ fun StatusOverlay(
                 logoUrl, channel.name, shouldCropLogo, Modifier.size(56.dp, 32.dp)
             )
             Spacer(Modifier.width(16.dp))
-            Text(
-                text = "${formatChannelType(channel.type)}${channel.channelNumber}",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.width(20.dp))
+            liveChannelNumberLabel(channel)?.let { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.width(20.dp))
+            }
             Text(
                 text = currentTime,
                 style = MaterialTheme.typography.headlineSmall.copy(fontSize = 20.sp),
@@ -232,7 +235,7 @@ fun LiveOverlayUI(
 
     if (showDesc) {
         com.beeregg2001.komorebi.ui.player.PlayerProgramPanel(
-            channelName = "${formatChannelType(channel.type)}${channel.channelNumber}  ${channel.name}",
+            channelName = liveChannelTitle(channel),
             logoUrl = logoUrl, shouldCropLogo = shouldCropLogo, title = programTitle,
             description = program?.description, detail = program?.detail,
             metadata = listOf("放送日時" to (program?.let {
@@ -302,7 +305,7 @@ fun LiveOverlayUI(
                     recordTextBounds("channel-name", bounds)
                 }
                 Text(
-                    text = "${formatChannelType(channel.type)}${channel.channelNumber}  ${channel.name}",
+                    text = liveChannelTitle(channel),
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White.copy(0.8f),
                     modifier = Modifier

@@ -37,14 +37,14 @@ internal class LivePlaybackSlotController(
     fun currentEventSource(): EventSource? = synchronized(lock) { eventSource }
     fun hasUpstreamLease(): Boolean = synchronized(lock) { upstreamLease != null }
 
-    fun begin(start: (Run) -> Job): Run {
+    fun begin(): Run {
         val previous: Resources
         val run: Run
         synchronized(lock) {
             generation += 1
             previous = takeResourcesLocked()
             run = Run(generation)
-            job = start(run)
+            job = null
         }
         previous.release("replaced")
         return run
@@ -59,14 +59,26 @@ internal class LivePlaybackSlotController(
         previous.release(reason)
     }
 
-    fun isCurrent(run: Run): Boolean = synchronized(lock) { generation == run.generation }
+    fun isCurrent(run: Run): Boolean = synchronized(lock) { generation == run.epoch }
 
-    internal inner class Run internal constructor(private val generation: Long) {
+    internal inner class Run internal constructor(internal val epoch: Long) {
         fun isCurrent(): Boolean = this@LivePlaybackSlotController.isCurrent(this)
+
+        fun attachStartupJob(candidate: Job): Boolean {
+            val stale = synchronized(lock) {
+                if (this@LivePlaybackSlotController.generation != epoch) true else {
+                    job?.cancel()
+                    job = candidate
+                    false
+                }
+            }
+            if (stale) candidate.cancel()
+            return !stale
+        }
 
         fun installRuntime(candidate: PlayerRuntime): Boolean {
             val stale = synchronized(lock) {
-                if (generation != this@Run.generation) true else {
+                if (this@LivePlaybackSlotController.generation != epoch) true else {
                     runtime?.release()
                     runtime = candidate
                     false
@@ -78,7 +90,7 @@ internal class LivePlaybackSlotController(
 
         fun installEventSource(candidate: EventSource): Boolean {
             val stale = synchronized(lock) {
-                if (generation != this@Run.generation) true else {
+                if (this@LivePlaybackSlotController.generation != epoch) true else {
                     eventSource?.cancel()
                     eventSource = candidate
                     false
@@ -91,7 +103,7 @@ internal class LivePlaybackSlotController(
         fun installLease(candidate: LiveStreamSessionLease): Boolean {
             val replaced: LiveStreamSessionLease?
             synchronized(lock) {
-                if (generation != this@Run.generation) {
+                if (this@LivePlaybackSlotController.generation != epoch) {
                     releaseLease(candidate, "late")
                     return false
                 }

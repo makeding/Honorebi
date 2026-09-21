@@ -54,6 +54,16 @@ internal fun effectiveLiveQualities(
         availableQualities
     }
 
+/** Resolve each slot from its own channel and the broadcast preference, never another slot. */
+internal fun liveSlotQuality(
+    availableQualities: List<StreamQuality>, channel: Channel, broadcastPreference: String
+): StreamQuality {
+    val qualities = effectiveLiveQualities(availableQualities, channel)
+    return qualities.firstOrNull { it.value == broadcastPreference }
+        ?: qualities.firstOrNull()
+        ?: StreamQuality.DEFAULT_QUALITIES.first()
+}
+
 internal fun isLiveMediaSessionLoading(
     currentChannelId: String,
     lastChannelIdForSwitchHint: String,

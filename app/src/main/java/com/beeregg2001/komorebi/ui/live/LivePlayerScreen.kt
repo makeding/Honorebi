@@ -296,6 +296,12 @@ fun LivePlayerScreen(
     }
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
+    val dualQuality = ps.dualRightChannel?.let {
+        liveSlotQuality(availableQualities, it, currentLiveQualityStr)
+    }
+    val dualQualityKey = dualQuality?.let {
+        if (it.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else it.value
+    }
     val isB60Channel = currentChannelItem.type.equals("BS4K", ignoreCase = true)
     val isDataBroadcastingActive = isB60Channel &&
         (isDataBroadcastingMode || localDataBroadcastingMode)
@@ -500,12 +506,11 @@ fun LivePlayerScreen(
     }
 
     LaunchedEffect(
-        ps.dualRightChannel,
+        ps.dualRightChannel?.id,
         ps.currentStreamSource,
         ps.isEdcbDirect,
         ps.isDualDisplayMode,
-        ps.retryKey,
-        streamRestartQualityKey,
+        dualQualityKey,
         isSourceInitialized,
         isQualitiesLoaded
     ) {
@@ -514,14 +519,14 @@ fun LivePlayerScreen(
         val rightChannel = ps.dualRightChannel
         if (ps.isDualDisplayMode && rightChannel != null) {
             if (rightChannel.displayChannelId.isBlank() || rightChannel.displayChannelId == "null") return@LaunchedEffect
-            if (ps.currentQuality.value.isBlank()) return@LaunchedEffect
+            if (dualQuality == null || dualQuality.value.isBlank()) return@LaunchedEffect
 
             livePlayerViewModel.playDualChannel(
                 uiContext = uiContext,
                 channel = rightChannel,
                 source = ps.currentStreamSource,
                 isEdcbDirect = ps.isEdcbDirect,
-                quality = ps.currentQuality
+                quality = dualQuality
             )
         } else {
             livePlayerViewModel.stopDualPlayer()
@@ -740,7 +745,10 @@ fun LivePlayerScreen(
                 dualCaptionCue = dualCaptionCue.value,
                 dualSuperimposeCue = dualSuperimposeCue.value,
                 isDualBuffering = isDualBuffering,
-                isSubtitleEnabled = isSubtitleEnabled
+                isSubtitleEnabled = isSubtitleEnabled,
+                mainError = mainError,
+                onRetryMain = { livePlayerViewModel.retryMain(uiContext) },
+                onRetryDual = { livePlayerViewModel.retryDual(uiContext) }
             )
         } else {
             if (isDataBroadcastingActive) {
@@ -1302,7 +1310,7 @@ fun LivePlayerScreen(
             )
         }
 
-        if (!isPiPMode && ps.playerError != null) {
+        if (!isPiPMode && !ps.isDualDisplayMode && ps.playerError != null) {
             LiveErrorDialog(
                 ps.playerError!!,
                 { livePlayerViewModel.retry(); ps.retry() },
