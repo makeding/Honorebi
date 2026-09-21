@@ -85,9 +85,10 @@ class KonomiRepository @Inject constructor(
                 .orEmpty()
             return channels.copy(sourceErrors = sourceErrors)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch KonomiTV channels", e)
             // ★ 修正: エラーを握りつぶして空リストを返さず、例外をスローして知らせる
-            throw Exception("KonomiTVからのチャンネル一覧取得に失敗しました。\nサーバーが稼働しているか確認してください。\n[詳細]: ${e.message}")
+            throw Exception("KonomiTVからのチャンネル一覧取得に失敗しました。\nサーバーが稼働しているか確認してください。\n[詳細]: ${e.message}", e)
         }
     }
 
@@ -121,9 +122,10 @@ class KonomiRepository @Inject constructor(
 
             response.withThumbnailUrls()
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to get recorded programs", e)
             // ★ 修正: 例外をスロー
-            throw Exception("録画番組の取得に失敗しました。\nKonomiTVサーバーの状態を確認してください。\n[詳細]: ${e.message}")
+            throw Exception("録画番組の取得に失敗しました。\nKonomiTVサーバーの状態を確認してください。\n[詳細]: ${e.message}", e)
         }
     }
 
@@ -136,9 +138,10 @@ class KonomiRepository @Inject constructor(
                 UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, program.id.toString())
             Result.success(program.copy(apiThumbnailUrl = fallbackUrl))
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch recorded program $videoId", e)
             // ★ 修正
-            Result.failure(Exception("録画番組詳細の取得に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("録画番組詳細の取得に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -152,9 +155,10 @@ class KonomiRepository @Inject constructor(
             apiService.searchVideos(keyword = keyword, page = page, order = order)
                 .withThumbnailUrls()
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to search recorded programs", e)
             // ★ 修正: 例外をスロー
-            throw Exception("録画番組の検索に失敗しました。\n[詳細]: ${e.message}")
+            throw Exception("録画番組の検索に失敗しました。\n[詳細]: ${e.message}", e)
         }
     }
 
@@ -185,6 +189,7 @@ class KonomiRepository @Inject constructor(
                 Log.w(TAG, "KeepAlive Failed: ${response.code()}")
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to keep alive", e)
         }
     }
@@ -224,9 +229,10 @@ class KonomiRepository @Inject constructor(
             val response = apiService.getArchivedJikkyo(videoId)
             Result.success(if (response.is_success) response.comments else emptyList())
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch archived jikkyo", e)
             // ★ 修正
-            Result.failure(Exception("過去ログ実況の取得に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("過去ログ実況の取得に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -296,6 +302,7 @@ class KonomiRepository @Inject constructor(
                     Result.success(comments)
                 }
             } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.e(
                     TAG,
                     "Failed to fetch chase archived jikkyo. [video=${program.id}, jikkyo_id=${program.channel?.let { getJikkyoId(it.networkId, it.serviceId) }}]",
@@ -319,9 +326,10 @@ class KonomiRepository @Inject constructor(
         return try {
             Result.success(apiService.getReserves().reservations)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch reserves", e)
             // ★ 修正
-            Result.failure(Exception("予約一覧の取得に失敗しました。\nKonomiTVサーバーの状態を確認してください。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("予約一覧の取得に失敗しました。\nKonomiTVサーバーの状態を確認してください。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -334,9 +342,10 @@ class KonomiRepository @Inject constructor(
             }
             Result.success(Unit)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to add reserve", e)
             // ★ 修正
-            Result.failure(Exception("予約の追加に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("予約の追加に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -349,9 +358,10 @@ class KonomiRepository @Inject constructor(
             }
             Result.success(Unit)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to update reserve", e)
             // ★ 修正
-            Result.failure(Exception("予約の更新に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("予約の更新に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -371,9 +381,10 @@ class KonomiRepository @Inject constructor(
             }
             Result.success(Unit)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to delete reservation", e)
             // ★ 修正
-            Result.failure(Exception("予約の削除に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("予約の削除に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -382,9 +393,10 @@ class KonomiRepository @Inject constructor(
             val response = apiService.getReservationConditions()
             Result.success(response.reservationConditions)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch reservation conditions", e)
             // ★ 修正
-            Result.failure(Exception("自動録画ルールの取得に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("自動録画ルールの取得に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -397,9 +409,10 @@ class KonomiRepository @Inject constructor(
                 throw Exception("Failed to add condition: ${response.code()}")
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to add reservation condition", e)
             // ★ 修正
-            Result.failure(Exception("自動録画ルールの追加に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("自動録画ルールの追加に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -411,9 +424,10 @@ class KonomiRepository @Inject constructor(
             val condition = apiService.updateReservationCondition(conditionId, request)
             Result.success(condition)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to update reservation condition", e)
             // ★ 修正
-            Result.failure(Exception("自動録画ルールの更新に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("自動録画ルールの更新に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -426,9 +440,10 @@ class KonomiRepository @Inject constructor(
                 throw Exception("Failed to delete condition: ${response.code()}")
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to delete reservation condition", e)
             // ★ 修正
-            Result.failure(Exception("自動録画ルールの削除に失敗しました。\n[詳細]: ${e.message}"))
+            Result.failure(Exception("自動録画ルールの削除に失敗しました。\n[詳細]: ${e.message}", e))
         }
     }
 
@@ -503,9 +518,10 @@ class KonomiRepository @Inject constructor(
         return try {
             apiService.getEpgPrograms(startTime, endTime, channelType).channels
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch EPG from KonomiTV", e)
             // ★ 修正: 例外をスロー
-            throw Exception("KonomiTVからの番組表データ取得に失敗しました。\n[詳細]: ${e.message}")
+            throw Exception("KonomiTVからの番組表データ取得に失敗しました。\n[詳細]: ${e.message}", e)
         }
     }
 

@@ -46,11 +46,7 @@ object NetworkModule {
             .addInterceptor(logging)
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
             .addInterceptor(com.beeregg2001.komorebi.data.api.interceptor.BackendOriginInterceptor {
-                runBlocking {
-                    val ip = settingsRepository.konomiIp.first()
-                    val port = settingsRepository.konomiPort.first()
-                    com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port, "http")
-                }
+                settingsRepository.cloudflareAccessConfiguration.value
             })
             .addInterceptor(Interceptor { chain ->
                 val request = chain.request()
@@ -89,7 +85,9 @@ object NetworkModule {
         return Retrofit.Builder()
             // ここはダミーの初期値（Interceptorで動的に書き換わるため何でもOK）
             .baseUrl("https://192-168-11-100.local.konomi.tv:7000")
-            .client(okHttpClient)
+            .client(okHttpClient.newBuilder()
+                .addInterceptor(com.beeregg2001.komorebi.data.api.interceptor.BackendApiResponseInterceptor())
+                .build())
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }

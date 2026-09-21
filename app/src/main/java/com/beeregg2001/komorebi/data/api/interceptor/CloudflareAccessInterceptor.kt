@@ -16,8 +16,10 @@ class CloudflareAccessInterceptor internal constructor(
     )
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val headers = configuration().headersFor(request.url.toString())
+        val snapshot = request.tag(CloudflareAccessConfiguration::class.java) ?: configuration()
+        val headers = snapshot.headersFor(request.url.toString())
         val scoped = request.newBuilder().apply {
+            tag(CloudflareAccessConfiguration::class.java, snapshot)
             // A redirect follow-up can carry copied request headers. Remove them before
             // deciding again for its exact destination.
             removeHeader(CloudflareAccessConfiguration.CLIENT_ID_HEADER)

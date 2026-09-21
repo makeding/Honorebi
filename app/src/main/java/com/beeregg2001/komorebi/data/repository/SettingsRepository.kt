@@ -20,6 +20,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,6 +40,7 @@ class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val networkSettingsMutex = Mutex()
     private val _cloudflareAccessConfiguration = MutableStateFlow(CloudflareAccessConfiguration())
     val cloudflareAccessConfiguration: StateFlow<CloudflareAccessConfiguration> = _cloudflareAccessConfiguration
 
@@ -224,8 +227,10 @@ class SettingsRepository @Inject constructor(
     suspend fun saveString(
         key: androidx.datastore.preferences.core.Preferences.Key<String>,
         value: String
-    ) {
-        context.dataStore.edit { settings -> settings[key] = value }
+    ) = networkSettingsMutex.withLock {
+        val saved = context.dataStore.edit { settings -> settings[key] = value }
+            .toCloudflareAccessConfiguration()
+        cloudflareAccessConfiguration.first { it == saved }
     }
 
     suspend fun saveBoolean(
@@ -236,7 +241,7 @@ class SettingsRepository @Inject constructor(
     }
 
     /** Access credentials are an atomic pair: incomplete values are never persisted. */
-    suspend fun saveCloudflareAccessCredentials(clientId: String, clientSecret: String) {
+    suspend fun saveCloudflareAccessCredentials(clientId: String, clientSecret: String) = networkSettingsMutex.withLock {
         val id = clientId.filterNot(Char::isWhitespace)
         val secret = clientSecret.filterNot(Char::isWhitespace)
         require((id.isBlank() && secret.isBlank()) || (id.isNotBlank() && secret.isNotBlank())) {
@@ -263,6 +268,10 @@ class SettingsRepository @Inject constructor(
             clientId = prefs[CF_ACCESS_CLIENT_ID].orEmpty().filterNot(Char::isWhitespace),
             clientSecret = prefs[CF_ACCESS_CLIENT_SECRET].orEmpty().filterNot(Char::isWhitespace),
             allowedOrigins = origins,
+            backendBaseUrl = com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(
+                prefs[KONOMI_IP] ?: "https://192-168-xxx-xxx.local.konomi.tv",
+                prefs[KONOMI_PORT] ?: "7000", "http",
+            ),
         )
     }
 

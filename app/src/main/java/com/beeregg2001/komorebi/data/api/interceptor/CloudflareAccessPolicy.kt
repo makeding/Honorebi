@@ -10,6 +10,7 @@ data class CloudflareAccessConfiguration(
     val clientId: String = "",
     val clientSecret: String = "",
     val allowedOrigins: Set<Origin> = emptySet(),
+    val backendBaseUrl: String = "",
 ) {
     data class Origin(val host: String, val port: Int)
 

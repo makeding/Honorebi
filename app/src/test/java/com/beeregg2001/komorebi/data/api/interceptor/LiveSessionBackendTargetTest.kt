@@ -22,7 +22,9 @@ class LiveSessionBackendTargetTest {
         original.start()
         replacement.start()
         var configured = original.url("/").toString()
-        val client = OkHttpClient.Builder().addInterceptor(BackendOriginInterceptor { configured }).build()
+        val client = OkHttpClient.Builder().addInterceptor(BackendOriginInterceptor {
+            CloudflareAccessConfiguration(backendBaseUrl = configured)
+        }).build()
         try {
             original.enqueue(MockResponse().setBody("""{"id":"session-1","stream_url":"/play","stream_type":"hls"}"""))
             original.enqueue(MockResponse().setResponseCode(204))

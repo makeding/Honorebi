@@ -80,9 +80,6 @@ class DtvProviderProxy @Inject constructor(
         } catch (e: NotImplementedError) {
             Log.w("DtvProviderProxy", "getChannels is not implemented in active backend. Skipping.")
             ChannelApiResponse()
-        } catch (e: Exception) {
-            Log.e("DtvProviderProxy", "Error fetching channels. Skipping.", e)
-            ChannelApiResponse()
         }
     }
 

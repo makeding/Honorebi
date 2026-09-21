@@ -24,6 +24,9 @@ import kotlinx.coroutines.withContext
 import java.time.OffsetDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.beeregg2001.komorebi.data.api.interceptor.BackendRetryGate
+import com.beeregg2001.komorebi.data.api.interceptor.backendApiFailure
+import kotlinx.coroutines.flow.drop
 
 private const val TAG = "AppContentStore"
 private const val CHANNEL_REFRESH_INTERVAL_MS = 60_000L
@@ -56,6 +59,12 @@ class AppContentStore @Inject constructor(
 
     private val _connectionError = MutableStateFlow(false)
     val connectionError: StateFlow<Boolean> = _connectionError.asStateFlow()
+    private val _channelError = MutableStateFlow<String?>(null)
+    val channelError = _channelError.asStateFlow()
+    private val _recordingError = MutableStateFlow<String?>(null)
+    val recordingError = _recordingError.asStateFlow()
+    private val channelRetry = BackendRetryGate(CHANNEL_REFRESH_INTERVAL_MS)
+    private val recordingRetry = BackendRetryGate(RECORDING_REFRESH_INTERVAL_MS)
 
     private val _sourceErrors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val sourceErrors: StateFlow<Map<String, String?>> = _sourceErrors.asStateFlow()
@@ -76,12 +85,21 @@ class AppContentStore @Inject constructor(
 
     init {
         startMaintenance()
+        scope.launch {
+            settingsRepository.cloudflareAccessConfiguration.drop(1).collect {
+                channelRetry.reset()
+                recordingRetry.reset()
+                refreshChannels()
+                if (isRecordingPollingEnabled) refreshRecentRecordings()
+            }
+        }
     }
 
     fun setPollingPaused(paused: Boolean) = Unit
 
     fun refreshChannels() {
         if (isFetchingChannels || channelFetchJob?.isActive == true) return
+        channelRetry.reset()
         _isChannelsLoading.value = true
         channelFetchJob?.cancel()
         channelFetchJob = scope.launch {
@@ -94,6 +112,7 @@ class AppContentStore @Inject constructor(
         // this method opts into both the initial request and subsequent polling.
         isRecordingPollingEnabled = true
         if (isFetchingRecordings || recordingFetchJob?.isActive == true) return
+        recordingRetry.reset()
         _isRecordingsLoading.value = true
         recordingFetchJob?.cancel()
         recordingFetchJob = scope.launch {
@@ -115,11 +134,11 @@ class AppContentStore @Inject constructor(
 
                 if (!isActive) break
                 val now = System.currentTimeMillis()
-                if (now - lastChannelsFetchedAtMillis >= CHANNEL_REFRESH_INTERVAL_MS) {
+                if (channelRetry.canAttempt(now - lastChannelsFetchedAtMillis)) {
                     fetchChannelsInternal()
                 }
                 if (isRecordingPollingEnabled &&
-                    now - lastRecordingsFetchedAtMillis >= RECORDING_REFRESH_INTERVAL_MS
+                    recordingRetry.canAttempt(now - lastRecordingsFetchedAtMillis)
                 ) {
                     fetchRecentRecordingsInternal()
                 }
@@ -146,8 +165,10 @@ class AppContentStore @Inject constructor(
         if (isFetchingChannels) return
         isFetchingChannels = true
         try {
-            _connectionError.value = false
             val response = withContext(Dispatchers.IO) { liveProvider.getChannels() }
+            _connectionError.value = false
+            _channelError.value = null
+            channelRetry.reset()
             _sourceErrors.value = response.sourceErrors
             val hideSubChannels = settingsRepository.hideSubChannels.first()
 
@@ -207,6 +228,8 @@ class AppContentStore @Inject constructor(
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching channels", e)
             _connectionError.value = true
+            _channelError.value = e.backendApiFailure()?.message ?: e.message ?: "チャンネルを取得できませんでした。接続を確認して再試行してください。"
+            channelRetry.failed(e)
         } finally {
             lastChannelsFetchedAtMillis = System.currentTimeMillis()
             isFetchingChannels = false
@@ -222,6 +245,8 @@ class AppContentStore @Inject constructor(
                 recordProvider.getRecordedPrograms(page = 1, order = "desc")
             }
             val firstPage = response.recordedPrograms.take(20)
+            _recordingError.value = null
+            recordingRetry.reset()
             if (_recentRecordings.value != firstPage) {
                 _recentRecordings.value = firstPage
             }
@@ -230,6 +255,8 @@ class AppContentStore @Inject constructor(
             throw e
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching recent recordings", e)
+            _recordingError.value = e.backendApiFailure()?.message ?: e.message ?: "録画番組を取得できませんでした。接続を確認して再試行してください。"
+            recordingRetry.failed(e)
         } finally {
             lastRecordingsFetchedAtMillis = System.currentTimeMillis()
             isFetchingRecordings = false
