@@ -42,7 +42,8 @@ fun SystemMediaSession(
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
     onSeekRelative: ((Long) -> Unit)? = null,
-    onStop: (() -> Unit)? = null
+    onStop: (() -> Unit)? = null,
+    remoteCapabilities: RemotePlaybackCapabilities? = null
 ) {
     val context = LocalContext.current.applicationContext
     val controller = LocalSystemMediaSessionController.current
@@ -51,6 +52,7 @@ fun SystemMediaSession(
     val currentOnNext = rememberUpdatedState(onNext)
     val currentOnSeekRelative = rememberUpdatedState(onSeekRelative)
     val currentOnStop = rememberUpdatedState(onStop)
+    val currentRemoteCapabilities = rememberUpdatedState(remoteCapabilities)
     val hasPrevious = onPrevious != null
     val hasNext = onNext != null
     val canSeekRelative = onSeekRelative != null
@@ -94,6 +96,9 @@ fun SystemMediaSession(
             onStop = { currentOnStop.value?.invoke() },
             hasPrevious = hasPrevious,
             hasNext = hasNext,
+            // チャプターや追いかけ再生の長さは再生中に変わり続けるため、値ではなく参照を渡して
+            // MediaSession を attach し直さずに最新の内容を読めるようにする。
+            remoteCapabilitiesProvider = { currentRemoteCapabilities.value },
         ) else null
         onDispose { controller?.detach(attachment) }
     }

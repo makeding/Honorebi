@@ -25,12 +25,20 @@ internal fun shouldDispatchRemoteTransport(
     HonomiRemoteCommand.Stop -> true
     HonomiRemoteCommand.Play,
     HonomiRemoteCommand.Pause -> !isPlaybackSwitching
-    is HonomiRemoteCommand.SeekRelative -> !isPlaybackSwitching && remoteContentType == "Recorded"
+    // シーク系は録画再生画面 (追いかけ再生を含む) だけが受け付ける。
+    // 純ライブはシークがストリーム URL の再解決を伴い再生が一度途切れるため、ここでは対象外にしている。
+    is HonomiRemoteCommand.SeekRelative,
+    is HonomiRemoteCommand.SeekTo,
+    is HonomiRemoteCommand.SkipChapter,
+    HonomiRemoteCommand.SkipCM -> !isPlaybackSwitching && remoteContentType == "Recorded"
     HonomiRemoteCommand.VolumeUp,
     HonomiRemoteCommand.VolumeDown,
     HonomiRemoteCommand.VolumeMute -> true
+    // 画面遷移と CM スキップ設定の変更は再生セッションではなくアプリ全体の状態を触るため、
+    // MainRootScreen 側のコレクターが担当する。
     is HonomiRemoteCommand.OpenLive,
-    is HonomiRemoteCommand.OpenRecording -> false
+    is HonomiRemoteCommand.OpenRecording,
+    is HonomiRemoteCommand.SetCMSkipMode -> false
 }
 
 /** Provides one media-session owner for the current root playback epoch. */
@@ -60,6 +68,10 @@ fun RootSystemMediaSessionHost(
             positionSeconds = state?.positionSeconds,
             durationSeconds = state?.durationSeconds,
             canSeek = !currentPlaybackSwitching && currentContentType == "Recorded" && state?.canSeek == true,
+            playbackRate = state?.playbackRate,
+            isChasePlayback = state?.isChasePlayback == true,
+            chapters = state?.chapters ?: emptyList(),
+            cmSkipMode = state?.cmSkipMode,
         )
     }
 
@@ -70,11 +82,14 @@ fun RootSystemMediaSessionHost(
                 HonomiRemoteCommand.Play -> controller.play()
                 HonomiRemoteCommand.Pause -> controller.pause()
                 HonomiRemoteCommand.Stop -> controller.stop()
-                is HonomiRemoteCommand.SeekRelative -> {
-                    if (remoteContentType == "Recorded") {
-                        controller.seekRelative((command.deltaSeconds * 1_000).toLong())
-                    }
-                }
+                // シーク系の「録画再生中か」の判定は上の shouldDispatchRemoteTransport() に一本化している。
+                // この collect は LaunchedEffect のキーが変わらない限り作り直されないため、
+                // ここで引数の remoteContentType を読むと画面を開く前の古い値のまま固定されてしまう
+                // (再生状態を追えるのは rememberUpdatedState 経由の currentContentType だけ)。
+                is HonomiRemoteCommand.SeekRelative -> controller.seekRelative((command.deltaSeconds * 1_000).toLong())
+                is HonomiRemoteCommand.SeekTo -> controller.seekTo((command.positionSeconds * 1_000).toLong())
+                is HonomiRemoteCommand.SkipChapter -> controller.skipChapter(command.direction)
+                HonomiRemoteCommand.SkipCM -> controller.skipCM()
                 HonomiRemoteCommand.VolumeUp -> audioManager.adjustStreamVolume(
                     AudioManager.STREAM_MUSIC,
                     AudioManager.ADJUST_RAISE,
@@ -91,7 +106,8 @@ fun RootSystemMediaSessionHost(
                     AudioManager.FLAG_SHOW_UI,
                 )
                 is HonomiRemoteCommand.OpenLive,
-                is HonomiRemoteCommand.OpenRecording -> Unit
+                is HonomiRemoteCommand.OpenRecording,
+                is HonomiRemoteCommand.SetCMSkipMode -> Unit
             }
         }
     }

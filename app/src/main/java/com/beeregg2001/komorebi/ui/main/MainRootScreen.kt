@@ -36,6 +36,7 @@ import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
+import com.beeregg2001.komorebi.ui.video.player.displayLabel
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -64,6 +65,12 @@ fun MainRootScreen(
     // 再生開始後の操作は既存の Android MediaSession / Cast 経路へ任せ、独自制御を重複実装しない。
     LaunchedEffect(remoteControlViewModel) {
         remoteControlViewModel.client.commands.collect { command ->
+            // 視聴者はテレビの前にいないので、再生を動かすコマンドが来たら開きっぱなしのメニューを畳む。
+            // 特に再生終了後のおすすめメニューは自動では消えず、Web UI から再生を再開しても
+            // 本編がメニューに隠れたままになってしまう。
+            if (shouldDismissPlayerOverlaysForRemoteCommand(command)) {
+                state.playbackState.dismissPlayerOverlaysForRemoteControl()
+            }
             when (command) {
                 is HonomiRemoteCommand.OpenLive -> {
                     val intent = state.playbackState.beginPlaybackOpenIntent()
@@ -103,10 +110,19 @@ fun MainRootScreen(
                         }
                     }
                 }
+                // CM スキップ設定は再生セッションではなくアプリ全体の設定なので、
+                // 再生画面が開いていなくても反映できるようここで受ける。
+                is HonomiRemoteCommand.SetCMSkipMode -> {
+                    settingsViewModel.setCmSkipMode(command.mode)
+                    state.toastMessage = "CMスキップ: ${command.mode.displayLabel}"
+                }
                 HonomiRemoteCommand.Play,
                 HonomiRemoteCommand.Pause,
                 HonomiRemoteCommand.Stop,
                 is HonomiRemoteCommand.SeekRelative,
+                is HonomiRemoteCommand.SeekTo,
+                is HonomiRemoteCommand.SkipChapter,
+                HonomiRemoteCommand.SkipCM,
                 HonomiRemoteCommand.VolumeUp,
                 HonomiRemoteCommand.VolumeDown,
                 HonomiRemoteCommand.VolumeMute -> Unit

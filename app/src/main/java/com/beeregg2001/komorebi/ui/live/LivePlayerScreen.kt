@@ -384,7 +384,7 @@ fun LivePlayerScreen(
             } else {
                 val fallback = effectiveAvailableQualities.first()
                 ps.currentQuality = fallback
-                if (!fallback.isRawMmts) {
+                if (!fallback.isRawMmts && !currentChannelItem.supportsLiveStreamSession()) {
                     Log.w(
                         TAG,
                         "User's liveQuality ($currentLiveQualityStr) is not in the list. Falling back to default."

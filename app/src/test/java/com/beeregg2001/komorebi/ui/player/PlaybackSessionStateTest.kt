@@ -267,6 +267,71 @@ class PlaybackSessionStateTest {
         assertEquals(PlaybackPhase.Playing(PlaybackTarget.Live(channel(id = "gr-after-leave"))), state.playbackPhase)
     }
 
+    /**
+     * 再生終了後のおすすめメニューは自動では引っ込まないため、
+     * リモコンから再生を動かしたときに閉じられないと本編がメニューに隠れたままになる。
+     */
+    @Test
+    fun remoteControlPlaybackDismissesStickyPlayerOverlays() {
+        val state = PlaybackSessionState()
+        state.enterLive(channel())
+        state.isPlayerMiniListOpen = true
+        state.playerIsSubMenuOpen = true
+        state.isPlayerSubMenuOpen = true
+        state.isPlayerSceneSearchOpen = true
+        state.showPlayerControls = true
+
+        state.dismissPlayerOverlaysForRemoteControl()
+
+        assertFalse(state.isPlayerMiniListOpen)
+        assertFalse(state.playerIsSubMenuOpen)
+        assertFalse(state.isPlayerSubMenuOpen)
+        assertFalse(state.isPlayerSceneSearchOpen)
+        assertFalse(state.showPlayerControls)
+    }
+
+    /** 再生を動かすコマンドだけがメニューを畳む。音量と CM スキップ設定は再生位置を変えないので対象外。 */
+    @Test
+    fun onlyPlaybackDrivingRemoteCommandsDismissOverlays() {
+        val dismissing = listOf(
+            HonomiRemoteCommand.OpenLive("gr011"),
+            HonomiRemoteCommand.OpenRecording(42, 0.0),
+            HonomiRemoteCommand.Play,
+            HonomiRemoteCommand.Pause,
+            HonomiRemoteCommand.Stop,
+            HonomiRemoteCommand.SeekRelative(10.0),
+            HonomiRemoteCommand.SeekTo(930.0),
+            HonomiRemoteCommand.SkipChapter(HonomiRemoteSkipDirection.NEXT),
+            HonomiRemoteCommand.SkipCM,
+        )
+        dismissing.forEach { assertTrue(it.toString(), shouldDismissPlayerOverlaysForRemoteCommand(it)) }
+
+        val preserving = listOf(
+            HonomiRemoteCommand.VolumeUp,
+            HonomiRemoteCommand.VolumeDown,
+            HonomiRemoteCommand.VolumeMute,
+            HonomiRemoteCommand.SetCMSkipMode(CmSkipMode.AUTO),
+        )
+        preserving.forEach { assertFalse(it.toString(), shouldDismissPlayerOverlaysForRemoteCommand(it)) }
+    }
+
+    /**
+     * リモコンの Stop は leavePlayback() へ直行し、leavePlayback() はメニューの状態を消さない。
+     * 畳んでおかないと開いたままのおすすめメニューが次の再生セッションへ持ち越される。
+     */
+    @Test
+    fun remoteStopDoesNotLeakAnOpenMenuIntoTheNextPlayback() {
+        val state = PlaybackSessionState()
+        state.enterRecorded(recording())
+        state.isPlayerSubMenuOpen = true
+
+        state.dismissPlayerOverlaysForRemoteControl()
+        state.leavePlayback()
+        state.enterRecorded(recording(id = 2))
+
+        assertFalse(state.isPlayerSubMenuOpen)
+    }
+
     private fun channel(id: String = "gr-test") = Channel(
         id = id,
         displayChannelId = "gr011",

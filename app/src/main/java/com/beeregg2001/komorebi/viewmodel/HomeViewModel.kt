@@ -441,12 +441,14 @@ class HomeViewModel @Inject constructor(
     }
 
     fun saveLastChannel(channel: Channel) {
+        val networkId = channel.networkId ?: return
+        val serviceId = channel.serviceId ?: return
         viewModelScope.launch {
             lastChannelRepository.saveLastChannel(
                 LastChannelEntity(
                     channelId = channel.id, name = channel.name, type = channel.type,
-                    channelNumber = channel.channelNumber, networkId = channel.networkId,
-                    serviceId = channel.serviceId, updatedAt = System.currentTimeMillis()
+                    channelNumber = channel.channelNumber, networkId = networkId,
+                    serviceId = serviceId, updatedAt = System.currentTimeMillis()
                 )
             )
         }

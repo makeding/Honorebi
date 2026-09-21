@@ -137,8 +137,8 @@ class LiveJikkyoManager @Inject constructor(
             }
             return null
         } else {
-            val networkId = channel.networkId.toInt()
-            val serviceId = channel.serviceId.toInt()
+            val networkId = channel.networkId?.toInt() ?: return null
+            val serviceId = channel.serviceId?.toInt() ?: return null
 
             val jkId = getJikkyoId(networkId, serviceId)
             if (jkId != null) {

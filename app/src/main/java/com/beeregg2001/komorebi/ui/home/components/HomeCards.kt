@@ -63,7 +63,7 @@ fun LastWatchedChannelCard(
     val channelLogoImageLoader = rememberChannelLogoImageLoader()
     val colors = KomorebiTheme.colors
     val typeLabels =
-        mapOf("GR" to "地デジ", "BS" to "BS", "CS" to "CS", "BS4K" to "BS4K", "SKY" to "スカパー")
+        mapOf("GR" to "地デジ", "BS" to "BS", "CS" to "CS", "BS4K" to "BS4K", "SKY" to "スカパー", "IPTV" to "ネットテレビ")
 
     var logoUrl by remember(channel.id) { mutableStateOf("") }
     LaunchedEffect(channel.id) {

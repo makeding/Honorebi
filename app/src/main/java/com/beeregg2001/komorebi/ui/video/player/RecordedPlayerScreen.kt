@@ -1495,7 +1495,13 @@ internal fun RecordedPlayerScreen(
         onProgramSelect = onProgramSelect,
         currentPositionMs = getEffectivePositionMs,
         performSeek = performSeek,
-        onStop = onBackPressed
+        onStop = onBackPressed,
+        chapters = chapters,
+        cmSkipMode = cmSkipMode,
+        totalDurationMs = totalDurationForControls,
+        isChasePlayback = isRecordingChasePlayback,
+        onSkipNextChapter = { skipToNextChapter() },
+        onSkipPreviousChapter = { skipToPreviousChapter() },
     )
     LaunchedEffect(nextSeriesProgram?.id) {
         nextEpisodeProgramForEnd = nextSeriesProgram

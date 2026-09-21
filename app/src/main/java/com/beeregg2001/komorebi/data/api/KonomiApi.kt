@@ -24,7 +24,13 @@ interface KonomiApi {
 
     // --- チャンネル ---
     @GET("api/channels")
-    suspend fun getChannels(): ChannelApiResponse
+    suspend fun getChannels(): Response<ChannelApiResponse>
+
+    @POST("api/streams/live/sessions")
+    suspend fun createLiveStreamSession(@Body request: LiveStreamSessionRequest): LiveStreamSessionResponse
+
+    @DELETE("api/streams/live/sessions/{sessionId}")
+    suspend fun closeLiveStreamSession(@Path("sessionId") sessionId: String): Response<Unit>
 
     // --- 録画番組 ---
     @GET("api/videos")

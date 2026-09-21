@@ -5,7 +5,9 @@ import android.os.Build
 import android.provider.Settings
 import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
+import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,6 +29,21 @@ import okhttp3.WebSocketListener
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.TimeUnit
 
+/** チャプター送り・戻しの方向。HonomiTV 側の direction フィールドと 1 対 1 で対応する。 */
+enum class HonomiRemoteSkipDirection { NEXT, PREVIOUS }
+
+/**
+ * CM 判定から導かれたチャプター区間を HonomiTV の進捗バーへ通知するための最小表現。
+ *
+ * UI レイヤーの ChapterInfo をそのまま送らないのは、data レイヤーが ui レイヤーへ依存しないようにするため。
+ */
+data class HonomiRemoteChapter(
+    val startSeconds: Double,
+    val endSeconds: Double,
+    val isCm: Boolean,
+    val label: String,
+)
+
 sealed interface HonomiRemoteCommand {
     data class OpenLive(val displayChannelId: String) : HonomiRemoteCommand
     data class OpenRecording(val recordedProgramId: Int, val positionSeconds: Double) : HonomiRemoteCommand
@@ -34,6 +51,10 @@ sealed interface HonomiRemoteCommand {
     data object Pause : HonomiRemoteCommand
     data object Stop : HonomiRemoteCommand
     data class SeekRelative(val deltaSeconds: Double) : HonomiRemoteCommand
+    data class SeekTo(val positionSeconds: Double) : HonomiRemoteCommand
+    data class SkipChapter(val direction: HonomiRemoteSkipDirection) : HonomiRemoteCommand
+    data object SkipCM : HonomiRemoteCommand
+    data class SetCMSkipMode(val mode: CmSkipMode) : HonomiRemoteCommand
     data object VolumeUp : HonomiRemoteCommand
     data object VolumeDown : HonomiRemoteCommand
     data object VolumeMute : HonomiRemoteCommand
@@ -42,6 +63,13 @@ sealed interface HonomiRemoteCommand {
 internal sealed interface HonomiRemoteServerEvent {
     data object RequestState : HonomiRemoteServerEvent
     data class Command(val command: HonomiRemoteCommand) : HonomiRemoteServerEvent
+}
+
+/** CmSkipMode を HonomiTV の mode フィールド表記 (UpperCamelCase) へ変換する。 */
+internal fun CmSkipMode.toRemoteValue(): String = when (this) {
+    CmSkipMode.OFF -> "Off"
+    CmSkipMode.MANUAL -> "Manual"
+    CmSkipMode.AUTO -> "Auto"
 }
 
 internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCommand? = runCatching {
@@ -58,6 +86,20 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
         "Pause" -> HonomiRemoteCommand.Pause
         "Stop" -> HonomiRemoteCommand.Stop
         "SeekRelative" -> HonomiRemoteCommand.SeekRelative(command.get("delta_seconds").asDouble)
+        "SeekTo" -> HonomiRemoteCommand.SeekTo(command.get("position_seconds").asDouble.coerceAtLeast(0.0))
+        // 未知の direction / mode は黙って落とす。壊れた値で意図しないシークを起こすより無視する方が安全。
+        "SkipChapter" -> when (command.get("direction")?.asString) {
+            "Next" -> HonomiRemoteCommand.SkipChapter(HonomiRemoteSkipDirection.NEXT)
+            "Previous" -> HonomiRemoteCommand.SkipChapter(HonomiRemoteSkipDirection.PREVIOUS)
+            else -> null
+        }
+        "SkipCM" -> HonomiRemoteCommand.SkipCM
+        "SetCMSkipMode" -> when (command.get("mode")?.asString) {
+            "Off" -> HonomiRemoteCommand.SetCMSkipMode(CmSkipMode.OFF)
+            "Manual" -> HonomiRemoteCommand.SetCMSkipMode(CmSkipMode.MANUAL)
+            "Auto" -> HonomiRemoteCommand.SetCMSkipMode(CmSkipMode.AUTO)
+            else -> null
+        }
         "VolumeUp" -> HonomiRemoteCommand.VolumeUp
         "VolumeDown" -> HonomiRemoteCommand.VolumeDown
         "VolumeMute" -> HonomiRemoteCommand.VolumeMute
@@ -92,6 +134,8 @@ class HonomiRemoteControlClient @Inject constructor(
     private var connectionJob: Job? = null
     @Volatile private var activeWebSocket: WebSocket? = null
     @Volatile private var latestStateJson: String? = null
+    // sendState() は常にメインスレッドから呼ばれるが、再接続時の再送と競合しないよう連番も @Volatile で保持する。
+    @Volatile private var stateSequence: Long = 0L
 
     /** 現在の再生状態を HonomiTV の接続先選択・操作メニューへ通知する。 */
     fun sendState(
@@ -104,6 +148,10 @@ class HonomiRemoteControlClient @Inject constructor(
         positionSeconds: Double? = null,
         durationSeconds: Double? = null,
         canSeek: Boolean = false,
+        playbackRate: Double? = null,
+        isChasePlayback: Boolean = false,
+        chapters: List<HonomiRemoteChapter> = emptyList(),
+        cmSkipMode: CmSkipMode? = null,
     ) {
         val state = JsonObject().apply {
             addProperty("type", "State")
@@ -120,6 +168,26 @@ class HonomiRemoteControlClient @Inject constructor(
             )
             positionSeconds?.let { addProperty("position_seconds", it) }
             durationSeconds?.let { addProperty("duration_seconds", it) }
+            playbackRate?.let { addProperty("playback_rate", it) }
+            addProperty("is_chase_playback", isChasePlayback)
+            cmSkipMode?.let { addProperty("cm_skip_mode", it.toRemoteValue()) }
+            // チャプターが空の録画 (CM 判定なし) では、進捗バー側で「チャプターあり」と誤認しないよう配列ごと省く。
+            if (chapters.isNotEmpty()) {
+                add("chapters", JsonArray().apply {
+                    chapters.forEach { chapter ->
+                        add(JsonObject().apply {
+                            addProperty("start_seconds", chapter.startSeconds)
+                            addProperty("end_seconds", chapter.endSeconds)
+                            addProperty("is_cm", chapter.isCm)
+                            addProperty("label", chapter.label)
+                        })
+                    }
+                })
+            }
+            // HonomiTV 側は State を受け取った時刻を基点に再生位置を補間する。
+            // サーバーはデバイス一覧の変化でも同じ state を再ブロードキャストするため、
+            // 「本当に新しい state か」を連番で見分けられないと進捗バーが巻き戻ってしまう。
+            addProperty("state_sequence", ++stateSequence)
         }
         val stateJson = gson.toJson(state)
         latestStateJson = stateJson

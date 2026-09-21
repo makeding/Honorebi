@@ -44,12 +44,17 @@ class LivePlaybackSourceResolver @Inject constructor(
     private val liveProvider: LiveProvider,
     private val settingsRepository: SettingsRepository
 ) {
+    suspend fun closeUpstreamSession(sessionId: String) {
+        liveProvider.closeLiveStreamSession(sessionId)
+    }
     data class Request(
         val url: String,
         val source: StreamSource,
         val isEdcbDirect: Boolean,
         val quality: StreamQuality,
-        val config: BackendConfig
+        val config: BackendConfig,
+        val upstreamSessionId: String? = null,
+        val streamType: String? = null,
     ) {
         val apiQuality: String
             get() = if (quality.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else quality.value
@@ -63,6 +68,26 @@ class LivePlaybackSourceResolver @Inject constructor(
         streamNumber: Int,
         factory: TsReadExDataSourceFactory
     ): Request {
+        if (channel.supportsLiveStreamSession()) {
+            val config = settingsRepository.getBackendConfig(StreamSource.KONOMITV)
+            if (!config.isValid) throw IOException("ネットテレビの接続設定が不完全です")
+            val session = liveProvider.createLiveStreamSession(channel.id)
+            val baseUrl = UrlBuilder.formatBaseUrl(config.ip, config.port, "https")
+            val streamUrl = if (session.streamUrl.startsWith("http://") || session.streamUrl.startsWith("https://")) {
+                session.streamUrl
+            } else {
+                baseUrl + "/" + session.streamUrl.removePrefix("/")
+            }
+            return Request(
+                url = streamUrl,
+                source = StreamSource.KONOMITV,
+                isEdcbDirect = false,
+                quality = StreamQuality("Direct", "direct"),
+                config = config,
+                upstreamSessionId = session.id,
+                streamType = session.streamType.lowercase(),
+            )
+        }
         val isRawMmts = channel.type.equals("BS4K", ignoreCase = true)
         val quality = if (isRawMmts) {
             StreamQuality.rawMmtsQualities(channel)
@@ -99,12 +124,16 @@ class LivePlaybackSourceResolver @Inject constructor(
             StreamSource.MIRAKURUN -> if (config.isValid) {
                 if (quality.isRawMmts) {
                     UrlBuilder.getMirakurunRawMmtsStreamUrl(
-                        config.ip, config.port, channel.networkId, channel.serviceId
+                        config.ip, config.port,
+                        requireNotNull(channel.networkId) { "放送ネットワーク ID がありません" },
+                        requireNotNull(channel.serviceId) { "放送サービス ID がありません" }
                     )
                 } else {
-                    factory.tsArgs = directTsArgs(channel.serviceId.toString())
+                    factory.tsArgs = directTsArgs(requireNotNull(channel.serviceId) { "放送サービス ID がありません" }.toString())
                     UrlBuilder.getMirakurunStreamUrl(
-                        config.ip, config.port, channel.networkId, channel.serviceId
+                        config.ip, config.port,
+                        requireNotNull(channel.networkId) { "放送ネットワーク ID がありません" },
+                        requireNotNull(channel.serviceId) { "放送サービス ID がありません" }
                     )
                 }
             } else ""
@@ -131,6 +160,15 @@ class LivePlaybackSourceResolver @Inject constructor(
     ): MediaSource {
         val mediaItem = MediaItem.fromUri(request.url)
         return when {
+            request.streamType == "hls" -> HlsMediaSource.Factory(playbackHttpDataSourceFactory(context))
+                .setAllowChunklessPreparation(false)
+                .createMediaSource(mediaItem)
+
+            request.streamType == "mpegts" -> ProgressiveMediaSource.Factory(
+                playbackHttpDataSourceFactory(context),
+                ExtractorsFactory { arrayOf(TsExtractor()) },
+            ).createMediaSource(mediaItem)
+
             request.quality.isRawMmts -> {
                 rawMmtsLayerController?.reset()
                 val httpDataSourceFactory = playbackHttpDataSourceFactory(context)

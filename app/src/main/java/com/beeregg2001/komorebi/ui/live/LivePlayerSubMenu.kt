@@ -215,7 +215,7 @@ fun LiveTopSubMenuUI(
             val grQuickChannels = remember(groupedChannels) {
                 groupedChannels["GR"].orEmpty()
                     .filter { it.isDisplay && it.isWatchable && !it.is_subchannel }
-                    .sortedWith(compareBy<Channel> { it.remocon_Id.takeIf { id -> id > 0 } ?: Int.MAX_VALUE }
+                    .sortedWith(compareBy<Channel> { it.remocon_Id?.takeIf { id -> id > 0 } ?: Int.MAX_VALUE }
                         .thenBy { it.channelNumber })
                     .take(10)
             }
@@ -224,7 +224,7 @@ fun LiveTopSubMenuUI(
                     .filter { it.isDisplay && it.isWatchable && !it.is_subchannel && it.isAnimeNow() }
                     .distinctBy { it.id }
                     .sortedWith(compareBy<Channel> { if (it.type == "GR") 0 else 1 }
-                        .thenBy { it.remocon_Id.takeIf { id -> id > 0 } ?: Int.MAX_VALUE }
+                        .thenBy { it.remocon_Id?.takeIf { id -> id > 0 } ?: Int.MAX_VALUE }
                         .thenBy { it.channelNumber })
                     .take(12)
             }

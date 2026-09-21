@@ -80,6 +80,7 @@ fun LiveContent(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val liveRows by channelViewModel.liveRows.collectAsState()
+    val sourceErrors by channelViewModel.sourceErrors.collectAsState()
     val listState = rememberLazyListState()
 
     val rowStates = remember { mutableStateMapOf<String, LazyListState>() }
@@ -280,6 +281,25 @@ fun LiveContent(
                                             }
                                     )
                                 }
+                            }
+                        }
+                    }
+                    sourceErrors["IPTV"]?.takeIf { it.isNotBlank() }?.let { error ->
+                        item(key = "iptv-source-error") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 48.dp, vertical = 12.dp)
+                            ) {
+                                Text(
+                                    text = "ネットテレビを取得できませんでした: $error",
+                                    color = colors.textPrimary.copy(alpha = 0.8f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Button(
+                                    onClick = channelViewModel::fetchChannels,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                ) { Text("再試行") }
                             }
                         }
                     }

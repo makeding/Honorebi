@@ -99,6 +99,13 @@ class DtvProviderProxy @Inject constructor(
         }
     }
 
+    // ネットテレビのセッションは、放送の直接視聴先に関係なく HonomiTV が所有する。
+    override suspend fun createLiveStreamSession(channelId: String): LiveStreamSessionResponse =
+        konomiRepository.createLiveStreamSession(channelId)
+
+    override suspend fun closeLiveStreamSession(sessionId: String) =
+        konomiRepository.closeLiveStreamSession(sessionId)
+
     override suspend fun getChannelLogoUrl(channelId: String): String {
         return try {
             getLiveProvider().getChannelLogoUrl(channelId)

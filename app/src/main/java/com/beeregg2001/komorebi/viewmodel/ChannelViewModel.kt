@@ -65,6 +65,8 @@ class ChannelViewModel @Inject constructor(
 
     val connectionError: StateFlow<Boolean> = appContentStore.connectionError
 
+    val sourceErrors: StateFlow<Map<String, String?>> = appContentStore.sourceErrors
+
     private var isPollingPaused = false
 
     val channelLogoUrls: StateFlow<Map<String, String>> = channelLogoCache.channelLogoUrls

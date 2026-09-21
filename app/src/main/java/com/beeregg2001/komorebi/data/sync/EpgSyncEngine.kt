@@ -43,7 +43,7 @@ class EpgSyncEngine @Inject constructor(
                         message = "番組表データを同期中..."
                     )
 
-                    val channelTypes = listOf("GR", "BS", "CS", "BS4K", "SKY")
+                    val channelTypes = listOf("GR", "BS", "CS", "BS4K", "SKY", "IPTV")
                     val now = OffsetDateTime.now()
                     val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
@@ -71,6 +71,11 @@ class EpgSyncEngine @Inject constructor(
                                 // チャンネルごとに変換・挿入してピーク使用量を抑える
                                 var totalPrograms = 0
                                 for (wrapper in response) {
+                                    if (wrapper.channel.source.equals("Jellyfin", ignoreCase = true)) {
+                                        // Jellyfin has no ARIB identity. Its timetable is kept in the
+                                        // provider JSON cache, never coerced into the broadcast Room schema.
+                                        continue
+                                    }
                                     val channel = EpgDataMapper.toChannelEntity(wrapper.channel)
                                     val programs = wrapper.programs.map { EpgDataMapper.toProgramEntity(it) }
                                     db.withTransaction {

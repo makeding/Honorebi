@@ -22,6 +22,10 @@ fun Channel.getLogoUrl(
     return if (isKonomiTvMode(mirakurunIp)) {
         UrlBuilder.getKonomiTvLogoUrl(konomiIp, konomiPort, this.displayChannelId)
     } else {
-        UrlBuilder.getMirakurunLogoUrl(mirakurunIp, mirakurunPort, this.networkId, this.serviceId)
+        UrlBuilder.getMirakurunLogoUrl(
+            mirakurunIp, mirakurunPort,
+            requireNotNull(this.networkId) { "ネットテレビには Mirakurun ロゴはありません" },
+            requireNotNull(this.serviceId) { "ネットテレビには Mirakurun ロゴはありません" },
+        )
     }
 }

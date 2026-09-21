@@ -57,6 +57,9 @@ class AppContentStore @Inject constructor(
     private val _connectionError = MutableStateFlow(false)
     val connectionError: StateFlow<Boolean> = _connectionError.asStateFlow()
 
+    private val _sourceErrors = MutableStateFlow<Map<String, String?>>(emptyMap())
+    val sourceErrors: StateFlow<Map<String, String?>> = _sourceErrors.asStateFlow()
+
     @Volatile
     private var isFetchingChannels = false
     @Volatile
@@ -145,6 +148,7 @@ class AppContentStore @Inject constructor(
         try {
             _connectionError.value = false
             val response = withContext(Dispatchers.IO) { liveProvider.getChannels() }
+            _sourceErrors.value = response.sourceErrors
             val hideSubChannels = settingsRepository.hideSubChannels.first()
 
             val processed = withContext(Dispatchers.Default) {
@@ -153,7 +157,8 @@ class AppContentStore @Inject constructor(
                     response.bs,
                     response.cs,
                     response.sky,
-                    response.bs4k
+                    response.bs4k,
+                    response.iptv,
                 ).flatten()
 
                 val channels = rawChannels.map { apiChannel ->
@@ -171,7 +176,10 @@ class AppContentStore @Inject constructor(
                         programFollowing = apiChannel.programFollowing,
                         remocon_Id = apiChannel.remocon_Id,
                         jikkyoForce = apiChannel.jikkyoForce,
-                        is_subchannel = apiChannel.is_subchannel
+                        is_subchannel = apiChannel.is_subchannel,
+                        transportStreamId = apiChannel.transportStreamId,
+                        source = apiChannel.source,
+                        capabilities = apiChannel.capabilities,
                     )
                 }
 
@@ -232,7 +240,9 @@ class AppContentStore @Inject constructor(
     private suspend fun transformToUiState(grouped: Map<String, List<Channel>>): List<LiveRowState> =
         withContext(Dispatchers.Default) {
             val now = System.currentTimeMillis()
-            val orderedTypes = listOf("GR", "BS", "CS", "BS4K", "SKY")
+            // Lists within each type retain /api/channels order; only the existing category
+            // positions are fixed here. ネット sits directly to the right of BS4K.
+            val orderedTypes = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY")
 
             grouped.keys.sortedBy { key ->
                 val index = orderedTypes.indexOf(key)
@@ -247,6 +257,7 @@ class AppContentStore @Inject constructor(
                         "CS" -> "CS"
                         "BS4K" -> "BS4K"
                         "SKY" -> "スカパー"
+                        "IPTV" -> "ネットテレビ"
                         else -> type
                     },
                     channels = channels.map { channel ->

@@ -46,7 +46,9 @@ internal fun effectiveLiveQualities(
     availableQualities: List<StreamQuality>,
     channel: Channel
 ): List<StreamQuality> =
-    if (channel.type.equals("BS4K", ignoreCase = true)) {
+    if (channel.supportsLiveStreamSession()) {
+        listOf(StreamQuality("Direct", "direct"))
+    } else if (channel.type.equals("BS4K", ignoreCase = true)) {
         StreamQuality.rawMmtsQualities(channel)
     } else {
         availableQualities

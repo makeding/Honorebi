@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 
 /**
@@ -58,6 +59,32 @@ data class RecordedPlaybackToken(
 
 /** Identifies a latest-wins remote playback open request. */
 data class PlaybackOpenIntentToken(val id: Long)
+
+/**
+ * HonomiTV のリモコンから届いたコマンドが「視聴者はテレビの前で操作していない」ことを意味するか。
+ *
+ * true を返すコマンドでは、テレビ画面に出したままのメニュー類を閉じる。
+ * 再生終了後のおすすめメニュー (isPlayerSubMenuOpen) は自動では引っ込まない作りなので、
+ * これを閉じないと Web UI から再生を再開しても本編がメニューに隠れたままになる。
+ *
+ * 音量と CM スキップ設定は再生そのものを動かさず、テレビ側でメニューを見ている最中に
+ * 手元で音量だけ変えることもあるため、対象から外している。
+ */
+internal fun shouldDismissPlayerOverlaysForRemoteCommand(command: HonomiRemoteCommand): Boolean = when (command) {
+    is HonomiRemoteCommand.OpenLive,
+    is HonomiRemoteCommand.OpenRecording,
+    HonomiRemoteCommand.Play,
+    HonomiRemoteCommand.Pause,
+    HonomiRemoteCommand.Stop,
+    is HonomiRemoteCommand.SeekRelative,
+    is HonomiRemoteCommand.SeekTo,
+    is HonomiRemoteCommand.SkipChapter,
+    HonomiRemoteCommand.SkipCM -> true
+    HonomiRemoteCommand.VolumeUp,
+    HonomiRemoteCommand.VolumeDown,
+    HonomiRemoteCommand.VolumeMute,
+    is HonomiRemoteCommand.SetCMSkipMode -> false
+}
 
 enum class PlaybackBackResult { Ignored, Handled, RestoredFullscreen }
 
@@ -252,6 +279,20 @@ class PlaybackSessionState {
         isMiniPlayerMode = false
         showPlayerControls = true
         isReturningFromPlayer = returningFromPlayer
+    }
+
+    /**
+     * リモコン操作で再生が動いたとき、テレビ画面に残っているメニュー類を畳む。
+     *
+     * 閉じる対象は、自分では引っ込まない (= テレビの前での操作でしか閉じられない) ものだけに絞っている。
+     * ライブ視聴の情報オーバーレイはサブメニューさえ閉じれば自前のタイマーで消えるので、ここでは触らない。
+     */
+    fun dismissPlayerOverlaysForRemoteControl() {
+        isPlayerMiniListOpen = false
+        playerIsSubMenuOpen = false
+        isPlayerSubMenuOpen = false
+        isPlayerSceneSearchOpen = false
+        showPlayerControls = false
     }
 
     fun resetPlayback() {

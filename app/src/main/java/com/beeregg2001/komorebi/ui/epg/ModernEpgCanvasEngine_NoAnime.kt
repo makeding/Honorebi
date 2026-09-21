@@ -67,7 +67,7 @@ fun ModernEpgCanvasEngine_NoAnime(
     val displayData = lastSuccessData.value ?: return
 
     val availableBroadcastingTypes = remember {
-        listOf("地上波" to "GR", "BS" to "BS", "CS" to "CS", "BS4K" to "BS4K", "SKY" to "SKY")
+        listOf("地上波" to "GR", "BS" to "BS", "CS" to "CS", "BS4K" to "BS4K", "ネット" to "IPTV", "SKY" to "SKY")
     }
 
     // --- レイアウト定数 (Density考慮) ---

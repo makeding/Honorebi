@@ -146,6 +146,11 @@ fun MainRootDialogs(
                 val channelId = program.channel?.id
                 val matchedChannel = groupedChannels.values.flatten().find { it.id == channelId }
 
+                if (matchedChannel?.capabilities?.recording == false) {
+                    state.toastMessage = "ネットテレビは録画予約に対応していません"
+                    return@EpgReserveDialog
+                }
+
                 val nId = matchedChannel?.networkId?.toInt() ?: 0
                 val sId = matchedChannel?.serviceId?.toInt() ?: 0
                 var tsId = matchedChannel?.transportStreamId?.toInt() ?: 0
@@ -157,7 +162,7 @@ fun MainRootDialogs(
                             it.channel.id == channelId || (it.channel.network_id == nId && it.channel.service_id == sId)
                         }?.channel
                         if (epgChannel != null) {
-                            tsId = epgChannel.transport_stream_id
+                            tsId = epgChannel.transport_stream_id ?: 0
                         }
                     }
                 }
@@ -168,7 +173,7 @@ fun MainRootDialogs(
                         it.channel.id == channelId || (it.channel.network_id == nId && it.channel.service_id == sId)
                     }
                     if (matchedSearch != null) {
-                        tsId = matchedSearch.channel.transport_stream_id
+                        tsId = matchedSearch.channel.transport_stream_id ?: 0
                     }
                 }
 
@@ -241,6 +246,10 @@ fun MainRootDialogs(
                 }
             },
             onRecordClick = { program ->
+                if (program.source.equals("Jellyfin", ignoreCase = true)) {
+                    state.toastMessage = "ネットテレビは録画予約に対応していません"
+                    return@ProgramDetailScreen
+                }
                 reserveViewModel.addReserve(program.id) {
                     scope.launch {
                         state.epgSelectedProgram = null; delay(300)
@@ -250,6 +259,10 @@ fun MainRootDialogs(
             },
             onEpgReserveClick = { program, keyword, daysOfWeek, startH, startM, endH, endM, exc, tOnly, bType, fuzzy, dup, pri, relay, exact ->
                 val channel = groupedChannels.values.flatten().find { it.id == program.channel_id }
+                if (channel?.capabilities?.recording == false || program.source.equals("Jellyfin", ignoreCase = true)) {
+                    state.toastMessage = "ネットテレビは録画予約に対応していません"
+                    return@ProgramDetailScreen
+                }
                 var finalTsId = channel?.transportStreamId?.toInt() ?: 0
 
                 if (finalTsId == 0) {
@@ -258,7 +271,7 @@ fun MainRootDialogs(
                         val epgChannel = currentEpgState.data.find {
                             it.channel.id == program.channel_id || (it.channel.network_id == program.network_id && it.channel.service_id == program.service_id)
                         }?.channel
-                        if (epgChannel != null) finalTsId = epgChannel.transport_stream_id
+                        if (epgChannel != null) finalTsId = epgChannel.transport_stream_id ?: 0
                     }
                 }
 
@@ -267,18 +280,18 @@ fun MainRootDialogs(
                     val matchedResult = searchResults.find {
                         it.program.id == program.id || it.channel.id == program.channel_id || (it.channel.network_id == program.network_id && it.channel.service_id == program.service_id)
                     }
-                    if (matchedResult != null) finalTsId = matchedResult.channel.transport_stream_id
+                    if (matchedResult != null) finalTsId = matchedResult.channel.transport_stream_id ?: 0
                 }
 
                 if (finalTsId == 0 && program.network_id in 32736..32742) {
-                    finalTsId = program.network_id
+                    finalTsId = requireNotNull(program.network_id)
                 }
 
                 reserveViewModel.addEpgReserve(
                     keyword = keyword,
-                    networkId = program.network_id,
+                    networkId = requireNotNull(program.network_id),
                     transportStreamId = finalTsId,
-                    serviceId = program.service_id,
+                    serviceId = requireNotNull(program.service_id),
                     daysOfWeek = daysOfWeek,
                     startHour = startH,
                     startMinute = startM,

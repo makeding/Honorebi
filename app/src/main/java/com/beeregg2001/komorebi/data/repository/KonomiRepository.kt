@@ -75,12 +75,34 @@ class KonomiRepository @Inject constructor(
 
     override suspend fun getChannels(): ChannelApiResponse {
         try {
-            return apiService.getChannels()
+            val response = apiService.getChannels()
+            if (!response.isSuccessful) {
+                throw java.io.IOException("HTTP ${response.code()}")
+            }
+            val channels = requireNotNull(response.body()) { "チャンネル一覧の応答本文がありません" }
+            val sourceErrors = response.headers()["X-Channel-Source-Errors"]
+                ?.let(::parseChannelSourceErrors)
+                .orEmpty()
+            return channels.copy(sourceErrors = sourceErrors)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch KonomiTV channels", e)
             // ★ 修正: エラーを握りつぶして空リストを返さず、例外をスローして知らせる
             throw Exception("KonomiTVからのチャンネル一覧取得に失敗しました。\nサーバーが稼働しているか確認してください。\n[詳細]: ${e.message}")
         }
+    }
+
+    private fun parseChannelSourceErrors(header: String): Map<String, String?> = runCatching {
+        val objectValue = JSONObject(header)
+        buildMap {
+            val keys = objectValue.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                put(key, if (objectValue.isNull(key)) null else objectValue.optString(key))
+            }
+        }
+    }.getOrElse { error ->
+        Log.w(TAG, "Ignoring malformed X-Channel-Source-Errors header", error)
+        emptyMap()
     }
 
     override suspend fun getRecordedPrograms(
@@ -422,6 +444,16 @@ class KonomiRepository @Inject constructor(
         val ip = settingsRepository.konomiIp.first()
         val port = settingsRepository.konomiPort.first()
         return UrlBuilder.getKonomiTvLiveStreamUrl(ip, port, channelId, quality)
+    }
+
+    override suspend fun createLiveStreamSession(channelId: String): LiveStreamSessionResponse =
+        apiService.createLiveStreamSession(LiveStreamSessionRequest(channelId))
+
+    override suspend fun closeLiveStreamSession(sessionId: String) {
+        val response = apiService.closeLiveStreamSession(sessionId)
+        if (!response.isSuccessful) {
+            Log.w(TAG, "Failed to close live stream session: ${response.code()}")
+        }
     }
 
     override suspend fun getChannelLogoUrl(channelId: String): String {

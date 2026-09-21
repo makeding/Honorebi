@@ -259,12 +259,14 @@ class LivePlayerViewModel @Inject constructor(
     private var mainIsEdcbDirect = false
     private var mainCurrentChannel: Channel? = null
     private var mainCurrentQuality: StreamQuality? = null
+    private var mainUpstreamSessionId: String? = null
     private var mainAutoRetryCount = 0
 
     private var dualCurrentSource = StreamSource.KONOMITV
     private var dualIsEdcbDirect = false
     private var dualCurrentChannel: Channel? = null
     private var dualCurrentQuality: StreamQuality? = null
+    private var dualUpstreamSessionId: String? = null
     private var dualAutoRetryCount = 0
 
     init {
@@ -403,8 +405,18 @@ class LivePlayerViewModel @Inject constructor(
 
         _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
         liveJikkyoManager.stopJikkyo()
+        releaseUpstreamLiveSession(mainUpstreamSessionId)
+        mainUpstreamSessionId = null
         if (endSession) {
             endChannelSession(LivePlaybackSlot.MAIN)
+        }
+    }
+
+    private fun releaseUpstreamLiveSession(sessionId: String?) {
+        if (sessionId.isNullOrBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { livePlaybackSourceResolver.closeUpstreamSession(sessionId) }
+                .onFailure { Log.w(TAG, "Failed to release live stream session $sessionId", it) }
         }
     }
 
@@ -429,6 +441,8 @@ class LivePlayerViewModel @Inject constructor(
         dualRawMmtsLayerController.reset()
 
         _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
+        releaseUpstreamLiveSession(dualUpstreamSessionId)
+        dualUpstreamSessionId = null
         if (endSession) {
             endChannelSession(LivePlaybackSlot.DUAL)
         }
@@ -461,6 +475,10 @@ class LivePlayerViewModel @Inject constructor(
 
         _mainSseStatus.value = "Standby"; _dualSseStatus.value = "Standby"
         liveJikkyoManager.stopJikkyo()
+        releaseUpstreamLiveSession(mainUpstreamSessionId)
+        releaseUpstreamLiveSession(dualUpstreamSessionId)
+        mainUpstreamSessionId = null
+        dualUpstreamSessionId = null
     }
 
     private fun handleMainError(
@@ -657,10 +675,14 @@ class LivePlayerViewModel @Inject constructor(
                         streamNumber = LivePlaybackSlot.MAIN.streamNumber,
                         factory = mainTsDataSourceFactory
                     )
-                    if (!channelSessions.isCurrent(token)) return@withLock
+                    if (!channelSessions.isCurrent(token)) {
+                        releaseUpstreamLiveSession(request.upstreamSessionId)
+                        return@withLock
+                    }
                     mainCurrentSource = request.source
                     mainIsEdcbDirect = request.isEdcbDirect
                     mainCurrentQuality = request.quality
+                    mainUpstreamSessionId = request.upstreamSessionId
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val hdrRenderMode = settingsRepository.hdrRenderMode.first()
@@ -678,7 +700,7 @@ class LivePlayerViewModel @Inject constructor(
                         attachMainRuntimeListeners(runtime, request.source, token, uiContext)
                         if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _mainSseStatus.value = "ONAir"; _mainSseDetail.value = ""
-                        } else if (request.config is BackendConfig.KonomiTv) {
+                        } else if (!channel.supportsLiveStreamSession() && request.config is BackendConfig.KonomiTv) {
                             startMainSse(
                                 uiContext,
                                 channel.displayChannelId,
@@ -693,15 +715,15 @@ class LivePlayerViewModel @Inject constructor(
                             mainTsDataSourceFactory,
                             { pts, data -> decodeAndEmitMainSubtitle(token, pts, data) },
                             { sample -> decodeAndEmitMainB62Subtitle(token, sample) },
-                            LiveSessionDataBroadcastingCallback(
-                                token,
-                                channelSessions,
-                                dataBroadcastingStore
-                            ),
+                            if (channel.capabilities.dataBroadcasting) LiveSessionDataBroadcastingCallback(
+                                token, channelSessions, dataBroadcastingStore
+                            ) else null,
                             mainRawMmtsLayerController,
                             token
                         )
-                        liveJikkyoManager.startJikkyo(channel, request.source, token, channelSessions::isCurrent)
+                        if (!channel.isJellyfin) {
+                            liveJikkyoManager.startJikkyo(channel, request.source, token, channelSessions::isCurrent)
+                        }
                     }
                 }
             } catch (e: CancellationException) {
@@ -748,10 +770,14 @@ class LivePlayerViewModel @Inject constructor(
                         streamNumber = LivePlaybackSlot.DUAL.streamNumber,
                         factory = dualTsDataSourceFactory
                     )
-                    if (!channelSessions.isCurrent(token)) return@withLock
+                    if (!channelSessions.isCurrent(token)) {
+                        releaseUpstreamLiveSession(request.upstreamSessionId)
+                        return@withLock
+                    }
                     dualCurrentSource = request.source
                     dualIsEdcbDirect = request.isEdcbDirect
                     dualCurrentQuality = request.quality
+                    dualUpstreamSessionId = request.upstreamSessionId
 
                     val audioOutputMode = settingsRepository.audioOutputMode.first()
                     val hdrRenderMode = settingsRepository.hdrRenderMode.first()
@@ -769,7 +795,7 @@ class LivePlayerViewModel @Inject constructor(
                         attachDualRuntimeListeners(runtime, request.source, token, uiContext)
                         if (request.source == StreamSource.MIRAKURUN || request.source == StreamSource.EDCB) {
                             _dualSseStatus.value = "ONAir"; _dualSseDetail.value = ""
-                        } else if (request.config is BackendConfig.KonomiTv) {
+                        } else if (!channel.supportsLiveStreamSession() && request.config is BackendConfig.KonomiTv) {
                             startDualSse(
                                 uiContext,
                                 channel.displayChannelId,
@@ -991,7 +1017,14 @@ class LivePlayerViewModel @Inject constructor(
         _mainRuntimeState.value = runtime.state.value
         mainRuntimeStateJob = viewModelScope.launch {
             runtime.state.collect { state ->
-                if (mainRuntime === runtime) _mainRuntimeState.value = state
+                if (mainRuntime === runtime) {
+                    _mainRuntimeState.value = state
+                    // セッション再生には放送 SSE がないため、Media3 の準備完了で待機表示を解除する。
+                    if (mainUpstreamSessionId != null && state.playbackState == Player.STATE_READY) {
+                        _mainSseStatus.value = "ONAir"
+                        _mainSseDetail.value = ""
+                    }
+                }
             }
         }
     }
@@ -1001,7 +1034,14 @@ class LivePlayerViewModel @Inject constructor(
         _dualRuntimeState.value = runtime.state.value
         dualRuntimeStateJob = viewModelScope.launch {
             runtime.state.collect { state ->
-                if (dualRuntime === runtime) _dualRuntimeState.value = state
+                if (dualRuntime === runtime) {
+                    _dualRuntimeState.value = state
+                    // 二画面目も独立したセッションの準備完了を使う。
+                    if (dualUpstreamSessionId != null && state.playbackState == Player.STATE_READY) {
+                        _dualSseStatus.value = "ONAir"
+                        _dualSseDetail.value = ""
+                    }
+                }
             }
         }
     }

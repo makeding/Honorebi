@@ -81,7 +81,7 @@ fun ChannelListOverlay(
     focusRequester: FocusRequester
 ) {
     val colors = KomorebiTheme.colors
-    val channelTypeOrder = listOf("GR", "BS", "CS", "BS4K", "SKY")
+    val channelTypeOrder = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY")
     val channelSections = remember(groupedChannels) {
         channelTypeOrder.mapNotNull { type ->
             groupedChannels[type]?.takeIf { it.isNotEmpty() }?.let { type to it }

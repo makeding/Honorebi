@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +57,10 @@ import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.player.b60MediaPlane
 import com.beeregg2001.komorebi.ui.player.isDataBroadcastingToggleKeyEvent
+import com.beeregg2001.komorebi.media.RemotePlaybackCapabilities
 import com.beeregg2001.komorebi.media.SystemMediaSession
+import com.beeregg2001.komorebi.data.remote.HonomiRemoteChapter
+import com.beeregg2001.komorebi.data.remote.HonomiRemoteSkipDirection
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
@@ -918,7 +922,24 @@ internal fun RecordedSystemMediaSession(
     currentPositionMs: () -> Long,
     performSeek: (Long) -> Unit,
     onStop: () -> Unit,
+    chapters: List<ChapterInfo>,
+    cmSkipMode: CmSkipMode,
+    totalDurationMs: Long,
+    isChasePlayback: Boolean,
+    onSkipNextChapter: () -> Unit,
+    onSkipPreviousChapter: () -> Unit,
 ) {
+    // HonomiTV の進捗バーへ渡すチャプター表現。UI 用の ChapterInfo をミリ秒から秒へ直すだけの写像。
+    val remoteChapters = remember(chapters) {
+        chapters.map { chapter ->
+            HonomiRemoteChapter(
+                startSeconds = chapter.startTimeMs / 1_000.0,
+                endSeconds = chapter.endTimeMs / 1_000.0,
+                isCm = chapter.isCm,
+                label = chapter.label,
+            )
+        }
+    }
     SystemMediaSession(
         player = player,
         title = program.title,
@@ -935,6 +956,27 @@ internal fun RecordedSystemMediaSession(
         onSeekRelative = { deltaMilliseconds ->
             performSeek(currentPositionMs() + deltaMilliseconds)
         },
-        onStop = onStop
+        onStop = onStop,
+        remoteCapabilities = RemotePlaybackCapabilities(
+            seekTo = performSeek,
+            skipChapter = { direction ->
+                when (direction) {
+                    HonomiRemoteSkipDirection.NEXT -> onSkipNextChapter()
+                    HonomiRemoteSkipDirection.PREVIOUS -> onSkipPreviousChapter()
+                }
+            },
+            // 現在位置が CM 区間の中にあるときだけ本編の頭へ飛ばす。
+            // CM 外で届いた場合に何もしないのは、リモコン側のボタン無効化が往復遅延で一瞬ずれても
+            // 意図しないシークを起こさないため。
+            skipCM = {
+                val positionMs = currentPositionMs()
+                chapters.firstOrNull { it.isCm && positionMs >= it.startTimeMs && positionMs < it.endTimeMs }
+                    ?.let { performSeek(it.endTimeMs) }
+            },
+            durationOverrideMs = totalDurationMs,
+            isChasePlayback = isChasePlayback,
+            chapters = remoteChapters,
+            cmSkipMode = cmSkipMode,
+        ),
     )
 }
