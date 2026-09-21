@@ -3,8 +3,9 @@ package com.beeregg2001.komorebi.data.api.interceptor
 import java.net.URI
 
 /**
- * Keeps Cloudflare Access credentials scoped to explicitly configured HTTPS origins.
- * This policy deliberately has no wildcard, sub-domain, or redirect inheritance.
+ * Keeps Cloudflare Access credentials scoped to the configured HTTPS backend hosts.
+ * Zero Trust protects the whole host, so every HTTPS URL on a configured host carries the
+ * service token regardless of path or port.  No wildcard, sub-domain or redirect inheritance.
  */
 data class CloudflareAccessConfiguration(
     val clientId: String = "",
@@ -21,8 +22,7 @@ data class CloudflareAccessConfiguration(
             return emptyMap()
         }
         val host = uri.host?.lowercase() ?: return emptyMap()
-        val port = if (uri.port == -1) 443 else uri.port
-        if (Origin(host, port) !in allowedOrigins) return emptyMap()
+        if (allowedOrigins.none { it.host == host }) return emptyMap()
         return mapOf(CLIENT_ID_HEADER to clientId, CLIENT_SECRET_HEADER to clientSecret)
     }
 

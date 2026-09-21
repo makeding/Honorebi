@@ -11,7 +11,7 @@ class CloudflareAccessPolicyTest {
         allowedOrigins = setOf(CloudflareAccessConfiguration.Origin("tv.example.test", 443)),
     )
 
-    @Test fun `adds both headers only for configured HTTPS origin`() {
+    @Test fun `adds both headers for every HTTPS url on a configured host`() {
         assertEquals(
             mapOf(
                 CloudflareAccessConfiguration.CLIENT_ID_HEADER to "client-id",
@@ -19,12 +19,19 @@ class CloudflareAccessPolicyTest {
             ),
             configuration.headersFor("https://tv.example.test/api/v1/channels"),
         )
+        // Zero Trust protects the whole host, so any port / path carries the token too.
+        assertEquals(
+            mapOf(
+                CloudflareAccessConfiguration.CLIENT_ID_HEADER to "client-id",
+                CloudflareAccessConfiguration.CLIENT_SECRET_HEADER to "client-secret",
+            ),
+            configuration.headersFor("https://tv.example.test:8443/api/v1/channels"),
+        )
     }
 
-    @Test fun `does not leak credentials to redirect destination or near-match origin`() {
+    @Test fun `does not leak credentials to another host or over http`() {
         assertTrue(configuration.headersFor("https://images.example.test/logo.png").isEmpty())
         assertTrue(configuration.headersFor("https://tv.example.test.evil.test/redirect").isEmpty())
-        assertTrue(configuration.headersFor("https://tv.example.test:8443/redirect").isEmpty())
         assertTrue(configuration.headersFor("http://tv.example.test/api").isEmpty())
     }
 
