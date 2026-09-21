@@ -256,28 +256,6 @@ class SettingsRepository @Inject constructor(
         cloudflareAccessConfiguration.first { it == saved }
     }
 
-    private fun androidx.datastore.preferences.core.Preferences.toCloudflareAccessConfiguration(): CloudflareAccessConfiguration {
-        val prefs = this
-        val origins = listOf(
-            CloudflareAccessConfiguration.origin(prefs[KONOMI_IP].orEmpty(), prefs[KONOMI_PORT] ?: "7000", "https"),
-            CloudflareAccessConfiguration.origin(prefs[MIRAKURUN_IP].orEmpty(), prefs[MIRAKURUN_PORT] ?: "40772", "http"),
-            CloudflareAccessConfiguration.origin(prefs[EDCB_IP].orEmpty(), prefs[EDCB_HTTP_PORT] ?: "5510", "http"),
-            CloudflareAccessConfiguration.origin(prefs[EPGSTATION_IP].orEmpty(), prefs[EPGSTATION_PORT] ?: "8888", "http"),
-        ).filterNotNull().toSet()
-        return CloudflareAccessConfiguration(
-            clientId = prefs[CF_ACCESS_CLIENT_ID].orEmpty().filterNot(Char::isWhitespace),
-            clientSecret = prefs[CF_ACCESS_CLIENT_SECRET].orEmpty().filterNot(Char::isWhitespace),
-            allowedOrigins = origins,
-            // KonomiTV is always reached over HTTPS (Retrofit base, live/media URLs and the
-            // `.local.konomi.tv` / tunnel endpoints all use it).  A bare host must therefore
-            // resolve to https, otherwise Cloudflare Access headers are never attached.
-            backendBaseUrl = com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(
-                prefs[KONOMI_IP] ?: "https://192-168-xxx-xxx.local.konomi.tv",
-                prefs[KONOMI_PORT] ?: "7000", "https",
-            ),
-        )
-    }
-
     suspend fun getStreamSourceUrl(source: com.beeregg2001.komorebi.data.model.StreamSource): String {
         val prefs = context.dataStore.data.first()
         var ip = ""
@@ -342,4 +320,27 @@ class SettingsRepository @Inject constructor(
             )
         }
     }
+}
+
+/**
+ * Pure mapping from persisted preferences to the network snapshot.  KonomiTV is always reached
+ * over HTTPS, so a bare host resolves to https; otherwise Access headers would never attach.
+ */
+internal fun androidx.datastore.preferences.core.Preferences.toCloudflareAccessConfiguration(): CloudflareAccessConfiguration {
+    val prefs = this
+    val origins = listOf(
+        CloudflareAccessConfiguration.origin(prefs[SettingsRepository.KONOMI_IP].orEmpty(), prefs[SettingsRepository.KONOMI_PORT] ?: "7000", "https"),
+        CloudflareAccessConfiguration.origin(prefs[SettingsRepository.MIRAKURUN_IP].orEmpty(), prefs[SettingsRepository.MIRAKURUN_PORT] ?: "40772", "http"),
+        CloudflareAccessConfiguration.origin(prefs[SettingsRepository.EDCB_IP].orEmpty(), prefs[SettingsRepository.EDCB_HTTP_PORT] ?: "5510", "http"),
+        CloudflareAccessConfiguration.origin(prefs[SettingsRepository.EPGSTATION_IP].orEmpty(), prefs[SettingsRepository.EPGSTATION_PORT] ?: "8888", "http"),
+    ).filterNotNull().toSet()
+    return CloudflareAccessConfiguration(
+        clientId = prefs[SettingsRepository.CF_ACCESS_CLIENT_ID].orEmpty().filterNot(Char::isWhitespace),
+        clientSecret = prefs[SettingsRepository.CF_ACCESS_CLIENT_SECRET].orEmpty().filterNot(Char::isWhitespace),
+        allowedOrigins = origins,
+        backendBaseUrl = com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(
+            prefs[SettingsRepository.KONOMI_IP] ?: "https://192-168-xxx-xxx.local.konomi.tv",
+            prefs[SettingsRepository.KONOMI_PORT] ?: "7000", "https",
+        ),
+    )
 }

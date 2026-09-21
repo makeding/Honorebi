@@ -12,16 +12,24 @@ class BackendApiException(
     val responseType: String?,
     val automaticallyRetryable: Boolean,
     val reason: String,
+    val accessHeadersSent: Boolean = false,
 ) : IOException("$reason [$safeCode; HTTP $status] 接続設定を確認するか、再試行してください。") {
 
-    /** Compact, single-line label for narrow error slots: code + status, then the redacted target. */
-    val displayText: String get() = "[$safeCode / HTTP $status] $endpoint"
+    /**
+     * Compact, single-line label for narrow error slots: code + status, whether the request
+     * actually carried the Access headers, then the redacted target.
+     */
+    val displayText: String
+        get() = "[$safeCode / HTTP $status] " +
+            (if (accessHeadersSent) "Access header あり" else "Access header なし") +
+            " $endpoint"
 }
 
 /** Only installed on the JSON API client, never on media/image/SSE transports. */
 class BackendApiResponseInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val response = chain.proceed(chain.request())
+        val request = chain.request()
+        val response = chain.proceed(request)
         val url = response.request.url
         val mediaType = response.body.contentType()
         val isJson = mediaType?.subtype?.let { it == "json" || it.endsWith("+json") } == true
@@ -38,7 +46,7 @@ class BackendApiResponseInterceptor : Interceptor {
             // A 200 with an empty body (Response<Unit> endpoints) has no content type and
             // must not be mistaken for a non-JSON API response.
             response.isSuccessful && response.code !in listOf(204, 205) &&
-                chain.request().method != "HEAD" && mediaType != null && !isJson ->
+                request.method != "HEAD" && mediaType != null && !isJson ->
                 "BACKEND_NON_JSON" to "サーバー API から JSON 以外の応答が返されました。"
             else -> null
         } ?: return response
@@ -48,6 +56,7 @@ class BackendApiResponseInterceptor : Interceptor {
             mediaType?.toString(),
             !accessLogin && (response.code == 429 || response.code >= 500),
             failure.second,
+            request.header(CloudflareAccessConfiguration.CLIENT_ID_HEADER) != null,
         )
         response.close()
         throw error
