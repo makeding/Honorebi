@@ -440,7 +440,7 @@ fun ConnectionSettingsContent(
                         .focusProperties {
                             left = sidebarR
                             up = if (backendType == "EDCB") edcbPlayMethodR else if (backendType == "KONOMITV") honomiAccountR else backendPortR
-                            down = if (hasOverride) overrideIpR else addSmbR
+                            down = if (hasOverride) overrideIpR else cloudflareAccessR
                         },
                     onClick = { onClick(prefSrcR); onSelectSrc() }
                 )
@@ -466,7 +466,7 @@ fun ConnectionSettingsContent(
                         modifier = Modifier
                             .focusRequester(overridePortR)
                             .focusProperties {
-                                left = sidebarR; up = overrideIpR; down = addSmbR
+                                left = sidebarR; up = overrideIpR; down = cloudflareAccessR
                             },
                         onClick = { onClick(overridePortR); onEdit("Mirakurun (ポート)", mPort) }
                     )
@@ -495,7 +495,7 @@ fun ConnectionSettingsContent(
                         modifier = Modifier
                             .focusRequester(overridePortR)
                             .focusProperties {
-                                left = sidebarR; up = overrideIpR; down = addSmbR
+                                left = sidebarR; up = overrideIpR; down = cloudflareAccessR
                             },
                         onClick = { onClick(overridePortR); onEdit("EDCB (ポート)", edcbPort) }
                     )
@@ -520,7 +520,7 @@ fun ConnectionSettingsContent(
                 onClick = { onClick(cloudflareAccessR); onEditCloudflareAccess() },
             )
             Text(
-                "Client Secret は画面に表示されません。HTTPS の設定済みバックエンドだけに送信します。",
+                "HTTPS の設定済みバックエンドだけにサービス トークンを送信します。",
                 modifier = Modifier.padding(horizontal = 24.dp),
                 color = colors.textSecondary,
                 style = MaterialTheme.typography.bodyMedium,

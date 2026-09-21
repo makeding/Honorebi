@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
@@ -114,14 +115,14 @@ fun OfflineGuideScreen(
             )
 
             // Fixed-height, non-shifting slot for the safe failure reason (code / HTTP status
-            // only).  Keeping the slot reserved avoids moving the action buttons below.
+            // first).  A single ellipsized line keeps the action buttons below from moving.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
-                    .padding(top = 10.dp)
+                    .height(28.dp)
+                    .padding(top = 4.dp)
                     .testTag("offline-guide-reason"),
-                contentAlignment = Alignment.TopCenter
+                contentAlignment = Alignment.Center
             ) {
                 if (!reason.isNullOrBlank()) {
                     Text(
@@ -129,12 +130,13 @@ fun OfflineGuideScreen(
                         color = colors.textPrimary.copy(alpha = 0.72f),
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
-                        maxLines = 2
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),

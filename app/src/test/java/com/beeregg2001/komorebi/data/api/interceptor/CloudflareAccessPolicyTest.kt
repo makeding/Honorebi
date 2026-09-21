@@ -44,4 +44,24 @@ class CloudflareAccessPolicyTest {
         )
         assertEquals(null, CloudflareAccessConfiguration.origin("http://tv.example.test", "7000"))
     }
+
+    @Test fun `bare KonomiTV host defaults to HTTPS so Access headers attach`() {
+        assertEquals(
+            CloudflareAccessConfiguration.Origin("tv.example.test", 7000),
+            CloudflareAccessConfiguration.origin("tv.example.test", "7000", "https"),
+        )
+        assertEquals(
+            mapOf(
+                CloudflareAccessConfiguration.CLIENT_ID_HEADER to "client-id",
+                CloudflareAccessConfiguration.CLIENT_SECRET_HEADER to "client-secret",
+            ),
+            CloudflareAccessConfiguration(
+                clientId = "client-id",
+                clientSecret = "client-secret",
+                allowedOrigins = setOf(
+                    CloudflareAccessConfiguration.origin("tv.example.test", "7000", "https")!!,
+                ),
+            ).headersFor("https://tv.example.test:7000/api/channels"),
+        )
+    }
 }

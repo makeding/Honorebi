@@ -11,8 +11,12 @@ class BackendApiException(
     val endpoint: String,
     val responseType: String?,
     val automaticallyRetryable: Boolean,
-    reason: String,
-) : IOException("$reason [$safeCode; HTTP $status] 接続設定を確認するか、再試行してください。")
+    val reason: String,
+) : IOException("$reason [$safeCode; HTTP $status] 接続設定を確認するか、再試行してください。") {
+
+    /** Compact, single-line label for narrow error slots: code + status, then the redacted target. */
+    val displayText: String get() = "[$safeCode / HTTP $status] $endpoint"
+}
 
 /** Only installed on the JSON API client, never on media/image/SSE transports. */
 class BackendApiResponseInterceptor : Interceptor {

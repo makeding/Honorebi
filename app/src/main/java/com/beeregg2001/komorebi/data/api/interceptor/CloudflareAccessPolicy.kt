@@ -32,8 +32,8 @@ data class CloudflareAccessConfiguration(
         const val CLIENT_ID_HEADER = "CF-Access-Client-Id"
         const val CLIENT_SECRET_HEADER = "CF-Access-Client-Secret"
 
-        fun origin(url: String, fallbackPort: String): Origin? = runCatching {
-            val uri = URI(com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(url, fallbackPort, "http"))
+        fun origin(url: String, fallbackPort: String, defaultProtocol: String = "http"): Origin? = runCatching {
+            val uri = URI(com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(url, fallbackPort, defaultProtocol))
             if (!uri.scheme.equals("https", ignoreCase = true)) return@runCatching null
             val host = uri.host?.lowercase() ?: return@runCatching null
             val port = if (uri.port == -1) 443 else uri.port

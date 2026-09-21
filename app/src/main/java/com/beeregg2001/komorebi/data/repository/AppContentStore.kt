@@ -228,7 +228,7 @@ class AppContentStore @Inject constructor(
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching channels", e)
             _connectionError.value = true
-            _channelError.value = e.backendApiFailure()?.message ?: e.message ?: "チャンネルを取得できませんでした。接続を確認して再試行してください。"
+            _channelError.value = e.backendApiFailure()?.displayText ?: e.message ?: "チャンネルを取得できませんでした。接続を確認して再試行してください。"
             channelRetry.failed(e)
         } finally {
             lastChannelsFetchedAtMillis = System.currentTimeMillis()
@@ -255,7 +255,7 @@ class AppContentStore @Inject constructor(
             throw e
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching recent recordings", e)
-            _recordingError.value = e.backendApiFailure()?.message ?: e.message ?: "録画番組を取得できませんでした。接続を確認して再試行してください。"
+            _recordingError.value = e.backendApiFailure()?.displayText ?: e.message ?: "録画番組を取得できませんでした。接続を確認して再試行してください。"
             recordingRetry.failed(e)
         } finally {
             lastRecordingsFetchedAtMillis = System.currentTimeMillis()

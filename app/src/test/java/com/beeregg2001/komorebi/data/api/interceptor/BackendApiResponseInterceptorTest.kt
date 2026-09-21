@@ -61,6 +61,7 @@ class BackendApiResponseInterceptorTest {
                 assertEquals("text/html; charset=utf-8", error.responseType)
                 assertTrue(error.endpoint.endsWith("/api/channels"))
                 assertFalse("endpoint must not leak the query string", error.endpoint.contains("token"))
+                assertEquals("[BACKEND_NON_JSON / HTTP 200] ${error.endpoint}", error.displayText)
             } finally {
                 client.shutdown()
             }

@@ -57,7 +57,7 @@ fun CloudflareAccessDialog(
                 Text("Cloudflare Access", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("保護する HTTPS バックエンドだけにサービス トークンを送信します。ID と Secret は両方入力するか、両方消去してください。")
                 DialogTextField(clientId, { if (!saving) { clientId = it; error = null } }, "Client ID", focusRequester = clientIdFocus)
-                DialogTextField(clientSecret, { if (!saving) { clientSecret = it; error = null } }, "Client Secret", isPassword = true, focusRequester = remember { FocusRequester() })
+                DialogTextField(clientSecret, { if (!saving) { clientSecret = it; error = null } }, "Client Secret", focusRequester = remember { FocusRequester() })
                 Box(Modifier.fillMaxWidth().height(48.dp).testTag("access-status"), contentAlignment = Alignment.CenterStart) {
                     Text(status, color = if (error != null || !valid) Color(0xFFE53935) else colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }

@@ -71,7 +71,7 @@ class LivePlaybackSourceResolver @Inject constructor(
             val lease = liveProvider.createLiveStreamSession(channel.id, config)
             try {
                 val session = lease.response
-                val baseUrl = UrlBuilder.formatBaseUrl(config.ip, config.port, "http")
+                val baseUrl = UrlBuilder.formatBaseUrl(config.ip, config.port, "https")
                 val streamUrl = if (session.streamUrl.startsWith("http://") || session.streamUrl.startsWith("https://")) {
                     session.streamUrl
                 } else {

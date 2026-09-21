@@ -463,7 +463,7 @@ class KonomiRepository @Inject constructor(
 
     override suspend fun createLiveStreamSession(channelId: String, config: BackendConfig): LiveStreamSessionLease {
         val target = com.beeregg2001.komorebi.data.api.LiveSessionBackendTarget(
-            UrlBuilder.formatBaseUrl(config.ip, config.port, "http")
+            UrlBuilder.formatBaseUrl(config.ip, config.port, "https")
         )
         val response = apiService.createLiveStreamSession(LiveStreamSessionRequest(channelId), target)
         return LiveStreamSessionLease(response) { id ->

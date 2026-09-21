@@ -259,18 +259,21 @@ class SettingsRepository @Inject constructor(
     private fun androidx.datastore.preferences.core.Preferences.toCloudflareAccessConfiguration(): CloudflareAccessConfiguration {
         val prefs = this
         val origins = listOf(
-            CloudflareAccessConfiguration.origin(prefs[KONOMI_IP].orEmpty(), prefs[KONOMI_PORT] ?: "7000"),
-            CloudflareAccessConfiguration.origin(prefs[MIRAKURUN_IP].orEmpty(), prefs[MIRAKURUN_PORT] ?: "40772"),
-            CloudflareAccessConfiguration.origin(prefs[EDCB_IP].orEmpty(), prefs[EDCB_HTTP_PORT] ?: "5510"),
-            CloudflareAccessConfiguration.origin(prefs[EPGSTATION_IP].orEmpty(), prefs[EPGSTATION_PORT] ?: "8888"),
+            CloudflareAccessConfiguration.origin(prefs[KONOMI_IP].orEmpty(), prefs[KONOMI_PORT] ?: "7000", "https"),
+            CloudflareAccessConfiguration.origin(prefs[MIRAKURUN_IP].orEmpty(), prefs[MIRAKURUN_PORT] ?: "40772", "http"),
+            CloudflareAccessConfiguration.origin(prefs[EDCB_IP].orEmpty(), prefs[EDCB_HTTP_PORT] ?: "5510", "http"),
+            CloudflareAccessConfiguration.origin(prefs[EPGSTATION_IP].orEmpty(), prefs[EPGSTATION_PORT] ?: "8888", "http"),
         ).filterNotNull().toSet()
         return CloudflareAccessConfiguration(
             clientId = prefs[CF_ACCESS_CLIENT_ID].orEmpty().filterNot(Char::isWhitespace),
             clientSecret = prefs[CF_ACCESS_CLIENT_SECRET].orEmpty().filterNot(Char::isWhitespace),
             allowedOrigins = origins,
+            // KonomiTV is always reached over HTTPS (Retrofit base, live/media URLs and the
+            // `.local.konomi.tv` / tunnel endpoints all use it).  A bare host must therefore
+            // resolve to https, otherwise Cloudflare Access headers are never attached.
             backendBaseUrl = com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(
                 prefs[KONOMI_IP] ?: "https://192-168-xxx-xxx.local.konomi.tv",
-                prefs[KONOMI_PORT] ?: "7000", "http",
+                prefs[KONOMI_PORT] ?: "7000", "https",
             ),
         )
     }
