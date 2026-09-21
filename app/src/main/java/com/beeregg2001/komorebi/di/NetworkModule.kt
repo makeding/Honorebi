@@ -47,7 +47,7 @@ object NetworkModule {
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
             .addInterceptor(Interceptor { chain ->
                 val originalRequest = chain.request()
-                val baseUrlString = runBlocking {
+                val baseUrlString = originalRequest.tag(com.beeregg2001.komorebi.data.api.LiveSessionBackendTarget::class.java)?.baseUrl ?: runBlocking {
                     // KonomiTVのベースURLを動的に取得して組み立てる
                     val ip = settingsRepository.konomiIp.first()
                     val port = settingsRepository.konomiPort.first()

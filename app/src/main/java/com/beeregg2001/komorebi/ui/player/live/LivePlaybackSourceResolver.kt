@@ -44,16 +44,13 @@ class LivePlaybackSourceResolver @Inject constructor(
     private val liveProvider: LiveProvider,
     private val settingsRepository: SettingsRepository
 ) {
-    suspend fun closeUpstreamSession(sessionId: String) {
-        liveProvider.closeLiveStreamSession(sessionId)
-    }
     data class Request(
         val url: String,
         val source: StreamSource,
         val isEdcbDirect: Boolean,
         val quality: StreamQuality,
         val config: BackendConfig,
-        val upstreamSessionId: String? = null,
+        val upstreamSession: com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease? = null,
         val streamType: String? = null,
     ) {
         val apiQuality: String
@@ -71,7 +68,8 @@ class LivePlaybackSourceResolver @Inject constructor(
         if (channel.supportsLiveStreamSession()) {
             val config = settingsRepository.getBackendConfig(StreamSource.KONOMITV)
             if (!config.isValid) throw IOException("ネットテレビの接続設定が不完全です")
-            val session = liveProvider.createLiveStreamSession(channel.id)
+            val lease = liveProvider.createLiveStreamSession(channel.id, config)
+            val session = lease.response
             val baseUrl = UrlBuilder.formatBaseUrl(config.ip, config.port, "https")
             val streamUrl = if (session.streamUrl.startsWith("http://") || session.streamUrl.startsWith("https://")) {
                 session.streamUrl
@@ -84,7 +82,7 @@ class LivePlaybackSourceResolver @Inject constructor(
                 isEdcbDirect = false,
                 quality = StreamQuality("Direct", "direct"),
                 config = config,
-                upstreamSessionId = session.id,
+                upstreamSession = lease,
                 streamType = session.streamType.lowercase(),
             )
         }

@@ -91,12 +91,12 @@ fun ProgramDetailScreen(
 
     val now = OffsetDateTime.now()
     val startTime = try {
-        OffsetDateTime.parse(safeProgram.start_time).toDeviceTime()
+        OffsetDateTime.parse(safeProgram.start_time)
     } catch (e: Exception) {
         now
     }
     val endTime = try {
-        OffsetDateTime.parse(safeProgram.end_time).toDeviceTime()
+        OffsetDateTime.parse(safeProgram.end_time)
     } catch (e: Exception) {
         now
     }
@@ -441,7 +441,7 @@ fun ProgramDetailScreen(
                 val endFormatter = DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE)
 
                 Text(
-                    text = "${startTime.format(formatter)} ～ ${endTime.format(endFormatter)}",
+                    text = "${startTime.toDeviceTime().format(formatter)} ～ ${endTime.toDeviceTime().format(endFormatter)}",
                     style = MaterialTheme.typography.labelLarge,
                     color = colors.textSecondary,
                     fontFamily = SystemFontFamily

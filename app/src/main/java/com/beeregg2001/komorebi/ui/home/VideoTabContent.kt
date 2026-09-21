@@ -46,6 +46,7 @@ import com.beeregg2001.komorebi.viewmodel.RecordViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import java.time.OffsetDateTime
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -324,7 +325,7 @@ fun VideoTabContent(
                                             val startFormat = try {
                                                 val pattern =
                                                     if (timeFormat == "12H") "yyyy/M/d(E) a h:mm" else "yyyy/M/d(E) HH:mm"
-                                                OffsetDateTime.parse(program.startTime).format(
+                                                OffsetDateTime.parse(program.startTime).toDeviceTime().format(
                                                     DateTimeFormatter.ofPattern(
                                                         pattern,
                                                         Locale.JAPANESE

@@ -1,0 +1,137 @@
+package com.beeregg2001.komorebi.ui.live
+
+import androidx.media3.common.Player
+import com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease
+import com.beeregg2001.komorebi.ui.player.PlayerRuntime
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.sse.EventSource
+
+/**
+ * Owns the resources of one live playback slot.  A generation is advanced before every
+ * start and stop, therefore a cancelled/late creator can neither install nor tear down the
+ * resources of a newer channel.
+ *
+ * Lease closing deliberately uses an application-owned scope, rather than the ViewModel
+ * scope that may already have been cancelled during teardown.
+ */
+internal class LivePlaybackSlotController(
+    private val label: String,
+    private val releaseTimeoutMs: Long = 5_000L,
+    private val log: (String) -> Unit = {},
+) {
+    private val releaseScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lock = Any()
+    private var generation = 0L
+    private var job: Job? = null
+    private var runtime: PlayerRuntime? = null
+    private var eventSource: EventSource? = null
+    private var upstreamLease: LiveStreamSessionLease? = null
+
+    fun currentRuntime(): PlayerRuntime? = synchronized(lock) { runtime }
+    fun currentEventSource(): EventSource? = synchronized(lock) { eventSource }
+    fun hasUpstreamLease(): Boolean = synchronized(lock) { upstreamLease != null }
+
+    fun begin(start: (Run) -> Job): Run {
+        val previous: Resources
+        val run: Run
+        synchronized(lock) {
+            generation += 1
+            previous = takeResourcesLocked()
+            run = Run(generation)
+            job = start(run)
+        }
+        previous.release("replaced")
+        return run
+    }
+
+    /** Cancel work and release resources without relying on a cancelled ViewModel scope. */
+    fun stop(reason: String) {
+        val previous = synchronized(lock) {
+            generation += 1
+            takeResourcesLocked()
+        }
+        previous.release(reason)
+    }
+
+    fun isCurrent(run: Run): Boolean = synchronized(lock) { generation == run.generation }
+
+    internal inner class Run internal constructor(private val generation: Long) {
+        fun isCurrent(): Boolean = this@LivePlaybackSlotController.isCurrent(this)
+
+        fun installRuntime(candidate: PlayerRuntime): Boolean {
+            val stale = synchronized(lock) {
+                if (generation != this@Run.generation) true else {
+                    runtime?.release()
+                    runtime = candidate
+                    false
+                }
+            }
+            if (stale) candidate.release()
+            return !stale
+        }
+
+        fun installEventSource(candidate: EventSource): Boolean {
+            val stale = synchronized(lock) {
+                if (generation != this@Run.generation) true else {
+                    eventSource?.cancel()
+                    eventSource = candidate
+                    false
+                }
+            }
+            if (stale) candidate.cancel()
+            return !stale
+        }
+
+        fun installLease(candidate: LiveStreamSessionLease): Boolean {
+            val replaced: LiveStreamSessionLease?
+            synchronized(lock) {
+                if (generation != this@Run.generation) {
+                    releaseLease(candidate, "late")
+                    return false
+                }
+                replaced = upstreamLease
+                upstreamLease = candidate
+            }
+            replaced?.let { releaseLease(it, "replaced") }
+            return true
+        }
+    }
+
+    private fun takeResourcesLocked(): Resources {
+        val result = Resources(job, runtime, eventSource, upstreamLease)
+        job = null
+        runtime = null
+        eventSource = null
+        upstreamLease = null
+        return result
+    }
+
+    private inner class Resources(
+        private val job: Job?,
+        private val runtime: PlayerRuntime?,
+        private val eventSource: EventSource?,
+        private val lease: LiveStreamSessionLease?,
+    ) {
+        fun release(reason: String) {
+            job?.cancel(CancellationException("$label stopped: $reason"))
+            eventSource?.cancel()
+            runtime?.release()
+            lease?.let { releaseLease(it, reason) }
+        }
+    }
+
+    private fun releaseLease(lease: LiveStreamSessionLease, reason: String) {
+        log("slot=$label generation release session=${lease.id} reason=$reason")
+        releaseScope.launch {
+            if (withTimeoutOrNull(releaseTimeoutMs) { lease.close() } == null) {
+                log("slot=$label session=${lease.id} release timed out")
+            }
+        }
+    }
+}

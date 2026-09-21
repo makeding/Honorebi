@@ -44,6 +44,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -610,10 +611,10 @@ fun ConditionEditDialog(
                                 items(relatedReserves.size) { index ->
                                     val reserve = relatedReserves[index]
                                     val start = runCatching {
-                                        OffsetDateTime.parse(reserve.program.startTime)
+                                        OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
                                     }.getOrNull()
                                     val end = runCatching {
-                                        OffsetDateTime.parse(reserve.program.endTime)
+                                        OffsetDateTime.parse(reserve.program.endTime).toDeviceTime()
                                     }.getOrNull()
 
                                     val startPattern =

@@ -11,9 +11,8 @@ interface LiveProvider {
 
     // ★ 修正: 2画面モードなどで複数のストリームを同時に開くため、streamNumber（n=0,1...）を追加
     suspend fun getLiveStreamUrl(channelId: String, quality: String, streamNumber: Int = 0): String
-    suspend fun createLiveStreamSession(channelId: String): LiveStreamSessionResponse =
+    suspend fun createLiveStreamSession(channelId: String, config: BackendConfig): LiveStreamSessionLease =
         throw UnsupportedOperationException("このバックエンドはネットテレビのライブセッションに対応していません")
-    suspend fun closeLiveStreamSession(sessionId: String) = Unit
     suspend fun getChannelLogoUrl(channelId: String): String
 }
 

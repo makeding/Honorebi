@@ -446,13 +446,16 @@ class KonomiRepository @Inject constructor(
         return UrlBuilder.getKonomiTvLiveStreamUrl(ip, port, channelId, quality)
     }
 
-    override suspend fun createLiveStreamSession(channelId: String): LiveStreamSessionResponse =
-        apiService.createLiveStreamSession(LiveStreamSessionRequest(channelId))
-
-    override suspend fun closeLiveStreamSession(sessionId: String) {
-        val response = apiService.closeLiveStreamSession(sessionId)
-        if (!response.isSuccessful) {
-            Log.w(TAG, "Failed to close live stream session: ${response.code()}")
+    override suspend fun createLiveStreamSession(channelId: String, config: BackendConfig): LiveStreamSessionLease {
+        val target = com.beeregg2001.komorebi.data.api.LiveSessionBackendTarget(
+            UrlBuilder.formatBaseUrl(config.ip, config.port, "http")
+        )
+        val response = apiService.createLiveStreamSession(LiveStreamSessionRequest(channelId), target)
+        return LiveStreamSessionLease(response) { id ->
+            val result = apiService.closeLiveStreamSession(id, target)
+            if (!result.isSuccessful && result.code() != 404) {
+                throw java.io.IOException("LIVE_SESSION_RELEASE_HTTP_${result.code()}")
+            }
         }
     }
 

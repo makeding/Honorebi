@@ -46,6 +46,7 @@ import kotlinx.coroutines.channels.Channel as CoroutineChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +61,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -244,6 +246,9 @@ class LivePlayerViewModel @Inject constructor(
     private var mainPlaybackJob: Job? = null
     private var dualPlaybackJob: Job? = null
 
+    private val mainSlot = LivePlaybackSlotController("main") { Log.i(TAG, it) }
+    private val dualSlot = LivePlaybackSlotController("dual") { Log.i(TAG, it) }
+
     private val mainPlaybackMutex = Mutex()
     private val dualPlaybackMutex = Mutex()
     private val hdrToneMappingRecoveryRunning = AtomicBoolean(false)
@@ -259,14 +264,14 @@ class LivePlayerViewModel @Inject constructor(
     private var mainIsEdcbDirect = false
     private var mainCurrentChannel: Channel? = null
     private var mainCurrentQuality: StreamQuality? = null
-    private var mainUpstreamSessionId: String? = null
+    private var mainUpstreamSession: com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease? = null
     private var mainAutoRetryCount = 0
 
     private var dualCurrentSource = StreamSource.KONOMITV
     private var dualIsEdcbDirect = false
     private var dualCurrentChannel: Channel? = null
     private var dualCurrentQuality: StreamQuality? = null
-    private var dualUpstreamSessionId: String? = null
+    private var dualUpstreamSession: com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease? = null
     private var dualAutoRetryCount = 0
 
     init {
@@ -383,21 +388,25 @@ class LivePlayerViewModel @Inject constructor(
         return sources.first()
     }
 
-    private fun stopMainPlaybackSafely(reason: String = "unspecified", endSession: Boolean = true) {
+    private fun stopMainPlaybackSafely(
+        reason: String = "unspecified",
+        endSession: Boolean = true,
+        releaseSlot: Boolean = true,
+    ) {
         Log.w(
             TAG,
             "Stopping main playback: reason=$reason, " +
                 "player=${_mainPlayer.value != null}, channel=${mainCurrentChannel?.displayChannelId}, " +
                 "source=$mainCurrentSource, quality=${mainCurrentQuality?.value}"
         )
-        mainEventSource?.cancel(); mainEventSource = null
+        if (releaseSlot) mainSlot.stop(reason)
+        mainEventSource = null
         mainCaptionFence.reset()
         mainB62SubtitleSamples.clearPending()
         mainCaptionDecoder.reset(_currentSubtitleLanguageId.value)
         mainSuperimposeDecoder.reset()
         _mainSubtitleLanguages.value = emptyList()
 
-        mainRuntime?.release()
         mainRuntime = null
         _mainPlayer.value = null
         clearMainRuntimeState()
@@ -405,44 +414,38 @@ class LivePlayerViewModel @Inject constructor(
 
         _mainSseStatus.value = "Standby"; _mainSseDetail.value = AppStrings.SSE_CONNECTING
         liveJikkyoManager.stopJikkyo()
-        releaseUpstreamLiveSession(mainUpstreamSessionId)
-        mainUpstreamSessionId = null
+        mainUpstreamSession = null
         if (endSession) {
             endChannelSession(LivePlaybackSlot.MAIN)
         }
     }
 
-    private fun releaseUpstreamLiveSession(sessionId: String?) {
-        if (sessionId.isNullOrBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching { livePlaybackSourceResolver.closeUpstreamSession(sessionId) }
-                .onFailure { Log.w(TAG, "Failed to release live stream session $sessionId", it) }
-        }
-    }
-
-    private fun stopDualPlaybackSafely(reason: String = "unspecified", endSession: Boolean = true) {
+    private fun stopDualPlaybackSafely(
+        reason: String = "unspecified",
+        endSession: Boolean = true,
+        releaseSlot: Boolean = true,
+    ) {
         Log.w(
             TAG,
             "Stopping dual playback: reason=$reason, " +
                 "player=${_dualPlayer.value != null}, channel=${dualCurrentChannel?.displayChannelId}, " +
                 "source=$dualCurrentSource, quality=${dualCurrentQuality?.value}"
         )
-        dualEventSource?.cancel(); dualEventSource = null
+        if (releaseSlot) dualSlot.stop(reason)
+        dualEventSource = null
         dualCaptionFence.reset()
         dualB62SubtitleSamples.clearPending()
         dualCaptionDecoder.reset(_currentSubtitleLanguageId.value)
         dualSuperimposeDecoder.reset()
         _dualSubtitleLanguages.value = emptyList()
 
-        dualRuntime?.release()
         dualRuntime = null
         _dualPlayer.value = null
         clearDualRuntimeState()
         dualRawMmtsLayerController.reset()
 
         _dualSseStatus.value = "Standby"; _dualSseDetail.value = AppStrings.SSE_CONNECTING
-        releaseUpstreamLiveSession(dualUpstreamSessionId)
-        dualUpstreamSessionId = null
+        dualUpstreamSession = null
         if (endSession) {
             endChannelSession(LivePlaybackSlot.DUAL)
         }
@@ -457,17 +460,16 @@ class LivePlayerViewModel @Inject constructor(
         )
         endChannelSession(LivePlaybackSlot.MAIN)
         endChannelSession(LivePlaybackSlot.DUAL)
-        mainPlaybackJob?.cancel(); dualPlaybackJob?.cancel()
-        mainEventSource?.cancel(); dualEventSource?.cancel()
+        mainSlot.stop(reason); dualSlot.stop(reason)
+        mainPlaybackJob = null; dualPlaybackJob = null
+        mainEventSource = null; dualEventSource = null
         mainCaptionFence.reset(); dualCaptionFence.reset()
 
-        mainRuntime?.release()
         mainRuntime = null
         _mainPlayer.value = null
         clearMainRuntimeState()
         mainRawMmtsLayerController.reset()
 
-        dualRuntime?.release()
         dualRuntime = null
         _dualPlayer.value = null
         clearDualRuntimeState()
@@ -475,10 +477,8 @@ class LivePlayerViewModel @Inject constructor(
 
         _mainSseStatus.value = "Standby"; _dualSseStatus.value = "Standby"
         liveJikkyoManager.stopJikkyo()
-        releaseUpstreamLiveSession(mainUpstreamSessionId)
-        releaseUpstreamLiveSession(dualUpstreamSessionId)
-        mainUpstreamSessionId = null
-        dualUpstreamSessionId = null
+        mainUpstreamSession = null
+        dualUpstreamSession = null
     }
 
     private fun handleMainError(

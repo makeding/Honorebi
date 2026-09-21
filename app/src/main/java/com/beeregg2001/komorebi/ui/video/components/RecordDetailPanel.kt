@@ -70,7 +70,7 @@ fun RecordDetailPanel(
 
     val displayDate = remember(program.startTime, timeFormat) {
         try {
-            val zdt = ZonedDateTime.parse(program.startTime)
+            val zdt = ZonedDateTime.parse(program.startTime).withZoneSameInstant(java.time.ZoneId.systemDefault())
             val pattern = if (timeFormat == "12H") "yyyy/MM/dd(E) a h:mm" else "yyyy/MM/dd(E) HH:mm"
             val formatter = DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE)
             zdt.format(formatter)
