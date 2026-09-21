@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.EpgProgram
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -90,12 +91,12 @@ fun ProgramDetailScreen(
 
     val now = OffsetDateTime.now()
     val startTime = try {
-        OffsetDateTime.parse(safeProgram.start_time)
+        OffsetDateTime.parse(safeProgram.start_time).toDeviceTime()
     } catch (e: Exception) {
         now
     }
     val endTime = try {
-        OffsetDateTime.parse(safeProgram.end_time)
+        OffsetDateTime.parse(safeProgram.end_time).toDeviceTime()
     } catch (e: Exception) {
         now
     }

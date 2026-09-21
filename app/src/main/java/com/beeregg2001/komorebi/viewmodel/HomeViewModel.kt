@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.SettingsRepository
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.data.local.entity.LastChannelEntity
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
@@ -312,7 +313,7 @@ class HomeViewModel @Inject constructor(
             val start = runCatching { OffsetDateTime.parse(prog.start_time) }.getOrNull()
                 ?: return@filter false
 
-            val t = start.toLocalTime()
+            val t = start.toDeviceTime().toLocalTime()
             val isTimeMatch = when (actualTimeSlot) {
                 "朝" -> !t.isBefore(LocalTime.of(5, 0)) && t.isBefore(LocalTime.of(11, 0))
                 "昼" -> !t.isBefore(LocalTime.of(11, 0)) && t.isBefore(LocalTime.of(18, 0))

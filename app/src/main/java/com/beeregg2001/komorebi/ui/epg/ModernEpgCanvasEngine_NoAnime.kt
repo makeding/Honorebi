@@ -39,6 +39,7 @@ import com.beeregg2001.komorebi.viewmodel.EpgUiState
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import java.time.Duration
 import java.time.OffsetDateTime
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import java.time.format.TextStyle as JavaTextStyle
 import java.time.temporal.ChronoUnit
 import java.util.*
@@ -107,7 +108,7 @@ fun ModernEpgCanvasEngine_NoAnime(
         val earliest = displayData.data.flatMap { it.programs }
             .mapNotNull { runCatching { OffsetDateTime.parse(it.start_time) }.getOrNull() }
             .minByOrNull { it.toEpochSecond() } ?: OffsetDateTime.now()
-        earliest.withMinute(0).withSecond(0).withNano(0)
+        earliest.toDeviceTime().toOffsetDateTime().withMinute(0).withSecond(0).withNano(0)
     }
     val maxScrollMinutes = 1440 * 14
     val limitTime = remember(baseTime) { baseTime.plusMinutes(maxScrollMinutes.toLong()) }

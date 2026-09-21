@@ -23,6 +23,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.json.JSONArray
 import java.time.OffsetDateTime
+import com.beeregg2001.komorebi.data.util.deviceTvDayStart
 import javax.inject.Inject
 
 data class UiSearchResultItem(
@@ -373,8 +374,7 @@ class EpgViewModel @OptIn(UnstableApi::class)
     }
 
     private fun getTvDayStart(time: OffsetDateTime): OffsetDateTime {
-        val base = time.withHour(4).withMinute(0).withSecond(0).withNano(0)
-        return if (time.hour < 4) base.minusDays(1) else base
+        return time.deviceTvDayStart()
     }
 
     private fun sliceAndEmitEpgData() {

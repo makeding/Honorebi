@@ -49,6 +49,7 @@ import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.UiChannelState
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.live.logoUrlFor
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -337,7 +338,7 @@ private fun CompactLiveProgramInfo(
     val formatTime = { timeStr: String? ->
         if (timeStr.isNullOrEmpty()) "" else runCatching {
             val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-            OffsetDateTime.parse(timeStr)
+            OffsetDateTime.parse(timeStr).toDeviceTime()
                 .format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
         }.getOrDefault("")
     }
@@ -486,7 +487,7 @@ fun HeroDashboard(
         if (timeStr.isNullOrEmpty()) ""
         else try {
             val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-            OffsetDateTime.parse(timeStr)
+            OffsetDateTime.parse(timeStr).toDeviceTime()
                 .format(DateTimeFormatter.ofPattern(pattern, java.util.Locale.JAPANESE))
         } catch (e: Exception) {
             ""

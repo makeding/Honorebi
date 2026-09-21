@@ -14,6 +14,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.OffsetDateTime
+import com.beeregg2001.komorebi.data.util.deviceTvDayStart
 
 private const val TAG = "EPG_STATE"
 
@@ -83,9 +84,7 @@ class EpgState(
         currentType: String, // ★ 追加: キャッシュのキーとして利用
         resetFocus: Boolean = false
     ) {
-        val newBaseTime = targetTime.withHour(4).withMinute(0).withSecond(0).withNano(0).let {
-            if (targetTime.hour < 4) it.minusDays(1) else it
-        }
+        val newBaseTime = targetTime.deviceTvDayStart()
         val newLimitTime = newBaseTime.plusMinutes(maxScrollMinutes.toLong())
 
         val filteredData = if (config.hideSubChannels) {

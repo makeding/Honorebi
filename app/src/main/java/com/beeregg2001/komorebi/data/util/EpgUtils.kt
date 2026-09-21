@@ -64,7 +64,7 @@ object EpgUtils {
     @RequiresApi(Build.VERSION_CODES.O)
     fun formatTime(iso8601: String): String {
         return try {
-            val time = OffsetDateTime.parse(iso8601)
+            val time = OffsetDateTime.parse(iso8601).toDeviceTime()
             time.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
         } catch (e: Exception) {
             "--:--"
@@ -74,7 +74,7 @@ object EpgUtils {
     @RequiresApi(Build.VERSION_CODES.O)
     fun formatEndTime(program: EpgProgram): String {
         return try {
-            val startTime = OffsetDateTime.parse(program.start_time)
+            val startTime = OffsetDateTime.parse(program.start_time).toDeviceTime()
             // 秒数を分に変換して加算（durationが秒単位の場合）
             val endTime = startTime.plusSeconds(program.duration.toLong())
             val formatter = DateTimeFormatter.ofPattern("HH:mm")

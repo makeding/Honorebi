@@ -27,6 +27,7 @@ import coil.request.ImageRequest
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.viewmodel.UiSearchResultItem
 import com.beeregg2001.komorebi.data.util.EpgUtils
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import java.time.OffsetDateTime
@@ -71,8 +72,8 @@ fun EpgSearchListItem(
     // ★ 修正: timeFormat の値によって DateTimeFormatter のパターンを動的に変更する
     val displayDate = remember(program.start_time, program.end_time, timeFormat) {
         try {
-            val startZdt = OffsetDateTime.parse(program.start_time)
-            val endZdt = OffsetDateTime.parse(program.end_time)
+            val startZdt = OffsetDateTime.parse(program.start_time).toDeviceTime()
+            val endZdt = OffsetDateTime.parse(program.end_time).toDeviceTime()
 
             // 12Hなら "午後 1:00", 24Hなら "13:00"
             val startPattern = if (timeFormat == "12H") "M/d(E) a h:mm" else "M/d(E) HH:mm"

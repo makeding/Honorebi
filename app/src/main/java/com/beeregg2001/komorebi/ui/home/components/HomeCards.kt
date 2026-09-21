@@ -38,6 +38,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
@@ -416,7 +417,7 @@ fun UpcomingReserveCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
-    val start = OffsetDateTime.parse(reserve.program.startTime)
+    val start = OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
 
     val startFormat = remember(start, timeFormat) {
         val pattern = if (timeFormat == "12H") "MM/dd a h:mm" else "MM/dd HH:mm"
@@ -510,7 +511,7 @@ fun GenrePickupCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
-    val start = OffsetDateTime.parse(program.start_time)
+    val start = OffsetDateTime.parse(program.start_time).toDeviceTime()
 
     val startFormat = remember(start, timeFormat) {
         val pattern = if (timeFormat == "12H") "MM/dd a h:mm" else "MM/dd HH:mm"

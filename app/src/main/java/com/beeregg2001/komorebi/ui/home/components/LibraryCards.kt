@@ -37,6 +37,7 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -159,7 +160,7 @@ fun VideoRecentRecordCard(
             ) {
                 val startFormat = try {
                     val pattern = if (timeFormat == "12H") "M/d(E) a h:mm" else "M/d(E) HH:mm"
-                    OffsetDateTime.parse(program.startTime)
+                    OffsetDateTime.parse(program.startTime).toDeviceTime()
                         .format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
                 } catch (e: Exception) {
                     program.startTime
@@ -257,7 +258,7 @@ fun VideoWatchHistoryCard(
     val broadcastEnd = matchedProgram?.endTime ?: historyItem.program.end_time
     val broadcastTime = runCatching {
         val formatter = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.JAPANESE)
-        "${OffsetDateTime.parse(broadcastStart).format(formatter)} - ${OffsetDateTime.parse(broadcastEnd).format(DateTimeFormatter.ofPattern("HH:mm"))}"
+        "${OffsetDateTime.parse(broadcastStart).toDeviceTime().format(formatter)} - ${OffsetDateTime.parse(broadcastEnd).toDeviceTime().format(DateTimeFormatter.ofPattern("HH:mm"))}"
     }.getOrDefault("")
     val watchedPosition = historyItem.playback_position.coerceAtLeast(0.0).toLong()
     val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)

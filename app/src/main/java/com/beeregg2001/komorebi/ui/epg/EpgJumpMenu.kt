@@ -33,6 +33,7 @@ import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import java.time.OffsetDateTime
+import com.beeregg2001.komorebi.data.util.toDeviceTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
@@ -272,8 +273,9 @@ private fun TimeLabelCell(hour: Int, height: Dp, timeFormat: String) {
 @Composable
 fun HeaderCell(date: OffsetDateTime, width: Dp) {
     val colors = KomorebiTheme.colors
-    val isSunday = date.dayOfWeek.value == 7
-    val isSaturday = date.dayOfWeek.value == 6
+    val localDate = date.toDeviceTime()
+    val isSunday = localDate.dayOfWeek.value == 7
+    val isSaturday = localDate.dayOfWeek.value == 6
     Column(
         modifier = Modifier
             .width(width)
@@ -282,13 +284,13 @@ fun HeaderCell(date: OffsetDateTime, width: Dp) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = date.format(DateTimeFormatter.ofPattern("M/d", Locale.JAPANESE)),
+            text = localDate.format(DateTimeFormatter.ofPattern("M/d", Locale.JAPANESE)),
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = colors.textPrimary
         )
         Text(
-            text = date.format(DateTimeFormatter.ofPattern("(E)", Locale.JAPANESE)),
+            text = localDate.format(DateTimeFormatter.ofPattern("(E)", Locale.JAPANESE)),
             fontSize = 10.sp,
             color = when {
                 isSunday -> Color(0xFFFF5252); isSaturday -> Color(0xFF448AFF); else -> colors.textSecondary
