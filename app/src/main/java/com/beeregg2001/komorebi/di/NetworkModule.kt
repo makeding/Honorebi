@@ -56,9 +56,6 @@ object NetworkModule {
             // WebSocket handshakes execute application interceptors but not network
             // interceptors, so scope the first handshake here as well.
             .addInterceptor(cloudflareAccessInterceptor)
-            // Logging must stay innermost (added after the interceptors that rewrite the URL
-            // and add Authorization / CF-Access-* headers).  Otherwise Debug logs show the
-            // pre-rewrite request and make the Access headers look as if they were dropped.
             .addInterceptor(logging)
             .addNetworkInterceptor(cloudflareAccessInterceptor)
             .build()
