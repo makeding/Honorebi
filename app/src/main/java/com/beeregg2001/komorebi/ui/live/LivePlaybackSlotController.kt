@@ -34,6 +34,7 @@ internal class LivePlaybackSlotController(
     private val lock = Any()
     private var generation = 0L
     private var job: Job? = null
+    private var recoveryJob: Job? = null
     private var runtime: PlayerRuntime? = null
     private var eventSource: EventSource? = null
     private var upstreamLease: LiveStreamSessionLease? = null
@@ -67,7 +68,7 @@ internal class LivePlaybackSlotController(
     /** Release playback while a generation-owned retry is still running. */
     fun releasePlayback(reason: String) {
         val previous = synchronized(lock) {
-            Resources(null, runtime, eventSource, upstreamLease).also {
+            Resources(null, null, runtime, eventSource, upstreamLease).also {
                 runtime = null
                 eventSource = null
                 upstreamLease = null
@@ -79,6 +80,23 @@ internal class LivePlaybackSlotController(
     fun isCurrent(run: Run): Boolean = synchronized(lock) { generation == run.epoch }
 
     internal inner class Run internal constructor(internal val epoch: Long) {
+        val broadcastState = LiveBroadcastStreamState()
+
+        /** A recovery is independent of startup, and duplicate errors cannot replace it. */
+        fun launchRecovery(scope: CoroutineScope, block: suspend CoroutineScope.() -> Unit): Boolean {
+            val candidate = scope.launch(start = CoroutineStart.LAZY, block = block)
+            val accepted = synchronized(lock) {
+                if (generation != epoch || recoveryJob?.let { !it.isCompleted } == true) false
+                else { recoveryJob = candidate; true }
+            }
+            if (accepted) candidate.start() else candidate.cancel()
+            return accepted
+        }
+
+        fun isRecovering(): Boolean = synchronized(lock) {
+            generation == epoch && recoveryJob?.let { !it.isCompleted } == true
+        }
+
         fun isCurrent(): Boolean = this@LivePlaybackSlotController.isCurrent(this)
 
         /** Capture a late response before returning to the cancelled owner; transfer only after installation. */
@@ -126,7 +144,7 @@ internal class LivePlaybackSlotController(
 
         fun installRuntime(candidate: PlayerRuntime): Boolean {
             val stale = synchronized(lock) {
-                if (this@LivePlaybackSlotController.generation != epoch) true else {
+                if (this@LivePlaybackSlotController.generation != epoch || recoveryJob?.let { !it.isCompleted } == true) true else {
                     runtime?.release()
                     runtime = candidate
                     false
@@ -138,7 +156,7 @@ internal class LivePlaybackSlotController(
 
         fun installEventSource(candidate: EventSource): Boolean {
             val stale = synchronized(lock) {
-                if (this@LivePlaybackSlotController.generation != epoch) true else {
+                if (this@LivePlaybackSlotController.generation != epoch || recoveryJob?.let { !it.isCompleted } == true) true else {
                     eventSource?.cancel()
                     eventSource = candidate
                     false
@@ -151,7 +169,7 @@ internal class LivePlaybackSlotController(
         fun installLease(candidate: LiveStreamSessionLease): Boolean {
             val replaced: LiveStreamSessionLease?
             synchronized(lock) {
-                if (this@LivePlaybackSlotController.generation != epoch) {
+                if (this@LivePlaybackSlotController.generation != epoch || recoveryJob?.let { !it.isCompleted } == true) {
                     releaseLease(candidate, "late")
                     return false
                 }
@@ -164,7 +182,8 @@ internal class LivePlaybackSlotController(
     }
 
     private fun takeResourcesLocked(): Resources {
-        val result = Resources(job, runtime, eventSource, upstreamLease)
+        val result = Resources(job, recoveryJob, runtime, eventSource, upstreamLease)
+        recoveryJob = null
         job = null
         runtime = null
         eventSource = null
@@ -174,11 +193,13 @@ internal class LivePlaybackSlotController(
 
     private inner class Resources(
         private val job: Job?,
+        private val recoveryJob: Job?,
         private val runtime: PlayerRuntime?,
         private val eventSource: EventSource?,
         private val lease: LiveStreamSessionLease?,
     ) {
         fun release(reason: String) {
+            recoveryJob?.cancel(CancellationException("$label recovery stopped: $reason"))
             job?.cancel(CancellationException("$label stopped: $reason"))
             try {
                 eventSource?.cancel()

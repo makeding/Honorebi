@@ -10,12 +10,89 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
+import org.junit.Assert.fail
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LivePlaybackSlotControllerTest {
+    @Test fun duplicateErrorsDoNotCancelStartupOrRecovery() = runBlocking {
+        val controller = LivePlaybackSlotController("recovery")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val run = controller.begin()
+        val startupGate = CompletableDeferred<Unit>()
+        val recoveryGate = CompletableDeferred<Unit>()
+        var recovered = false
+        try {
+            val startup = scope.launch { startupGate.await() }
+            assertTrue(run.attachStartupJob(startup))
+            assertTrue(run.launchRecovery(scope) { recoveryGate.await(); recovered = true })
+            assertFalse(run.launchRecovery(scope) { fail("duplicate recovery") })
+            assertTrue(startup.isActive)
+            controller.releasePlayback("retry")
+            assertTrue(run.isCurrent())
+            recoveryGate.complete(Unit)
+            assertTrue(recovered)
+            assertFalse(run.isRecovering())
+            assertTrue(run.launchRecovery(scope) { })
+        } finally { controller.stop("test"); scope.cancel() }
+    }
+
+    @Test fun switchingOrExitingCancelsRecoveryAndRejectsOldErrors() = runBlocking {
+        val controller = LivePlaybackSlotController("recovery")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val old = controller.begin()
+        var cancelled = false
+        try {
+            old.launchRecovery(scope) { try { awaitCancellation() } finally { cancelled = true } }
+            val current = controller.begin()
+            assertTrue(cancelled)
+            assertFalse(old.launchRecovery(scope) { fail("stale recovery") })
+            assertTrue(current.launchRecovery(scope) { awaitCancellation() })
+            controller.stop("exit")
+            assertFalse(current.isCurrent())
+            assertFalse(current.launchRecovery(scope) { fail("exit recovery") })
+        } finally { scope.cancel() }
+    }
+
+    @Test fun singleSideRecoveryDoesNotInvalidateTheOtherSlot() = runBlocking {
+        val main = LivePlaybackSlotController("main")
+        val dual = LivePlaybackSlotController("dual")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val mainRun = main.begin()
+        val dualRun = dual.begin()
+        try {
+            mainRun.launchRecovery(scope) { awaitCancellation() }
+            main.releasePlayback("retry")
+            main.begin()
+            assertTrue(dualRun.isCurrent())
+            assertFalse(dualRun.isRecovering())
+        } finally { main.stop("test"); dual.stop("test"); scope.cancel() }
+    }
+
+    @Test fun recoveryCanHandOffToNewStartupWhileItsOwnJobIsCancelled() = runBlocking {
+        val controller = LivePlaybackSlotController("handoff")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val released = CountDownLatch(1)
+        val installed = CompletableDeferred<Boolean>()
+        try {
+            val first = controller.begin()
+            assertTrue(first.launchRecovery(scope) {
+                val replacement = controller.begin() // Cancels this recovery, like playMainChannel.
+                val startup = scope.launch(start = CoroutineStart.LAZY) {
+                    installed.complete(replacement.installLease(lease("replacement", released)))
+                }
+                replacement.attachStartupJob(startup)
+                startup.start()
+            })
+            assertTrue(withTimeout(2000) { installed.await() })
+            assertEquals("replacement", controller.currentLease()?.id)
+            controller.stop("exit")
+            assertTrue(released.await(2, TimeUnit.SECONDS))
+        } finally { controller.stop("test"); scope.cancel() }
+    }
+
     @Test
     fun lateCreatorCannotInstallOrStopTheNewSlotLease() {
         val released = CountDownLatch(2)

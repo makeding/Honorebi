@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
+import android.os.SystemClock
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -64,9 +65,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
-import okhttp3.sse.EventSource
-import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import org.json.JSONObject
 import java.io.IOException
@@ -79,6 +77,10 @@ private data class SessionB62SubtitleSample(
     val generation: Long,
     val sample: B62SubtitleSample
 )
+
+private class LiveStreamStatusException(
+    message: String, cause: Throwable?, val httpStatus: Int?,
+) : IOException(message, cause)
 
 private data class LiveSlotIntent(
     val channel: Channel,
@@ -278,6 +280,7 @@ class LivePlayerViewModel @Inject constructor(
     private var mainCurrentChannel: Channel? = null
     private var mainCurrentQuality: StreamQuality? = null
     private var mainAutoRetryCount = 0
+    private val mainPlaybackHealth = LivePlaybackHealth()
     private var mainIntent: LiveSlotIntent? = null
 
     private var dualCurrentSource = StreamSource.KONOMITV
@@ -285,6 +288,7 @@ class LivePlayerViewModel @Inject constructor(
     private var dualCurrentChannel: Channel? = null
     private var dualCurrentQuality: StreamQuality? = null
     private var dualAutoRetryCount = 0
+    private val dualPlaybackHealth = LivePlaybackHealth()
     private var dualIntent: LiveSlotIntent? = null
 
     init {
@@ -495,13 +499,13 @@ class LivePlayerViewModel @Inject constructor(
         uiContext: Context, error: PlaybackException, token: LiveChannelSessionToken,
         run: LivePlaybackSlotController.Run,
     ) {
-        if (!channelSessions.isCurrent(token)) return
+        if (!channelSessions.isCurrent(token) || !run.isCurrent() || run.isRecovering()) return
         if (HdrToneMapping.rejectionCause(error) != null) {
             recoverRejectedHdrToneMapping(uiContext, token)
             return
         }
-        run.launch(viewModelScope) {
-            if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launch
+        run.launchRecovery(viewModelScope) {
+            if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
             val cause = error.cause
             val is404 =
                 cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 404
@@ -510,20 +514,23 @@ class LivePlayerViewModel @Inject constructor(
             if (isEdcbTranscode && is404 && mainAutoRetryCount < 5) {
                 mainAutoRetryCount++
                 Log.w(TAG, "EDCB HLS 404: Retrying prepare... ($mainAutoRetryCount/5)")
-                _mainSseDetail.value = "セグメント生成待機中... ($mainAutoRetryCount/5)"
+                _mainSseDetail.value = "ストリームを準備しています…"
                 delay(2500)
                 if (channelSessions.isCurrent(token) && run.isCurrent()) {
                     mainSlot.currentRuntime()?.reprepare(playWhenReady = liveAudioFocus.playbackAllowed)
                 }
-                return@launch
+                return@launchRecovery
             }
 
             val errorMsg = analyzePlayerError(error)
             if (mainAutoRetryCount < MAX_AUTO_RETRY) {
-                mainAutoRetryCount++; _mainSseDetail.value =
-                    "通信復旧中... ($mainAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopMainPlaybackSafely("main_player_error_retry", endSession = false, releaseSlot = false); delay(2000)
-                if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launch
+                mainAutoRetryCount++
+                mainPlaybackHealth.reset()
+                Log.w(TAG, "main recovery attempt=$mainAutoRetryCount token=${token.epoch} error=${error.errorCode}", error)
+                stopMainPlaybackSafely("main_player_error_retry", endSession = false, releaseSlot = false)
+                _mainSseDetail.value = "通信を復旧しています…"
+                delay(2000)
+                if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
                 mainIntent?.let { intent ->
                     playMainChannel(
                         intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
@@ -532,6 +539,8 @@ class LivePlayerViewModel @Inject constructor(
                 }
             } else {
                 _mainPlayerError.value = errorMsg
+                _mainSseStatus.value = "Error"
+                _mainSseDetail.value = errorMsg
                 _mainPlayerErrorIsCapabilityRelated.value = isCapabilityRelatedError(error)
                 stopMainPlaybackSafely("main_player_error_exhausted", preserveTerminalStatus = true)
             }
@@ -542,13 +551,13 @@ class LivePlayerViewModel @Inject constructor(
         uiContext: Context, error: PlaybackException, token: LiveChannelSessionToken,
         run: LivePlaybackSlotController.Run,
     ) {
-        if (!channelSessions.isCurrent(token)) return
+        if (!channelSessions.isCurrent(token) || !run.isCurrent() || run.isRecovering()) return
         if (HdrToneMapping.rejectionCause(error) != null) {
             recoverRejectedHdrToneMapping(uiContext, token)
             return
         }
-        run.launch(viewModelScope) {
-            if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launch
+        run.launchRecovery(viewModelScope) {
+            if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
             val cause = error.cause
             val is404 =
                 cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 404
@@ -556,20 +565,23 @@ class LivePlayerViewModel @Inject constructor(
 
             if (isEdcbTranscode && is404 && dualAutoRetryCount < 5) {
                 dualAutoRetryCount++; _dualSseDetail.value =
-                    "セグメント生成待機中... ($dualAutoRetryCount/5)"
+                    "ストリームを準備しています…"
                 delay(2500)
                 if (channelSessions.isCurrent(token) && run.isCurrent()) {
                     dualSlot.currentRuntime()?.reprepare(playWhenReady = liveAudioFocus.playbackAllowed)
                 }
-                return@launch
+                return@launchRecovery
             }
 
             val errorMsg = analyzePlayerError(error)
             if (dualAutoRetryCount < MAX_AUTO_RETRY) {
-                dualAutoRetryCount++; _dualSseDetail.value =
-                    "通信復旧中... ($dualAutoRetryCount/$MAX_AUTO_RETRY)"
-                stopDualPlaybackSafely("dual_player_error_retry", endSession = false, releaseSlot = false); delay(2000)
-                if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launch
+                dualAutoRetryCount++
+                dualPlaybackHealth.reset()
+                Log.w(TAG, "dual recovery attempt=$dualAutoRetryCount token=${token.epoch} error=${error.errorCode}", error)
+                stopDualPlaybackSafely("dual_player_error_retry", endSession = false, releaseSlot = false)
+                _dualSseDetail.value = "通信を復旧しています…"
+                delay(2000)
+                if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
                 dualIntent?.let { intent ->
                     playDualChannel(
                         intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
@@ -654,6 +666,7 @@ class LivePlayerViewModel @Inject constructor(
             if (channelSessions.isCurrent(token)) _currentLogoUrl.value = logoUrl
         }
 
+        mainPlaybackHealth.reset()
         val mainRun = mainSlot.begin()
         val mainJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
@@ -771,6 +784,7 @@ class LivePlayerViewModel @Inject constructor(
         if (!isAutoRetry) dualAutoRetryCount = 0
         dualCurrentChannel = channel
 
+        dualPlaybackHealth.reset()
         val dualRun = dualSlot.begin()
         val dualJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
@@ -1115,6 +1129,12 @@ class LivePlayerViewModel @Inject constructor(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (channelSessions.isCurrent(token)) Log.i(TAG, "main state=$playbackState channel=${token.channelId} token=${token.epoch} position=${runtime.player.currentPosition} playing=${runtime.player.isPlaying}")
+                if (playbackState == Player.STATE_ENDED && source == StreamSource.KONOMITV &&
+                    channelSessions.isCurrent(token) && run.isCurrent()) {
+                    handleMainError(uiContext, PlaybackException(
+                        "ライブストリームが切断されました", null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                    ), token, run)
+                }
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -1123,6 +1143,7 @@ class LivePlayerViewModel @Inject constructor(
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (channelSessions.isCurrent(token)) Log.i(TAG, "main playing=$isPlaying token=${token.epoch} position=${runtime.player.currentPosition}")
+                if (channelSessions.isCurrent(token) && !isPlaying) mainPlaybackHealth.reset()
             }
 
             override fun onMetadata(metadata: Metadata) {
@@ -1155,6 +1176,12 @@ class LivePlayerViewModel @Inject constructor(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (channelSessions.isCurrent(token)) Log.i(TAG, "dual state=$playbackState channel=${token.channelId} token=${token.epoch} position=${runtime.player.currentPosition} playing=${runtime.player.isPlaying}")
+                if (playbackState == Player.STATE_ENDED && source == StreamSource.KONOMITV &&
+                    channelSessions.isCurrent(token) && run.isCurrent()) {
+                    handleDualError(uiContext, PlaybackException(
+                        "ライブストリームが切断されました", null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                    ), token, run)
+                }
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -1163,6 +1190,7 @@ class LivePlayerViewModel @Inject constructor(
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (channelSessions.isCurrent(token)) Log.i(TAG, "dual playing=$isPlaying token=${token.epoch} position=${runtime.player.currentPosition}")
+                if (channelSessions.isCurrent(token) && !isPlaying) dualPlaybackHealth.reset()
             }
 
             override fun onMetadata(metadata: Metadata) {
@@ -1219,171 +1247,93 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     private fun startMainSse(
-        uiContext: Context,
-        channelId: String,
-        quality: String,
-        config: BackendConfig.KonomiTv,
-        token: LiveChannelSessionToken,
-        run: LivePlaybackSlotController.Run,
-    ) {
-        val eventUrl =
-            UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality)
-        val request =
-            Request.Builder().url(eventUrl).header("User-Agent", "Komorebi/1.0 (Main)").build()
-        val eventSource = EventSources.createFactory(okHttpClient)
-            .newEventSource(request, object : EventSourceListener() {
-                override fun onFailure(
-                    eventSource: EventSource,
-                    t: Throwable?,
-                    response: Response?
-                ) {
-                    response?.close()
-                    if (!channelSessions.isCurrent(token)) return
-                    if (t is java.io.IOException && t.message == "Canceled") return
-                    viewModelScope.launch(Dispatchers.Main) {
-                        if (!channelSessions.isCurrent(token)) return@launch
-                        if (response != null && response.code !in 200..299) handleMainError(
-                            uiContext,
-                            PlaybackException("KonomiTV HTTP Error", null, response.code), token, run
-                        )
-                    }
-                }
-
-                override fun onEvent(
-                    eventSource: EventSource,
-                    id: String?,
-                    type: String?,
-                    data: String
-                ) {
-                    if (!channelSessions.isCurrent(token)) return
-                    viewModelScope.launch(Dispatchers.Main) {
-                        if (!channelSessions.isCurrent(token)) return@launch
-                        try {
-                            val json = JSONObject(data)
-                            val status = json.optString("status", "Unknown")
-                            val detail = json.optString("detail", AppStrings.STATUS_LOADING)
-                            _mainSseStatus.value = status
-                            _mainSseDetail.value = if (detail.contains("OnAirです")) "" else detail
-                            if (status == "Error" || (status == "Offline" && (detail.contains("失敗") || detail.contains(
-                                    "エラー"
-                                )))
-                            ) {
-                                handleMainError(
-                                    uiContext,
-                                    PlaybackException(
-                                        _mainSseDetail.value.ifEmpty { AppStrings.ERR_TUNER_START_FAILED },
-                                        null,
-                                        PlaybackException.ERROR_CODE_UNSPECIFIED
-                                    ), token, run
-                                )
-                                return@launch
-                            }
-                            when (status) {
-                                "Standby", "Restart" -> mainSlot.currentRuntime()?.pause()
-                                "ONAir" -> {
-                                    if (_mainPlayer.value?.playerError != null || _mainPlayerError.value != null) {
-                                        _mainPlayerError.value = null
-                                        _mainPlayerErrorIsCapabilityRelated.value = false
-                                        mainSlot.currentRuntime()?.reprepare(playWhenReady = liveAudioFocus.playbackAllowed)
-                                    } else {
-                                        if (liveAudioFocus.playbackAllowed) mainSlot.currentRuntime()?.play()
-                                    }
-                                }
-
-                                "Offline" -> mainSlot.currentRuntime()?.pause()
-                            }
-                        } catch (e: Exception) {
-                        }
-                    }
-                }
-            })
-        run.installEventSource(eventSource)
-    }
+        uiContext: Context, channelId: String, quality: String, config: BackendConfig.KonomiTv,
+        token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run,
+    ) = startSlotSse(uiContext, channelId, quality, config, token, run, true)
 
     private fun startDualSse(
-        uiContext: Context,
-        channelId: String,
-        quality: String,
-        config: BackendConfig.KonomiTv,
-        token: LiveChannelSessionToken,
-        run: LivePlaybackSlotController.Run,
+        uiContext: Context, channelId: String, quality: String, config: BackendConfig.KonomiTv,
+        token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run,
+    ) = startSlotSse(uiContext, channelId, quality, config, token, run, false)
+
+    private fun startSlotSse(
+        uiContext: Context, channelId: String, quality: String, config: BackendConfig.KonomiTv,
+        token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run, main: Boolean,
     ) {
-        val eventUrl =
-            UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality)
-        val request =
-            Request.Builder().url(eventUrl).header("User-Agent", "Komorebi/1.0 (Dual)").build()
-        val eventSource = EventSources.createFactory(okHttpClient)
-            .newEventSource(request, object : EventSourceListener() {
-                override fun onFailure(
-                    eventSource: EventSource,
-                    t: Throwable?,
-                    response: Response?
-                ) {
-                    response?.close()
-                    if (!channelSessions.isCurrent(token)) return
-                    if (t is java.io.IOException && t.message == "Canceled") return
-                    viewModelScope.launch(Dispatchers.Main) {
-                        if (!channelSessions.isCurrent(token)) return@launch
-                        if (response != null && response.code !in 200..299) handleDualError(
-                            uiContext,
-                            PlaybackException("HTTP Error", null, response.code), token, run
-                        )
-                    }
-                }
-
-                override fun onEvent(
-                    eventSource: EventSource,
-                    id: String?,
-                    type: String?,
-                    data: String
-                ) {
-                    if (!channelSessions.isCurrent(token)) return
-                    viewModelScope.launch(Dispatchers.Main) {
-                        if (!channelSessions.isCurrent(token)) return@launch
-                        try {
-                            val json = JSONObject(data)
-                            val status = json.optString("status", "Unknown")
-                            _dualSseStatus.value = status
-                            _dualSseDetail.value =
-                                json.optString("detail", AppStrings.STATUS_LOADING)
-                            if (status == "Error" || (status == "Offline" && (dualSseDetail.value.contains(
-                                    "失敗"
-                                ) || dualSseDetail.value.contains("エラー")))
-                            ) {
-                                handleDualError(
-                                    uiContext,
-                                    PlaybackException(
-                                        dualSseDetail.value.ifEmpty { "エラーが発生しました" },
-                                        null,
-                                        PlaybackException.ERROR_CODE_UNSPECIFIED
-                                    ), token, run
-                                )
-                                return@launch
+        val slot = if (main) mainSlot else dualSlot
+        val statusFlow = if (main) _mainSseStatus else _dualSseStatus
+        val detailFlow = if (main) _mainSseDetail else _dualSseDetail
+        val label = if (main) "main" else "dual"
+        val fail: (PlaybackException) -> Unit = { error ->
+            if (main) handleMainError(uiContext, error, token, run)
+            else handleDualError(uiContext, error, token, run)
+        }
+        val request = Request.Builder()
+            .url(UrlBuilder.getKonomiTvLiveEventsUrl(config.ip, config.port, channelId, quality))
+            .header("User-Agent", "Komorebi/1.0 ($label)").build()
+        val connection = LiveStreamEventConnection(
+            factory = EventSources.createFactory(okHttpClient), request = request,
+            scope = viewModelScope,
+            isCurrent = { channelSessions.isCurrent(token) && run.isCurrent() && !run.isRecovering() },
+            onEvent = { data ->
+                try {
+                    val json = JSONObject(data)
+                    val status = json.optString("status", "Unknown")
+                    val detail = json.optString("detail", AppStrings.STATUS_LOADING)
+                    Log.i(TAG, "$label SSE status=$status channel=$channelId quality=$quality token=${token.epoch}")
+                    statusFlow.value = status
+                    detailFlow.value = if (detail.contains("OnAirです")) "" else detail
+                    if (status == "Error" || (status == "Offline" &&
+                        (detail.contains("失敗") || detail.contains("エラー")))) {
+                        fail(PlaybackException(detail.ifEmpty { AppStrings.ERR_TUNER_START_FAILED },
+                            null, PlaybackException.ERROR_CODE_UNSPECIFIED))
+                    } else {
+                        val runtime = slot.currentRuntime()
+                        val invalid = runtime?.player?.playerError != null ||
+                            runtime?.player?.playbackState == Player.STATE_ENDED
+                        when (run.broadcastState.onStatus(status, invalid)) {
+                            LiveBroadcastStreamAction.PAUSE -> runtime?.pause()
+                            LiveBroadcastStreamAction.REOPEN -> {
+                                // Re-resolve and recreate the media source, including its live timeline.
+                                fail(PlaybackException("ライブストリームを再接続しています", null,
+                                    PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
                             }
-                            when (status) {
-                                "Standby", "Restart" -> dualSlot.currentRuntime()?.pause()
-                                "ONAir" -> {
-                                    if (_dualPlayer.value?.playerError != null) {
-                                        dualSlot.currentRuntime()?.reprepare(playWhenReady = liveAudioFocus.playbackAllowed)
-                                    } else {
-                                        if (liveAudioFocus.playbackAllowed) dualSlot.currentRuntime()?.play()
-                                    }
-                                }
-
-                                "Offline" -> dualSlot.currentRuntime()?.pause()
-                            }
-                        } catch (e: Exception) {
+                            LiveBroadcastStreamAction.PLAY -> if (liveAudioFocus.playbackAllowed) runtime?.play()
+                            LiveBroadcastStreamAction.NONE -> Unit
                         }
                     }
+                } catch (error: org.json.JSONException) {
+                    Log.w(TAG, "$label invalid SSE payload token=${token.epoch}", error)
                 }
-            })
-        run.installEventSource(eventSource)
+            },
+            onExhausted = { cause, code ->
+                val reason = if (code != null) "放送状態の取得に失敗しました (HTTP $code)"
+                    else "放送状態の接続が切断されました"
+                fail(PlaybackException(reason, LiveStreamStatusException(reason, cause, code),
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED))
+            },
+            log = { Log.i(TAG, "$label SSE token=${token.epoch} $it") },
+        )
+        if (run.installEventSource(connection)) connection.start()
     }
 
     private fun startSignalPolling() {
         signalPollJob?.cancel()
         signalPollJob = viewModelScope.launch(Dispatchers.Main) {
             while (true) {
+                val now = SystemClock.elapsedRealtime()
+                mainSlot.currentRuntime()?.player?.let { player ->
+                    if (mainPlaybackHealth.observe(now, player.isPlaying, player.currentPosition) && mainAutoRetryCount > 0) {
+                        Log.i(TAG, "main recovery stable token=${_mainSessionToken.value?.epoch} position=${player.currentPosition}")
+                        mainAutoRetryCount = 0
+                    }
+                }
+                dualSlot.currentRuntime()?.player?.let { player ->
+                    if (dualPlaybackHealth.observe(now, player.isPlaying, player.currentPosition) && dualAutoRetryCount > 0) {
+                        Log.i(TAG, "dual recovery stable token=${_dualSessionToken.value?.epoch} position=${player.currentPosition}")
+                        dualAutoRetryCount = 0
+                    }
+                }
                 _mainPlayer.value?.let { player ->
                     val vFormat = player.videoFormat
                     val aFormat = player.audioFormat
@@ -1429,6 +1379,7 @@ class LivePlayerViewModel @Inject constructor(
     private fun analyzePlayerError(error: PlaybackException): String {
         val cause = error.cause
         val message = when {
+            cause is LiveStreamStatusException -> "${cause.message}。再試行してください。"
             cause is TimeoutCancellationException -> "ストリームの作成がタイムアウトしました。再試行してください。"
             cause is retrofit2.HttpException -> when (cause.code()) {
                 401, 403 -> "ネットテレビへのアクセスが拒否されました。接続設定とログイン状態を確認してください。"
@@ -1450,11 +1401,12 @@ class LivePlayerViewModel @Inject constructor(
             }
 
             cause is IOException -> String.format(AppStrings.ERR_DATA_READ, cause.message)
-            else -> "${AppStrings.ERR_UNKNOWN}\n(${error.errorCodeName})"
+            else -> error.message?.takeIf { it.isNotBlank() } ?: AppStrings.ERR_UNKNOWN
         }
         val safeCode = (cause as? HttpDataSource.InvalidResponseCodeException)
             ?.let { "HTTP_${it.responseCode}" }
             ?: (cause as? retrofit2.HttpException)?.let { "HTTP_${it.code()}" }
+            ?: (cause as? LiveStreamStatusException)?.httpStatus?.let { "HTTP_$it" }
             ?: error.errorCodeName
         return "$message\n[$safeCode]"
     }
