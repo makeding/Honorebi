@@ -376,6 +376,7 @@ fun MainRootScreen(
     val isChannelLoading by channelViewModel.isLoading.collectAsState()
     val isHomeLoading by homeViewModel.isLoading.collectAsState()
     val isChannelError by channelViewModel.connectionError.collectAsState()
+    val channelErrorReason by channelViewModel.channelError.collectAsState()
     val networkConnectionStatus by rememberNetworkConnectionStatus()
     val isNetworkAvailable = networkConnectionStatus.isAvailable
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
@@ -781,7 +782,8 @@ fun MainRootScreen(
                         state.settingsInitialFocusItemIndex = null
                         state.isSettingsOpen = true
                     },
-                    modifier = Modifier.zIndex(6f)
+                    modifier = Modifier.zIndex(6f),
+                    reason = channelErrorReason
                 )
             }
 

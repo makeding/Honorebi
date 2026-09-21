@@ -65,6 +65,9 @@ class ChannelViewModel @Inject constructor(
 
     val connectionError: StateFlow<Boolean> = appContentStore.connectionError
 
+    /** Safe, user-facing reason for the last channel failure (code + HTTP status only). */
+    val channelError: StateFlow<String?> = appContentStore.channelError
+
     val sourceErrors: StateFlow<Map<String, String?>> = appContentStore.sourceErrors
 
     private var isPollingPaused = false

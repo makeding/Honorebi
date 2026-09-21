@@ -31,8 +31,10 @@ class BackendApiResponseInterceptor : Interceptor {
                 "BACKEND_AUTH_DENIED" to "サーバーへのアクセスが拒否されました。"
             response.code == 429 || response.code >= 500 ->
                 "BACKEND_HTTP_${response.code}" to "サーバーが要求を処理できませんでした。"
+            // A 200 with an empty body (Response<Unit> endpoints) has no content type and
+            // must not be mistaken for a non-JSON API response.
             response.isSuccessful && response.code !in listOf(204, 205) &&
-                chain.request().method != "HEAD" && !isJson ->
+                chain.request().method != "HEAD" && mediaType != null && !isJson ->
                 "BACKEND_NON_JSON" to "サーバー API から JSON 以外の応答が返されました。"
             else -> null
         } ?: return response

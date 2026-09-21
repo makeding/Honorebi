@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +32,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,7 +52,8 @@ fun OfflineGuideScreen(
     onContinueOffline: () -> Unit,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reason: String? = null
 ) {
     val colors = KomorebiTheme.colors
     val primaryFocusRequester = remember { FocusRequester() }
@@ -110,7 +113,28 @@ fun OfflineGuideScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(34.dp))
+            // Fixed-height, non-shifting slot for the safe failure reason (code / HTTP status
+            // only).  Keeping the slot reserved avoids moving the action buttons below.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .padding(top = 10.dp)
+                    .testTag("offline-guide-reason"),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                if (!reason.isNullOrBlank()) {
+                    Text(
+                        text = reason,
+                        color = colors.textPrimary.copy(alpha = 0.72f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),

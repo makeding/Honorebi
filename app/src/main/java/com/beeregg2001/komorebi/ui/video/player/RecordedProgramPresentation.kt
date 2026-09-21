@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import androidx.tv.material3.MaterialTheme
+import com.beeregg2001.komorebi.data.api.interceptor.BackendApiException
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.PlayerChannelLogo
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
@@ -33,6 +34,8 @@ data class ProgramDetailRequest(val programId: Int? = null, val loading: Boolean
 fun programDetailFailureMessage(error: Throwable): String = when (error) {
     is kotlinx.coroutines.TimeoutCancellationException, is java.net.SocketTimeoutException ->
         "サーバーからの応答がありません。再試行してください。（TIMEOUT）"
+    is BackendApiException ->
+        "サーバーが番組情報を返せませんでした。再試行してください。（${error.safeCode} / HTTP ${error.status}）"
     is retrofit2.HttpException -> "サーバーが番組情報を返せませんでした。再試行してください。（HTTP ${error.code()}）"
     is java.io.IOException -> "サーバーに接続できません。接続を確認して再試行してください。（NETWORK）"
     else -> "番組情報を読み取れませんでした。再試行してください。（DETAIL_READ）"

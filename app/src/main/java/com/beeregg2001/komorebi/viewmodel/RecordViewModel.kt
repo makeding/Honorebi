@@ -199,6 +199,9 @@ class RecordViewModel @Inject constructor(
     val localRecordedCount: StateFlow<Int> = programDao.getTotalCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    /** Safe, user-facing reason for the last recent-recordings failure. */
+    val recordingError: StateFlow<String?> = appContentStore.recordingError
+
     init {
         loadSearchHistory()
     }

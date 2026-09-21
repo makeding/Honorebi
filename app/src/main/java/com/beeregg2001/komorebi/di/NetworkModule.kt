@@ -12,10 +12,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -43,7 +40,6 @@ object NetworkModule {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .addInterceptor(logging)
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
             .addInterceptor(com.beeregg2001.komorebi.data.api.interceptor.BackendOriginInterceptor {
                 settingsRepository.cloudflareAccessConfiguration.value
@@ -60,6 +56,10 @@ object NetworkModule {
             // WebSocket handshakes execute application interceptors but not network
             // interceptors, so scope the first handshake here as well.
             .addInterceptor(cloudflareAccessInterceptor)
+            // Logging must stay innermost (added after the interceptors that rewrite the URL
+            // and add Authorization / CF-Access-* headers).  Otherwise Debug logs show the
+            // pre-rewrite request and make the Access headers look as if they were dropped.
+            .addInterceptor(logging)
             .addNetworkInterceptor(cloudflareAccessInterceptor)
             .build()
     }
