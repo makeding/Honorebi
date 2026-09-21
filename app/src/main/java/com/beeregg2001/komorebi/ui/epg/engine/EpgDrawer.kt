@@ -595,11 +595,13 @@ class EpgDrawer(
                         val logoW = 30.sp.toPx()
                         val logoH = 18.sp.toPx()
 
-                        val channelNumber = wrapper.channel.channel_number ?: "---"
+                        val channelNumber = if (wrapper.channel.type.equals("IPTV", ignoreCase = true)) ""
+                            else wrapper.channel.channel_number
                         val numLayout = state.textLayoutCache.getOrPut("header:num:${wrapper.channel.id}:$channelNumber") {
                             textMeasurer.measure(channelNumber, config.styleChNum)
                         }
-                        val startX = x + (config.cwPx - (logoW + 6f + numLayout.size.width)) / 2
+                        val numberWidth = if (channelNumber.isBlank()) 0f else 6f + numLayout.size.width
+                        val startX = x + (config.cwPx - (logoW + numberWidth)) / 2
 
                         if (c < logoPainters.size) {
                             val painter = logoPainters[c]
@@ -628,7 +630,7 @@ class EpgDrawer(
                             }
                         }
 
-                        drawText(
+                        if (channelNumber.isNotBlank()) drawText(
                             numLayout,
                             topLeft = Offset(
                                 startX + logoW + 6f,

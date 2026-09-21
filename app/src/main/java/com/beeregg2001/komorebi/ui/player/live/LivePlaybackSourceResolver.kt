@@ -69,22 +69,33 @@ class LivePlaybackSourceResolver @Inject constructor(
             val config = settingsRepository.getBackendConfig(StreamSource.KONOMITV)
             if (!config.isValid) throw IOException("ネットテレビの接続設定が不完全です")
             val lease = liveProvider.createLiveStreamSession(channel.id, config)
-            val session = lease.response
-            val baseUrl = UrlBuilder.formatBaseUrl(config.ip, config.port, "https")
-            val streamUrl = if (session.streamUrl.startsWith("http://") || session.streamUrl.startsWith("https://")) {
-                session.streamUrl
-            } else {
-                baseUrl + "/" + session.streamUrl.removePrefix("/")
+            try {
+                val session = lease.response
+                val baseUrl = UrlBuilder.formatBaseUrl(config.ip, config.port, "http")
+                val streamUrl = if (session.streamUrl.startsWith("http://") || session.streamUrl.startsWith("https://")) {
+                    session.streamUrl
+                } else {
+                    baseUrl + "/" + session.streamUrl.removePrefix("/")
+                }
+                return Request(
+                    url = streamUrl,
+                    source = StreamSource.KONOMITV,
+                    isEdcbDirect = false,
+                    quality = StreamQuality("Direct", "direct"),
+                    config = config,
+                    upstreamSession = lease,
+                    streamType = session.streamType.lowercase(),
+                )
+            } catch (error: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                        runCatching { lease.close() }.onFailure {
+                            android.util.Log.w("LivePlaybackSource", "Session cleanup failed: ${lease.id}", it)
+                        }
+                    }
+                }
+                throw error
             }
-            return Request(
-                url = streamUrl,
-                source = StreamSource.KONOMITV,
-                isEdcbDirect = false,
-                quality = StreamQuality("Direct", "direct"),
-                config = config,
-                upstreamSession = lease,
-                streamType = session.streamType.lowercase(),
-            )
         }
         val isRawMmts = channel.type.equals("BS4K", ignoreCase = true)
         val quality = if (isRawMmts) {

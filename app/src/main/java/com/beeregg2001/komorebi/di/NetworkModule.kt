@@ -45,24 +45,12 @@ object NetworkModule {
             .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(logging)
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
-            .addInterceptor(Interceptor { chain ->
-                val originalRequest = chain.request()
-                val baseUrlString = originalRequest.tag(com.beeregg2001.komorebi.data.api.LiveSessionBackendTarget::class.java)?.baseUrl ?: runBlocking {
-                    // KonomiTVのベースURLを動的に取得して組み立てる
+            .addInterceptor(com.beeregg2001.komorebi.data.api.interceptor.BackendOriginInterceptor {
+                runBlocking {
                     val ip = settingsRepository.konomiIp.first()
                     val port = settingsRepository.konomiPort.first()
                     com.beeregg2001.komorebi.common.UrlBuilder.formatBaseUrl(ip, port, "http")
                 }
-                val newUrl = baseUrlString.toHttpUrlOrNull() ?: originalRequest.url
-                val modifiedUrl = originalRequest.url.newBuilder()
-                    .scheme(newUrl.scheme)
-                    .host(newUrl.host)
-                    .port(newUrl.port)
-                    .build()
-                val newRequest = originalRequest.newBuilder()
-                    .url(modifiedUrl)
-                    .build()
-                chain.proceed(newRequest)
             })
             .addInterceptor(Interceptor { chain ->
                 val request = chain.request()

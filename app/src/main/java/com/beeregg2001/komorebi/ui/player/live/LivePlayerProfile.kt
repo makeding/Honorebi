@@ -18,6 +18,7 @@ fun livePlayerProfile(audioOutputMode: String, hdrRenderMode: String, isUhdChann
         enableHdrToSdrToneMapping =
             isUhdChannel && hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR && HdrToneMapping.isSupported,
         audioOutputMode = audioOutputMode,
+        handleAudioFocus = false, // One focus owner for the entire live scene, not one per slot.
         releaseTimeoutMs = 10_000,
         detachSurfaceTimeoutMs = 10_000,
     )

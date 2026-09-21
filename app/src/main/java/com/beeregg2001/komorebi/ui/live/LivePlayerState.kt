@@ -137,7 +137,7 @@ class LivePlayerState(
 
         if (crop.mode == PlayerCropMode.MENU) return false
 
-        if (this.playerError != null || isSubMenuOpen || isMiniListOpen) return false
+        if ((this.playerError != null && !isDualDisplayMode) || isSubMenuOpen || isMiniListOpen) return false
 
         val keyCode = keyEvent.nativeKeyEvent.keyCode
         val isActionDown = keyEvent.type == KeyEventType.KeyDown

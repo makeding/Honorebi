@@ -575,6 +575,7 @@ fun LivePlayerScreen(
                 if (hasStoppedByLifecycle) {
                     hasStoppedByLifecycle = false
                     ps.retryKey++
+                    if (ps.isDualDisplayMode) livePlayerViewModel.retryDual(uiContext)
                     channelViewModel.fetchChannels()
                 }
             }
@@ -737,18 +738,18 @@ fun LivePlayerScreen(
                 mainPixelRatio = pixelWidthHeightRatio,
                 mainCaptionCue = mainCaptionCue.value,
                 mainSuperimposeCue = mainSuperimposeCue.value,
-                isMainBuffering = isMainBuffering,
+                isMainBuffering = mainRuntimeState.playbackState != Player.STATE_READY,
                 dualPlayer = dualPlayer,
                 dualVideoWidth = dualVideoWidth,
                 dualVideoHeight = dualVideoHeight,
                 dualPixelRatio = dualPixelWidthHeightRatio,
                 dualCaptionCue = dualCaptionCue.value,
                 dualSuperimposeCue = dualSuperimposeCue.value,
-                isDualBuffering = isDualBuffering,
+                isDualBuffering = dualRuntimeState.playbackState != Player.STATE_READY,
                 isSubtitleEnabled = isSubtitleEnabled,
                 mainError = mainError,
-                onRetryMain = { livePlayerViewModel.retryMain(uiContext) },
-                onRetryDual = { livePlayerViewModel.retryDual(uiContext) }
+                onRetryMain = { livePlayerViewModel.retryMain(uiContext); mainFocusRequester.safeRequestFocus(TAG) },
+                onRetryDual = { livePlayerViewModel.retryDual(uiContext); mainFocusRequester.safeRequestFocus(TAG) }
             )
         } else {
             if (isDataBroadcastingActive) {

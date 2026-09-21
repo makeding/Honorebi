@@ -36,6 +36,6 @@ class LivePlayerProfileTest {
         assertEquals("PASSTHROUGH", profile.audioOutputMode)
         assertEquals(HdrToneMapping.isSupported, profile.enableHdrToSdrToneMapping)
         assertTrue(profile.configureAudioAttributes)
-        assertTrue(profile.handleAudioFocus)
+        assertFalse(profile.handleAudioFocus)
     }
 }

@@ -25,7 +25,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -127,6 +130,7 @@ fun DualDisplayPlayer(
         Box(
             modifier = Modifier
                 .weight(animatedLeftWeight)
+                .testTag("live-main-slot")
                 .fillMaxHeight()
                 .padding(2.dp)
                 .background(Color.Black)
@@ -147,6 +151,7 @@ fun DualDisplayPlayer(
                         (state.sseStatus == "Standby" || state.sseStatus == "Offline")),
                 message = state.sseDetail,
                 onRetry = onRetryMain,
+                focusRetry = state.activeDualPlayerIndex == 0 && !isSubtitleBlockingUiVisible,
                 modifier = Modifier.align(Alignment.Center)
             )
 
@@ -182,6 +187,7 @@ fun DualDisplayPlayer(
         Box(
             modifier = Modifier
                 .weight(animatedRightWeight)
+                .testTag("live-dual-slot")
                 .fillMaxHeight()
                 .padding(2.dp)
                 .background(Color.Black)
@@ -203,6 +209,7 @@ fun DualDisplayPlayer(
                             (state.dualSseStatus == "Standby" || state.dualSseStatus == "Offline")),
                     message = state.dualSseDetail,
                     onRetry = onRetryDual,
+                    focusRetry = state.activeDualPlayerIndex == 1 && !isSubtitleBlockingUiVisible,
                     modifier = Modifier.align(Alignment.Center)
                 )
 
@@ -248,8 +255,13 @@ fun DualDisplayPlayer(
 @Composable
 internal fun LiveSlotStatus(
     error: String?, loading: Boolean, message: String, onRetry: () -> Unit,
+    focusRetry: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val retryFocus = remember { FocusRequester() }
+    LaunchedEffect(error, focusRetry) {
+        if (error != null && focusRetry) retryFocus.requestFocus()
+    }
     if (error != null || loading) {
         Column(
             modifier = modifier.widthIn(max = 360.dp).padding(24.dp),
@@ -265,7 +277,7 @@ internal fun LiveSlotStatus(
                 style = MaterialTheme.typography.bodyLarge
             )
             if (error != null) {
-                androidx.tv.material3.Button(onClick = onRetry) { Text("再試行") }
+                androidx.tv.material3.Button(onClick = onRetry, modifier = Modifier.focusRequester(retryFocus)) { Text("再試行") }
             }
         }
     }
