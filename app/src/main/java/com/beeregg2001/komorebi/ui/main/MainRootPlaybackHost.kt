@@ -118,6 +118,7 @@ fun MainRootPlaybackHost(
                 livePlayerViewModel = hiltViewModel(),
                 channel = target.channel,
                 initialQuality = data.defaultLiveQuality,
+                isNetworkAvailable = data.isNetworkAvailable,
                 isMiniListOpen = state.playbackState.isPlayerMiniListOpen,
                 onMiniListToggle = { state.playbackState.isPlayerMiniListOpen = it },
                 showOverlay = state.playbackState.playerShowOverlay,

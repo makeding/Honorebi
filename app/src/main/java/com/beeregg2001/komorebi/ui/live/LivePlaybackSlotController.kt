@@ -38,6 +38,8 @@ internal class LivePlaybackSlotController(
     private var runtime: PlayerRuntime? = null
     private var eventSource: EventSource? = null
     private var upstreamLease: LiveStreamSessionLease? = null
+    /** A parked offline generation may finish a late resolver, but must not install it. */
+    private var playbackBlocked = false
 
     fun currentRuntime(): PlayerRuntime? = synchronized(lock) { runtime }
     fun currentEventSource(): EventSource? = synchronized(lock) { eventSource }
@@ -48,6 +50,7 @@ internal class LivePlaybackSlotController(
         val run: Run
         synchronized(lock) {
             generation += 1
+            playbackBlocked = false
             previous = takeResourcesLocked()
             run = Run(generation)
             job = null
@@ -60,6 +63,7 @@ internal class LivePlaybackSlotController(
     fun stop(reason: String) {
         val previous = synchronized(lock) {
             generation += 1
+            playbackBlocked = true
             takeResourcesLocked()
         }
         previous.release(reason)
@@ -93,11 +97,34 @@ internal class LivePlaybackSlotController(
             return accepted
         }
 
+        /** Queue one fenced recovery after an in-flight recovery has released this generation. */
+        fun launchRecoveryWhenIdle(
+            scope: CoroutineScope,
+            block: suspend CoroutineScope.() -> Unit,
+        ): Boolean {
+            val activeRecovery = synchronized(lock) {
+                if (generation != epoch) return false
+                recoveryJob?.takeIf { !it.isCompleted }
+            }
+            if (activeRecovery == null) return launchRecovery(scope, block)
+            activeRecovery.invokeOnCompletion {
+                scope.launch {
+                    if (isCurrent()) launchRecovery(scope, block)
+                }
+            }
+            return true
+        }
+
         fun isRecovering(): Boolean = synchronized(lock) {
             generation == epoch && recoveryJob?.let { !it.isCompleted } == true
         }
 
         fun isCurrent(): Boolean = this@LivePlaybackSlotController.isCurrent(this)
+
+        /** Park this generation: late creators may release their result but cannot install it. */
+        fun blockPlaybackInstallation() = synchronized(lock) {
+            if (this@LivePlaybackSlotController.generation == epoch) playbackBlocked = true
+        }
 
         /** Capture a late response before returning to the cancelled owner; transfer only after installation. */
         suspend fun <T> withCreatedResource(
@@ -144,7 +171,8 @@ internal class LivePlaybackSlotController(
 
         fun installRuntime(candidate: PlayerRuntime): Boolean {
             val stale = synchronized(lock) {
-                if (this@LivePlaybackSlotController.generation != epoch || recoveryJob?.let { !it.isCompleted } == true) true else {
+                if (this@LivePlaybackSlotController.generation != epoch || playbackBlocked ||
+                    recoveryJob?.let { !it.isCompleted } == true) true else {
                     runtime?.release()
                     runtime = candidate
                     false
@@ -156,7 +184,8 @@ internal class LivePlaybackSlotController(
 
         fun installEventSource(candidate: EventSource): Boolean {
             val stale = synchronized(lock) {
-                if (this@LivePlaybackSlotController.generation != epoch || recoveryJob?.let { !it.isCompleted } == true) true else {
+                if (this@LivePlaybackSlotController.generation != epoch || playbackBlocked ||
+                    recoveryJob?.let { !it.isCompleted } == true) true else {
                     eventSource?.cancel()
                     eventSource = candidate
                     false
@@ -169,7 +198,8 @@ internal class LivePlaybackSlotController(
         fun installLease(candidate: LiveStreamSessionLease): Boolean {
             val replaced: LiveStreamSessionLease?
             synchronized(lock) {
-                if (this@LivePlaybackSlotController.generation != epoch || recoveryJob?.let { !it.isCompleted } == true) {
+                if (this@LivePlaybackSlotController.generation != epoch || playbackBlocked ||
+                    recoveryJob?.let { !it.isCompleted } == true) {
                     releaseLease(candidate, "late")
                     return false
                 }

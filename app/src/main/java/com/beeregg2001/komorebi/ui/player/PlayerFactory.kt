@@ -58,6 +58,8 @@ internal object PlayerFactory {
             }
         }
         renderers.setExtensionRendererMode(profile.extensionRendererMode).setEnableDecoderFallback(true)
+        // Temporary Sony Android 12 comparison APK; not a permanent device compatibility rule.
+        renderers.forceDisableMediaCodecAsynchronousQueueing()
         val buffer = profile.buffer
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(buffer.minBufferMs, buffer.maxBufferMs, buffer.bufferForPlaybackMs, buffer.bufferForPlaybackAfterRebufferMs)

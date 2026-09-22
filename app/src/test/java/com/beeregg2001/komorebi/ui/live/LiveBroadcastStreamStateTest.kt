@@ -8,20 +8,20 @@ class LiveBroadcastStreamStateTest {
         val state = LiveBroadcastStreamState()
         assertEquals(LiveBroadcastStreamAction.PAUSE, state.onStatus("Restart", false))
         assertEquals(LiveBroadcastStreamAction.PAUSE, state.onStatus("Standby", false))
-        assertEquals(LiveBroadcastStreamAction.REOPEN, state.onStatus("ONAir", false))
+        assertEquals(LiveBroadcastStreamAction.REOPEN_AFTER_RESTART, state.onStatus("ONAir", false))
         assertEquals(LiveBroadcastStreamAction.PLAY, state.onStatus("ONAir", false))
     }
     @Test fun duplicateOnAirDoesNotRebuildButEndedOrErroredMediaDoes() {
         val state = LiveBroadcastStreamState()
         repeat(3) { assertEquals(LiveBroadcastStreamAction.PLAY, state.onStatus("ONAir", false)) }
-        assertEquals(LiveBroadcastStreamAction.REOPEN, state.onStatus("ONAir", true))
+        assertEquals(LiveBroadcastStreamAction.RECOVER_INVALID_MEDIA, state.onStatus("ONAir", true))
     }
     @Test fun restartIsSlotAndGenerationLocal() {
         val main = LiveBroadcastStreamState()
         val dual = LiveBroadcastStreamState()
         main.onStatus("Restart", false)
         assertEquals(LiveBroadcastStreamAction.PLAY, dual.onStatus("ONAir", false))
-        assertEquals(LiveBroadcastStreamAction.REOPEN, main.onStatus("ONAir", false))
+        assertEquals(LiveBroadcastStreamAction.REOPEN_AFTER_RESTART, main.onStatus("ONAir", false))
         assertEquals(LiveBroadcastStreamAction.PLAY, LiveBroadcastStreamState().onStatus("ONAir", false))
     }
 }

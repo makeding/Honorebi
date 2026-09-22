@@ -92,6 +92,7 @@ internal fun liveLoadingPresentation(
     val isVisible = when {
         playerError != null -> false
         !hasRenderedFirstFrame -> true
+        sseStatus == "Offline" && sseDetail.isNotEmpty() -> true
         streamSource == StreamSource.KONOMITV ->
             (sseStatus == "Standby" || sseStatus == "Offline") && sseDetail.isNotEmpty()
         streamSource == StreamSource.EDCB && !isEdcbDirect ->
@@ -102,6 +103,7 @@ internal fun liveLoadingPresentation(
     val message = when {
         !hasRenderedFirstFrame && isPlaybackReady -> "映像をデコード中..."
         !hasRenderedFirstFrame && sseDetail.isBlank() -> "映像データを待っています..."
+        sseStatus == "Offline" && sseDetail.isNotEmpty() -> sseDetail
         streamSource == StreamSource.KONOMITV -> sseDetail
         streamSource == StreamSource.EDCB && !isEdcbDirect && sseStatus == "Standby" -> sseDetail
         else -> statusLoadingText

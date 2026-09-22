@@ -17,6 +17,46 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LivePlaybackSlotControllerTest {
+    @Test fun parkedGenerationRejectsLateLeaseUntilTheNetworkRetryBeginsANewGeneration() {
+        val released = CountDownLatch(1)
+        val controller = LivePlaybackSlotController("offline")
+        val parked = controller.begin()
+        try {
+            parked.blockPlaybackInstallation()
+            controller.releasePlayback("waiting_for_network")
+            assertTrue(parked.isCurrent())
+            assertFalse(parked.installLease(lease("late-offline", released)))
+            assertTrue(released.await(2, TimeUnit.SECONDS))
+
+            val retried = controller.begin()
+            assertTrue(retried.installLease(lease("after-network", CountDownLatch(1))))
+        } finally { controller.stop("test") }
+    }
+
+    @Test fun ordinaryNewGenerationCleanupStillAllowsItsOwnInstallation() {
+        val controller = LivePlaybackSlotController("startup")
+        val run = controller.begin()
+        try {
+            // playMainChannel/playDualChannel clear previous playback after begin().
+            controller.releasePlayback("clear_previous")
+            assertTrue(run.installLease(lease("new-generation", CountDownLatch(1))))
+        } finally { controller.stop("test") }
+    }
+
+    @Test fun networkRegainQueuesBehindAnInFlightRecoveryWithoutDroppingTheRetry() = runBlocking {
+        val controller = LivePlaybackSlotController("offline")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val run = controller.begin()
+        val inFlight = CompletableDeferred<Unit>()
+        val resumed = CompletableDeferred<Unit>()
+        try {
+            assertTrue(run.launchRecovery(scope) { inFlight.await() })
+            assertTrue(run.launchRecoveryWhenIdle(scope) { resumed.complete(Unit) })
+            inFlight.complete(Unit)
+            withTimeout(2_000) { resumed.await() }
+        } finally { controller.stop("test"); scope.cancel() }
+    }
+
     @Test fun duplicateErrorsDoNotCancelStartupOrRecovery() = runBlocking {
         val controller = LivePlaybackSlotController("recovery")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

@@ -82,8 +82,8 @@ class ChannelViewModel @Inject constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    fun fetchChannels() {
-        appContentStore.refreshChannels()
+    fun fetchChannels(afterNetworkRecovery: Boolean = false) {
+        appContentStore.refreshChannels(afterNetworkRecovery)
     }
 
     fun fetchRecentRecordings() {

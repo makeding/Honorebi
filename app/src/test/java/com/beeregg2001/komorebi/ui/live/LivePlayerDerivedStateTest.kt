@@ -94,6 +94,20 @@ class LivePlayerDerivedStateTest {
         assertTrue(konomi.isVisible)
         assertEquals("再接続中", konomi.message)
 
+        val offlineDirect = liveLoadingPresentation(
+            streamSource = StreamSource.EDCB,
+            isEdcbDirect = true,
+            sseStatus = "Offline",
+            sseDetail = "ネットワーク接続を確認しています…",
+            playerError = null,
+            isBuffering = false,
+            hasRenderedFirstFrame = true,
+            isPlaybackReady = false,
+            statusLoadingText = "読み込み中"
+        )
+        assertTrue(offlineDirect.isVisible)
+        assertEquals("ネットワーク接続を確認しています…", offlineDirect.message)
+
         val directEdcb = liveLoadingPresentation(
             streamSource = StreamSource.EDCB,
             isEdcbDirect = true,

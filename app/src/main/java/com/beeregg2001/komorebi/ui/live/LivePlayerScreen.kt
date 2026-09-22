@@ -76,6 +76,7 @@ private const val TAG = "LivePlayerScreen"
 fun LivePlayerScreen(
     channel: Channel,
     initialQuality: String = "1080p-60fps",
+    isNetworkAvailable: Boolean,
     isMiniListOpen: Boolean,
     onMiniListToggle: (Boolean) -> Unit,
     showOverlay: Boolean,
@@ -472,6 +473,12 @@ fun LivePlayerScreen(
             livePlayerViewModel.releasePlayers("screen_dispose")
             channelViewModel.setPollingPaused(false)
         }
+    }
+
+    // The root has the single process-wide connectivity observer. Feed its current state
+    // into the live slot gate so an offline media/SSE callback waits for an online edge.
+    LaunchedEffect(isNetworkAvailable) {
+        livePlayerViewModel.onDeviceNetworkChanged(isNetworkAvailable)
     }
 
     LaunchedEffect(

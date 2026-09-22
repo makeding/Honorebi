@@ -69,12 +69,10 @@ class AppContentStore @Inject constructor(
     private val _sourceErrors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val sourceErrors: StateFlow<Map<String, String?>> = _sourceErrors.asStateFlow()
 
-    @Volatile
-    private var isFetchingChannels = false
+    private val channelRefreshRunner = ChannelRefreshRunner()
     @Volatile
     private var isFetchingRecordings = false
 
-    private var channelFetchJob: Job? = null
     private var recordingFetchJob: Job? = null
     private var pollingJob: Job? = null
     private var progressUpdateJob: Job? = null
@@ -97,13 +95,11 @@ class AppContentStore @Inject constructor(
 
     fun setPollingPaused(paused: Boolean) = Unit
 
-    fun refreshChannels() {
-        if (isFetchingChannels || channelFetchJob?.isActive == true) return
+    fun refreshChannels(afterNetworkRecovery: Boolean = false) {
         channelRetry.reset()
         _isChannelsLoading.value = true
-        channelFetchJob?.cancel()
-        channelFetchJob = scope.launch {
-            fetchChannelsInternal()
+        scope.launch {
+            fetchChannelsInternal(queueIfRunning = afterNetworkRecovery)
         }
     }
 
@@ -161,9 +157,16 @@ class AppContentStore @Inject constructor(
         }
     }
 
-    private suspend fun fetchChannelsInternal() {
-        if (isFetchingChannels) return
-        isFetchingChannels = true
+    private suspend fun fetchChannelsInternal(queueIfRunning: Boolean = false) {
+        try {
+            channelRefreshRunner.run(queueIfRunning) { fetchChannelsOnce() }
+        } finally {
+            // A queued reconnect must finish before the UI accepts a result from this flight.
+            if (!channelRefreshRunner.isRunning) _isChannelsLoading.value = false
+        }
+    }
+
+    private suspend fun fetchChannelsOnce() {
         try {
             val response = withContext(Dispatchers.IO) { liveProvider.getChannels() }
             _connectionError.value = false
@@ -232,8 +235,6 @@ class AppContentStore @Inject constructor(
             channelRetry.failed(e)
         } finally {
             lastChannelsFetchedAtMillis = System.currentTimeMillis()
-            isFetchingChannels = false
-            _isChannelsLoading.value = false
         }
     }
 

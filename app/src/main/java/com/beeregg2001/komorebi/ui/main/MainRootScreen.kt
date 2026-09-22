@@ -557,7 +557,12 @@ fun MainRootScreen(
         }
     }
 
-    LaunchedEffect(isNetworkAvailable, isSettingsInitialized, state.isOfflineMode) {
+    val reconnectGate = remember { NetworkReconnectGate() }
+    LaunchedEffect(isNetworkAvailable, isSettingsInitialized) {
+        if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized)) {
+            channelViewModel.fetchChannels(afterNetworkRecovery = true)
+            homeViewModel.refreshHomeData()
+        }
         if (isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {
             state.showConnectionErrorDialog = false
             state.isOfflineMode = true
@@ -568,13 +573,14 @@ fun MainRootScreen(
         }
     }
 
-    LaunchedEffect(isChannelLoading, isHomeLoading) {
+    LaunchedEffect(isChannelLoading, isHomeLoading, isChannelError, isNetworkAvailable) {
         if (!isChannelLoading && !isHomeLoading) {
             delay(300)
-            if (isChannelError) {
-                if (isNetworkAvailable && !state.isOfflineMode) {
+            when (offlinePresentation(isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady)) {
+                OfflinePresentation.CONNECTION_FAILURE -> {
                     state.showConnectionErrorDialog = true; state.isDataReady = false
-                } else {
+                }
+                OfflinePresentation.CACHED -> {
                     state.showConnectionErrorDialog = false
                     state.isOfflineMode = true
                     state.isDataReady = true
@@ -582,9 +588,10 @@ fun MainRootScreen(
                     state.isUiReady = true
                     state.hasAppliedStartupChannel = true
                 }
-            } else {
-                state.showConnectionErrorDialog = false; state.isDataReady = true
-                state.isOfflineMode = false
+                OfflinePresentation.CONNECTED -> {
+                    state.showConnectionErrorDialog = false; state.isDataReady = true
+                    state.isOfflineMode = false
+                }
             }
         }
     }

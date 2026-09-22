@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.SystemClock
 import android.os.Build
 import android.util.Log
@@ -88,6 +89,11 @@ private data class LiveSlotIntent(
     val isEdcbDirect: Boolean,
     val quality: StreamQuality,
     val uiContext: Context,
+)
+
+private data class LiveNetworkRecoveryRequest(
+    val token: LiveChannelSessionToken,
+    val run: LivePlaybackSlotController.Run,
 )
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -254,6 +260,12 @@ class LivePlayerViewModel @Inject constructor(
 
     private val mainSlot = LivePlaybackSlotController("main") { Log.i(TAG, it) }
     private val dualSlot = LivePlaybackSlotController("dual") { Log.i(TAG, it) }
+    private val connectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val mainNetworkRecoveryGate = LiveNetworkRecoveryGate(currentDeviceNetworkAvailable())
+    private val dualNetworkRecoveryGate = LiveNetworkRecoveryGate(currentDeviceNetworkAvailable())
+    private var mainNetworkRecoveryRequest: LiveNetworkRecoveryRequest? = null
+    private var dualNetworkRecoveryRequest: LiveNetworkRecoveryRequest? = null
     private val liveAudioFocus = LiveAudioFocus(context) { allowed ->
         val main = mainSlot.currentRuntime()
         val dual = dualSlot.currentRuntime()
@@ -495,11 +507,115 @@ class LivePlayerViewModel @Inject constructor(
         liveJikkyoManager.stopJikkyo()
     }
 
+    /** Called by the root's connectivity state, which owns the process-wide network callback. */
+    fun onDeviceNetworkChanged(available: Boolean) {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            if (mainNetworkRecoveryGate.onNetworkChanged(available) == LiveNetworkRecoveryDecision.RecoverNow) {
+                recoverMainAfterNetworkRegain()
+            }
+            if (dualNetworkRecoveryGate.onNetworkChanged(available) == LiveNetworkRecoveryDecision.RecoverNow) {
+                recoverDualAfterNetworkRegain()
+            }
+        }
+    }
+
+    // LAN backends remain reachable without a validated Internet/default network.
+    @Suppress("DEPRECATION")
+    private fun currentDeviceNetworkAvailable(): Boolean =
+        connectivityManager.allNetworks.any { connectivityManager.getNetworkCapabilities(it) != null }
+
+    private fun parkMainForNetwork(token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run) {
+        mainNetworkRecoveryRequest = LiveNetworkRecoveryRequest(token, run)
+        run.blockPlaybackInstallation()
+        mainPlaybackHealth.reset()
+        _mainPlayerError.value = null
+        _mainPlayerErrorIsCapabilityRelated.value = false
+        _mainSseStatus.value = "Offline"
+        _mainSseDetail.value = "ネットワーク接続を確認しています…"
+        stopMainPlaybackSafely("main_waiting_for_network", endSession = false, releaseSlot = false,
+            preserveTerminalStatus = true)
+    }
+
+    private fun parkDualForNetwork(token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run) {
+        dualNetworkRecoveryRequest = LiveNetworkRecoveryRequest(token, run)
+        run.blockPlaybackInstallation()
+        dualPlaybackHealth.reset()
+        _dualSseStatus.value = "Offline"
+        _dualSseDetail.value = "ネットワーク接続を確認しています…"
+        stopDualPlaybackSafely("dual_waiting_for_network", endSession = false, releaseSlot = false,
+            preserveTerminalStatus = true)
+    }
+
+    private fun recoverMainAfterNetworkRegain() {
+        val request = mainNetworkRecoveryRequest ?: return
+        mainNetworkRecoveryRequest = null
+        if (!channelSessions.isCurrent(request.token) || !request.run.isCurrent()) return
+        request.run.launchRecoveryWhenIdle(viewModelScope) {
+            if (!channelSessions.isCurrent(request.token) || !request.run.isCurrent()) return@launchRecoveryWhenIdle
+            mainIntent?.let { intent ->
+                Log.i(TAG, "main retrying after device network regained token=${request.token.epoch}")
+                playMainChannel(intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
+                    isAutoRetry = true)
+            }
+        }
+    }
+
+    private fun recoverDualAfterNetworkRegain() {
+        val request = dualNetworkRecoveryRequest ?: return
+        dualNetworkRecoveryRequest = null
+        if (!channelSessions.isCurrent(request.token) || !request.run.isCurrent()) return
+        request.run.launchRecoveryWhenIdle(viewModelScope) {
+            if (!channelSessions.isCurrent(request.token) || !request.run.isCurrent()) return@launchRecoveryWhenIdle
+            dualIntent?.let { intent ->
+                Log.i(TAG, "dual retrying after device network regained token=${request.token.epoch}")
+                playDualChannel(intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
+                    isAutoRetry = true)
+            }
+        }
+    }
+
+    private fun reopenMainAfterServerRestart(token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run) {
+        if (!currentDeviceNetworkAvailable()) {
+            mainNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
+            parkMainForNetwork(token, run)
+            return
+        }
+        run.launchRecovery(viewModelScope) {
+            if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
+            mainIntent?.let { intent ->
+                Log.i(TAG, "main reopening server-restarted stream token=${token.epoch}")
+                playMainChannel(intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
+                    isAutoRetry = true)
+            }
+        }
+    }
+
+    private fun reopenDualAfterServerRestart(token: LiveChannelSessionToken, run: LivePlaybackSlotController.Run) {
+        if (!currentDeviceNetworkAvailable()) {
+            dualNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
+            parkDualForNetwork(token, run)
+            return
+        }
+        run.launchRecovery(viewModelScope) {
+            if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
+            dualIntent?.let { intent ->
+                Log.i(TAG, "dual reopening server-restarted stream token=${token.epoch}")
+                playDualChannel(intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
+                    isAutoRetry = true)
+            }
+        }
+    }
+
     private fun handleMainError(
         uiContext: Context, error: PlaybackException, token: LiveChannelSessionToken,
         run: LivePlaybackSlotController.Run,
     ) {
         if (!channelSessions.isCurrent(token) || !run.isCurrent() || run.isRecovering()) return
+        if (mainNetworkRecoveryGate.onRecoveryNeeded(currentDeviceNetworkAvailable()) ==
+            LiveNetworkRecoveryDecision.WaitForNetwork) {
+            parkMainForNetwork(token, run)
+            return
+        }
         if (HdrToneMapping.rejectionCause(error) != null) {
             recoverRejectedHdrToneMapping(uiContext, token)
             return
@@ -531,6 +647,11 @@ class LivePlayerViewModel @Inject constructor(
                 _mainSseDetail.value = "通信を復旧しています…"
                 delay(2000)
                 if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
+                if (!currentDeviceNetworkAvailable()) {
+                    mainNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
+                    parkMainForNetwork(token, run)
+                    return@launchRecovery
+                }
                 mainIntent?.let { intent ->
                     playMainChannel(
                         intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
@@ -552,6 +673,11 @@ class LivePlayerViewModel @Inject constructor(
         run: LivePlaybackSlotController.Run,
     ) {
         if (!channelSessions.isCurrent(token) || !run.isCurrent() || run.isRecovering()) return
+        if (dualNetworkRecoveryGate.onRecoveryNeeded(currentDeviceNetworkAvailable()) ==
+            LiveNetworkRecoveryDecision.WaitForNetwork) {
+            parkDualForNetwork(token, run)
+            return
+        }
         if (HdrToneMapping.rejectionCause(error) != null) {
             recoverRejectedHdrToneMapping(uiContext, token)
             return
@@ -582,6 +708,11 @@ class LivePlayerViewModel @Inject constructor(
                 _dualSseDetail.value = "通信を復旧しています…"
                 delay(2000)
                 if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
+                if (!currentDeviceNetworkAvailable()) {
+                    dualNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
+                    parkDualForNetwork(token, run)
+                    return@launchRecovery
+                }
                 dualIntent?.let { intent ->
                     playDualChannel(
                         intent.uiContext, intent.channel, intent.source, intent.isEdcbDirect, intent.quality,
@@ -655,6 +786,8 @@ class LivePlayerViewModel @Inject constructor(
         if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
         if (!isAutoRetry) {
             mainAutoRetryCount = 0
+            mainNetworkRecoveryGate.onPlaybackStarted()
+            mainNetworkRecoveryRequest = null
             _mainPlayerError.value = null
             _mainPlayerErrorIsCapabilityRelated.value = false
         }
@@ -781,7 +914,11 @@ class LivePlayerViewModel @Inject constructor(
         if (!isAutoRetry) dualIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.DUAL, channel.id)
         Log.i(TAG, "dual request channel=${channel.id} source=$source quality=${quality.value} token=${token.epoch} retry=$isAutoRetry")
-        if (!isAutoRetry) dualAutoRetryCount = 0
+        if (!isAutoRetry) {
+            dualAutoRetryCount = 0
+            dualNetworkRecoveryGate.onPlaybackStarted()
+            dualNetworkRecoveryRequest = null
+        }
         dualCurrentChannel = channel
 
         dualPlaybackHealth.reset()
@@ -1283,7 +1420,15 @@ class LivePlayerViewModel @Inject constructor(
                     Log.i(TAG, "$label SSE status=$status channel=$channelId quality=$quality token=${token.epoch}")
                     statusFlow.value = status
                     detailFlow.value = if (detail.contains("OnAirです")) "" else detail
-                    if (status == "Error" || (status == "Offline" &&
+                    if (status == "Offline" && !currentDeviceNetworkAvailable()) {
+                        if (main) {
+                            mainNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
+                            parkMainForNetwork(token, run)
+                        } else {
+                            dualNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
+                            parkDualForNetwork(token, run)
+                        }
+                    } else if (status == "Error" || (status == "Offline" &&
                         (detail.contains("失敗") || detail.contains("エラー")))) {
                         fail(PlaybackException(detail.ifEmpty { AppStrings.ERR_TUNER_START_FAILED },
                             null, PlaybackException.ERROR_CODE_UNSPECIFIED))
@@ -1293,11 +1438,16 @@ class LivePlayerViewModel @Inject constructor(
                             runtime?.player?.playbackState == Player.STATE_ENDED
                         when (run.broadcastState.onStatus(status, invalid)) {
                             LiveBroadcastStreamAction.PAUSE -> runtime?.pause()
-                            LiveBroadcastStreamAction.REOPEN -> {
-                                // Re-resolve and recreate the media source, including its live timeline.
-                                fail(PlaybackException("ライブストリームを再接続しています", null,
-                                    PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
+                            LiveBroadcastStreamAction.REOPEN_AFTER_RESTART -> {
+                                // Server Restart is an expected lifecycle transition. Re-resolve the
+                                // media source without converting it into a player I/O failure.
+                                if (main) reopenMainAfterServerRestart(token, run)
+                                else reopenDualAfterServerRestart(token, run)
                             }
+                            LiveBroadcastStreamAction.RECOVER_INVALID_MEDIA -> fail(PlaybackException(
+                                "ライブストリームが切断されました", null,
+                                PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                            ))
                             LiveBroadcastStreamAction.PLAY -> if (liveAudioFocus.playbackAllowed) runtime?.play()
                             LiveBroadcastStreamAction.NONE -> Unit
                         }
