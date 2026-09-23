@@ -12,6 +12,7 @@ data class StreamQuality(
 ) {
     companion object {
         const val RAW_MMTS_PRIMARY_VALUE = "raw-mmts"
+        const val RAW_MMTS_PREFERRED_VALUE = "raw-mmts-preferred"
         const val RAW_MMTS_SECONDARY_VALUE = "raw-mmts-secondary"
         const val RECORDED_COPY_HLS_VALUE = "copy"
         const val ORIGINAL_MPEG_TS_VALUE = "original-mpegts-hwdi"
@@ -45,27 +46,8 @@ data class StreamQuality(
             StreamQuality("240p", "240p")
         )
 
-        fun rawMmtsQualities(channel: Channel): List<StreamQuality> {
-            val isBs8k = channel.networkId == 11L && channel.serviceId == 102L
-            val primary = StreamQuality(
-                label = "TLV パススルー",
-                value = RAW_MMTS_PRIMARY_VALUE,
-                isRawMmts = true,
-                videoPacketId = if (isBs8k) 0xf100 else null
-            )
-            val hasRainService = channel.networkId == 11L && channel.serviceId in listOf(101L, 102L)
-            if (!hasRainService) return listOf(primary)
-
-            return listOf(
-                primary,
-                StreamQuality(
-                    label = "TLV パススルー（降雨放送）",
-                    value = RAW_MMTS_SECONDARY_VALUE,
-                    isRawMmts = true,
-                    videoPacketId = if (isBs8k) 0xf101 else 0xf301
-                )
-            )
-        }
+        fun rawMmtsQualities(@Suppress("UNUSED_PARAMETER") channel: Channel): List<StreamQuality> =
+            listOf(StreamQuality("TLV パススルー（自動）", RAW_MMTS_PRIMARY_VALUE, isRawMmts = true))
 
         /**
          * 文字列から画質型を取得する（利用可能なリストから検索）

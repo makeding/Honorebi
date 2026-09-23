@@ -57,6 +57,11 @@ class NativeLib {
     external fun pushTlvData(handle: Long, data: ByteArray, length: Int)
     external fun flushTlvDemuxer(handle: Long)
     external fun resetTlvDemuxer(handle: Long)
+    external fun setTlvLayerMode(
+        handle: Long, modeVideoPacketId: Int, selectedVideoPacketId: Int, audioPacketId: Int
+    )
+    external fun setTlvPlaybackPosition(handle: Long, positionUs: Long, outputStarted: Boolean)
+    external fun completeTlvLayerSwitch(handle: Long, accepted: Boolean)
     external fun repositionTlvDemuxer(handle: Long, inputOffset: Long)
     external fun getTlvSeekPoints(handle: Long, targetUs: Long): LongArray
     external fun closeTlvDemuxer(handle: Long)

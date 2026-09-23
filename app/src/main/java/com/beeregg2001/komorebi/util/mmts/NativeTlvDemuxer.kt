@@ -18,6 +18,10 @@ class NativeTlvDemuxer(
     interface Callback {
         fun onService(contextId: Long, packageId: ByteArray)
 
+        /** Current complete MPT membership; onTrack is only an accumulated inventory. */
+        fun onMptSnapshot(contextId: Long, trackIds: LongArray)
+        fun onAutomaticLayerSwitch(videoPacketId: Int, audioPacketId: Int)
+
         fun onTrack(
             trackId: Long,
             contextId: Long,
@@ -147,6 +151,19 @@ class NativeTlvDemuxer(
         if (handle != 0L) nativeLib.resetTlvDemuxer(handle)
     }
 
+    fun setLayerMode(modeVideoPacketId: Int?, selectedVideoPacketId: Int?, audioPacketId: Int?) {
+        if (handle != 0L) nativeLib.setTlvLayerMode(
+            handle, modeVideoPacketId ?: -1, selectedVideoPacketId ?: -1, audioPacketId ?: -1)
+    }
+
+    fun setPlaybackPosition(positionUs: Long, outputStarted: Boolean) {
+        if (handle != 0L) nativeLib.setTlvPlaybackPosition(handle, positionUs, outputStarted)
+    }
+
+    fun completeLayerSwitch(accepted: Boolean) {
+        if (handle != 0L) nativeLib.completeTlvLayerSwitch(handle, accepted)
+    }
+
     fun reposition(inputOffset: Long) {
         if (handle != 0L) nativeLib.repositionTlvDemuxer(handle, inputOffset)
     }
@@ -166,7 +183,8 @@ class NativeTlvDemuxer(
         const val PLAYBACK_DAMAGE_WARNING = 0
         const val PLAYBACK_DAMAGE_SEVERE = 1
         const val PLAYBACK_RECOVERY_NONE = 0
-        const val PLAYBACK_RECOVERY_SEEK = 1
-        const val PLAYBACK_RECOVERY_WAIT_FOR_RECOVERY = 2
+        const val PLAYBACK_RECOVERY_SEEK_IF_STALLED = 1
+        const val PLAYBACK_RECOVERY_SEEK = 2
+        const val PLAYBACK_RECOVERY_WAIT_FOR_RECOVERY = 3
     }
 }

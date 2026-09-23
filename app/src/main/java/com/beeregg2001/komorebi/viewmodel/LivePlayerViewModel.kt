@@ -146,6 +146,7 @@ class LivePlayerViewModel @Inject constructor(
     }
     private val mainRawMmtsLayerController = RawMmtsLayerController()
     private val dualRawMmtsLayerController = RawMmtsLayerController()
+    val mainRawMmtsQualities: StateFlow<List<StreamQuality>> = mainRawMmtsLayerController.qualities
 
     val dataBroadcastingStore = B60DataBroadcastingStore()
     private val channelSessions = LiveChannelSessionCoordinator()
@@ -1165,8 +1166,10 @@ class LivePlayerViewModel @Inject constructor(
         }
 
         mainPlayer.trackSelectionParameters = mainParameters
+        mainRawMmtsLayerController.setLayerMode(quality.videoPacketId, null)
         if (dualPlayer != null && dualParameters != null) {
             dualPlayer.trackSelectionParameters = dualParameters
+            dualRawMmtsLayerController.setLayerMode(quality.videoPacketId, null)
             dualCurrentQuality = quality
         }
         mainCurrentQuality = quality
@@ -1371,7 +1374,8 @@ class LivePlayerViewModel @Inject constructor(
         )
         rawMmtsLayerController?.let { controller ->
             livePlaybackSourceResolver.attachRawMmtsLayerSelection(
-                runtime, request, controller, acceptsCurrentSession
+                runtime, request, controller, acceptsCurrentSession,
+                onNotice = { _playbackNotices.tryEmit(it) }
             )
         }
         if (acceptsCurrentSession()) {

@@ -44,12 +44,13 @@ internal fun deriveLiveChannelNavigation(
 
 internal fun effectiveLiveQualities(
     availableQualities: List<StreamQuality>,
-    channel: Channel
+    channel: Channel,
+    currentRawMmtsQualities: List<StreamQuality> = emptyList()
 ): List<StreamQuality> =
     if (channel.supportsLiveStreamSession()) {
         listOf(StreamQuality("Direct", "direct"))
     } else if (channel.type.equals("BS4K", ignoreCase = true)) {
-        StreamQuality.rawMmtsQualities(channel)
+        currentRawMmtsQualities.ifEmpty { StreamQuality.rawMmtsQualities(channel) }
     } else {
         availableQualities
     }

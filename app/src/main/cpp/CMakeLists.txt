@@ -30,6 +30,7 @@ add_subdirectory(third_party/tlvdemux EXCLUDE_FROM_ALL)
 set_property(TARGET tlvdemux PROPERTY SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/hevc_metadata.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/mse/hevc_parser.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/mse/video_layer_state_machine.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback_damage.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback_timing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tlvdemux/src/playback.cpp"

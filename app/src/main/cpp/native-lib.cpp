@@ -22,6 +22,7 @@
 #include <aribtlv/hlg_sdr_tone_mapping.hpp>
 #include <aribtlv/recording.hpp>
 #include <tlvdemux/playback_damage.hpp>
+#include "third_party/tlvdemux/src/mse/video_layer_state_machine.hpp"
 
 // tsreadex コアヘッダ
 #include "servicefilter.hpp"
@@ -496,6 +497,74 @@ public:
     }
 };
 
+using TlvLayerPair = tlvdemux::detail::mse::VideoLayerPair;
+using TlvLayerObservation = tlvdemux::detail::mse::VideoLayerObservation;
+
+std::optional<TlvLayerPair> resolveTlvLayerPair(
+    const aribtlv::MptSnapshot& snapshot, const int selectedAudioPacketId) {
+    const aribtlv::TrackInfo* preferred = nullptr;
+    const aribtlv::TrackInfo* fallback = nullptr;
+    int preferredLevel = 256;
+    int fallbackLevel = 256;
+    std::uint8_t videoGroupId = 0;
+    for (const auto& track : snapshot.tracks) {
+        if (track.kind != aribtlv::TrackKind::Video) continue;
+        if (track.asset_groups.empty() && preferredLevel > 0) {
+            preferred = &track;
+            preferredLevel = 0;
+        }
+        for (const auto& group : track.asset_groups) {
+            if (group.selection_level < preferredLevel) {
+                preferred = &track;
+                preferredLevel = group.selection_level;
+                videoGroupId = group.group_identification;
+            }
+        }
+    }
+    if (!preferred) return std::nullopt;
+    for (const auto& track : snapshot.tracks) {
+        if (track.kind != aribtlv::TrackKind::Video || track.track_id == preferred->track_id) continue;
+        for (const auto& group : track.asset_groups) {
+            if ((preferred->asset_groups.empty() || group.group_identification == videoGroupId) &&
+                group.selection_level > preferredLevel && group.selection_level < fallbackLevel) {
+                fallback = &track;
+                fallbackLevel = group.selection_level;
+            }
+        }
+    }
+    if (!fallback) return std::nullopt;
+    const auto playableAudio = [](const aribtlv::TrackInfo& track) {
+        return track.kind == aribtlv::TrackKind::Audio && track.audio &&
+            track.audio->channel_layout != aribtlv::AudioChannelLayout::Channels22_2;
+    };
+    std::vector<std::uint8_t> audioGroups;
+    for (const auto& track : snapshot.tracks) {
+        if (!playableAudio(track) || track.packet_id != selectedAudioPacketId) continue;
+        for (const auto& group : track.asset_groups) audioGroups.push_back(group.group_identification);
+    }
+    for (const auto& track : snapshot.tracks) {
+        if (!playableAudio(track) || !track.audio->main_component) continue;
+        for (const auto& group : track.asset_groups) audioGroups.push_back(group.group_identification);
+    }
+    for (const auto groupId : audioGroups) {
+        const aribtlv::TrackInfo* preferredAudio = nullptr;
+        const aribtlv::TrackInfo* fallbackAudio = nullptr;
+        for (const auto& track : snapshot.tracks) {
+            if (!playableAudio(track)) continue;
+            for (const auto& group : track.asset_groups) {
+                if (group.group_identification != groupId) continue;
+                if (group.selection_level == preferredLevel) preferredAudio = &track;
+                if (group.selection_level == fallbackLevel) fallbackAudio = &track;
+            }
+        }
+        if (preferredAudio && fallbackAudio) {
+            return TlvLayerPair{preferred->track_id, preferredAudio->track_id,
+                                fallback->track_id, fallbackAudio->track_id};
+        }
+    }
+    return std::nullopt;
+}
+
 class TlvDemuxContext final : public aribtlv::Sink {
 public:
     TlvDemuxContext(JNIEnv* env, jobject callback, const int preferredVideoPacketId,
@@ -511,6 +580,10 @@ public:
             callbackClass,
             "onTrack",
             "(JJIIILjava/lang/String;IJ[I[IIIZIII)V");
+        onMptSnapshotMethod_ = env->GetMethodID(
+            callbackClass, "onMptSnapshot", "(J[J)V");
+        onAutomaticLayerSwitchMethod_ = env->GetMethodID(
+            callbackClass, "onAutomaticLayerSwitch", "(II)V");
         onAccessUnitMethod_ = env->GetMethodID(
             callbackClass,
             "onAccessUnit",
@@ -586,6 +659,15 @@ public:
         }
         selectedVideoTrackId_ = 0;
         playbackDamageAdvisor_.selectVideoTrack(std::nullopt);
+        mptSnapshot_.reset();
+        layerPair_.reset();
+        selectedContextId_ = 0;
+        selectedAudioPacketId_ = -1;
+        manualLayer_ = false;
+        layerState_.clearConfiguration();
+        layerState_.select(std::nullopt);
+        layerSwitchPending_ = false;
+        pendingLayerVideoId_ = 0;
         audioTrackIds_.clear();
         playableAudioTrackIds_.clear();
         selectedCaptionTrackId_ = 0;
@@ -596,6 +678,49 @@ public:
     void reposition(const std::uint64_t inputOffset) {
         std::lock_guard<std::mutex> lock(mutex_);
         demuxer_.reposition(aribtlv::RepositionOptions{inputOffset, true});
+    }
+
+    void setLayerMode(const int modeVideoPacketId, const int selectedVideoPacketId,
+                      const int audioPacketId) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        manualLayer_ = modeVideoPacketId >= 0;
+        selectedAudioPacketId_ = audioPacketId;
+        layerSwitchPending_ = false;
+        if (selectedVideoPacketId >= 0 && mptSnapshot_) {
+            const auto selected = std::find_if(
+                mptSnapshot_->tracks.begin(), mptSnapshot_->tracks.end(),
+                [selectedVideoPacketId](const auto& track) {
+                    return track.kind == aribtlv::TrackKind::Video &&
+                        track.packet_id == selectedVideoPacketId;
+                });
+            if (selected != mptSnapshot_->tracks.end() && selectedVideoTrackId_ != selected->track_id) {
+                selectedVideoTrackId_ = selected->track_id;
+                playbackDamageAdvisor_.selectVideoTrack(selectedVideoTrackId_);
+                layerState_.select(selectedVideoTrackId_);
+            }
+        }
+        configureLayerPair();
+    }
+
+    void setPlaybackPosition(const std::int64_t positionUs, const bool outputStarted) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!buildRecordingIndex_ && exposeAllVideoTracks_) {
+            layerState_.setPlaybackPosition(positionUs);
+            if (outputStarted) layerState_.setSelectedOutputStarted(true);
+        }
+    }
+
+    void completeLayerSwitch(const bool accepted) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!layerSwitchPending_) return;
+        layerSwitchPending_ = false;
+        if (accepted) {
+            selectedVideoTrackId_ = pendingLayerVideoId_;
+            playbackDamageAdvisor_.selectVideoTrack(selectedVideoTrackId_);
+            layerState_.switchCompleted(selectedVideoTrackId_);
+        } else {
+            layerState_.select(selectedVideoTrackId_);
+        }
     }
 
     std::array<std::int64_t, 4> seekPoints(const std::int64_t targetUs) {
@@ -655,7 +780,9 @@ public:
                 info.packet_id == preferredVideoPacketId_;
             if (selectedVideoTrackId_ == 0 && matchesPreferred) {
                 selectedVideoTrackId_ = info.track_id;
+                selectedContextId_ = info.context_id;
                 playbackDamageAdvisor_.selectVideoTrack(selectedVideoTrackId_);
+                layerState_.select(selectedVideoTrackId_);
                 if (buildRecordingIndex_) recordingIndex_.selectVideoTrack(info.track_id);
                 if (!exposeAllVideoTracks_) {
                     demuxer_.selectTrack(aribtlv::TrackKind::Video, info.track_id);
@@ -745,6 +872,26 @@ public:
         currentEnv_->DeleteLocalRef(assetGroupSelectionLevels);
     }
 
+    void onMptSnapshot(const aribtlv::MptSnapshot& snapshot) override {
+        if (selectedContextId_ == 0 || selectedContextId_ == snapshot.context_id) {
+            mptSnapshot_ = snapshot;
+            if (selectedContextId_ == 0) selectedContextId_ = snapshot.context_id;
+            configureLayerPair();
+        }
+        if (!canCallback(onMptSnapshotMethod_)) return;
+        auto ids = currentEnv_->NewLongArray(static_cast<jsize>(snapshot.tracks.size()));
+        if (ids == nullptr) return;
+        std::vector<jlong> values;
+        values.reserve(snapshot.tracks.size());
+        for (const auto& track : snapshot.tracks) {
+            values.push_back(static_cast<jlong>(track.track_id));
+        }
+        currentEnv_->SetLongArrayRegion(ids, 0, static_cast<jsize>(values.size()), values.data());
+        currentEnv_->CallVoidMethod(
+            callback_, onMptSnapshotMethod_, static_cast<jlong>(snapshot.context_id), ids);
+        currentEnv_->DeleteLocalRef(ids);
+    }
+
     void onAccessUnit(aribtlv::AccessUnit&& unit) override {
         if (buildRecordingIndex_) recordingIndex_.observe(unit);
         if (audioTrackIds_.find(unit.track_id) != audioTrackIds_.end() &&
@@ -755,6 +902,9 @@ public:
             unit.track_id != selectedCaptionTrackId_ &&
             unit.track_id != selectedSuperimposeTrackId_) {
             return;
+        }
+        if (layerPair_ && !buildRecordingIndex_) {
+            notifyLayerObservation(layerState_.observe(unit));
         }
         if (!canCallback(onAccessUnitMethod_)) return;
         const bool mayReuse =
@@ -837,6 +987,9 @@ public:
 
     void onDamage(const aribtlv::DamageSpan& damage) override {
         const auto playbackDamage = playbackDamageAdvisor_.observe(damage);
+        if (playbackDamage && layerPair_ && !buildRecordingIndex_) {
+            notifyLayerObservation(layerState_.observeDamage(*playbackDamage));
+        }
         if (!playbackDamage.has_value() ||
             !canCallback(onPlaybackDamageMethod_)) {
             return;
@@ -976,6 +1129,57 @@ public:
     }
 
 private:
+    void configureLayerPair() {
+        if (!mptSnapshot_ || buildRecordingIndex_ || !exposeAllVideoTracks_) {
+            layerPair_.reset();
+            layerState_.clearConfiguration();
+            return;
+        }
+        const auto pair = resolveTlvLayerPair(*mptSnapshot_, selectedAudioPacketId_);
+        if (!pair) {
+            layerPair_.reset();
+            layerState_.clearConfiguration();
+            return;
+        }
+        const bool changed = !layerPair_ ||
+            layerPair_->preferred_video_id != pair->preferred_video_id ||
+            layerPair_->preferred_audio_id != pair->preferred_audio_id ||
+            layerPair_->fallback_video_id != pair->fallback_video_id ||
+            layerPair_->fallback_audio_id != pair->fallback_audio_id;
+        layerPair_ = pair;
+        layerState_.configure(*pair);
+        if (selectedVideoTrackId_ == 0) {
+            selectedVideoTrackId_ = pair->preferred_video_id;
+            playbackDamageAdvisor_.selectVideoTrack(selectedVideoTrackId_);
+            layerState_.select(selectedVideoTrackId_);
+        } else if (changed) {
+            layerState_.select(selectedVideoTrackId_);
+        }
+        if (manualLayer_) layerState_.suspend();
+        else layerState_.resume();
+    }
+
+    void notifyLayerObservation(const TlvLayerObservation& observation) {
+        if (!observation.switch_request || layerSwitchPending_ || manualLayer_ ||
+            !mptSnapshot_ || !canCallback(onAutomaticLayerSwitchMethod_)) return;
+        const auto videoId = observation.switch_request->video_track_id;
+        const auto audioId = observation.switch_request->audio_track_id;
+        const auto findPacket = [this](const std::uint64_t id) -> int {
+            for (const auto& track : mptSnapshot_->tracks) {
+                if (track.track_id == id) return static_cast<int>(track.packet_id);
+            }
+            return -1;
+        };
+        const int videoPacketId = findPacket(videoId);
+        const int audioPacketId = findPacket(audioId);
+        if (videoPacketId < 0 || audioPacketId < 0) return;
+        layerSwitchPending_ = true;
+        pendingLayerVideoId_ = videoId;
+        currentEnv_->CallVoidMethod(
+            callback_, onAutomaticLayerSwitchMethod_,
+            static_cast<jint>(videoPacketId), static_cast<jint>(audioPacketId));
+    }
+
     bool canCallback(jmethodID method) const {
         return currentEnv_ != nullptr && callback_ != nullptr && method != nullptr &&
                !currentEnv_->ExceptionCheck();
@@ -1034,6 +1238,8 @@ private:
     jsize reusableAccessUnitCapacity_ = 0;
     jmethodID onServiceMethod_ = nullptr;
     jmethodID onTrackMethod_ = nullptr;
+    jmethodID onMptSnapshotMethod_ = nullptr;
+    jmethodID onAutomaticLayerSwitchMethod_ = nullptr;
     jmethodID onAccessUnitMethod_ = nullptr;
     jmethodID onBroadcastClockMethod_ = nullptr;
     jmethodID onPlaybackDamageMethod_ = nullptr;
@@ -1046,6 +1252,14 @@ private:
     aribtlv::Demuxer demuxer_;
     aribtlv::RecordingIndex recordingIndex_;
     tlvdemux::PlaybackDamageAdvisor playbackDamageAdvisor_;
+    tlvdemux::detail::mse::VideoLayerStateMachine layerState_;
+    std::optional<aribtlv::MptSnapshot> mptSnapshot_;
+    std::optional<TlvLayerPair> layerPair_;
+    std::uint32_t selectedContextId_ = 0;
+    int selectedAudioPacketId_ = -1;
+    bool manualLayer_ = false;
+    bool layerSwitchPending_ = false;
+    std::uint64_t pendingLayerVideoId_ = 0;
     int preferredVideoPacketId_ = -1;
     bool buildRecordingIndex_ = false;
     bool exposeAllVideoTracks_ = false;
@@ -1636,6 +1850,28 @@ Java_com_beeregg2001_komorebi_NativeLib_resetTlvDemuxer(
     jlong handle) {
     auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
     if (ctx != nullptr) ctx->reset(env);
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_setTlvLayerMode(
+    JNIEnv*, jobject, jlong handle, jint modeVideoPacketId,
+    jint selectedVideoPacketId, jint audioPacketId) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx != nullptr) ctx->setLayerMode(modeVideoPacketId, selectedVideoPacketId, audioPacketId);
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_setTlvPlaybackPosition(
+    JNIEnv*, jobject, jlong handle, jlong positionUs, jboolean outputStarted) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx != nullptr) ctx->setPlaybackPosition(positionUs, outputStarted == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL
+Java_com_beeregg2001_komorebi_NativeLib_completeTlvLayerSwitch(
+    JNIEnv*, jobject, jlong handle, jboolean accepted) {
+    auto* ctx = reinterpret_cast<TlvDemuxContext*>(handle);
+    if (ctx != nullptr) ctx->completeLayerSwitch(accepted == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL

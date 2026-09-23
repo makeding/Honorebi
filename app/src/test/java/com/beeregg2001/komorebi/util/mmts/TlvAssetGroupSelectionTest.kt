@@ -68,6 +68,52 @@ class TlvAssetGroupSelectionTest {
         )
     }
 
+    @Test
+    fun resolvesOnlyTheCurrentCompleteMptPairWithoutFixedPacketIds() {
+        val tracks = sampleTracks().map { track ->
+            track.copy(packetId = track.packetId + 0x100, contextId = 7)
+        }
+        assertEquals(
+            TlvLayerPair(
+                TlvLayerSelection(0xf400, 0xf410),
+                TlvLayerSelection(0xf401, 0xf414)
+            ),
+            resolveCurrentTlvLayerPair(tracks)
+        )
+        assertEquals(null, resolveCurrentTlvLayerPair(tracks.filter { it.packetId != 0xf414 }))
+    }
+
+    @Test
+    fun preservesSelectedAudioGroupAndRejectsAnotherService() {
+        assertEquals(
+            TlvLayerPair(
+                TlvLayerSelection(0xf300, 0xf311),
+                TlvLayerSelection(0xf301, 0xf315)
+            ),
+            resolveCurrentTlvLayerPair(sampleTracks(), selectedAudioPacketId = 0xf311)
+        )
+        assertEquals(null, resolveCurrentTlvLayerPair(
+            sampleTracks().map { if (it.packetId == 0xf301) it.copy(contextId = 9) else it }
+        ))
+    }
+
+    @Test
+    fun acceptsAnUnlabelledPrimaryVideoOnlyWhenTheFallbackHasALayer() {
+        val tracks = sampleTracks().map { track ->
+            if (track.packetId == 0xf300) track.copy(assetGroups = emptyList()) else track
+        }
+        assertEquals(
+            TlvLayerPair(
+                TlvLayerSelection(0xf300, 0xf310),
+                TlvLayerSelection(0xf301, 0xf314)
+            ),
+            resolveCurrentTlvLayerPair(tracks)
+        )
+        assertEquals(null, resolveCurrentTlvLayerPair(tracks.map { track ->
+            if (track.packetId == 0xf301) track.copy(assetGroups = emptyList()) else track
+        }))
+    }
+
     private fun sampleTracks(): List<TlvTrackInfo> = listOf(
         track(0xf300, TlvTrackKind.VIDEO, 0x00, 0),
         track(0xf301, TlvTrackKind.VIDEO, 0x00, 1),

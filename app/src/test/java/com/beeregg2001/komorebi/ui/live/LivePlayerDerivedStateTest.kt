@@ -73,9 +73,17 @@ class LivePlayerDerivedStateTest {
     @Test
     fun bs4kAlwaysUsesRawMmtsQualitiesWhileOtherChannelsUseBackendQualities() {
         val backendQualities = listOf(StreamQuality("HD", "hd"))
+        val currentMptQualities = listOf(
+            StreamQuality("自動", StreamQuality.RAW_MMTS_PRIMARY_VALUE, isRawMmts = true),
+            StreamQuality("降雨放送", StreamQuality.RAW_MMTS_SECONDARY_VALUE,
+                isRawMmts = true, videoPacketId = 0xe201)
+        )
 
         assertEquals(backendQualities, effectiveLiveQualities(backendQualities, channel(type = "GR")))
-        assertTrue(effectiveLiveQualities(backendQualities, channel(type = "BS4K")).all { it.isRawMmts })
+        assertEquals(listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE),
+            effectiveLiveQualities(backendQualities, channel(type = "BS4K")).map { it.value })
+        assertEquals(currentMptQualities,
+            effectiveLiveQualities(backendQualities, channel(type = "BS4K"), currentMptQualities))
     }
 
     @Test

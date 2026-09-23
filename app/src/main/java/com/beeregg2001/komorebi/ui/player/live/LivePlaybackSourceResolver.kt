@@ -189,6 +189,12 @@ class LivePlaybackSourceResolver @Inject constructor(
                     TlvExtractorsFactory(
                         preferredVideoPacketId = request.quality.videoPacketId,
                         onTracksChanged = { if (acceptsCurrentSession()) rawMmtsLayerController?.updateTracks(it) },
+                        onDemuxerReady = { if (acceptsCurrentSession()) rawMmtsLayerController?.attachDemuxer(it) },
+                        onLayerSwitchRecommended = { video, audio ->
+                            if (acceptsCurrentSession()) {
+                                rawMmtsLayerController?.requestAutomaticSwitch(video, audio)
+                            }
+                        },
                         onSubtitleDataReceived = onB62SubtitleDataReceived,
                         dataBroadcastingCallback = dataBroadcastingCallback
                     )
@@ -229,10 +235,12 @@ class LivePlaybackSourceResolver @Inject constructor(
         runtime: PlayerRuntime,
         request: Request,
         rawMmtsLayerController: RawMmtsLayerController,
-        acceptsCurrentSession: () -> Boolean
+        acceptsCurrentSession: () -> Boolean,
+        onNotice: (String) -> Unit = {}
     ) {
         if (!request.quality.isRawMmts) return
         val player = runtime.player
+        rawMmtsLayerController.attachPlayer(player, acceptsCurrentSession, onNotice)
         lateinit var unregister: () -> Unit
         unregister = runtime.addListener(object : androidx.media3.common.Player.Listener {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {

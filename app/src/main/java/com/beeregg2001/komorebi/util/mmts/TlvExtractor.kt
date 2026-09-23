@@ -76,6 +76,8 @@ class TlvExtractorsFactory(
     private val sourceLengthProvider: (() -> Long)? = null,
     private val durationUs: Long = C.TIME_UNSET,
     private val onTracksChanged: (List<TlvTrackInfo>) -> Unit = {},
+    private val onDemuxerReady: (NativeTlvDemuxer) -> Unit = {},
+    private val onLayerSwitchRecommended: (Int, Int) -> Unit = { _, _ -> },
     private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit = {},
     private val dataBroadcastingCallback: B60DataBroadcastingCallback? = null
 ) : ExtractorsFactory {
@@ -90,6 +92,8 @@ class TlvExtractorsFactory(
             sourceLengthProvider,
             durationUs,
             onTracksChanged,
+            onDemuxerReady,
+            onLayerSwitchRecommended,
             onSubtitleDataReceived,
             dataBroadcastingCallback
         )
@@ -111,6 +115,8 @@ class TlvExtractor(
     private val sourceLengthProvider: (() -> Long)?,
     private val durationUs: Long,
     private val onTracksChanged: (List<TlvTrackInfo>) -> Unit,
+    private val onDemuxerReady: (NativeTlvDemuxer) -> Unit,
+    private val onLayerSwitchRecommended: (Int, Int) -> Unit,
     private val onSubtitleDataReceived: (B62SubtitleSample) -> Unit,
     private val dataBroadcastingCallback: B60DataBroadcastingCallback?
 ) : Extractor, NativeTlvDemuxer.Callback {
@@ -119,6 +125,8 @@ class TlvExtractor(
     private val videoReaders = linkedMapOf<Long, H265Reader>()
     private val audioReaders = linkedMapOf<Long, LatmReader>()
     private val trackInventory = linkedMapOf<Int, TlvTrackInfo>()
+    private val mptTrackIdsByContext = linkedMapOf<Long, Set<Long>>()
+    private var selectedContextId: Long? = null
 
     private var extractorOutput: ExtractorOutput? = null
     private var nativeDemuxer: NativeTlvDemuxer? = null
@@ -148,6 +156,7 @@ class TlvExtractor(
             buildRecordingIndex = enableSeeking,
             exposeAllVideoTracks = !enableSeeking
         )
+        nativeDemuxer?.let(onDemuxerReady)
     }
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
@@ -383,6 +392,17 @@ class TlvExtractor(
         Log.i(TAG, "MMTS service: context=$contextId packageId=${packageId.toHexString()}")
     }
 
+    override fun onMptSnapshot(contextId: Long, trackIds: LongArray) {
+        // MPT callbacks can precede the corresponding onTrack callbacks. Publish
+        // their intersection so retired tracks disappear without inventing rows.
+        mptTrackIdsByContext[contextId] = trackIds.toSet()
+        publishCurrentMptTracks()
+    }
+
+    override fun onAutomaticLayerSwitch(videoPacketId: Int, audioPacketId: Int) {
+        onLayerSwitchRecommended(videoPacketId, audioPacketId)
+    }
+
     override fun onTrack(
         trackId: Long,
         contextId: Long,
@@ -405,6 +425,10 @@ class TlvExtractor(
         val output = extractorOutput ?: return
         when {
             codec == CODEC_HEVC && !videoReaders.containsKey(trackId) -> {
+                if (selectedContextId == null &&
+                    (preferredVideoPacketId == null || preferredVideoPacketId == packetId)) {
+                    selectedContextId = contextId
+                }
                 videoReaders[trackId] = H265Reader(
                     SeiReader(emptyList(), MMTS_CONTAINER_MIME_TYPE),
                     MMTS_CONTAINER_MIME_TYPE
@@ -415,6 +439,8 @@ class TlvExtractor(
                     TlvTrackInfo(
                         packetId = packetId,
                         kind = TlvTrackKind.VIDEO,
+                        trackId = trackId,
+                        contextId = contextId,
                         assetGroups = assetGroups(
                             assetGroupIdentifications,
                             assetGroupSelectionLevels
@@ -481,6 +507,8 @@ class TlvExtractor(
             TlvTrackInfo(
                 packetId = track.packetId,
                 kind = TlvTrackKind.AUDIO,
+                trackId = track.trackId,
+                contextId = track.contextId,
                 assetGroups = assetGroups(track.groupIdentifications, track.selectionLevels),
                 audioMainComponent = track.mainComponent
             )
@@ -497,7 +525,14 @@ class TlvExtractor(
 
     private fun publishTrack(track: TlvTrackInfo) {
         trackInventory[track.packetId] = track
-        onTracksChanged(trackInventory.values.toList())
+        publishCurrentMptTracks()
+    }
+
+    private fun publishCurrentMptTracks() {
+        onTracksChanged(trackInventory.values.filter { track ->
+            enableSeeking || (track.contextId == selectedContextId &&
+                track.trackId in mptTrackIdsByContext[track.contextId].orEmpty())
+        })
     }
 
     private fun assetGroups(

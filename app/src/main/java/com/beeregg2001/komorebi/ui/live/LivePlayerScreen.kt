@@ -286,14 +286,28 @@ fun LivePlayerScreen(
     val dualDetail by livePlayerViewModel.dualSseDetail.collectAsState()
 
     val availableQualities by livePlayerViewModel.availableQualities.collectAsState(initial = StreamQuality.DEFAULT_QUALITIES)
+    val currentRawMmtsQualities by livePlayerViewModel.mainRawMmtsQualities.collectAsState()
     val isQualitiesLoaded by livePlayerViewModel.isQualitiesLoaded.collectAsState()
-    val effectiveAvailableQualities = remember(availableQualities, currentChannelItem) {
-        effectiveLiveQualities(availableQualities, currentChannelItem)
+    val effectiveAvailableQualities = remember(availableQualities, currentChannelItem, currentRawMmtsQualities) {
+        effectiveLiveQualities(availableQualities, currentChannelItem, currentRawMmtsQualities)
     }
     val streamRestartQualityKey = if (ps.currentQuality.isRawMmts) {
         StreamQuality.RAW_MMTS_PRIMARY_VALUE
     } else {
         ps.currentQuality.value
+    }
+
+    LaunchedEffect(currentChannelItem.id, effectiveAvailableQualities) {
+        if (ps.currentQuality.isRawMmts &&
+            effectiveAvailableQualities.none { it.value == ps.currentQuality.value }) {
+            val automatic = effectiveAvailableQualities.firstOrNull()
+                ?: StreamQuality.rawMmtsQualities(currentChannelItem).first()
+            if (livePlayerViewModel.switchRawMmtsLayer(
+                    automatic, ps.currentAudioMode == AudioMode.MAIN)) {
+                ps.currentQuality = automatic
+                onShowToast("選択した放送画質がなくなったため、自動に戻しました")
+            }
+        }
     }
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
