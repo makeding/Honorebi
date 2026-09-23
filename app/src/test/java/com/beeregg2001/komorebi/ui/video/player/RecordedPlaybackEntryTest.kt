@@ -5,12 +5,14 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.RecordedVideo
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecordedPlaybackEntryTest {
     private val hls = StreamQuality.DEFAULT_QUALITIES.first()
     private val raw = StreamQuality.recordedRawMmts()
+    private val copyHls = StreamQuality.recordedCopyHls()
 
     @Test
     fun cachedRecordingWaitsForDetailAndMatchingQuality() {
@@ -40,6 +42,18 @@ class RecordedPlaybackEntryTest {
             .endsWith("/api/streams/video/42/raw-mmts/mpegts"))
         assertTrue(UrlBuilder.getVideoPlaylistUrl("tv.example", "443", 42, "session", hls.value)
             .contains("/api/streams/video/42/${hls.value}/playlist?session_id=session"))
+        assertTrue(UrlBuilder.getVideoPlaylistUrl("tv.example", "443", 42, "session", copyHls.value)
+            .contains("/api/streams/video/42/copy/playlist?session_id=session"))
+        assertTrue(canResolveRecordedPlaybackUrl(program(42, "MMT/TLV"), "KONOMITV", 42,
+            true, listOf(raw, copyHls), copyHls))
+    }
+
+    @Test
+    fun completedMmtStartsRawButKeepsManualHlsSelection() {
+        val qualities = listOf(raw, copyHls)
+        assertEquals(raw, chooseRecordedQuality(qualities, hls, "copy", false, true, false))
+        assertEquals(copyHls, chooseRecordedQuality(qualities, copyHls, "1080p", false, true, true))
+        assertEquals(raw, chooseRecordedQuality(listOf(raw), copyHls, "copy", false, true, true))
     }
 
     private fun program(id: Int, container: String) = RecordedProgram(

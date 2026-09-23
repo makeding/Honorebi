@@ -40,7 +40,7 @@ class PlaybackQualityCatalog @Inject constructor(
                 edcbQualities(settingsRepository.videoQuality.first())
             }
             "KONOMITV" -> when {
-                program?.requiresRawMmtsPlayback == true -> listOf(StreamQuality.recordedRawMmts())
+                program?.requiresRawMmtsPlayback == true -> buildMmtRecordedQualities(program)
                 program?.recordedVideo?.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
                     program?.recordedVideo?.videoCodec.equals("MPEG-2", ignoreCase = true) ->
                     listOf(StreamQuality.originalMpegTsHardwareDi()) + StreamQuality.DEFAULT_QUALITIES
@@ -110,3 +110,11 @@ class PlaybackQualityCatalog @Inject constructor(
         val STREAM_QUALITY_LIST_TYPE = object : TypeToken<List<StreamQuality>>() {}.type
     }
 }
+
+internal fun buildMmtRecordedQualities(program: RecordedProgram): List<StreamQuality> =
+    listOf(StreamQuality.recordedRawMmts()) +
+        if (!program.isRecording && program.recordedVideo.status.equals("Recorded", ignoreCase = true)) {
+            listOf(StreamQuality.recordedCopyHls())
+        } else {
+            emptyList()
+        }

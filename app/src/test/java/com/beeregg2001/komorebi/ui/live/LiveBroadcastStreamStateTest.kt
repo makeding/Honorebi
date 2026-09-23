@@ -24,4 +24,26 @@ class LiveBroadcastStreamStateTest {
         assertEquals(LiveBroadcastStreamAction.REOPEN_AFTER_RESTART, main.onStatus("ONAir", false))
         assertEquals(LiveBroadcastStreamAction.PLAY, LiveBroadcastStreamState().onStatus("ONAir", false))
     }
+
+    @Test fun establishedOfflineRequestsOneRecoveryButInitialOfflineDoesNot() {
+        val state = LiveBroadcastStreamState()
+        assertEquals(LiveBroadcastStreamAction.PAUSE, state.onStatus("Offline", false))
+        assertEquals(LiveBroadcastStreamAction.PAUSE, state.onStatus("Standby", false))
+        assertEquals(LiveBroadcastStreamAction.PLAY, state.onStatus("ONAir", false))
+        assertEquals(LiveBroadcastStreamAction.RECOVER_OFFLINE, state.onStatus("Offline", false))
+        assertEquals(LiveBroadcastStreamAction.PAUSE, state.onStatus("Offline", false))
+        assertEquals(LiveBroadcastStreamAction.PAUSE, state.onStatus("Standby", false))
+        assertEquals(LiveBroadcastStreamAction.PLAY, state.onStatus("ONAir", false))
+        assertEquals(LiveBroadcastStreamAction.RECOVER_OFFLINE, state.onStatus("Offline", false))
+    }
+
+    @Test fun offlineRecoveryDoesNotAffectTheOtherSlotOrNewGeneration() {
+        val main = LiveBroadcastStreamState()
+        val dual = LiveBroadcastStreamState()
+        main.onStatus("ONAir", false)
+        dual.onStatus("ONAir", false)
+        assertEquals(LiveBroadcastStreamAction.RECOVER_OFFLINE, main.onStatus("Offline", false))
+        assertEquals(LiveBroadcastStreamAction.PLAY, dual.onStatus("ONAir", false))
+        assertEquals(LiveBroadcastStreamAction.PAUSE, LiveBroadcastStreamState().onStatus("Offline", false))
+    }
 }

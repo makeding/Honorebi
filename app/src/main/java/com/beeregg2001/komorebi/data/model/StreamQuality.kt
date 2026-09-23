@@ -13,6 +13,7 @@ data class StreamQuality(
     companion object {
         const val RAW_MMTS_PRIMARY_VALUE = "raw-mmts"
         const val RAW_MMTS_SECONDARY_VALUE = "raw-mmts-secondary"
+        const val RECORDED_COPY_HLS_VALUE = "copy"
         const val ORIGINAL_MPEG_TS_VALUE = "original-mpegts-hwdi"
 
         fun originalMpegTsHardwareDi(): StreamQuality = StreamQuality(
@@ -25,6 +26,11 @@ data class StreamQuality(
             label = "TLV パススルー",
             value = RAW_MMTS_PRIMARY_VALUE,
             isRawMmts = true
+        )
+
+        fun recordedCopyHls(): StreamQuality = StreamQuality(
+            label = "HLS（オリジナル）",
+            value = RECORDED_COPY_HLS_VALUE
         )
 
         // KonomiTVなどのバックエンド用のデフォルト（固定）リスト

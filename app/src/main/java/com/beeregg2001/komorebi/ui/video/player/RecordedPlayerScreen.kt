@@ -87,6 +87,27 @@ internal fun canResolveRecordedPlaybackUrl(
     selectedQuality.value.isNotBlank() &&
     availableQualities.any { it.value == selectedQuality.value }
 
+internal fun chooseRecordedQuality(
+    availableQualities: List<StreamQuality>,
+    currentQuality: StreamQuality,
+    savedQuality: String,
+    preferOriginalMpegTs: Boolean,
+    isMmtRecording: Boolean,
+    mmtsInitialQualityApplied: Boolean,
+): StreamQuality {
+    if (isMmtRecording && !mmtsInitialQualityApplied) {
+        return availableQualities.firstOrNull { it.isRawMmts } ?: availableQualities.first()
+    }
+    val preferredOriginal = if (preferOriginalMpegTs && !isMmtRecording) {
+        availableQualities.firstOrNull { it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE }
+    } else null
+    return preferredOriginal
+        ?: availableQualities.firstOrNull { it.value == currentQuality.value }
+        ?: (if (!isMmtRecording) availableQualities.firstOrNull { it.value == savedQuality } else null)
+        ?: availableQualities.firstOrNull { it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE }
+        ?: availableQualities.first()
+}
+
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -206,6 +227,7 @@ internal fun RecordedPlayerScreen(
         mutableStateOf<Long?>(null)
     }
     val requiresRawMmtsPlayback = currentProgram.requiresRawMmtsPlayback
+    var mmtsInitialQualityApplied by remember(currentProgram.id) { mutableStateOf(false) }
     val isHdrRenderModeSupported =
         requiresRawMmtsPlayback && videoPlayerViewModel.isHdrToSdrToneMappingSupported
     val enableHdrToSdrToneMapping =
@@ -282,34 +304,23 @@ internal fun RecordedPlayerScreen(
         requiresRawMmtsPlayback
     ) {
         if (qualityReady && availableQualities.isNotEmpty()) {
-            val preferredOriginal = if (preferOriginalMpegTs == "ON") {
-                availableQualities.firstOrNull {
-                    it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
-                }
-            } else {
-                null
+            val selected = chooseRecordedQuality(
+                availableQualities = availableQualities,
+                currentQuality = vs.currentQuality,
+                savedQuality = currentVideoQualityStr,
+                preferOriginalMpegTs = preferOriginalMpegTs == "ON",
+                isMmtRecording = requiresRawMmtsPlayback,
+                mmtsInitialQualityApplied = mmtsInitialQualityApplied,
+            )
+            val wasAvailable = availableQualities.any { it.value == vs.currentQuality.value }
+            vs.currentQuality = selected
+            if (!wasAvailable && !selected.isRawMmts &&
+                selected.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE &&
+                selected.value != StreamQuality.RECORDED_COPY_HLS_VALUE
+            ) {
+                videoPlayerViewModel.saveVideoQuality(selected.value)
             }
-            val matched = if (requiresRawMmtsPlayback) {
-                availableQualities.firstOrNull { it.isRawMmts }
-            } else {
-                preferredOriginal
-                ?: availableQualities.find { it.value == vs.currentQuality.value }
-                ?: availableQualities.find { it.value == currentVideoQualityStr }
-            }
-            if (matched != null) {
-                vs.currentQuality = matched
-            } else {
-                val fallback = availableQualities.firstOrNull {
-                    it.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
-                } ?: availableQualities.first()
-                vs.currentQuality = fallback
-                if (
-                    !fallback.isRawMmts &&
-                    fallback.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
-                ) {
-                    videoPlayerViewModel.saveVideoQuality(fallback.value)
-                }
-            }
+            if (requiresRawMmtsPlayback) mmtsInitialQualityApplied = true
         }
     }
 
@@ -902,6 +913,8 @@ internal fun RecordedPlayerScreen(
     val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
     val usesSerializedRawMmtsSeek = requiresRawMmtsPlayback && vs.currentQuality.isRawMmts
+    val usesMmtServerTimeline = requiresRawMmtsPlayback &&
+        vs.currentQuality.value == StreamQuality.RECORDED_COPY_HLS_VALUE
     val usesExtractorByteSeek = isEdcbDirect || usesSerializedRawMmtsSeek || (
         currentProgram.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
             currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true) &&
@@ -972,7 +985,7 @@ internal fun RecordedPlayerScreen(
             ).coerceAtLeast(0L)
         } else {
             resolveCompletedRecordingTimelineDurationMs(
-                isRawMmtsPlayback = usesSerializedRawMmtsSeek,
+                isRawMmtsPlayback = usesSerializedRawMmtsSeek || usesMmtServerTimeline,
                 konomiReportedDurationMs =
                     (currentProgram.recordedVideo.duration * 1000).toLong(),
                 nativePlayerDurationMs = playbackDurationMs,
@@ -987,6 +1000,7 @@ internal fun RecordedPlayerScreen(
             resolveCompletedRecordingAutomationDurationMs(
                 requiresRawMmtsPlayback = requiresRawMmtsPlayback,
                 isRawMmtsPlayback = usesSerializedRawMmtsSeek,
+                isMmtCopyHlsPlayback = usesMmtServerTimeline,
                 konomiReportedDurationMs =
                     (currentProgram.recordedVideo.duration * 1000).toLong(),
                 nativePlayerDurationMs = playbackDurationMs,
@@ -1667,7 +1681,8 @@ internal fun RecordedPlayerScreen(
             vs.currentQuality = quality
             if (
                 !quality.isRawMmts &&
-                quality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+                quality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE &&
+                quality.value != StreamQuality.RECORDED_COPY_HLS_VALUE
             ) {
                 videoPlayerViewModel.saveVideoQuality(quality.value)
             }

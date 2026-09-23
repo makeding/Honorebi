@@ -26,18 +26,19 @@ fun resolveCompletedRecordingTimelineDurationMs(
  * playback position: doing so makes a restored position look like the end of
  * the recording while the extractor is still discovering its duration.
  *
- * Recordings that require Raw MMTS also have a short bootstrap period before
- * the raw quality is selected. During that period, neither KonomiTV metadata
- * nor a temporary non-raw player duration is authoritative.
+ * MMT/TLV recordings have a short bootstrap period before Raw or copy HLS is
+ * selected. During that period, neither KonomiTV metadata nor a temporary
+ * player duration is authoritative.
  */
 fun resolveCompletedRecordingAutomationDurationMs(
     requiresRawMmtsPlayback: Boolean,
     isRawMmtsPlayback: Boolean,
+    isMmtCopyHlsPlayback: Boolean = false,
     konomiReportedDurationMs: Long,
     nativePlayerDurationMs: Long,
 ): Long {
     if (requiresRawMmtsPlayback) {
-        return if (isRawMmtsPlayback && nativePlayerDurationMs > 0L) {
+        return if ((isRawMmtsPlayback || isMmtCopyHlsPlayback) && nativePlayerDurationMs > 0L) {
             nativePlayerDurationMs
         } else {
             0L

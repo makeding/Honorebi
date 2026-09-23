@@ -1417,7 +1417,9 @@ class LivePlayerViewModel @Inject constructor(
                     val json = JSONObject(data)
                     val status = json.optString("status", "Unknown")
                     val detail = json.optString("detail", AppStrings.STATUS_LOADING)
-                    Log.i(TAG, "$label SSE status=$status channel=$channelId quality=$quality token=${token.epoch}")
+                    Log.i(TAG, "$label SSE status=$status detail=$detail clients=${json.optInt("client_count", -1)} " +
+                        "channel=$channelId quality=$quality token=${token.epoch} " +
+                        "mediaState=${slot.currentRuntime()?.player?.playbackState}")
                     statusFlow.value = status
                     detailFlow.value = if (detail.contains("OnAirです")) "" else detail
                     if (status == "Offline" && !currentDeviceNetworkAvailable()) {
@@ -1438,6 +1440,13 @@ class LivePlayerViewModel @Inject constructor(
                             runtime?.player?.playbackState == Player.STATE_ENDED
                         when (run.broadcastState.onStatus(status, invalid)) {
                             LiveBroadcastStreamAction.PAUSE -> runtime?.pause()
+                            LiveBroadcastStreamAction.RECOVER_OFFLINE -> {
+                                val reason = detail.takeUnless { it.isBlank() || it == "ライブストリームは Offline です。" }
+                                    ?: "放送ストリームが停止しました"
+                                Log.w(TAG, "$label established stream went Offline; reopening media token=${token.epoch}")
+                                fail(PlaybackException(reason, LiveStreamStatusException(reason, null, null),
+                                    PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
+                            }
                             LiveBroadcastStreamAction.REOPEN_AFTER_RESTART -> {
                                 // Server Restart is an expected lifecycle transition. Re-resolve the
                                 // media source without converting it into a player I/O failure.

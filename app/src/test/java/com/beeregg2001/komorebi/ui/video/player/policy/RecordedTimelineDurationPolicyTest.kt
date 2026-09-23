@@ -86,6 +86,20 @@ class RecordedTimelineDurationPolicyTest {
     }
 
     @Test
+    fun mmtCopyHlsUsesPlayerDurationInsteadOfBroadcastMetadata() {
+        assertEquals(
+            1_815_065L,
+            resolveCompletedRecordingAutomationDurationMs(
+                requiresRawMmtsPlayback = true,
+                isRawMmtsPlayback = false,
+                isMmtCopyHlsPlayback = true,
+                konomiReportedDurationMs = 3_600_000L,
+                nativePlayerDurationMs = 1_815_065L,
+            )
+        )
+    }
+
+    @Test
     fun ordinaryRecordingKeepsReportedDurationForAutomation() {
         assertEquals(
             3_600_000L,
