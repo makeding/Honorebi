@@ -97,18 +97,23 @@ class LivePlaybackSourceResolver @Inject constructor(
                 throw error
             }
         }
-        val isRawMmts = channel.type.equals("BS4K", ignoreCase = true)
-        val quality = if (isRawMmts) {
-            StreamQuality.rawMmtsQualities(channel)
-                .firstOrNull { it.value == requestedQuality.value }
-                ?: StreamQuality.rawMmtsQualities(channel).first()
+        val isBs4k = channel.type.equals("BS4K", ignoreCase = true)
+        val quality = if (isBs4k) {
+            if (!requestedQuality.isRawMmts && requestedSource == StreamSource.KONOMITV &&
+                StreamQuality.DEFAULT_QUALITIES.any { it.value == requestedQuality.value }) {
+                requestedQuality
+            } else {
+                StreamQuality.rawMmtsQualities(channel)
+                    .firstOrNull { it.value == requestedQuality.value }
+                    ?: StreamQuality.rawMmtsQualities(channel).first()
+            }
         } else if (requestedQuality.isRawMmts) {
             val savedQuality = settingsRepository.liveQuality.first()
             StreamQuality(label = savedQuality, value = savedQuality)
         } else {
             requestedQuality
         }
-        val source = if (isRawMmts) resolveRawMmtsSource(requestedSource) else requestedSource
+        val source = if (isBs4k) resolveRawMmtsSource(requestedSource) else requestedSource
         val isEdcbDirect = source == StreamSource.EDCB && requestedIsEdcbDirect
         val config = settingsRepository.getBackendConfig(source)
         val url = when (source) {

@@ -288,8 +288,8 @@ fun LivePlayerScreen(
     val availableQualities by livePlayerViewModel.availableQualities.collectAsState(initial = StreamQuality.DEFAULT_QUALITIES)
     val currentRawMmtsQualities by livePlayerViewModel.mainRawMmtsQualities.collectAsState()
     val isQualitiesLoaded by livePlayerViewModel.isQualitiesLoaded.collectAsState()
-    val effectiveAvailableQualities = remember(availableQualities, currentChannelItem, currentRawMmtsQualities) {
-        effectiveLiveQualities(availableQualities, currentChannelItem, currentRawMmtsQualities)
+    val effectiveAvailableQualities = remember(availableQualities, currentChannelItem, currentRawMmtsQualities, ps.currentStreamSource) {
+        effectiveLiveQualities(availableQualities, currentChannelItem, currentRawMmtsQualities, ps.currentStreamSource)
     }
     val streamRestartQualityKey = if (ps.currentQuality.isRawMmts) {
         StreamQuality.RAW_MMTS_PRIMARY_VALUE
@@ -312,7 +312,7 @@ fun LivePlayerScreen(
 
     val currentLiveQualityStr by settingsViewModel.liveQuality.collectAsState()
     val dualQuality = ps.dualRightChannel?.let {
-        liveSlotQuality(availableQualities, it, currentLiveQualityStr)
+        liveSlotQuality(availableQualities, it, currentLiveQualityStr, ps.currentStreamSource)
     }
     val dualQualityKey = dualQuality?.let {
         if (it.isRawMmts) StreamQuality.RAW_MMTS_PRIMARY_VALUE else it.value
@@ -392,6 +392,7 @@ fun LivePlayerScreen(
         livePlayerViewModel.fetchAvailableQualities(ps.currentStreamSource, ps.isEdcbDirect)
     }
 
+    var bs4kInitialQualityApplied by remember(currentChannelItem.id) { mutableStateOf(false) }
     LaunchedEffect(
         effectiveAvailableQualities,
         isQualitiesLoaded,
@@ -399,7 +400,12 @@ fun LivePlayerScreen(
         currentChannelItem.id
     ) {
         if (isQualitiesLoaded && effectiveAvailableQualities.isNotEmpty()) {
-            val matched = effectiveAvailableQualities.find { it.value == currentLiveQualityStr }
+            val isBs4k = currentChannelItem.type.equals("BS4K", ignoreCase = true)
+            val matched = when {
+                isBs4k && !bs4kInitialQualityApplied -> effectiveAvailableQualities.firstOrNull { it.isRawMmts }
+                isBs4k -> effectiveAvailableQualities.firstOrNull { it.value == ps.currentQuality.value }
+                else -> effectiveAvailableQualities.find { it.value == currentLiveQualityStr }
+            }
             if (matched != null) {
                 ps.currentQuality = matched
             } else {
@@ -413,6 +419,7 @@ fun LivePlayerScreen(
                     livePlayerViewModel.saveLiveQuality(fallback.value)
                 }
             }
+            if (isBs4k) bs4kInitialQualityApplied = true
         }
     }
 

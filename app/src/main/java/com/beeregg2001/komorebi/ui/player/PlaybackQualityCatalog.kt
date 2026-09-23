@@ -117,4 +117,4 @@ internal fun buildMmtRecordedQualities(program: RecordedProgram): List<StreamQua
             listOf(StreamQuality.recordedCopyHls())
         } else {
             emptyList()
-        }
+        } + StreamQuality.DEFAULT_QUALITIES

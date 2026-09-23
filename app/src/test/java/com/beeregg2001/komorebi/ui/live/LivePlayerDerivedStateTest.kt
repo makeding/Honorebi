@@ -71,7 +71,7 @@ class LivePlayerDerivedStateTest {
     }
 
     @Test
-    fun bs4kAlwaysUsesRawMmtsQualitiesWhileOtherChannelsUseBackendQualities() {
+    fun bs4kCombinesRawLayersAndKonomiEncodingQualities() {
         val backendQualities = listOf(StreamQuality("HD", "hd"))
         val currentMptQualities = listOf(
             StreamQuality("自動", StreamQuality.RAW_MMTS_PRIMARY_VALUE, isRawMmts = true),
@@ -84,6 +84,15 @@ class LivePlayerDerivedStateTest {
             effectiveLiveQualities(backendQualities, channel(type = "BS4K")).map { it.value })
         assertEquals(currentMptQualities,
             effectiveLiveQualities(backendQualities, channel(type = "BS4K"), currentMptQualities))
+        val expected = currentMptQualities.map { it.value } + StreamQuality.DEFAULT_QUALITIES.map { it.value }
+        assertEquals(expected,
+            effectiveLiveQualities(StreamQuality.DEFAULT_QUALITIES, channel(type = "BS4K"),
+                currentMptQualities, StreamSource.KONOMITV).map { it.value })
+        assertEquals(currentMptQualities,
+            effectiveLiveQualities(StreamQuality.DEFAULT_QUALITIES, channel(type = "BS4K"),
+                currentMptQualities, StreamSource.MIRAKURUN))
+        assertTrue(liveSlotQuality(StreamQuality.DEFAULT_QUALITIES, channel(type = "BS4K"),
+            "1080p", StreamSource.KONOMITV).isRawMmts)
     }
 
     @Test

@@ -10,15 +10,16 @@ class RecordedHlsQualityTest {
     @Test
     fun copyHlsIsOfferedOnlyAfterMmtRecordingCompletes() {
         assertEquals(
-            listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE, StreamQuality.RECORDED_COPY_HLS_VALUE),
+            listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE, StreamQuality.RECORDED_COPY_HLS_VALUE) +
+                StreamQuality.DEFAULT_QUALITIES.map { it.value },
             buildMmtRecordedQualities(program("Recorded", false)).map { it.value },
         )
         assertEquals(
-            listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE),
+            listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE) + StreamQuality.DEFAULT_QUALITIES.map { it.value },
             buildMmtRecordedQualities(program("Recording", true)).map { it.value },
         )
         assertEquals(
-            listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE),
+            listOf(StreamQuality.RAW_MMTS_PRIMARY_VALUE) + StreamQuality.DEFAULT_QUALITIES.map { it.value },
             buildMmtRecordedQualities(program("Recording", false)).map { it.value },
         )
     }

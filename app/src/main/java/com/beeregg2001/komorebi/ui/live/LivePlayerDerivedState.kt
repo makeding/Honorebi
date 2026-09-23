@@ -45,21 +45,27 @@ internal fun deriveLiveChannelNavigation(
 internal fun effectiveLiveQualities(
     availableQualities: List<StreamQuality>,
     channel: Channel,
-    currentRawMmtsQualities: List<StreamQuality> = emptyList()
+    currentRawMmtsQualities: List<StreamQuality> = emptyList(),
+    source: StreamSource = StreamSource.KONOMITV,
 ): List<StreamQuality> =
     if (channel.supportsLiveStreamSession()) {
         listOf(StreamQuality("Direct", "direct"))
     } else if (channel.type.equals("BS4K", ignoreCase = true)) {
-        currentRawMmtsQualities.ifEmpty { StreamQuality.rawMmtsQualities(channel) }
+        currentRawMmtsQualities.ifEmpty { StreamQuality.rawMmtsQualities(channel) } +
+            if (source == StreamSource.KONOMITV) availableQualities.filter { quality ->
+                StreamQuality.DEFAULT_QUALITIES.any { it.value == quality.value }
+            } else emptyList()
     } else {
         availableQualities
     }
 
 /** Resolve each slot from its own channel and the broadcast preference, never another slot. */
 internal fun liveSlotQuality(
-    availableQualities: List<StreamQuality>, channel: Channel, broadcastPreference: String
+    availableQualities: List<StreamQuality>, channel: Channel, broadcastPreference: String,
+    source: StreamSource = StreamSource.KONOMITV,
 ): StreamQuality {
-    val qualities = effectiveLiveQualities(availableQualities, channel)
+    val qualities = effectiveLiveQualities(availableQualities, channel, source = source)
+    if (channel.type.equals("BS4K", ignoreCase = true)) return qualities.first()
     return qualities.firstOrNull { it.value == broadcastPreference }
         ?: qualities.firstOrNull()
         ?: StreamQuality.DEFAULT_QUALITIES.first()
