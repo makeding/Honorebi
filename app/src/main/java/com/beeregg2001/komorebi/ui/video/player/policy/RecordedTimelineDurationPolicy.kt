@@ -3,17 +3,17 @@ package com.beeregg2001.komorebi.ui.video.player.policy
 /**
  * Resolves the timeline shown for a completed recording.
  *
- * Raw MMTS duration is owned by libaribtlv's native duration probe. KonomiTV's
- * EIT-derived recorded duration is not a valid fallback for that container.
+ * MMT/TLV playback uses the active Raw extractor or server HLS timeline.
+ * KonomiTV's EIT-derived recorded duration is not a valid fallback for it.
  */
 fun resolveCompletedRecordingTimelineDurationMs(
-    isRawMmtsPlayback: Boolean,
+    usesNativeMmtDuration: Boolean,
     konomiReportedDurationMs: Long,
     nativePlayerDurationMs: Long,
     playbackPositionMs: Long,
     bufferedPositionMs: Long,
 ): Long = maxOf(
-    if (isRawMmtsPlayback) 0L else konomiReportedDurationMs,
+    if (usesNativeMmtDuration) 0L else konomiReportedDurationMs,
     nativePlayerDurationMs,
     playbackPositionMs,
     bufferedPositionMs,

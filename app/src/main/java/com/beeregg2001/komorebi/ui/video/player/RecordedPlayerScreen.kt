@@ -985,7 +985,7 @@ internal fun RecordedPlayerScreen(
             ).coerceAtLeast(0L)
         } else {
             resolveCompletedRecordingTimelineDurationMs(
-                isRawMmtsPlayback = usesSerializedRawMmtsSeek || usesMmtServerTimeline,
+                usesNativeMmtDuration = usesSerializedRawMmtsSeek || usesMmtServerTimeline,
                 konomiReportedDurationMs =
                     (currentProgram.recordedVideo.duration * 1000).toLong(),
                 nativePlayerDurationMs = playbackDurationMs,
