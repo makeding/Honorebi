@@ -94,6 +94,9 @@ class VideoPlayerViewModel @Inject constructor(
     private val _isQualitiesLoaded = MutableStateFlow(false)
     val isQualitiesLoaded: StateFlow<Boolean> = _isQualitiesLoaded.asStateFlow()
 
+    private val _qualitiesProgramId = MutableStateFlow<Int?>(null)
+    val qualitiesProgramId: StateFlow<Int?> = _qualitiesProgramId.asStateFlow()
+
     private val _quickVideoCandidates = MutableStateFlow(QuickVideoCandidates())
     val quickVideoCandidates: StateFlow<QuickVideoCandidates> =
         _quickVideoCandidates.asStateFlow()
@@ -107,6 +110,9 @@ class VideoPlayerViewModel @Inject constructor(
         get() = HdrToneMapping.isSupported
 
     private var detailFetchJob: Job? = null
+    private var qualityFetchJob: Job? = null
+    @Volatile
+    private var qualityFetchGeneration = 0L
     private var streamMaintenanceJob: Job? = null
     private var quickVideoFetchJob: Job? = null
     private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
@@ -138,18 +144,28 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
-    fun fetchAvailableQualities(program: RecordedProgram? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _isQualitiesLoaded.value = false
+    fun fetchAvailableQualities(program: RecordedProgram) {
+        qualityFetchJob?.cancel()
+        val generation = ++qualityFetchGeneration
+        _isQualitiesLoaded.value = false
+        _qualitiesProgramId.value = null
+        _availableQualities.value = emptyList()
+        qualityFetchJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                _availableQualities.value = playbackQualityCatalog.recorded(program)
+                val qualities = playbackQualityCatalog.recorded(program)
+                if (isActive && qualityFetchGeneration == generation) {
+                    _availableQualities.value = qualities
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load stream qualities from cache", e)
-                _availableQualities.value = playbackQualityCatalog.recorded(null)
+                if (qualityFetchGeneration == generation) _availableQualities.value = emptyList()
             } finally {
-                _isQualitiesLoaded.value = true
+                if (isActive && qualityFetchGeneration == generation) {
+                    _qualitiesProgramId.value = program.id
+                    _isQualitiesLoaded.value = true
+                }
             }
         }
     }
@@ -189,6 +205,7 @@ class VideoPlayerViewModel @Inject constructor(
 
     fun fetchProgramDetail(videoId: Int) {
         detailFetchJob?.cancel()
+        _programDetail.value = null
         _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId, loading = true)
         detailFetchJob = viewModelScope.launch {
             val result = try {
@@ -204,6 +221,12 @@ class VideoPlayerViewModel @Inject constructor(
             }
             if (!isActive) return@launch
             result.onSuccess { program ->
+                if (settingsRepository.backendType.first() == "KONOMITV" &&
+                    program.recordedVideo.containerFormat.isBlank()) {
+                    _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(
+                        videoId, error = "ファイル形式を確認できませんでした。再試行してください。（CONTAINER_FORMAT）")
+                    return@onSuccess
+                }
                 _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId)
 
                 _programDetail.value = program

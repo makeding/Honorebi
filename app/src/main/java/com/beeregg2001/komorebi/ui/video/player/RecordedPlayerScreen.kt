@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -73,6 +74,19 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
 private const val TAG = "VideoPlayerScreen"
+
+internal fun canResolveRecordedPlaybackUrl(
+    program: RecordedProgram,
+    backendType: String,
+    qualitiesProgramId: Int?,
+    qualitiesLoaded: Boolean,
+    availableQualities: List<StreamQuality>,
+    selectedQuality: StreamQuality,
+): Boolean = program.id != 0 && qualitiesLoaded && qualitiesProgramId == program.id &&
+    (backendType != "KONOMITV" || program.recordedVideo.containerFormat.isNotBlank()) &&
+    selectedQuality.value.isNotBlank() &&
+    availableQualities.any { it.value == selectedQuality.value }
+
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -124,26 +138,46 @@ internal fun RecordedPlayerScreen(
 
     val availableQualities by videoPlayerViewModel.availableQualities.collectAsState()
     val isQualitiesLoaded by videoPlayerViewModel.isQualitiesLoaded.collectAsState()
+    val qualitiesProgramId by videoPlayerViewModel.qualitiesProgramId.collectAsState()
+    val detailRequest by videoPlayerViewModel.programDetailRequest.collectAsState()
     val quickVideoCandidates by videoPlayerViewModel.quickVideoCandidates.collectAsState()
     val hdrRenderMode by videoPlayerViewModel.hdrRenderMode.collectAsState()
     val currentVideoQualityStr by settingsViewModel.videoQuality.collectAsState()
     val preferOriginalMpegTs by settingsViewModel.preferOriginalMpegTs.collectAsState()
+    val backendType by settingsViewModel.backendType.collectAsState()
 
     val isModern = false
     var isBuffering by remember { mutableStateOf(true) }
 
-    LaunchedEffect(initialProgram.id, recordedPlaybackToken) {
+    LaunchedEffect(initialProgram.id, recordedPlaybackToken, backendType) {
         if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
         currentProgram = initialProgram
         videoPlayerViewModel.fetchProgramDetail(initialProgram.id)
-        videoPlayerViewModel.fetchAvailableQualities(initialProgram)
+        if (backendType != "KONOMITV" || initialProgram.recordedVideo.containerFormat.isNotBlank()) {
+            videoPlayerViewModel.fetchAvailableQualities(initialProgram)
+        }
     }
 
     LaunchedEffect(fetchedDetail, recordedPlaybackToken) {
         if (recordedPlaybackFence.accepts() && fetchedDetail != null && fetchedDetail?.id == initialProgram.id) {
+            videoPlayerViewModel.fetchAvailableQualities(fetchedDetail!!)
             currentProgram = fetchedDetail!!
-            videoPlayerViewModel.fetchAvailableQualities(fetchedDetail)
         }
+    }
+
+    val qualityReady = isQualitiesLoaded && qualitiesProgramId == currentProgram.id &&
+        (backendType != "KONOMITV" || currentProgram.recordedVideo.containerFormat.isNotBlank())
+    val containerDetailError = detailRequest.error.takeIf {
+        backendType == "KONOMITV" && initialProgram.recordedVideo.containerFormat.isBlank() &&
+            detailRequest.programId == initialProgram.id
+    }
+    val qualityLoadError = if (qualityReady && availableQualities.isEmpty()) {
+        "再生画質を読み込めませんでした。再試行してください。（QUALITY_LOAD）"
+    } else null
+    val entryError = containerDetailError ?: qualityLoadError
+    val detailRetryFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(entryError) {
+        if (entryError != null) detailRetryFocusRequester.safeRequestFocus(TAG)
     }
 
     val isRecordingChasePlayback =
@@ -241,12 +275,13 @@ internal fun RecordedPlayerScreen(
 
     LaunchedEffect(
         availableQualities,
-        isQualitiesLoaded,
+        qualityReady,
+        currentProgram.id,
         currentVideoQualityStr,
         preferOriginalMpegTs,
         requiresRawMmtsPlayback
     ) {
-        if (isQualitiesLoaded && availableQualities.isNotEmpty()) {
+        if (qualityReady && availableQualities.isNotEmpty()) {
             val preferredOriginal = if (preferOriginalMpegTs == "ON") {
                 availableQualities.firstOrNull {
                     it.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
@@ -840,7 +875,6 @@ internal fun RecordedPlayerScreen(
         }
     }
 
-    val backendType by settingsViewModel.backendType.collectAsState()
     val konomiIp by settingsViewModel.konomiIp.collectAsState(initial = "")
     val konomiPort by settingsViewModel.konomiPort.collectAsState(initial = "")
     val edcbPlayMethod by settingsViewModel.edcbRecordPlayMethod.collectAsState()
@@ -1156,7 +1190,7 @@ internal fun RecordedPlayerScreen(
         currentProgram.id,
         vs.currentQuality.value,
         qualityOptionsKey,
-        isQualitiesLoaded,
+        qualityReady,
         isRecordingChasePlayback,
         initialUrlRetryNonce,
         recordedPlaybackToken,
@@ -1178,8 +1212,8 @@ internal fun RecordedPlayerScreen(
         }
 
 
-        if (currentProgram.id == 0 || !isQualitiesLoaded || vs.currentQuality.value.isBlank()) return@LaunchedEffect
-        if (availableQualities.isNotEmpty() && availableQualities.none { it.value == vs.currentQuality.value }) return@LaunchedEffect
+        if (!canResolveRecordedPlaybackUrl(currentProgram, backendType, qualitiesProgramId,
+                isQualitiesLoaded, availableQualities, vs.currentQuality)) return@LaunchedEffect
 
         isBuffering = true
         val resumePositionMs = resolveRecreatedPlayerStartPositionMs(
@@ -1915,5 +1949,33 @@ internal fun RecordedPlayerScreen(
             },
             onDismiss = dataBroadcastingInput::closeColorSelector
         )
+
+        if (!isPiPMode && entryError != null) {
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .testTag("recorded-container-detail-error"),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    androidx.tv.material3.Text(
+                        if (containerDetailError != null) "録画のファイル形式を確認できませんでした。"
+                        else "再生画質を読み込めませんでした。",
+                        color = Color.White
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    androidx.tv.material3.Text(entryError, color = Color.White)
+                    Spacer(Modifier.height(16.dp))
+                    androidx.tv.material3.Button(
+                        onClick = {
+                            if (containerDetailError != null) videoPlayerViewModel.fetchProgramDetail(initialProgram.id)
+                            else videoPlayerViewModel.fetchAvailableQualities(currentProgram)
+                        },
+                        modifier = Modifier.focusRequester(detailRetryFocusRequester)
+                            .testTag("recorded-container-detail-retry")
+                    ) { androidx.tv.material3.Text("再試行") }
+                }
+            }
+        }
     }
 }
