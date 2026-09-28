@@ -98,6 +98,7 @@ sealed class SettingDialogState {
     object GeminiSetup : SettingDialogState()
     object DeviceCapabilities : SettingDialogState()
     object HonomiLogin : SettingDialogState()
+    object DefaultHomeGuide : SettingDialogState()
 
     data class SmbAction(val target: SmbServer) : SettingDialogState()
     data class SmbSetup(val target: SmbServer? = null) : SettingDialogState()
@@ -485,6 +486,126 @@ fun HonomiLoginDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Button(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.weight(1f)) { Text("キャンセル") }
                     if (isLoading) CircularProgressIndicator(Modifier.size(36.dp).align(Alignment.CenterVertically))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DefaultHomeGuideDialog(
+    environment: HomeEnvironment,
+    isDefaultHome: Boolean,
+    onOpenHomeSettings: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = KomorebiTheme.colors
+    val qrBitmap = rememberQrBitmap(LauncherEnvironmentDetector.TV_TWEAKS_URL, 260)
+    val primaryRequester = remember { FocusRequester() }
+    val closeRequester = remember { FocusRequester() }
+
+    LaunchedEffect(environment) {
+        delay(120)
+        if (environment == HomeEnvironment.ANDROID_TV) {
+            primaryRequester.safeRequestFocus()
+        } else {
+            closeRequester.safeRequestFocus()
+        }
+    }
+
+    val environmentLabel = when (environment) {
+        HomeEnvironment.ANDROID_TV -> "Android TV"
+        HomeEnvironment.GOOGLE_TV -> "Google TV"
+        HomeEnvironment.UNKNOWN -> "不明なデバイス"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(0.8f))
+            .focusGroup()
+            .onKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
+                    onDismiss(); true
+                } else false
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            colors = SurfaceDefaults.colors(containerColor = colors.surface),
+            modifier = Modifier.width(560.dp),
+        ) {
+            Column(
+                Modifier.padding(32.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Text(
+                    AppStrings.DIALOG_DEFAULT_HOME_TITLE,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "検出された環境: $environmentLabel",
+                        color = colors.textSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (isDefaultHome) AppStrings.SETTINGS_VALUE_DEFAULT_HOME_ON
+                        else AppStrings.SETTINGS_VALUE_DEFAULT_HOME_OFF,
+                        color = if (isDefaultHome) colors.accent else colors.textSecondary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                when (environment) {
+                    HomeEnvironment.ANDROID_TV -> {
+                        Text(
+                            "Android TV ではシステムのホーム設定から直接このアプリを既定のホームに指定できます。",
+                            color = colors.textSecondary
+                        )
+                        Button(
+                            onClick = onOpenHomeSettings,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(primaryRequester)
+                        ) { Text("ホーム設定を開く") }
+                    }
+
+                    HomeEnvironment.GOOGLE_TV -> {
+                        Text(
+                            "Google TV では標準の設定画面からホームアプリを変更できません。tvtweaks などのツールを使って ADB 経由で設定してください。",
+                            color = colors.textSecondary
+                        )
+                        if (qrBitmap != null) Image(
+                            bitmap = qrBitmap,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(240.dp)
+                                .align(Alignment.CenterHorizontally)
+                        )
+                        Text(
+                            LauncherEnvironmentDetector.TV_TWEAKS_URL,
+                            color = colors.accent,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    }
+
+                    HomeEnvironment.UNKNOWN -> {
+                        Text(
+                            "この端末ではホームアプリの変更がサポートされていない可能性があります。テレビ端末でご利用ください。",
+                            color = colors.textSecondary
+                        )
+                    }
+                }
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.focusRequester(closeRequester)
+                    ) { Text("閉じる") }
                 }
             }
         }

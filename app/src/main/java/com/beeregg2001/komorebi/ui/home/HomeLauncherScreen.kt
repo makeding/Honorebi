@@ -59,6 +59,7 @@ import java.util.Locale
 private const val TAG = "HomeLauncher"
 internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
 internal const val NETWORK_STATUS_BUTTON_TEST_TAG = "network-status-button"
+private val RETURN_PLAYER_SLOT_WIDTH = 112.dp
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -160,6 +161,36 @@ internal fun NetworkStatusButton(
     }
 }
 
+/**
+ * オフライン時にコンテンツへ重ねて表示する通知ピル。
+ * レイアウトフローに乗らないため、接続状態が変わっても下のコンテンツが動かない。
+ */
+@Composable
+private fun OfflineNoticeBanner(modifier: Modifier = Modifier) {
+    val colors = KomorebiTheme.colors
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.background.copy(alpha = 0.96f))
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.WifiOff,
+            contentDescription = null,
+            tint = colors.accent,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "オフライン — キャッシュ済みの情報を表示しています",
+            color = colors.textPrimary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+        )
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -234,9 +265,8 @@ fun HomeLauncherScreen(
     val backendType by homeViewModel.backendType.collectAsState()
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
-    val tabs = remember {
-        listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約", "放送中")
-    }
+    val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
+    val tabs = remember(hideAppsTab) { visibleHomeTabs(hideAppsTab) }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
 
@@ -616,43 +646,50 @@ fun HomeLauncherScreen(
                         }
                     }
 
-                    if (hasActivePlayer) {
-                        val isEpgJumping =
-                            tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
-                        Button(
-                            onClick = onReturnToPlayerClick,
-                            modifier = Modifier
-                                .focusRequester(returnPlayerFocusRequester)
-                                .focusProperties {
-                                    left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
-                                        ?: FocusRequester.Default
-                                    right = systemSettingsFocusRequester
-                                    canFocus = !isEpgJumping
-                                    up = FocusRequester.Cancel
-                                },
-                            colors = ButtonDefaults.colors(
-                                containerColor = colors.accent.copy(alpha = 0.2f),
-                                focusedContainerColor = colors.accent,
-                                contentColor = colors.accent,
-                                focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                            ),
-                            shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = "再生中",
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "再生中",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                            )
+                    // 「再生中」ボタンの有無で上部バーやタブ列がリフローしないよう、
+                    // 常に同じ幅のスロットを確保しておく。
+                    Box(
+                        modifier = Modifier.width(RETURN_PLAYER_SLOT_WIDTH),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (hasActivePlayer) {
+                            val isEpgJumping =
+                                tabs.getOrNull(safeTabIndex) == "番組表" && ui.isEpgJumping
+                            Button(
+                                onClick = onReturnToPlayerClick,
+                                modifier = Modifier
+                                    .focusRequester(returnPlayerFocusRequester)
+                                    .focusProperties {
+                                        left = ui.tabFocusRequesters.getOrNull(tabs.lastIndex)
+                                            ?: FocusRequester.Default
+                                        right = systemSettingsFocusRequester
+                                        canFocus = !isEpgJumping
+                                        up = FocusRequester.Cancel
+                                    },
+                                colors = ButtonDefaults.colors(
+                                    containerColor = colors.accent.copy(alpha = 0.2f),
+                                    focusedContainerColor = colors.accent,
+                                    contentColor = colors.accent,
+                                    focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                                ),
+                                shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = "再生中",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "再生中",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
                     }
+                    Spacer(modifier = Modifier.width(16.dp))
 
                     IconButton(
                         onClick = { onSettingsToggle(true) },
@@ -711,31 +748,6 @@ fun HomeLauncherScreen(
                     }
                 }
 
-                if (!networkConnectionStatus.isAvailable) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 40.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.accent.copy(alpha = 0.14f))
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.WifiOff,
-                            contentDescription = null,
-                            tint = colors.accent,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "オフライン — キャッシュ済みの情報を表示しています",
-                            color = colors.textPrimary,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                        )
-                    }
-                }
             }
 
             Box(modifier = Modifier.weight(1f)) {
@@ -923,6 +935,16 @@ fun HomeLauncherScreen(
                             LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
                     }
+                }
+
+                // オフライン通知はレイアウトの流れから外し、コンテンツに重ねて表示する。
+                // 接続状態が変わってもコンテンツが上下にリフローしない。
+                if (!networkConnectionStatus.isAvailable) {
+                    OfflineNoticeBanner(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp)
+                    )
                 }
             }
         }

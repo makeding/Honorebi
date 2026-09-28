@@ -53,6 +53,8 @@ class SettingPreferences(
     val defaultRecordListView: String,
     val hideSubChannels: Boolean,
     val hideLauncherAppLabels: Boolean,
+    val hideAppsTab: Boolean,
+    val launcherAppColumns: String,
     val edcbRecordPlayMethod: String,
     val smbServerList: List<SmbServer>,
 // ★ 追加: 番組表設定
@@ -128,6 +130,8 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         defaultRecordListView = repository.defaultRecordListView.collectAsState(initial = "LIST").value,
         hideSubChannels = repository.hideSubChannels.collectAsState(initial = false).value,
         hideLauncherAppLabels = repository.hideLauncherAppLabels.collectAsState(initial = false).value,
+        hideAppsTab = repository.hideAppsTab.collectAsState(initial = false).value,
+        launcherAppColumns = repository.launcherAppColumns.collectAsState(initial = "AUTO").value,
         edcbRecordPlayMethod = repository.edcbRecordPlayMethod.collectAsState(initial = "API").value,
         smbServerList = smbList,
         epgColumnCount = repository.epgColumnCount.collectAsState(initial = "7").value,

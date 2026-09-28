@@ -993,6 +993,98 @@ fun HomeDisplaySettingsContent(
 }
 
 @Composable
+fun LauncherSettingsContent(
+    showAppsTab: Boolean,
+    appColumns: String,
+    showAppLabels: Boolean,
+    environment: HomeEnvironment,
+    isDefaultHome: Boolean,
+    itemRs: List<FocusRequester>,
+    sidebarR: FocusRequester,
+    onToggleAppsTab: () -> Unit,
+    onEditColumns: () -> Unit,
+    onToggleAppLabels: () -> Unit,
+    onOpenDefaultHomeGuide: () -> Unit,
+    onClick: (FocusRequester) -> Unit
+) {
+    val environmentLabel = when (environment) {
+        HomeEnvironment.ANDROID_TV -> "Android TV"
+        HomeEnvironment.GOOGLE_TV -> "Google TV"
+        HomeEnvironment.UNKNOWN -> "不明な端末"
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Text(
+            AppStrings.SETTINGS_CATEGORY_LAUNCHER,
+            style = MaterialTheme.typography.headlineMedium,
+            color = KomorebiTheme.colors.textPrimary,
+            fontWeight = FontWeight.Bold
+        )
+
+        SettingsSection(AppStrings.SETTINGS_SECTION_LAUNCHER_TABS) {
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_SHOW_APPS_TAB,
+                value = if (showAppsTab) "ON" else "OFF",
+                icon = Icons.Default.Apps,
+                modifier = Modifier
+                    .focusRequester(itemRs[0])
+                    .focusProperties {
+                        left = sidebarR
+                        up = FocusRequester.Cancel
+                        down = itemRs[1]
+                    },
+                onClick = { onClick(itemRs[0]); onToggleAppsTab() }
+            )
+        }
+
+        SettingsSection(AppStrings.SETTINGS_SECTION_LAUNCHER_APPS) {
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_LAUNCHER_APP_COLUMNS,
+                value = if (appColumns == "AUTO") AppStrings.SETTINGS_VALUE_LAUNCHER_COLUMNS_AUTO else "${appColumns}列",
+                icon = Icons.Default.GridView,
+                modifier = Modifier
+                    .focusRequester(itemRs[1])
+                    .focusProperties {
+                        left = sidebarR
+                        up = itemRs[0]
+                        down = itemRs[2]
+                    },
+                onClick = { onClick(itemRs[1]); onEditColumns() }
+            )
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_LAUNCHER_APP_LABELS,
+                value = if (showAppLabels) "ON" else "OFF",
+                icon = Icons.Default.TextFields,
+                modifier = Modifier
+                    .focusRequester(itemRs[2])
+                    .focusProperties {
+                        left = sidebarR
+                        up = itemRs[1]
+                        down = itemRs[3]
+                    },
+                onClick = { onClick(itemRs[2]); onToggleAppLabels() }
+            )
+        }
+
+        SettingsSection(AppStrings.SETTINGS_SECTION_LAUNCHER_DEFAULT_HOME) {
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_DEFAULT_HOME,
+                value = "$environmentLabel / " + (if (isDefaultHome) AppStrings.SETTINGS_VALUE_DEFAULT_HOME_ON else AppStrings.SETTINGS_VALUE_DEFAULT_HOME_OFF),
+                icon = Icons.Default.Home,
+                modifier = Modifier
+                    .focusRequester(itemRs[3])
+                    .focusProperties {
+                        left = sidebarR
+                        up = itemRs[2]
+                        down = FocusRequester.Cancel
+                    },
+                onClick = { onClick(itemRs[3]); onOpenDefaultHomeGuide() }
+            )
+        }
+    }
+}
+
+@Composable
 fun DisplaySettingsContent(
     preferences: SettingPreferences,
     startupChannelName: String,

@@ -652,7 +652,7 @@ fun LauncherAppCard(
                 drawContent()
                 val ringColor = when {
                     isEditing -> colors.accent
-                    isFocused -> Color(0xFFFF8AAE)
+                    isFocused -> colors.accent
                     showBorder -> colors.textPrimary.copy(alpha = 0.1f)
                     else -> Color.Transparent
                 }
@@ -785,7 +785,7 @@ fun LauncherAppCard(
             if (fullBleedBanner && app.banner != null) {
                 AsyncImage(
                     model = bannerModel,
-                    contentDescription = null,
+                    contentDescription = app.label,
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(if (showLabel) Modifier.height(bannerHeight) else Modifier.fillMaxHeight())
@@ -806,7 +806,7 @@ fun LauncherAppCard(
                 ) {
                     AsyncImage(
                         model = bannerModel ?: iconModel,
-                        contentDescription = null,
+                        contentDescription = app.label,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(if (app.banner != null) 0.dp else 4.dp),

@@ -58,23 +58,32 @@ fun OnAirScreen(
     val scope = rememberCoroutineScope()
     val grid = rememberLazyGridState(state.gridFirstVisibleIndex, state.gridFirstVisibleOffset)
     val dayFocus = remember { List(7) { FocusRequester() } }
-    val searchFocus = remember { FocusRequester() }
-    val detailFocus = remember { FocusRequester() }
+    val searchButtonFocus = remember { FocusRequester() }
+    val searchFieldFocus = remember { FocusRequester() }
     val cardFocus = remember { mutableMapOf<Int, FocusRequester>() }
     state.series.forEach { cardFocus.getOrPut(it.id) { FocusRequester() } }
     var pageFocused by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
     var returnCell by remember { mutableStateOf<String?>(null) }
     var restoreSeries by remember { mutableStateOf<Int?>(null) }
     val visible = state.visibleSeries
-    val expanded = state.expanded?.takeIf { detail -> visible.any { it.id == detail.seriesId } }
+    val expanded = state.expanded?.takeIf { detail -> state.series.any { it.id == detail.seriesId } }
 
     fun closeDetail() {
         val id = expanded?.seriesId ?: return
         viewModel.collapseSeries()
         restoreSeries = id
     }
+    fun closeSearch() {
+        searchOpen = false
+        scope.launch { searchButtonFocus.safeRequestFocusWithRetry("OnAirCloseSearch") }
+    }
     fun pageBack() {
-        if (expanded != null) closeDetail() else onBack()
+        when {
+            expanded != null -> closeDetail()
+            searchOpen -> closeSearch()
+            else -> onBack()
+        }
     }
 
     DisposableEffect(viewModel) {
@@ -95,16 +104,20 @@ fun OnAirScreen(
         restoreSeries = null
     }
     LaunchedEffect(isReturningFromPlayer) {
-        if (isReturningFromPlayer) {
-            val target = viewModel.consumeReturnFocus()
-            if (expanded != null && target.episodeCellKey != null) {
+        if (!isReturningFromPlayer) return@LaunchedEffect
+        val target = viewModel.consumeReturnFocus()
+        when {
+            // Keep the open detail page: restore the exact episode cell, otherwise let it auto-focus.
+            expanded != null -> if (target.episodeCellKey != null) {
                 returnCell = target.episodeCellKey
-                val index = visible.indexOfFirst { it.id == expanded.seriesId }
-                grid.scrollToItem(minOf((index / 4 + 1) * 4, visible.size))
-            } else if (target.seriesId != null) {
+            } else {
+                onReturnFocusConsumed()
+            }
+            target.seriesId != null -> {
                 restoreSeries = target.seriesId
                 onReturnFocusConsumed()
-            } else {
+            }
+            else -> {
                 dayFocus[state.selectedWeekday].safeRequestFocusWithRetry("OnAirReturnDay")
                 onReturnFocusConsumed()
             }
@@ -121,23 +134,61 @@ fun OnAirScreen(
                 } else false
             },
     ) {
+        if (expanded != null) {
+            OnAirDetail(
+                series = state.series.first { it.id == expanded.seriesId },
+                detail = expanded,
+                state = state,
+                viewModel = viewModel,
+                ip = konomiIp, port = konomiPort,
+                returnCell = returnCell,
+                onRestored = { returnCell = null; onReturnFocusConsumed() },
+                onProgram = onProgramClick,
+                onBack = ::closeDetail,
+                modifier = Modifier.fillMaxSize().testTag("onair-details"),
+            )
+            return@Column
+        }
+
         Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(24.dp))
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = { viewModel.updateSearchQuery(it) },
-                singleLine = true,
-                label = { androidx.compose.material3.Text("シリーズを検索") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = colors.textPrimary, unfocusedTextColor = colors.textPrimary,
-                    focusedBorderColor = colors.accent, unfocusedBorderColor = colors.textSecondary,
-                    focusedLabelColor = colors.accent, unfocusedLabelColor = colors.textSecondary,
-                    cursorColor = colors.accent,
-                ),
-                modifier = Modifier.width(310.dp).focusRequester(searchFocus).testTag("onair-search")
-                    .focusProperties { down = dayFocus[state.selectedWeekday] },
-            )
+            if (searchOpen) {
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = { viewModel.updateSearchQuery(it) },
+                    singleLine = true,
+                    label = { androidx.compose.material3.Text("シリーズを検索") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = colors.textPrimary, unfocusedTextColor = colors.textPrimary,
+                        focusedBorderColor = colors.accent, unfocusedBorderColor = colors.textSecondary,
+                        focusedLabelColor = colors.accent, unfocusedLabelColor = colors.textSecondary,
+                        cursorColor = colors.accent,
+                    ),
+                    modifier = Modifier.width(310.dp).focusRequester(searchFieldFocus).testTag("onair-search-field")
+                        .focusProperties {
+                            down = dayFocus[state.selectedWeekday]
+                            up = FocusRequester.Cancel
+                            left = FocusRequester.Cancel
+                        },
+                )
+                Spacer(Modifier.width(8.dp))
+                if (state.query.isNotBlank()) {
+                    OnAirAction("クリア", { viewModel.updateSearchQuery("") }, Modifier.testTag("onair-search-clear"))
+                    Spacer(Modifier.width(8.dp))
+                }
+                OnAirAction("閉じる", { closeSearch() }, Modifier.testTag("onair-search-close"))
+            } else {
+                OnAirAction(
+                    if (state.query.isBlank()) "検索" else "検索中",
+                    {
+                        searchOpen = true
+                        scope.launch { searchFieldFocus.safeRequestFocusWithRetry("OnAirOpenSearch") }
+                    },
+                    Modifier.focusRequester(searchButtonFocus).testTag("onair-search"),
+                    selected = state.query.isNotBlank(),
+                )
+            }
             Spacer(Modifier.weight(1f))
             OnAirAction("更新", viewModel::refresh, Modifier.testTag("onair-refresh"))
             Spacer(Modifier.width(12.dp))
@@ -169,7 +220,7 @@ fun OnAirScreen(
                         .then(if (day == state.selectedWeekday) Modifier.focusRequester(initialFocusRequester) else Modifier)
                         .testTag("onair-day-$day")
                         .focusProperties {
-                            up = searchFocus
+                            up = if (searchOpen) searchFieldFocus else searchButtonFocus
                             down = visible.firstOrNull()?.let { cardFocus[it.id] } ?: FocusRequester.Default
                             left = if (day == 0) FocusRequester.Cancel else dayFocus[day - 1]
                             right = if (day == 6) FocusRequester.Cancel else dayFocus[day + 1]
@@ -179,8 +230,7 @@ fun OnAirScreen(
             }
         }
         Spacer(Modifier.height(12.dp))
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val detailHeight = maxHeight
+        Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 !state.backendSupported -> OnAirEmpty(
                     "このバックエンドは「放送中」に対応していません",
@@ -202,37 +252,15 @@ fun OnAirScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize().testTag("onair-grid"),
                 ) {
-                    visible.chunked(4).forEachIndexed { rowIndex, row ->
-                        row.forEach { series ->
-                            item(key = "series:${series.id}") {
-                                OnAirCard(series, series.id == expanded?.seriesId, konomiIp, konomiPort, timeFormat,
-                                    modifier = Modifier.focusRequester(cardFocus.getValue(series.id))
-                                        .testTag("onair-series-${series.id}")
-                                        .onFocusChanged { if (it.isFocused) viewModel.saveFocusedSeries(series.id) }
-                                        .focusProperties { if (rowIndex == 0) up = dayFocus[state.selectedWeekday] }
-                                        .onPreviewKeyEvent { event ->
-                                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown && expanded?.seriesId == series.id) {
-                                                scope.launch {
-                                                    grid.scrollToItem(minOf((rowIndex + 1) * 4, visible.size))
-                                                    detailFocus.safeRequestFocusWithRetry("OnAirEnterDetail")
-                                                }; true
-                                            } else false
-                                        },
-                                    onClick = { if (expanded?.seriesId == series.id) closeDetail() else viewModel.expandSeries(series.id) },
-                                )
-                            }
-                        }
-                        row.firstOrNull { it.id == expanded?.seriesId }?.let { selected ->
-                            item(key = "detail:${selected.id}", span = { GridItemSpan(maxLineSpan) }) {
-                                OnAirDetail(
-                                    selected, expanded!!, state, viewModel, konomiIp, konomiPort,
-                                    detailFocus, cardFocus.getValue(selected.id), returnCell,
-                                    onRestored = { returnCell = null; onReturnFocusConsumed() },
-                                    onProgram = onProgramClick,
-                                    modifier = Modifier.fillMaxWidth().height(detailHeight).testTag("onair-details"),
-                                )
-                            }
-                        }
+                    itemsIndexed(visible, key = { _, series -> "series:${series.id}" }) { index, series ->
+                        val rowIndex = index / 4
+                        OnAirCard(series, false, konomiIp, konomiPort, timeFormat,
+                            modifier = Modifier.focusRequester(cardFocus.getValue(series.id))
+                                .testTag("onair-series-${series.id}")
+                                .onFocusChanged { if (it.isFocused) viewModel.saveFocusedSeries(series.id) }
+                                .focusProperties { if (rowIndex == 0) up = dayFocus[state.selectedWeekday] },
+                            onClick = { viewModel.expandSeries(series.id) },
+                        )
                     }
                 }
             }

@@ -7,28 +7,39 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
-import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppCard
@@ -51,6 +62,11 @@ internal object AppsTabLayout {
     val horizontalSpacing = 12.dp
     val verticalSpacing = 14.dp
     val bottomScrollSafeArea = cardHeight
+
+    // フォーカス中カードが沈み込んで見えないよう、グリッド最下段に確保する余白。
+    val gridBottomPadding = 28.dp
+    val scrollbarWidth = 4.dp
+    val scrollbarEndPadding = 6.dp
 }
 
 @Composable
@@ -70,6 +86,7 @@ fun AppsTabContent(
         hiddenLauncherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }
     }
     val hideAppLabels by settingsViewModel.hideLauncherAppLabels.collectAsState()
+    val appColumnsSetting by settingsViewModel.launcherAppColumns.collectAsState()
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
@@ -77,9 +94,10 @@ fun AppsTabContent(
     var hasEnteredCatalog by remember { mutableStateOf(false) }
     var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
-    val appScrollState = rememberScrollState()
-    val catalogApps = if (isHiddenCatalog) hiddenApps else apps
+    val gridState = rememberLazyGridState()
     val context = LocalContext.current.applicationContext
+
+    val catalogApps = if (isHiddenCatalog) hiddenApps else apps
 
     DisposableEffect(context, homeViewModel) {
         val packageChangeReceiver = object : BroadcastReceiver() {
@@ -119,7 +137,7 @@ fun AppsTabContent(
             .forEach { appFocusRequesters.remove(it) }
     }
 
-    LaunchedEffect(apps.isNotEmpty(), hiddenApps.isNotEmpty()) {
+    LaunchedEffect(apps, hiddenApps, isHiddenCatalog) {
         delay(250)
         onUiReady()
     }
@@ -133,22 +151,25 @@ fun AppsTabContent(
             isHiddenCatalog = false
             return@LaunchedEffect
         }
-        appScrollState.scrollTo(0)
+        gridState.scrollToItem(0)
         delay(80)
         contentFirstItemRequester.safeRequestFocusWithRetry(
             if (isHiddenCatalog) "AppsHiddenCatalog" else "AppsVisibleCatalog"
         )
     }
 
-    LaunchedEffect(pendingFocusAppId, apps) {
+    LaunchedEffect(pendingFocusAppId, catalogApps) {
         val targetId = pendingFocusAppId ?: return@LaunchedEffect
         delay(60)
-        val targetIndex = apps.indexOfFirst { it.stableId == targetId }
+        val targetIndex = catalogApps.indexOfFirst { it.stableId == targetId }
         if (targetIndex == 0) {
             appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMovedFirst")
                 ?: contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFirst")
-        } else {
+        } else if (targetIndex > 0) {
+            gridState.animateScrollToItem(targetIndex)
+            delay(60)
             appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMoved")
+                ?: contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFallback")
         }
         pendingFocusAppId = null
     }
@@ -181,122 +202,173 @@ fun AppsTabContent(
         }
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val columnCount = calculateAppGridColumns(
+            val autoColumnCount = calculateAppGridColumns(
                 maxWidth,
                 AppsTabLayout.cardWidth,
                 AppsTabLayout.horizontalSpacing,
             )
+            val columnCount = (appColumnsSetting.toIntOrNull() ?: autoColumnCount)
+                .coerceIn(1, autoColumnCount)
+            val cellWidth =
+                ((maxWidth - AppsTabLayout.horizontalSpacing * (columnCount - 1)) / columnCount)
+                    .coerceAtLeast(AppsTabLayout.cardWidth)
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(appScrollState)
-                    .padding(bottom = AppsTabLayout.bottomScrollSafeArea),
-                verticalArrangement = Arrangement.spacedBy(AppsTabLayout.verticalSpacing),
-            ) {
-                val appRows = catalogApps.chunked(columnCount)
-                appRows.forEachIndexed { rowIndex, rowApps ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(AppsTabLayout.horizontalSpacing),
-                    ) {
-                        rowApps.forEachIndexed { columnIndex, app ->
-                            val index = rowIndex * columnCount + columnIndex
-                            val appFocusRequester = appFocusRequesters.getOrPut(app.stableId) {
-                                FocusRequester()
-                            }
-                            LauncherAppCard(
-                                app = app,
-                                onClick = {
-                                    if (isHiddenCatalog && editingAppId == app.stableId) {
-                                        editingAppId = null
-                                    } else if (isHiddenCatalog) {
-                                        homeViewModel.launchApp(app)
-                                    } else if (editingAppId == app.stableId) {
-                                        editingAppId = null
-                                    } else if (editingAppId == null) {
-                                        homeViewModel.launchApp(app)
-                                    }
-                                },
-                                onManage = {
-                                    if (isHiddenCatalog) {
-                                        editingAppId = app.stableId
-                                    } else {
-                                        editingAppId = app.stableId
-                                    }
-                                },
-                                onFocus = {},
-                                cardWidth = AppsTabLayout.cardWidth,
-                                cardHeight = AppsTabLayout.cardHeight,
-                                bannerWidth = AppsTabLayout.cardWidth,
-                                bannerHeight = AppsTabLayout.bannerHeight,
-                                iconSize = AppsTabLayout.iconSize,
-                                showBorder = false,
-                                fullBleedBanner = true,
-                                showLabel = !hideAppLabels,
-                                manualConfirmHandling = true,
-                                isEditing = editingAppId == app.stableId,
-                                onMoveLeft = { if (!isHiddenCatalog) moveVisibleApp(index, -1) },
-                                onMoveRight = { if (!isHiddenCatalog) moveVisibleApp(index, 1) },
-                                onMoveUp = { if (!isHiddenCatalog) moveVisibleApp(index, -columnCount) },
-                                onMoveDown = { if (!isHiddenCatalog) moveVisibleApp(index, columnCount) },
-                                onHide = {
-                                    homeViewModel.hideLauncherApp(app)
+            val showHiddenEntry = !isHiddenCatalog && hiddenApps.isNotEmpty()
+            val showVisibleEntry = isHiddenCatalog
+            val extraEntryCount = if (showHiddenEntry || showVisibleEntry) 1 else 0
+            val totalEntries = catalogApps.size + extraEntryCount
+
+            val gridItemModifier: (Int) -> Modifier = { index ->
+                Modifier.focusProperties {
+                    if (index < columnCount) up = tabFocusRequester
+                    if (index % columnCount == 0) left = FocusRequester.Cancel
+                    if (index == totalEntries - 1) right = FocusRequester.Cancel
+                }
+            }
+
+            if (totalEntries == 0) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = if (isHiddenCatalog) {
+                            "非表示のアプリはありません"
+                        } else {
+                            "表示できるアプリがありません"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = KomorebiTheme.colors.textSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Fixed(columnCount),
+                    contentPadding = PaddingValues(bottom = AppsTabLayout.gridBottomPadding),
+                    horizontalArrangement = Arrangement.spacedBy(AppsTabLayout.horizontalSpacing),
+                    verticalArrangement = Arrangement.spacedBy(AppsTabLayout.verticalSpacing),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .focusGroup()
+                        .simpleGridVerticalScrollbar(
+                            state = gridState,
+                            color = KomorebiTheme.colors.textPrimary,
+                        ),
+                ) {
+                    itemsIndexed(
+                        items = catalogApps,
+                        key = { _, app -> "app_${app.stableId}" },
+                    ) { index, app ->
+                        val appFocusRequester = appFocusRequesters.getOrPut(app.stableId) {
+                            FocusRequester()
+                        }
+                        LauncherAppCard(
+                            app = app,
+                            onClick = {
+                                if (isHiddenCatalog && editingAppId == app.stableId) {
                                     editingAppId = null
-                                },
-                                onOpenActions = {
+                                } else if (isHiddenCatalog) {
+                                    homeViewModel.launchApp(app)
+                                } else if (editingAppId == app.stableId) {
                                     editingAppId = null
-                                    if (isHiddenCatalog) {
-                                        hiddenActionMenuApp = app
+                                } else if (editingAppId == null) {
+                                    homeViewModel.launchApp(app)
+                                }
+                            },
+                            onManage = { editingAppId = app.stableId },
+                            onFocus = {},
+                            cardWidth = cellWidth,
+                            cardHeight = AppsTabLayout.cardHeight,
+                            bannerWidth = cellWidth,
+                            bannerHeight = AppsTabLayout.bannerHeight,
+                            iconSize = AppsTabLayout.iconSize,
+                            showBorder = false,
+                            fullBleedBanner = true,
+                            showLabel = !hideAppLabels,
+                            manualConfirmHandling = true,
+                            isEditing = editingAppId == app.stableId,
+                            onMoveLeft = { if (!isHiddenCatalog) moveVisibleApp(index, -1) },
+                            onMoveRight = { if (!isHiddenCatalog) moveVisibleApp(index, 1) },
+                            onMoveUp = {
+                                if (!isHiddenCatalog) moveVisibleApp(index, -columnCount)
+                            },
+                            onMoveDown = {
+                                if (!isHiddenCatalog) moveVisibleApp(index, columnCount)
+                            },
+                            onHide = {
+                                homeViewModel.hideLauncherApp(app)
+                                editingAppId = null
+                            },
+                            onOpenActions = {
+                                editingAppId = null
+                                if (isHiddenCatalog) {
+                                    hiddenActionMenuApp = app
+                                } else {
+                                    actionMenuApp = app
+                                }
+                            },
+                            onDoneEditing = { editingAppId = null },
+                            modifier = Modifier
+                                .then(
+                                    if (index == 0) {
+                                        Modifier.focusRequester(contentFirstItemRequester)
                                     } else {
-                                        actionMenuApp = app
+                                        Modifier.focusRequester(appFocusRequester)
                                     }
-                                },
-                                onDoneEditing = { editingAppId = null },
-                                modifier = Modifier
-                                    .then(
-                                        if (index == 0) Modifier.focusRequester(contentFirstItemRequester)
-                                        else Modifier.focusRequester(appFocusRequester)
-                                    )
-                                    .focusProperties {
-                                        if (columnIndex == 0) left = FocusRequester.Cancel
-                                    }
-                                    .onPreviewKeyEvent { event ->
-                                        if (event.type == KeyEventType.KeyDown &&
-                                            event.key == Key.DirectionUp &&
-                                            rowIndex == 0 &&
-                                            editingAppId == null
+                                )
+                                .then(gridItemModifier(index))
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        if (editingAppId != null &&
+                                            editingAppId != app.stableId &&
+                                            pendingFocusAppId == null
                                         ) {
-                                            if (isHiddenCatalog) {
-                                                isHiddenCatalog = false
-                                            } else {
-                                                tabFocusRequester.safeRequestFocus(TAG)
-                                            }
-                                            true
-                                        } else if (event.type == KeyEventType.KeyDown &&
-                                            event.key == Key.DirectionDown &&
-                                            rowIndex == appRows.lastIndex &&
-                                            hiddenApps.isNotEmpty() &&
-                                            editingAppId == null &&
-                                            !isHiddenCatalog
-                                        ) {
-                                            isHiddenCatalog = true
-                                            true
-                                        } else {
-                                            false
+                                            editingAppId = null
                                         }
+                                        homeViewModel.lastClickedSection = "apps"
+                                        homeViewModel.lastClickedItemId = app.stableId
                                     }
+                                }
+                        )
+                    }
+
+                    if (showHiddenEntry) {
+                        item(key = "entry_hidden") {
+                            AppsCatalogEntryTile(
+                                label = "非表示のアプリ",
+                                description = "${hiddenApps.size} 件",
+                                icon = Icons.Default.VisibilityOff,
+                                onClick = { isHiddenCatalog = true },
+                                modifier = Modifier
+                                    .then(gridItemModifier(catalogApps.size))
                                     .onFocusChanged {
                                         if (it.isFocused) {
-                                            if (editingAppId != null &&
-                                                editingAppId != app.stableId &&
-                                                pendingFocusAppId == null
-                                            ) {
-                                                editingAppId = null
-                                            }
                                             homeViewModel.lastClickedSection = "apps"
-                                            homeViewModel.lastClickedItemId = app.stableId
+                                            homeViewModel.lastClickedItemId = HIDDEN_CATALOG_STABLE_ID
                                         }
-                                    }
+                                    },
+                                cardWidth = cellWidth,
+                                cardHeight = AppsTabLayout.cardHeight,
+                            )
+                        }
+                    }
+
+                    if (showVisibleEntry) {
+                        item(key = "entry_visible") {
+                            AppsCatalogEntryTile(
+                                label = "表示中のアプリ",
+                                description = "${apps.size} 件",
+                                icon = Icons.Default.Visibility,
+                                onClick = { isHiddenCatalog = false },
+                                modifier = Modifier
+                                    .then(gridItemModifier(catalogApps.size))
+                                    .onFocusChanged {
+                                        if (it.isFocused) {
+                                            homeViewModel.lastClickedSection = "apps"
+                                            homeViewModel.lastClickedItemId = VISIBLE_CATALOG_STABLE_ID
+                                        }
+                                    },
+                                cardWidth = cellWidth,
+                                cardHeight = AppsTabLayout.cardHeight,
                             )
                         }
                     }
@@ -345,6 +417,95 @@ fun AppsTabContent(
             onDismiss = { hiddenActionMenuApp = null }
         )
     }
+}
+
+internal const val HIDDEN_CATALOG_STABLE_ID = "__catalog_hidden__"
+internal const val VISIBLE_CATALOG_STABLE_ID = "__catalog_visible__"
+
+@Composable
+private fun AppsCatalogEntryTile(
+    label: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    cardWidth: Dp,
+    cardHeight: Dp,
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val colors = KomorebiTheme.colors
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .width(cardWidth)
+            .height(cardHeight)
+            .onFocusChanged { isFocused = it.isFocused },
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.textPrimary.copy(alpha = if (isFocused) 0.1f else 0.05f),
+            focusedContainerColor = colors.textPrimary.copy(alpha = 0.1f),
+            contentColor = colors.textSecondary,
+            focusedContentColor = colors.textPrimary,
+        ),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.12f))),
+            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent)),
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(36.dp))
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textSecondary,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+private fun Modifier.simpleGridVerticalScrollbar(
+    state: LazyGridState,
+    color: Color,
+    width: Dp = AppsTabLayout.scrollbarWidth,
+    paddingEnd: Dp = AppsTabLayout.scrollbarEndPadding,
+): Modifier = drawWithContent {
+    drawContent()
+    val totalItems = state.layoutInfo.totalItemsCount
+    val visibleItems = state.layoutInfo.visibleItemsInfo.size
+    if (totalItems == 0 || visibleItems == 0 || visibleItems >= totalItems) return@drawWithContent
+
+    val firstVisible = state.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
+    val thumbHeightRatio = (visibleItems.toFloat() / totalItems.toFloat()).coerceIn(0.05f, 0.8f)
+    val thumbHeight = size.height * thumbHeightRatio
+    val thumbOffsetRatio =
+        (firstVisible.toFloat() / (totalItems - visibleItems).coerceAtLeast(1).toFloat())
+            .coerceIn(0f, 1f)
+    val thumbY = (size.height - thumbHeight) * thumbOffsetRatio
+
+    drawRoundRect(
+        color = color.copy(alpha = 0.5f),
+        topLeft = Offset(size.width - width.toPx() - paddingEnd.toPx(), thumbY),
+        size = Size(width.toPx(), thumbHeight),
+        cornerRadius = CornerRadius(width.toPx() / 2f, width.toPx() / 2f),
+    )
 }
 
 @Composable

@@ -172,13 +172,14 @@ fun MainRootScreen(
 
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState(initial = "")
+    val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState(initial = false)
 
     val closeAiConcierge = { restoreFocus: Boolean ->
         state.isAiConciergeOpen = false
         aiConciergeViewModel.resetState()
 
         if (restoreFocus) {
-            if (state.currentTabIndex == state.getVisibleTabs().indexOf("番組表")) {
+            if (state.currentTabIndex == state.getVisibleTabs(hideAppsTab).indexOf("番組表")) {
                 epgViewModel.triggerRestore()
             } else {
                 state.aiFocusReturnTick++
@@ -190,7 +191,7 @@ fun MainRootScreen(
     val backendType by homeViewModel.backendType.collectAsState()
     LaunchedEffect(backendType) { state.backendType = backendType }
 
-    val tabs = state.getVisibleTabs()
+    val tabs = state.getVisibleTabs(hideAppsTab)
 
     val safeTabIndex = state.currentTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
 

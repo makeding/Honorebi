@@ -181,6 +181,7 @@ object AppStrings {
     const val SETTINGS_CATEGORY_CONNECTION = "接続設定"
     const val SETTINGS_CATEGORY_PLAYBACK = "再生設定"
     const val SETTINGS_CATEGORY_HOME = "ホーム設定"
+    const val SETTINGS_CATEGORY_LAUNCHER = "ランチャー設定"
     const val SETTINGS_CATEGORY_DISPLAY = "表示設定"
     const val SETTINGS_CATEGORY_COMMENT = "コメント設定"
     const val SETTINGS_CATEGORY_LAB = "アドオン・ラボ"
@@ -288,6 +289,19 @@ object AppStrings {
     const val SETTINGS_VALUE_TAB_VIDEO = "ビデオ"
     const val SETTINGS_VALUE_TAB_EPG = "番組表"
     const val SETTINGS_VALUE_TAB_RESERVE = "録画予約"
+
+    // ランチャー設定
+    const val SETTINGS_SECTION_LAUNCHER_TABS = "タブ表示"
+    const val SETTINGS_ITEM_SHOW_APPS_TAB = "アプリタブを表示する"
+    const val SETTINGS_SECTION_LAUNCHER_APPS = "アプリ一覧"
+    const val SETTINGS_ITEM_LAUNCHER_APP_COLUMNS = "1行あたりの表示数"
+    const val SETTINGS_ITEM_LAUNCHER_APP_LABELS = "アプリ名を表示する"
+    const val SETTINGS_VALUE_LAUNCHER_COLUMNS_AUTO = "自動"
+    const val SETTINGS_SECTION_LAUNCHER_DEFAULT_HOME = "デフォルトのホーム"
+    const val SETTINGS_ITEM_DEFAULT_HOME = "このアプリをホームに設定"
+    const val SETTINGS_VALUE_DEFAULT_HOME_ON = "設定済み"
+    const val SETTINGS_VALUE_DEFAULT_HOME_OFF = "未設定"
+    const val DIALOG_DEFAULT_HOME_TITLE = "デフォルトのホームに設定"
 
     const val SETTINGS_SECTION_HOME_PICKUP = "ホーム画面ピックアップ設定"
     const val SETTINGS_ITEM_PICKUP_GENRE = "対象ジャンル"

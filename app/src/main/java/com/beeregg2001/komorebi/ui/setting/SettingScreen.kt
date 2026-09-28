@@ -64,6 +64,8 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { SettingsRepository(context) }
+    val homeEnvironment = remember(context) { LauncherEnvironmentDetector.detect(context) }
+    var isDefaultHome by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
     val currentTime = remember { LocalTime.now() }
     val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
@@ -105,6 +107,7 @@ fun SettingsScreen(
         Category(AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
         Category("録画設定", Icons.Default.VideoSettings),
         Category(AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home),
+        Category(AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps),
         Category(AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard),
         Category("番組表設定", Icons.Default.GridOn),
         Category(AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
@@ -160,6 +163,12 @@ fun SettingsScreen(
             listOf(
                 FocusRequester(),
                 FocusRequester(),
+                FocusRequester(),
+                FocusRequester(),
+                FocusRequester(),
+                FocusRequester()
+            ),
+            listOf(
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
@@ -373,10 +382,10 @@ fun SettingsScreen(
                             },
                             itemFocusRequesters[0][0],
                             {
-                                uiState.selectedCategoryIndex = 9
+                                uiState.selectedCategoryIndex = 10
                                 scope.launch {
                                     delay(100)
-                                    itemFocusRequesters[9][0]
+                                    itemFocusRequesters[10][0]
                                         .safeRequestFocus("OpenCacheManagement")
                                 }
                             },
@@ -908,13 +917,53 @@ fun SettingsScreen(
                             }
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 4 }
 
-                        5 -> DisplaySettingsContent(
+                        5 -> LauncherSettingsContent(
+                            showAppsTab = !prefs.hideAppsTab,
+                            appColumns = prefs.launcherAppColumns,
+                            showAppLabels = !prefs.hideLauncherAppLabels,
+                            environment = homeEnvironment,
+                            isDefaultHome = isDefaultHome,
+                            itemRs = itemFocusRequesters[5],
+                            sidebarR = categoryFocusRequesters[5],
+                            onToggleAppsTab = { viewModel.toggleHideAppsTab() },
+                            onEditColumns = {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.SETTINGS_ITEM_LAUNCHER_APP_COLUMNS,
+                                    listOf(
+                                        AppStrings.SETTINGS_VALUE_LAUNCHER_COLUMNS_AUTO to "AUTO",
+                                        "4列" to "4",
+                                        "5列" to "5",
+                                        "6列" to "6",
+                                        "7列" to "7",
+                                        "8列" to "8"
+                                    ),
+                                    prefs.launcherAppColumns
+                                ) { viewModel.updateLauncherAppColumns(it) }
+                            },
+                            onToggleAppLabels = {
+                                scope.launch {
+                                    repository.saveBoolean(
+                                        SettingsRepository.HIDE_LAUNCHER_APP_LABELS,
+                                        !prefs.hideLauncherAppLabels
+                                    )
+                                }
+                            },
+                            onOpenDefaultHomeGuide = {
+                                isDefaultHome = LauncherEnvironmentDetector.isDefaultHome(context)
+                                uiState.activeDialog = SettingDialogState.DefaultHomeGuide
+                            },
+                            onClick = {
+                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5
+                            }
+                        )
+
+                        6 -> DisplaySettingsContent(
                             prefs,
                             when (prefs.startupChannel) {
                                 "OFF" -> AppStrings.SETTINGS_VALUE_STARTUP_OFF; "LAST_WATCHED" -> AppStrings.SETTINGS_VALUE_STARTUP_LAST; else -> flatChannels.find { it.id == prefs.startupChannel }?.name
                                 ?: prefs.startupChannel
                             },
-                            categoryFocusRequesters[5],
+                            categoryFocusRequesters[6],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_STARTUP_TAB,
@@ -979,10 +1028,10 @@ fun SettingsScreen(
                                     )
                                 }
                             },
-                            itemFocusRequesters[5].dropLast(1), itemFocusRequesters[5].last()
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
+                            itemFocusRequesters[6].dropLast(1), itemFocusRequesters[6].last()
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6 }
 
-                        6 -> EpgSettingsContent(
+                        7 -> EpgSettingsContent(
                             pref = prefs,
                             onEditColumn = {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1021,16 +1070,16 @@ fun SettingsScreen(
                                     prefs.epgFontSizeScale
                                 ) { viewModel.updateEpgFontSizeScale(it) }
                             },
-                            colR = itemFocusRequesters[6][0],
-                            hourR = itemFocusRequesters[6][1],
-                            fontR = itemFocusRequesters[6][2],
-                            sidebarR = categoryFocusRequesters[6],
+                            colR = itemFocusRequesters[7][0],
+                            hourR = itemFocusRequesters[7][1],
+                            fontR = itemFocusRequesters[7][2],
+                            sidebarR = categoryFocusRequesters[7],
                             onClick = {
-                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6
+                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 7
                             }
                         )
 
-                        7 -> CommentSettingsContent(
+                        8 -> CommentSettingsContent(
                             prefs.commentDefaultDisplay,
                             prefs.commentSpeed,
                             prefs.commentFontSize,
@@ -1054,18 +1103,18 @@ fun SettingsScreen(
                                     )
                                 }
                             },
-                            itemFocusRequesters[7][0],
-                            itemFocusRequesters[7][1],
-                            itemFocusRequesters[7][2],
-                            itemFocusRequesters[7][3],
-                            itemFocusRequesters[7][4],
-                            categoryFocusRequesters[7]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 7 }
-
-                        8 -> LabSettingsContent(
-                            prefs.labAllowMirakurunDual,
                             itemFocusRequesters[8][0],
-                            categoryFocusRequesters[8],
+                            itemFocusRequesters[8][1],
+                            itemFocusRequesters[8][2],
+                            itemFocusRequesters[8][3],
+                            itemFocusRequesters[8][4],
+                            categoryFocusRequesters[8]
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 }
+
+                        9 -> LabSettingsContent(
+                            prefs.labAllowMirakurunDual,
+                            itemFocusRequesters[9][0],
+                            categoryFocusRequesters[9],
                             {
                                 if (prefs.labAllowMirakurunDual == "OFF") {
                                     uiState.activeDialog = SettingDialogState.ConfirmClear(
@@ -1088,10 +1137,10 @@ fun SettingsScreen(
                                     }
                                 }
                             }) {
-                            uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8
+                            uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9
                         }
 
-                        9 -> CacheManagementContent(
+                        10 -> CacheManagementContent(
                             onClearAll = {
                                 uiState.activeDialog = SettingDialogState.ConfirmClear(
                                     "すべてのキャッシュの削除",
@@ -1137,18 +1186,18 @@ fun SettingsScreen(
                                     toastMessage = "録画リストキャッシュを削除しました"
                                 }
                             },
-                            allR = itemFocusRequesters[9][0],
-                            logoR = itemFocusRequesters[9][1],
-                            thumbR = itemFocusRequesters[9][2],
-                            epgR = itemFocusRequesters[9][3],
-                            recordingR = itemFocusRequesters[9][4],
-                            sidebarR = categoryFocusRequesters[9]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9 }
-
-                        10 -> AppInfoContent(
-                            { uiState.activeDialog = SettingDialogState.Licenses },
-                            itemFocusRequesters[10][0], categoryFocusRequesters[10]
+                            allR = itemFocusRequesters[10][0],
+                            logoR = itemFocusRequesters[10][1],
+                            thumbR = itemFocusRequesters[10][2],
+                            epgR = itemFocusRequesters[10][3],
+                            recordingR = itemFocusRequesters[10][4],
+                            sidebarR = categoryFocusRequesters[10]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 10 }
+
+                        11 -> AppInfoContent(
+                            { uiState.activeDialog = SettingDialogState.Licenses },
+                            itemFocusRequesters[11][0], categoryFocusRequesters[11]
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 11 }
                     }
                     Spacer(Modifier.height(32.dp))
                 }
@@ -1221,6 +1270,17 @@ fun SettingsScreen(
 
             is SettingDialogState.Licenses -> OpenSourceLicensesScreen(onBack = { closeDialog() })
             is SettingDialogState.DeviceCapabilities -> DeviceCapabilitiesScreen(onBack = { closeDialog() })
+            is SettingDialogState.DefaultHomeGuide -> DefaultHomeGuideDialog(
+                environment = homeEnvironment,
+                isDefaultHome = isDefaultHome,
+                onOpenHomeSettings = {
+                    if (!LauncherEnvironmentDetector.openHomeSettings(context)) {
+                        toastMessage = "ホーム設定を開けませんでした"
+                    }
+                    closeDialog()
+                },
+                onDismiss = { closeDialog() }
+            )
             is SettingDialogState.HonomiLogin -> HonomiLoginDialog(
                 honomiLoginInProgress,
                 honomiLoginError,

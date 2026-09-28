@@ -47,8 +47,9 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-day-0").confirm().requestFocus().performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
         compose.onNodeWithTag("onair-day-1").assertIsFocused().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
         compose.onNodeWithTag("onair-series-2").assertIsDisplayed().requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
-        compose.onNodeWithTag("onair-series-2").performKeyInput { keyDown(Key.DirectionDown); keyUp(Key.DirectionDown) }
-        compose.onNodeWithTag("onair-summary").assertIsFocused().performKeyInput { keyDown(Key.Back); keyUp(Key.Back) }
+        // 決定で全画面詳細へ。録画が無い作品は作品情報へ自動フォーカスする。
+        compose.onNodeWithTag("onair-details").assertIsDisplayed()
+        compose.onNodeWithTag("onair-summary").requestFocus().assertIsFocused().performKeyInput { keyDown(Key.Back); keyUp(Key.Back) }
         compose.onNodeWithTag("onair-series-2").assertIsFocused()
     }
 
@@ -73,9 +74,10 @@ class OnAirScreenTest {
         compose.setContent { KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), returning.value, { returning.value = false }, vm) } }
         compose.onNodeWithTag("onair-day-0").confirm()
         compose.onNodeWithTag("onair-series-1").confirm()
-        compose.onNodeWithTag("onair-series-1").performKeyInput { keyDown(Key.DirectionDown); keyUp(Key.DirectionDown) }
+        // 決定で全画面詳細が開き、最初の再生可能エピソードへ入る。
+        compose.onNodeWithTag("onair-details").assertIsDisplayed()
         val key = "1:ch:episode:1:10"
-        compose.onNodeWithTag("onair-episode-$key").requestFocus().confirm()
+        compose.onNodeWithTag("onair-episode-$key").assertIsDisplayed().requestFocus().confirm()
         compose.runOnIdle { returning.value = true }
         compose.onNodeWithTag("onair-episode-$key").assertIsFocused()
     }

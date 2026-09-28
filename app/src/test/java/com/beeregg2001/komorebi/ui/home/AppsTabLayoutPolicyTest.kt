@@ -26,4 +26,16 @@ class AppsTabLayoutPolicyTest {
         assertEquals(2, calculateAppGridColumns(332.dp, 160.dp, 12.dp))
         assertEquals(5, calculateAppGridColumns(848.dp, 160.dp, 12.dp))
     }
+
+    @Test
+    fun gridKeepsRoomBelowTheLastRowForTheFocusedCard() {
+        assertTrue(AppsTabLayout.gridBottomPadding >= AppsTabLayout.verticalSpacing)
+    }
+
+    @Test
+    fun catalogEntryIdentifiersCannotCollideWithEachOther() {
+        assertTrue(HIDDEN_CATALOG_STABLE_ID != VISIBLE_CATALOG_STABLE_ID)
+        assertTrue(HIDDEN_CATALOG_STABLE_ID.isNotBlank())
+        assertTrue(VISIBLE_CATALOG_STABLE_ID.isNotBlank())
+    }
 }

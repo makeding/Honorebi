@@ -311,6 +311,16 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         false
     )
+    val hideAppsTab: StateFlow<Boolean> = settingsRepository.hideAppsTab.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        false
+    )
+    val launcherAppColumns: StateFlow<String> = settingsRepository.launcherAppColumns.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "AUTO"
+    )
 
     val geminiApiKey: StateFlow<String> = settingsRepository.geminiApiKey.stateIn(
         viewModelScope,
@@ -658,6 +668,19 @@ class SettingsViewModel @Inject constructor(
                 !settingsRepository.hideSubChannels.first()
             )
         }
+    }
+
+    fun toggleHideAppsTab() {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.saveBoolean(
+                SettingsRepository.HIDE_APPS_TAB,
+                !settingsRepository.hideAppsTab.first()
+            )
+        }
+    }
+
+    fun updateLauncherAppColumns(value: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.LAUNCHER_APP_COLUMNS, value)
     }
 
     private var ktorServer: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null

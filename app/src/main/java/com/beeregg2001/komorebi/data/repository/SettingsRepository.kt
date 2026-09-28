@@ -107,6 +107,8 @@ class SettingsRepository @Inject constructor(
         val LAUNCHER_APP_ORDER = stringPreferencesKey("launcher_app_order")
         val LAUNCHER_APP_HIDDEN = stringPreferencesKey("launcher_app_hidden")
         val HIDE_LAUNCHER_APP_LABELS = booleanPreferencesKey("hide_launcher_app_labels")
+        val HIDE_APPS_TAB = booleanPreferencesKey("hide_apps_tab")
+        val LAUNCHER_APP_COLUMNS = stringPreferencesKey("launcher_app_columns")
 
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
@@ -217,6 +219,10 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[LAUNCHER_APP_HIDDEN] ?: "[]" }
     val hideLauncherAppLabels: Flow<Boolean> =
         context.dataStore.data.map { it[HIDE_LAUNCHER_APP_LABELS] ?: false }
+    val hideAppsTab: Flow<Boolean> =
+        context.dataStore.data.map { it[HIDE_APPS_TAB] ?: false }
+    val launcherAppColumns: Flow<String> =
+        context.dataStore.data.map { it[LAUNCHER_APP_COLUMNS] ?: "AUTO" }
     val receiveBetaUpdates: Flow<Boolean> =
         context.dataStore.data.map { it[RECEIVE_BETA_UPDATES] ?: false }
     val hideSubChannels: Flow<Boolean> =

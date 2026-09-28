@@ -13,6 +13,19 @@ import com.beeregg2001.komorebi.viewmodel.*
 
 enum class HomeFocusTicket { NONE, TAB_BAR, CONTENT_TOP, HOME_RESTORE }
 
+/**
+ * ランチャー上部のタブ定義。タブ数とフォーカス要求リストのサイズを
+ * 一致させるため、画面側と StateHolder 側でこの 1 箇所を共有する。
+ */
+internal val HOME_TAB_TITLES = listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約", "放送中")
+
+/**
+ * 設定でアプリタブを無効化したときに、ランチャーとルート画面で同じタブ構成を
+ * 使うためのフィルタ。索引のズレを防ぐため必ずこの関数を経由する。
+ */
+internal fun visibleHomeTabs(hideAppsTab: Boolean): List<String> =
+    if (hideAppsTab) HOME_TAB_TITLES.filterNot { it == "アプリ" } else HOME_TAB_TITLES
+
 @Stable
 class HomeFocusTicketManager {
     var currentTicket by mutableStateOf(HomeFocusTicket.NONE)
@@ -89,9 +102,9 @@ class HomeLauncherState(
     var openedSeriesTitle by mutableStateOf<String?>(null)
     var isSeriesListOpen by mutableStateOf(false)
 
-    // ★ 修正: タブがいくつ増えても対応できるようにRequesterをあらかじめ余裕を持って生成しておく
-    val tabFocusRequesters = List(10) { FocusRequester() }
-    val contentFirstItemRequesters = List(10) { FocusRequester() }
+    // タブ定義とサイズを一致させ、魔法の数字(10)による索引ズレを防ぐ。
+    val tabFocusRequesters = List(HOME_TAB_TITLES.size) { FocusRequester() }
+    val contentFirstItemRequesters = List(HOME_TAB_TITLES.size) { FocusRequester() }
     val settingsFocusRequester = FocusRequester()
 
     val safeHouseRequester = FocusRequester()
