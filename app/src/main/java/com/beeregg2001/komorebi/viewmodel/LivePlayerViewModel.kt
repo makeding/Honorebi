@@ -635,6 +635,11 @@ class LivePlayerViewModel @Inject constructor(
             val is404 =
                 cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 404
             val isEdcbTranscode = mainCurrentSource == StreamSource.EDCB && !mainIsEdcbDirect
+            val retryTransiently = LiveStreamRecoveryPolicy.shouldRetryIndefinitely(
+                mainCurrentSource,
+                error.errorCodeName,
+                generateSequence(error.cause) { it.cause }.map { it.javaClass.name to it.message },
+            ) && !isCapabilityRelatedError(error)
 
             if (isEdcbTranscode && is404 && mainAutoRetryCount < 5) {
                 mainAutoRetryCount++
@@ -648,13 +653,17 @@ class LivePlayerViewModel @Inject constructor(
             }
 
             val errorMsg = analyzePlayerError(error)
-            if (mainAutoRetryCount < MAX_AUTO_RETRY) {
+            if (retryTransiently || mainAutoRetryCount < MAX_AUTO_RETRY) {
                 mainAutoRetryCount++
                 mainPlaybackHealth.reset()
                 Log.w(TAG, "main recovery attempt=$mainAutoRetryCount token=${token.epoch} error=${error.errorCode}", error)
                 stopMainPlaybackSafely("main_player_error_retry", endSession = false, releaseSlot = false)
-                _mainSseDetail.value = "通信を復旧しています…"
-                delay(2000)
+                _mainSseDetail.value = if (retryTransiently) {
+                    "$errorMsg\nライブストリームを自動復旧しています…"
+                } else {
+                    "通信を復旧しています…"
+                }
+                delay(if (retryTransiently) LiveStreamRecoveryPolicy.retryDelayMs(mainAutoRetryCount) else 2000L)
                 if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
                 if (!currentDeviceNetworkAvailable()) {
                     mainNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
@@ -697,6 +706,11 @@ class LivePlayerViewModel @Inject constructor(
             val is404 =
                 cause is HttpDataSource.InvalidResponseCodeException && cause.responseCode == 404
             val isEdcbTranscode = dualCurrentSource == StreamSource.EDCB && !dualIsEdcbDirect
+            val retryTransiently = LiveStreamRecoveryPolicy.shouldRetryIndefinitely(
+                dualCurrentSource,
+                error.errorCodeName,
+                generateSequence(error.cause) { it.cause }.map { it.javaClass.name to it.message },
+            ) && !isCapabilityRelatedError(error)
 
             if (isEdcbTranscode && is404 && dualAutoRetryCount < 5) {
                 dualAutoRetryCount++; _dualSseDetail.value =
@@ -709,13 +723,17 @@ class LivePlayerViewModel @Inject constructor(
             }
 
             val errorMsg = analyzePlayerError(error)
-            if (dualAutoRetryCount < MAX_AUTO_RETRY) {
+            if (retryTransiently || dualAutoRetryCount < MAX_AUTO_RETRY) {
                 dualAutoRetryCount++
                 dualPlaybackHealth.reset()
                 Log.w(TAG, "dual recovery attempt=$dualAutoRetryCount token=${token.epoch} error=${error.errorCode}", error)
                 stopDualPlaybackSafely("dual_player_error_retry", endSession = false, releaseSlot = false)
-                _dualSseDetail.value = "通信を復旧しています…"
-                delay(2000)
+                _dualSseDetail.value = if (retryTransiently) {
+                    "$errorMsg\nライブストリームを自動復旧しています…"
+                } else {
+                    "通信を復旧しています…"
+                }
+                delay(if (retryTransiently) LiveStreamRecoveryPolicy.retryDelayMs(dualAutoRetryCount) else 2000L)
                 if (!channelSessions.isCurrent(token) || !run.isCurrent()) return@launchRecovery
                 if (!currentDeviceNetworkAvailable()) {
                     dualNetworkRecoveryGate.onRecoveryNeeded(currentlyAvailable = false)
@@ -825,7 +843,10 @@ class LivePlayerViewModel @Inject constructor(
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
                         stopMainPlaybackSafely(endSession = false, releaseSlot = false); _mainSseStatus.value =
-                        "Standby"; _mainSseDetail.value = "ストリームを準備中..."
+                        "Standby"
+                        if (!isAutoRetry || !_mainSseDetail.value.contains("自動復旧")) {
+                            _mainSseDetail.value = "ストリームを準備中..."
+                        }
                     }
 
                     mainRun.withCreatedResource(
@@ -938,7 +959,10 @@ class LivePlayerViewModel @Inject constructor(
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
                         stopDualPlaybackSafely(endSession = false, releaseSlot = false); _dualSseStatus.value =
-                        "Standby"; _dualSseDetail.value = "ストリームを準備中..."
+                        "Standby"
+                        if (!isAutoRetry || !_dualSseDetail.value.contains("自動復旧")) {
+                            _dualSseDetail.value = "ストリームを準備中..."
+                        }
                     }
                     delay(if (isAutoRetry) 0 else 600)
                     if (!channelSessions.isCurrent(token)) return@withLock
