@@ -182,6 +182,7 @@ fun LiveOverlayUI(
 ) {
     val program = channel.programPresent
     val imageLoader = rememberChannelLogoImageLoader()
+    var logoLoaded by remember(logoUrl) { mutableStateOf(false) }
     val sdf = remember { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()) }
     val displaySdf = remember(timeFormatSetting) {
         if (timeFormatSetting == "12H") SimpleDateFormat("a h:mm", Locale.getDefault())
@@ -293,12 +294,14 @@ fun LiveOverlayUI(
                     modifier = Modifier
                         .size(80.dp, 45.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White)
+                        .background(if (logoLoaded) Color.White else Color.Transparent)
                         .onGloballyPositioned { coordinates ->
                             recordAvoidanceBounds("channel-logo", Rect(coordinates.positionInRoot(), Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())))
                         },
                     // ★ 修正: フラグに基づいてスケールを変更
-                    contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit
+                    contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit,
+                    onSuccess = { logoLoaded = true },
+                    onError = { logoLoaded = false }
                 )
                 Spacer(Modifier.width(24.dp))
                 val channelNameBounds = rememberCaptionTextBounds { bounds ->

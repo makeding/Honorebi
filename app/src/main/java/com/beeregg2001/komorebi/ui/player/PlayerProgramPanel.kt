@@ -31,9 +31,13 @@ fun PlayerChannelLogo(
     modifier: Modifier = Modifier
 ) {
     var loaded by remember(logoUrl) { mutableStateOf(false) }
-    Box(modifier.clip(RoundedCornerShape(2.dp)).background(Color.White), Alignment.Center) {
+    Box(
+        modifier.clip(RoundedCornerShape(2.dp))
+            .background(if (loaded) Color.White else Color.Transparent),
+        contentAlignment = Alignment.Center
+    ) {
         if (!loaded) {
-            Text(channelName.ifBlank { "チャンネル情報なし" }, color = Color.Black,
+            Text(channelName.ifBlank { "チャンネル情報なし" }, color = Color.White,
                 fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(2.dp).testTag("channel-logo-fallback"))
         }
