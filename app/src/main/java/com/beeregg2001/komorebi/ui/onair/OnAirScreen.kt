@@ -8,6 +8,12 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -119,6 +125,8 @@ fun OnAirScreen(
 
     val columnWidthPx = with(density) { WEEK_COLUMN_WIDTH.roundToPx() }
     val columnSpacingPx = with(density) { WEEK_COLUMN_SPACING.roundToPx() }
+    // Keep the fixed header and horizontally scrolling card row on the exact same measured width.
+    val weekContentWidth = WEEK_COLUMN_WIDTH * weekdays.size + WEEK_COLUMN_SPACING * (weekdays.size - 1)
     val cardHeightPx = (columnWidthPx * 10f / 16f).toInt()
     val cardSpacingPx = with(density) { WEEK_CARD_SPACING.roundToPx() }
 
@@ -151,11 +159,29 @@ fun OnAirScreen(
         if (index < byWeekday[day].lastIndex) requesterAt(day, index + 1) ?: FocusRequester.Cancel
         else FocusRequester.Cancel
 
-    // 列・行をまとめてスクロールして対象カードを見える位置に寄せる。
+    // Keep the focused card visible while preserving the current viewport whenever it already fits.
     fun scrollToCard(day: Int, index: Int) {
         scope.launch {
-            hScroll.animateScrollTo((day * (columnWidthPx + columnSpacingPx)).coerceIn(0, hScroll.maxValue))
-            vScroll.animateScrollTo((index * (cardHeightPx + cardSpacingPx)).coerceIn(0, vScroll.maxValue))
+            val columnStart = day * (columnWidthPx + columnSpacingPx)
+            val visibleWidth = hScroll.viewportSize.takeIf { it > 0 } ?: columnWidthPx
+            val horizontalTarget = when {
+                columnStart < hScroll.value -> columnStart
+                columnStart + columnWidthPx > hScroll.value + visibleWidth ->
+                    columnStart + columnWidthPx - visibleWidth
+                else -> hScroll.value
+            }.coerceIn(0, hScroll.maxValue)
+
+            val cardStart = index * (cardHeightPx + cardSpacingPx)
+            val visibleHeight = vScroll.viewportSize.takeIf { it > 0 } ?: cardHeightPx
+            val verticalTarget = when {
+                cardStart < vScroll.value -> cardStart
+                cardStart + cardHeightPx > vScroll.value + visibleHeight ->
+                    cardStart + cardHeightPx - visibleHeight
+                else -> vScroll.value
+            }.coerceIn(0, vScroll.maxValue)
+
+            if (horizontalTarget != hScroll.value) hScroll.animateScrollTo(horizontalTarget)
+            if (verticalTarget != vScroll.value) vScroll.animateScrollTo(verticalTarget)
         }
     }
 
@@ -242,162 +268,176 @@ fun OnAirScreen(
             .onFocusChanged { pageFocused = it.hasFocus }.focusGroup()
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && (event.key == Key.Back || event.key == Key.Escape)) {
-                    pageBack(); true
+                    if (expanded != null) false else { pageBack(); true }
                 } else false
             },
     ) {
-        if (expanded != null) {
-            OnAirDetail(
-                series = state.series.first { it.id == expanded.seriesId },
-                detail = expanded,
-                state = state,
-                viewModel = viewModel,
-                ip = konomiIp, port = konomiPort,
-                returnCell = returnCell,
-                onRestored = { returnCell = null; onReturnFocusConsumed() },
-                onProgram = onProgramClick,
-                onBack = ::closeDetail,
-                modifier = Modifier.fillMaxSize().testTag("onair-details"),
-            )
-            return@Column
-        }
-
-        Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (showHeadline) {
-                // 検索ボタンと同じ高さのボックスに載せ、縦位置を完全に揃える。
-                Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
-                    Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(24.dp))
-            }
-            if (searchOpen) {
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = { viewModel.updateSearchQuery(it) },
-                    singleLine = true,
-                    label = { androidx.compose.material3.Text("シリーズを検索") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = colors.textPrimary, unfocusedTextColor = colors.textPrimary,
-                        focusedBorderColor = colors.accent, unfocusedBorderColor = colors.textSecondary,
-                        focusedLabelColor = colors.accent, unfocusedLabelColor = colors.textSecondary,
-                        cursorColor = colors.accent,
-                    ),
-                    modifier = Modifier.width(310.dp).focusRequester(searchFieldFocus).testTag("onair-search-field")
-                        .focusProperties {
-                            down = initialSeriesId?.let { cardFocus[it] } ?: FocusRequester.Cancel
-                            up = FocusRequester.Cancel
-                            left = FocusRequester.Cancel
-                        },
+        AnimatedContent(
+            targetState = expanded,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentKey = { it?.seriesId ?: -1 },
+            transitionSpec = {
+                val direction = if (targetState == null) -1 else 1
+                (fadeIn(tween(180)) + slideInHorizontally(tween(180)) { direction * it / 24 }) togetherWith
+                    (fadeOut(tween(140)) + slideOutHorizontally(tween(140)) { -direction * it / 24 })
+            },
+            label = "onair-list-detail",
+        ) { detailContent ->
+            if (detailContent != null) {
+                OnAirDetail(
+                    series = state.series.first { it.id == detailContent.seriesId },
+                    detail = detailContent,
+                    state = state,
+                    viewModel = viewModel,
+                    ip = konomiIp, port = konomiPort,
+                    returnCell = returnCell,
+                    onRestored = { returnCell = null; onReturnFocusConsumed() },
+                    onProgram = onProgramClick,
+                    onBack = ::closeDetail,
+                    modifier = Modifier.fillMaxSize().testTag("onair-details"),
                 )
-                Spacer(Modifier.width(8.dp))
-                if (state.query.isNotBlank()) {
-                    OnAirAction("クリア", { viewModel.updateSearchQuery("") }, Modifier.testTag("onair-search-clear"))
-                    Spacer(Modifier.width(8.dp))
-                }
-                OnAirAction("閉じる", { closeSearch() }, Modifier.testTag("onair-search-close"))
             } else {
-                OnAirAction(
-                    if (state.query.isBlank()) "検索" else "検索中",
-                    {
-                        searchOpen = true
-                        scope.launch { searchFieldFocus.safeRequestFocusWithRetry("OnAirOpenSearch") }
-                    },
-                    Modifier.focusRequester(searchButtonFocus).testTag("onair-search")
-                        .focusProperties { up = topFocusRequester },
-                    selected = state.query.isNotBlank(),
-                )
-            }
-        }
-
-        val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
-        when {
-            !state.backendSupported -> OnAirEmpty(
-                "このバックエンドは「放送中」に対応していません",
-                "HonomiTV の接続を設定してください。 [ON_AIR_UNSUPPORTED]", "接続設定を開く", onSettings,
-            )
-            state.series.isEmpty() && state.listStatus is OnAirLoadState.Error -> {
-                val error = state.listStatus as OnAirLoadState.Error
-                OnAirEmpty("放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList)
-            }
-            // 読み込み中でも曜日ヘッダーは即座に描画し、各列にスケルトンを出す。
-            else -> Column(Modifier.weight(1f).fillMaxWidth()) {
-                // 曜日ヘッダーは縦スクロールしても固定。横スクロールに同期して動く。
-                Box(Modifier.fillMaxWidth().height(WEEK_HEADER_HEIGHT).clipToBounds()) {
-                    Row(
-                        Modifier
-                            .offset { IntOffset(-hScroll.value, 0) }
-                            // requiredWidth で親幅の制約を無視し、7曜日ぶんを必ず確保する。
-                            .requiredWidth(WEEK_COLUMN_WIDTH * 7 + WEEK_COLUMN_SPACING * 6)
-                            .height(WEEK_HEADER_HEIGHT),
-                        horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
-                    ) {
-                        (0..6).forEach { day ->
-                            DayHeader(
-                                label = weekdays[day],
-                                count = byWeekday[day].size,
-                                loading = isLoading,
-                                color = weekdayColors[day % weekdayColors.size],
-                                highlighted = day == state.selectedWeekday,
-                            )
+                Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (showHeadline) {
+                        // 検索ボタンと同じ高さのボックスに載せ、縦位置を完全に揃える。
+                        Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
+                            Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         }
+                        Spacer(Modifier.width(24.dp))
+                    }
+                    if (searchOpen) {
+                        OutlinedTextField(
+                            value = state.query,
+                            onValueChange = { viewModel.updateSearchQuery(it) },
+                            singleLine = true,
+                            label = { androidx.compose.material3.Text("シリーズを検索") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = colors.textPrimary, unfocusedTextColor = colors.textPrimary,
+                                focusedBorderColor = colors.accent, unfocusedBorderColor = colors.textSecondary,
+                                focusedLabelColor = colors.accent, unfocusedLabelColor = colors.textSecondary,
+                                cursorColor = colors.accent,
+                            ),
+                            modifier = Modifier.width(310.dp).focusRequester(searchFieldFocus).testTag("onair-search-field")
+                                .focusProperties {
+                                    down = initialSeriesId?.let { cardFocus[it] } ?: FocusRequester.Cancel
+                                    up = FocusRequester.Cancel
+                                    left = FocusRequester.Cancel
+                                },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        if (state.query.isNotBlank()) {
+                            OnAirAction("クリア", { viewModel.updateSearchQuery("") }, Modifier.testTag("onair-search-clear"))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        OnAirAction("閉じる", { closeSearch() }, Modifier.testTag("onair-search-close"))
+                    } else {
+                        OnAirAction(
+                            if (state.query.isBlank()) "検索" else "検索中",
+                            {
+                                searchOpen = true
+                                scope.launch { searchFieldFocus.safeRequestFocusWithRetry("OnAirOpenSearch") }
+                            },
+                            Modifier.focusRequester(searchButtonFocus).testTag("onair-search")
+                                .focusProperties { up = topFocusRequester },
+                            selected = state.query.isNotBlank(),
+                        )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                // 全体をひとつの縦スクロールに載せる（列ごとに独立スクロールしない）。
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(vScroll)
-                        .horizontalScroll(hScroll)
-                        .testTag("onair-grid"),
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING)) {
-                        (0..6).forEach { day ->
-                            val daySeries = byWeekday[day]
-                            Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
-                                if (daySeries.isEmpty()) {
-                                    if (isLoading) {
-                                        repeat(WEEK_SKELETON_COUNT) { i ->
-                                            WeekSkeletonCard()
-                                            if (i != WEEK_SKELETON_COUNT - 1) Spacer(Modifier.height(WEEK_CARD_SPACING))
-                                        }
-                                    } else {
-                                        Box(
-                                            Modifier.fillMaxWidth().height(80.dp),
-                                            contentAlignment = Alignment.TopCenter,
-                                        ) {
-                                            Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-                                        }
-                                    }
-                                } else {
-                                    daySeries.forEachIndexed { index, series ->
-                                        OnAirCard(
-                                            series = series, selected = false,
-                                            ip = konomiIp, port = konomiPort, timeFormat = timeFormat,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .focusRequester(cardFocus.getValue(series.id))
-                                                .then(
-                                                    if (series.id == initialSeriesId) Modifier.focusRequester(initialFocusRequester)
-                                                    else Modifier
-                                                )
-                                                .testTag("onair-series-${series.id}")
-                                                .onFocusChanged {
-                                                    if (it.isFocused) {
-                                                        viewModel.saveFocusedSeries(series.id)
-                                                        if (state.selectedWeekday != day) viewModel.selectWeekday(day)
-                                                    }
+
+                val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
+                when {
+                    !state.backendSupported -> OnAirEmpty(
+                        "このバックエンドは「放送中」に対応していません",
+                        "HonomiTV の接続を設定してください。 [ON_AIR_UNSUPPORTED]", "接続設定を開く", onSettings,
+                    )
+                    state.series.isEmpty() && state.listStatus is OnAirLoadState.Error -> {
+                        val error = state.listStatus as OnAirLoadState.Error
+                        OnAirEmpty("放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList)
+                    }
+                    // 読み込み中でも曜日ヘッダーは即座に描画し、各列にスケルトンを出す。
+                    else -> Column(Modifier.weight(1f).fillMaxWidth()) {
+                        // 曜日ヘッダーは縦スクロールしても固定。横スクロールに同期して動く。
+                        Box(Modifier.fillMaxWidth().height(WEEK_HEADER_HEIGHT).clipToBounds()) {
+                            Row(
+                                Modifier
+                                    .offset { IntOffset(-hScroll.value, 0) }
+                                    // Header and cards share the same seven-column measurement.
+                                    .requiredWidth(weekContentWidth)
+                                    .height(WEEK_HEADER_HEIGHT),
+                                horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                            ) {
+                                (0..6).forEach { day ->
+                                    DayHeader(
+                                        label = weekdays[day],
+                                        count = byWeekday[day].size,
+                                        loading = isLoading,
+                                        color = weekdayColors[day % weekdayColors.size],
+                                        highlighted = day == state.selectedWeekday,
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        // 全体をひとつの縦スクロールに載せる（列ごとに独立スクロールしない）。
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(vScroll)
+                                .horizontalScroll(hScroll)
+                                .testTag("onair-grid"),
+                        ) {
+                            Row(
+                                Modifier.requiredWidth(weekContentWidth),
+                                horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                            ) {
+                                (0..6).forEach { day ->
+                                    val daySeries = byWeekday[day]
+                                    Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
+                                        if (daySeries.isEmpty()) {
+                                            if (isLoading) {
+                                                repeat(WEEK_SKELETON_COUNT) { i ->
+                                                    WeekSkeletonCard()
+                                                    if (i != WEEK_SKELETON_COUNT - 1) Spacer(Modifier.height(WEEK_CARD_SPACING))
                                                 }
-                                                .focusProperties {
-                                                    left = cardLeft(day, index)
-                                                    right = cardRight(day, index)
-                                                    up = cardUp(day, index)
-                                                    down = cardDown(day, index)
-                                                },
-                                            onClick = { viewModel.expandSeries(series.id) },
-                                        )
-                                        if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))
+                                            } else {
+                                                Box(
+                                                    Modifier.fillMaxWidth().height(80.dp),
+                                                    contentAlignment = Alignment.TopCenter,
+                                                ) {
+                                                    Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                                }
+                                            }
+                                        } else {
+                                            daySeries.forEachIndexed { index, series ->
+                                                OnAirCard(
+                                                    series = series, selected = false,
+                                                    ip = konomiIp, port = konomiPort, timeFormat = timeFormat,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .focusRequester(cardFocus.getValue(series.id))
+                                                        .then(
+                                                            if (series.id == initialSeriesId) Modifier.focusRequester(initialFocusRequester)
+                                                            else Modifier
+                                                        )
+                                                        .testTag("onair-series-${series.id}")
+                                                        .onFocusChanged {
+                                                            if (it.isFocused) {
+                                                                viewModel.saveFocusedSeries(series.id)
+                                                                if (state.selectedWeekday != day) viewModel.selectWeekday(day)
+                                                            }
+                                                        }
+                                                        .focusProperties {
+                                                            left = cardLeft(day, index)
+                                                            right = cardRight(day, index)
+                                                            up = cardUp(day, index)
+                                                            down = cardDown(day, index)
+                                                        },
+                                                    onClick = { viewModel.expandSeries(series.id) },
+                                                )
+                                                if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))
+                                            }
+                                        }
                                     }
                                 }
                             }
