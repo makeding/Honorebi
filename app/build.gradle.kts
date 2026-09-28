@@ -93,6 +93,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time などの Java 8+ API を Android 7.0(API 24)以降で利用する。
+        isCoreLibraryDesugaringEnabled = true
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
 
@@ -144,6 +146,8 @@ ksp {
 //}
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:okhttp-tls:${libs.versions.okhttp.get()}")
     testImplementation("com.squareup.okhttp3:mockwebserver:${libs.versions.okhttp.get()}")
@@ -239,4 +243,6 @@ dependencies {
     // ★ 追加: SMB (ファイルライブラリ) 用
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
 
+//    implementation("org.videolan.android:libvlc-all:3.7.0")
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }
