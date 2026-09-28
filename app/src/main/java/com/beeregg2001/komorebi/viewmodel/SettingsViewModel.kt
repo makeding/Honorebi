@@ -11,6 +11,7 @@ import com.beeregg2001.komorebi.data.local.AppDatabase
 import com.beeregg2001.komorebi.data.sync.RecordSyncEngine
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.CmSkipMode
+import com.beeregg2001.komorebi.data.repository.CacheManager
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
 import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
@@ -71,6 +72,7 @@ class SettingsViewModel @Inject constructor(
     private val honomiAuthRepository: HonomiAuthRepository,
     private val watchHistoryRepository: WatchHistoryRepository,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
+    private val cacheManager: CacheManager,
 ) : ViewModel() {
 
     private val gson = Gson()
@@ -515,6 +517,25 @@ class SettingsViewModel @Inject constructor(
 
     fun triggerFullSync() {
         viewModelScope.launch { syncEngine.clearDatabase() }
+    }
+
+    fun clearChannelLogoCache() {
+        viewModelScope.launch { cacheManager.clearChannelLogoCache() }
+    }
+
+    fun clearThumbnailCache() {
+        viewModelScope.launch { cacheManager.clearThumbnailCache() }
+    }
+
+    fun clearEpgCache() {
+        viewModelScope.launch { cacheManager.clearEpgCache() }
+    }
+
+    fun clearAllCache() {
+        viewModelScope.launch {
+            cacheManager.clearAll()
+            syncEngine.clearDatabase()
+        }
     }
 
     fun addPostRecordingBatch(name: String, path: String) {

@@ -109,6 +109,7 @@ fun SettingsScreen(
         Category("番組表設定", Icons.Default.GridOn),
         Category(AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
         Category(AppStrings.SETTINGS_CATEGORY_LAB, Icons.Default.Science),
+        Category(AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.Cached),
         Category(AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info)
     )
     val categoryFocusRequesters = remember { List(categories.size) { FocusRequester() } }
@@ -181,6 +182,13 @@ fun SettingsScreen(
                 FocusRequester()
             ),
             listOf(FocusRequester()),
+            listOf(
+                FocusRequester(),
+                FocusRequester(),
+                FocusRequester(),
+                FocusRequester(),
+                FocusRequester()
+            ),
             listOf(FocusRequester())
         )
     }
@@ -365,10 +373,12 @@ fun SettingsScreen(
                             },
                             itemFocusRequesters[0][0],
                             {
-                                uiState.activeDialog = SettingDialogState.ConfirmClear(
-                                    "ローカル録画キャッシュの削除",
-                                    "端末内に残っている録画リストのキャッシュを削除します。録画リストはサーバーから必要なページだけ取得されます。"
-                                ) { viewModel.triggerFullSync() }
+                                uiState.selectedCategoryIndex = 9
+                                scope.launch {
+                                    delay(100)
+                                    itemFocusRequesters[9][0]
+                                        .safeRequestFocus("OpenCacheManagement")
+                                }
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.ConfirmClear(
@@ -1081,10 +1091,64 @@ fun SettingsScreen(
                             uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8
                         }
 
-                        9 -> AppInfoContent(
-                            { uiState.activeDialog = SettingDialogState.Licenses },
-                            itemFocusRequesters[9][0], categoryFocusRequesters[9]
+                        9 -> CacheManagementContent(
+                            onClearAll = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    "すべてのキャッシュの削除",
+                                    "局ロゴ・サムネイル・番組表・録画リストのキャッシュをすべて削除します。よろしいですか？"
+                                ) {
+                                    viewModel.clearAllCache()
+                                    toastMessage = "すべてのキャッシュを削除しました"
+                                }
+                            },
+                            onClearChannelLogo = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    "局ロゴキャッシュの削除",
+                                    "端末に保存されている局ロゴを削除します。次回表示時に再取得されます。"
+                                ) {
+                                    viewModel.clearChannelLogoCache()
+                                    toastMessage = "局ロゴキャッシュを削除しました"
+                                }
+                            },
+                            onClearThumbnail = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    "サムネイルキャッシュの削除",
+                                    "番組・録画のサムネイル画像キャッシュを削除します。次回表示時に再取得されます。"
+                                ) {
+                                    viewModel.clearThumbnailCache()
+                                    toastMessage = "サムネイルキャッシュを削除しました"
+                                }
+                            },
+                            onClearEpg = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    "番組表キャッシュの削除",
+                                    "保存済みの番組表データを削除します。次回表示時に再取得されます。"
+                                ) {
+                                    viewModel.clearEpgCache()
+                                    toastMessage = "番組表キャッシュを削除しました"
+                                }
+                            },
+                            onClearRecording = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    "録画リストキャッシュの削除",
+                                    "端末内に残っている録画リストのキャッシュを削除します。録画リストはサーバーから必要なページだけ取得されます。"
+                                ) {
+                                    viewModel.triggerFullSync()
+                                    toastMessage = "録画リストキャッシュを削除しました"
+                                }
+                            },
+                            allR = itemFocusRequesters[9][0],
+                            logoR = itemFocusRequesters[9][1],
+                            thumbR = itemFocusRequesters[9][2],
+                            epgR = itemFocusRequesters[9][3],
+                            recordingR = itemFocusRequesters[9][4],
+                            sidebarR = categoryFocusRequesters[9]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9 }
+
+                        10 -> AppInfoContent(
+                            { uiState.activeDialog = SettingDialogState.Licenses },
+                            itemFocusRequesters[10][0], categoryFocusRequesters[10]
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 10 }
                     }
                     Spacer(Modifier.height(32.dp))
                 }

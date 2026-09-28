@@ -184,6 +184,7 @@ object AppStrings {
     const val SETTINGS_CATEGORY_DISPLAY = "表示設定"
     const val SETTINGS_CATEGORY_COMMENT = "コメント設定"
     const val SETTINGS_CATEGORY_LAB = "アドオン・ラボ"
+    const val SETTINGS_CATEGORY_CACHE = "キャッシュ管理"
     const val SETTINGS_CATEGORY_APP_INFO = "アプリ情報"
 
     // 基本設定

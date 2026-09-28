@@ -13,4 +13,7 @@ interface EpgCacheDao {
 
     @Query("SELECT * FROM epg_cache WHERE channelType = :channelType")
     suspend fun getCache(channelType: String): EpgCacheEntity?
+
+    @Query("DELETE FROM epg_cache")
+    suspend fun clearAll()
 }

@@ -57,7 +57,7 @@ fun GeneralSettingsContent(
     receiveBetaUpdates: Boolean,
     onToggleBetaUpdates: (Boolean) -> Unit,
     betaUpdateR: FocusRequester,
-    onForceSync: () -> Unit,
+    onOpenCacheManagement: () -> Unit,
     onClearChannel: () -> Unit,
     onClearHistory: () -> Unit,
     dbInfoR: FocusRequester,
@@ -111,9 +111,9 @@ fun GeneralSettingsContent(
                 onClick = { onClick(dbInfoR) }
             )
             SettingItem(
-                title = "ローカル録画キャッシュを削除",
+                title = "キャッシュ管理",
                 value = "最終同期: $lastSyncStr",
-                icon = Icons.Default.CloudSync,
+                icon = Icons.Default.Cached,
                 modifier = Modifier
                     .focusRequester(forceSyncR)
                     .focusProperties {
@@ -121,7 +121,7 @@ fun GeneralSettingsContent(
                         up = dbInfoR
                         down = clearChannelR
                     },
-                onClick = { onClick(forceSyncR); onForceSync() }
+                onClick = { onClick(forceSyncR); onOpenCacheManagement() }
             )
         }
 
@@ -1239,6 +1239,102 @@ fun LabSettingsContent(
             )
         }
 
+    }
+}
+
+@Composable
+fun CacheManagementContent(
+    onClearAll: () -> Unit,
+    onClearChannelLogo: () -> Unit,
+    onClearThumbnail: () -> Unit,
+    onClearEpg: () -> Unit,
+    onClearRecording: () -> Unit,
+    allR: FocusRequester,
+    logoR: FocusRequester,
+    thumbR: FocusRequester,
+    epgR: FocusRequester,
+    recordingR: FocusRequester,
+    sidebarR: FocusRequester,
+    onClick: (FocusRequester) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Text(
+            AppStrings.SETTINGS_CATEGORY_CACHE,
+            style = MaterialTheme.typography.headlineMedium,
+            color = KomorebiTheme.colors.textPrimary,
+            fontWeight = FontWeight.Bold
+        )
+
+        SettingsSection("一括操作") {
+            SettingItem(
+                title = "すべてのキャッシュを削除",
+                value = "",
+                icon = Icons.Default.DeleteSweep,
+                modifier = Modifier
+                    .focusRequester(allR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = FocusRequester.Cancel
+                        down = logoR
+                    },
+                onClick = { onClick(allR); onClearAll() }
+            )
+        }
+
+        SettingsSection("個別に削除") {
+            SettingItem(
+                title = "局ロゴキャッシュを削除",
+                value = "",
+                icon = Icons.Default.LiveTv,
+                modifier = Modifier
+                    .focusRequester(logoR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = allR
+                        down = thumbR
+                    },
+                onClick = { onClick(logoR); onClearChannelLogo() }
+            )
+            SettingItem(
+                title = "サムネイルキャッシュを削除",
+                value = "",
+                icon = Icons.Default.Image,
+                modifier = Modifier
+                    .focusRequester(thumbR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = logoR
+                        down = epgR
+                    },
+                onClick = { onClick(thumbR); onClearThumbnail() }
+            )
+            SettingItem(
+                title = "番組表キャッシュを削除",
+                value = "",
+                icon = Icons.Default.GridOn,
+                modifier = Modifier
+                    .focusRequester(epgR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = thumbR
+                        down = recordingR
+                    },
+                onClick = { onClick(epgR); onClearEpg() }
+            )
+            SettingItem(
+                title = "録画リストキャッシュを削除",
+                value = "",
+                icon = Icons.Default.VideoLibrary,
+                modifier = Modifier
+                    .focusRequester(recordingR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = epgR
+                        down = FocusRequester.Cancel
+                    },
+                onClick = { onClick(recordingR); onClearRecording() }
+            )
+        }
     }
 }
 

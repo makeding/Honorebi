@@ -32,11 +32,16 @@ class ChannelLogoCache @Inject constructor(
         // URL はバックエンド種別ごとに決まるため、切替時に古い URL を引きずらないよう全消しする。
         scope.launch {
             settingsRepository.backendType.distinctUntilChanged().collect {
-                logoCache.clear()
-                inFlightLogoIds.clear()
-                _channelLogoUrls.value = emptyMap()
+                clear()
             }
         }
+    }
+
+    /** メモリ上のロゴ URL と解決中フラグをすべて破棄する */
+    fun clear() {
+        logoCache.clear()
+        inFlightLogoIds.clear()
+        _channelLogoUrls.value = emptyMap()
     }
 
     /**
