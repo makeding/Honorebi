@@ -208,6 +208,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "OFF"
     )
+    val subtitleFont: StateFlow<String> = settingsRepository.subtitleFont.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "default"
+    )
     val videoPlaybackSpeed: StateFlow<String> = settingsRepository.videoPlaybackSpeed.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

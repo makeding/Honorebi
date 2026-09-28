@@ -8,11 +8,27 @@ import com.beeregg2001.komorebi.util.mmts.B62SubtitleResource
 class NativeCaptionDecoder(
     context: Context,
     private val nativeLib: NativeLib = NativeLib(),
-    private val captionType: Int = TYPE_CAPTION
+    private val captionType: Int = TYPE_CAPTION,
+    fontId: String = SubtitleFontFiles.DEFAULT_ID,
 ) : AutoCloseable {
-    private val fontPath = installCaptionFont(context.applicationContext)
+    private val appContext = context.applicationContext
+    private var fontId: String = SubtitleFontFiles.fromId(fontId).id
+    private var fontPath: String = SubtitleFontFiles.installFont(appContext, this.fontId)
     private var handle: Long = nativeLib.openCaptionDecoder(captionType, fontPath)
     private var languages: List<NativeCaptionLanguage> = emptyList()
+
+    /** 字幕フォントを切り替える。同じ ID なら何もしない。 */
+    @Synchronized
+    fun setFontId(id: String) {
+        val font = SubtitleFontFiles.fromId(id)
+        if (font.id == fontId) return
+        fontId = font.id
+        fontPath = SubtitleFontFiles.installFont(appContext, font.id)
+        val activeHandle = handle
+        if (activeHandle != 0L) nativeLib.closeCaptionDecoder(activeHandle)
+        handle = nativeLib.openCaptionDecoder(captionType, fontPath)
+        languages = emptyList()
+    }
 
     @Synchronized
     fun decode(
@@ -145,28 +161,6 @@ class NativeCaptionDecoder(
         const val TYPE_CAPTION = NativeCaptionCue.TYPE_CAPTION
         const val TYPE_SUPERIMPOSE = NativeCaptionCue.TYPE_SUPERIMPOSE
 
-        private const val CAPTION_FONT_ASSET = "fonts/kosugi_maru_regular.ttf"
-        private const val CAPTION_FONT_FILE = "caption-fonts/kosugi_maru_regular_4_002.ttf"
-        private const val CAPTION_FONT_SIZE_BYTES = 3_565_692L
         private const val TAG = "NativeCaptionDecoder"
-
-        private val fontInstallLock = Any()
-
-        private fun installCaptionFont(context: Context): String = synchronized(fontInstallLock) {
-            val fontFile = context.noBackupFilesDir.resolve(CAPTION_FONT_FILE)
-            if (fontFile.length() != CAPTION_FONT_SIZE_BYTES) {
-                val fontDirectory = checkNotNull(fontFile.parentFile)
-                check(fontDirectory.isDirectory || fontDirectory.mkdirs()) {
-                    "Failed to create the caption font directory"
-                }
-                context.assets.open(CAPTION_FONT_ASSET).use { source ->
-                    fontFile.outputStream().use(source::copyTo)
-                }
-                check(fontFile.length() == CAPTION_FONT_SIZE_BYTES) {
-                    "Failed to install the caption font"
-                }
-            }
-            fontFile.absolutePath
-        }
     }
 }

@@ -152,6 +152,7 @@ fun SettingsScreen(
                 FocusRequester(),
                 FocusRequester(),
                 FocusRequester(),
+                FocusRequester(),
                 FocusRequester()
             ),
             listOf(FocusRequester()),
@@ -566,6 +567,7 @@ fun SettingsScreen(
                             prefs.videoQuality,
                             prefs.liveSubtitleDefault,
                             prefs.videoSubtitleDefault,
+                            prefs.subtitleFont,
                             prefs.subtitleCommentLayer,
                             prefs.audioOutputMode,
                             playerUiMode,
@@ -576,6 +578,7 @@ fun SettingsScreen(
                             itemFocusRequesters[2][1],
                             itemFocusRequesters[2][2],
                             itemFocusRequesters[2][3],
+                            itemFocusRequesters[2][10],
                             itemFocusRequesters[2][4],
                             itemFocusRequesters[2][5],
                             itemFocusRequesters[2][6],
@@ -627,6 +630,23 @@ fun SettingsScreen(
                                         SettingsRepository.VIDEO_SUBTITLE_DEFAULT,
                                         if (prefs.videoSubtitleDefault == "ON") "OFF" else "ON"
                                     )
+                                }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.DIALOG_SUBTITLE_FONT_TITLE,
+                                    listOf(
+                                        AppStrings.SETTINGS_VALUE_FONT_DEFAULT to "default",
+                                        AppStrings.SETTINGS_VALUE_FONT_ARIB to "arib"
+                                    ),
+                                    prefs.subtitleFont
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.SUBTITLE_FONT,
+                                            it
+                                        )
+                                    }
                                 }
                             },
                             {

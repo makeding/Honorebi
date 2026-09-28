@@ -306,6 +306,14 @@ class LivePlayerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            settingsRepository.subtitleFont.collect { fontId ->
+                mainCaptionDecoder.setFontId(fontId)
+                mainSuperimposeDecoder.setFontId(fontId)
+                dualCaptionDecoder.setFontId(fontId)
+                dualSuperimposeDecoder.setFontId(fontId)
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.backendType.collect { type ->
                 _mainBackendType.value = type
                 _shouldCropLogo.value = type == "KONOMITV"

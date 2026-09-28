@@ -362,6 +362,27 @@ third-party archives.
         """.trimIndent()
     ),
     OssLibrary(
+        name = "Rounded M+ 1m for ARIB",
+        author = "自家製フォント工房 (Rounded M+), 和田研フォント",
+        licenseName = "自家製 Rounded M+ ライセンス (フリーフォント)",
+        licenseText = """
+            Rounded M+ 1m for ARIB は、丸ゴシック化された M+ フォント「自家製 Rounded M+」に、
+            和田研中丸ゴシック2004ARIB の JIS 第三水準漢字および ARIB 外字を補ったフリーフォントです。
+
+            ---自家製 Rounded M+ ライセンス---
+            These fonts are free software.
+            Unlimited permission is granted to use, copy, and distribute them, with
+            or without modification, either commercially or noncommercially.
+            THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+
+            ---和田研中丸ゴシック2004ARIB ライセンス---
+            このフォントはフリーフォントです。無償で使用可能です。
+            商用・非商用いずれでもお使い頂けます。
+            このフォントは再配布・改変が可能です。
+            他のソフトに添付や組み込んだ形での配布も可能です。
+        """.trimIndent()
+    ),
+    OssLibrary(
         name = "SCRename.py",
         author = "rigaya",
         licenseName = "",

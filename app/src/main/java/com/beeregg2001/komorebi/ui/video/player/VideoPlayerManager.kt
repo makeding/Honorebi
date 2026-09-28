@@ -220,11 +220,15 @@ fun rememberManagedExoPlayer(
     )
 
     val captionQuality = vs.currentQuality.value
-    val captionDecoder = remember(recordedPlaybackFence.identity, captionQuality, constructionKey) { NativeCaptionDecoder(context) }
-    val superimposeDecoder = remember(recordedPlaybackFence.identity, captionQuality, constructionKey) {
+    val subtitleFontId by settingsViewModel.subtitleFont.collectAsState()
+    val captionDecoder = remember(recordedPlaybackFence.identity, captionQuality, constructionKey, subtitleFontId) {
+        NativeCaptionDecoder(context, fontId = subtitleFontId)
+    }
+    val superimposeDecoder = remember(recordedPlaybackFence.identity, captionQuality, constructionKey, subtitleFontId) {
         NativeCaptionDecoder(
             captionType = NativeCaptionDecoder.TYPE_SUPERIMPOSE,
-            context = context
+            context = context,
+            fontId = subtitleFontId
         )
     }
     val b62SubtitleSamples = remember(recordedPlaybackFence.identity, captionQuality, constructionKey) {
