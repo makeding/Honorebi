@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.ui.player.supportsOriginalMpegTsQuality
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.RecordedVideo
 import com.beeregg2001.komorebi.data.model.StreamQuality
@@ -56,7 +57,38 @@ class RecordedPlaybackEntryTest {
         assertEquals(raw, chooseRecordedQuality(listOf(raw), copyHls, "copy", false, true, true))
     }
 
-    private fun program(id: Int, container: String) = RecordedProgram(
+    @Test
+    fun temporarilyUnavailableOriginalPreferenceIsNotOverwrittenByFallback() {
+        val fallback = hls
+        assertEquals(fallback, chooseRecordedQuality(
+            listOf(fallback), fallback, StreamQuality.ORIGINAL_MPEG_TS_VALUE,
+            false, false, false,
+        ))
+        assertFalse(shouldPersistRecordedQuality(
+            fallback, StreamQuality.ORIGINAL_MPEG_TS_VALUE, false,
+        ))
+    }
+
+    @Test
+    fun invalidSavedQualityStillNormalizesToAnAvailableQuality() {
+        assertTrue(shouldPersistRecordedQuality(hls, "removed-quality", false))
+        assertFalse(shouldPersistRecordedQuality(hls, "removed-quality", true))
+    }
+
+    @Test
+    fun completedMpegTsOffersOriginalForHevcAndOtherVideoCodecs() {
+        assertTrue(supportsOriginalMpegTsQuality(program(42, "MPEG-TS", "HEVC")))
+        assertTrue(supportsOriginalMpegTsQuality(program(42, "MPEG-TS", "H.264")))
+        assertFalse(supportsOriginalMpegTsQuality(program(42, "MMT/TLV", "HEVC")))
+        assertFalse(supportsOriginalMpegTsQuality(program(42, "MPEG-TS", "HEVC", status = "Recording")))
+    }
+
+    private fun program(
+        id: Int,
+        container: String,
+        codec: String = "HEVC",
+        status: String = "Recorded",
+    ) = RecordedProgram(
         id = id,
         title = "録画",
         description = "",
@@ -64,7 +96,7 @@ class RecordedPlaybackEntryTest {
         endTime = "2026-09-23T01:00:00+09:00",
         duration = 3600.0,
         isPartiallyRecorded = false,
-        recordedVideo = RecordedVideo(id, "Recorded", "/recording", duration = 3600.0,
-            containerFormat = container, videoCodec = "HEVC", audioCodec = "AAC"),
+        recordedVideo = RecordedVideo(id, status, "/recording", duration = 3600.0,
+            containerFormat = container, videoCodec = codec, audioCodec = "AAC"),
     )
 }

@@ -184,7 +184,6 @@ fun rememberManagedExoPlayer(
         vs.currentQuality.isRawMmts
     val isOriginalMpegTsPlayback = RecordedMpegTsPassthroughPolicy.shouldUseTsReadEx(
         containerFormat = program?.recordedVideo?.containerFormat,
-        videoCodec = program?.recordedVideo?.videoCodec,
         qualityValue = vs.currentQuality.value,
     )
     val programDurationUs = ((program?.recordedVideo?.duration ?: 0.0) * 1_000_000.0).toLong()

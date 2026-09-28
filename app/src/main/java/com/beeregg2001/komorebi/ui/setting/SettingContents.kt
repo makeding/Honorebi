@@ -644,7 +644,7 @@ fun PlaybackSettingsContent(
                     },
                 onClick = { onClick(videoR); onV() })
             SettingItem(
-                title = "MPEG-2 オリジナル再生",
+                title = "MPEG-TS オリジナル再生",
                 value = if (preferOriginalMpegTs == "ON") "有効" else "無効",
                 icon = Icons.Default.HighQuality,
                 modifier = Modifier

@@ -17,8 +17,8 @@ data class StreamQuality(
         const val RECORDED_COPY_HLS_VALUE = "copy"
         const val ORIGINAL_MPEG_TS_VALUE = "original-mpegts-hwdi"
 
-        fun originalMpegTsHardwareDi(): StreamQuality = StreamQuality(
-            label = "オリジナル (MPEG-2)",
+        fun originalMpegTs(): StreamQuality = StreamQuality(
+            label = "オリジナル (MPEG-TS)",
             value = ORIGINAL_MPEG_TS_VALUE,
             isRawTs = true
         )

@@ -9,49 +9,37 @@ import org.junit.Test
 
 class RecordedMpegTsPassthroughPolicyTest {
     @Test
-    fun originalMpeg2QualityUsesTheUpstreamDisplayName() {
-        val quality = StreamQuality.originalMpegTsHardwareDi()
+    fun originalMpegTsQualityUsesCodecIndependentDisplayName() {
+        val quality = StreamQuality.originalMpegTs()
 
-        assertEquals("オリジナル (MPEG-2)", quality.label)
+        assertEquals("オリジナル (MPEG-TS)", quality.label)
         assertEquals(StreamQuality.ORIGINAL_MPEG_TS_VALUE, quality.value)
         assertTrue(quality.isRawTs)
     }
 
     @Test
-    fun onlyOriginalMpeg2TransportStreamUsesTsReadEx() {
+    fun originalMpegTsUsesTsReadExRegardlessOfVideoCodec() {
         assertTrue(
             RecordedMpegTsPassthroughPolicy.shouldUseTsReadEx(
                 "MPEG-TS",
-                "MPEG-2",
-                StreamQuality.ORIGINAL_MPEG_TS_VALUE,
-            )
-        )
-
-        assertFalse(
-            RecordedMpegTsPassthroughPolicy.shouldUseTsReadEx(
-                "MPEG-TS",
-                "H.264",
                 StreamQuality.ORIGINAL_MPEG_TS_VALUE,
             )
         )
         assertFalse(
             RecordedMpegTsPassthroughPolicy.shouldUseTsReadEx(
                 "MMT/TLV",
-                "HEVC",
                 StreamQuality.ORIGINAL_MPEG_TS_VALUE,
             )
         )
         assertFalse(
             RecordedMpegTsPassthroughPolicy.shouldUseTsReadEx(
                 "MPEG-TS",
-                "MPEG-2",
                 "1080p",
             )
         )
         assertFalse(
             RecordedMpegTsPassthroughPolicy.shouldUseTsReadEx(
                 "HLS",
-                "MPEG-2",
                 StreamQuality.ORIGINAL_MPEG_TS_VALUE,
             )
         )

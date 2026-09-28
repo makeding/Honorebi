@@ -108,6 +108,16 @@ internal fun chooseRecordedQuality(
         ?: availableQualities.first()
 }
 
+internal fun shouldPersistRecordedQuality(
+    selectedQuality: StreamQuality,
+    savedQuality: String,
+    wasAvailable: Boolean,
+): Boolean = !wasAvailable &&
+    selectedQuality.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE &&
+    selectedQuality.value != StreamQuality.RECORDED_COPY_HLS_VALUE &&
+    !selectedQuality.isRawMmts &&
+    savedQuality != StreamQuality.ORIGINAL_MPEG_TS_VALUE
+
 @UnstableApi
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -314,10 +324,7 @@ internal fun RecordedPlayerScreen(
             )
             val wasAvailable = availableQualities.any { it.value == vs.currentQuality.value }
             vs.currentQuality = selected
-            if (!wasAvailable && !selected.isRawMmts &&
-                selected.value != StreamQuality.ORIGINAL_MPEG_TS_VALUE &&
-                selected.value != StreamQuality.RECORDED_COPY_HLS_VALUE
-            ) {
+            if (shouldPersistRecordedQuality(selected, currentVideoQualityStr, wasAvailable)) {
                 videoPlayerViewModel.saveVideoQuality(selected.value)
             }
             if (requiresRawMmtsPlayback) mmtsInitialQualityApplied = true
@@ -613,7 +620,6 @@ internal fun RecordedPlayerScreen(
     // ファイルサイズ比例の推定だと可変ビットレートの録画で数十秒〜数分手前に着地し、再生再開が大きく遅れるため。
     val usesResolvedByteSeek = (!isLiveStream || isRecordingChasePlayback) &&
         currentProgram.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
-        currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true) &&
         vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
     val seekResolver = remember(currentProgram.id, usesResolvedByteSeek) {
         RecordedSeekResolver(
@@ -933,7 +939,6 @@ internal fun RecordedPlayerScreen(
         vs.currentQuality.value == StreamQuality.RECORDED_COPY_HLS_VALUE
     val usesExtractorByteSeek = isEdcbDirect || usesSerializedRawMmtsSeek || (
         currentProgram.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
-            currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true) &&
             vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
         )
     val rawMmtsSeekCoordinator = remember(exoPlayer, currentProgram.id) {

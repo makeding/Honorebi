@@ -41,9 +41,8 @@ class PlaybackQualityCatalog @Inject constructor(
             }
             "KONOMITV" -> when {
                 program?.requiresRawMmtsPlayback == true -> buildMmtRecordedQualities(program)
-                program?.recordedVideo?.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
-                    program?.recordedVideo?.videoCodec.equals("MPEG-2", ignoreCase = true) ->
-                    listOf(StreamQuality.originalMpegTsHardwareDi()) + StreamQuality.DEFAULT_QUALITIES
+                program?.let(::supportsOriginalMpegTsQuality) == true ->
+                    listOf(StreamQuality.originalMpegTs()) + StreamQuality.DEFAULT_QUALITIES
                 else -> StreamQuality.DEFAULT_QUALITIES
             }
             else -> directQuality()
@@ -110,6 +109,11 @@ class PlaybackQualityCatalog @Inject constructor(
         val STREAM_QUALITY_LIST_TYPE = object : TypeToken<List<StreamQuality>>() {}.type
     }
 }
+
+internal fun supportsOriginalMpegTsQuality(program: RecordedProgram): Boolean =
+    !program.isRecording &&
+        program.recordedVideo.status.equals("Recorded", ignoreCase = true) &&
+        program.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true)
 
 internal fun buildMmtRecordedQualities(program: RecordedProgram): List<StreamQuality> =
     listOf(StreamQuality.recordedRawMmts()) +
