@@ -124,6 +124,7 @@ fun RecordedCard(
                     ImageRequest.Builder(context)
                         .data(program.recordedThumbnailModel(currentThumbnailUrl))
                         .size(coil.size.Size(300, 168))
+                        .allowRgb565(true)
                         .crossfade(true)
                         .memoryCacheKey(thumbnailCacheKey)
                         .diskCacheKey(thumbnailCacheKey)

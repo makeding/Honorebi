@@ -2,7 +2,6 @@ package com.beeregg2001.komorebi.ui.video.player
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.foundation.Canvas
@@ -106,15 +105,6 @@ class TileSheetLoader(
     private var sheetSampleSize: Int = 1
     private val sheetLoadingMutex = Mutex()
 
-    private companion object {
-        // RGB_565 のバイト数/px
-        const val BYTES_PER_PIXEL = 2L
-
-        // デコード後のシートの上限バイト数。Canvas の描画上限 (100MB) に余裕を持たせ、
-        // メモリの少ない TV (3GB クラス) でも保持できる大きさに抑える。
-        const val MAX_SHEET_BYTES = 64L * 1024L * 1024L
-    }
-
     fun release() {
         isReleased = true
         fullSheetBitmap?.recycle()
@@ -191,35 +181,16 @@ class TileSheetLoader(
                     )
                 }
 
-                // シートは録画長に応じて非常に大きくなる (例: 16320x4590)。RGB_565 でも等倍デコードすると
-                // Canvas が描画できる上限 (RecordingCanvas: 100MB) を超え、drawImage 時に
-                // "Canvas: trying to draw too large bitmap" でアプリごと落ちる。
-                // 先に画像サイズだけ読み、MAX_SHEET_BYTES 以下に収まる 2 のべき乗の縮小率でデコードする。
-                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(file.absolutePath, boundsOptions)
-                var sampleSize = 1
-                if (boundsOptions.outWidth > 0 && boundsOptions.outHeight > 0) {
-                    while (
-                        boundsOptions.outWidth.toLong() * boundsOptions.outHeight * BYTES_PER_PIXEL /
-                            (sampleSize.toLong() * sampleSize) > MAX_SHEET_BYTES
-                    ) {
-                        sampleSize *= 2
-                    }
-                }
+                // シートは録画長に応じて非常に大きくなるため、共通ポリシーで等比縮小 + RGB_565 デコードする。
+                val decoded = TileSheetBitmapDecoder.decode(file)
 
-                val options = BitmapFactory.Options().apply {
-                    inPreferredConfig = Bitmap.Config.RGB_565
-                    inSampleSize = sampleSize
-                }
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
-
-                if (bitmap != null) {
-                    fullSheetBitmap = bitmap
-                    sheetSampleSize = sampleSize
+                if (decoded != null) {
+                    fullSheetBitmap = decoded.bitmap
+                    sheetSampleSize = decoded.sampleSize
                     Log.i(
                         TAG,
-                        "[TileLoader] Successfully decoded sheet. Size: ${bitmap.width}x${bitmap.height} " +
-                            "(original ${boundsOptions.outWidth}x${boundsOptions.outHeight}, sampleSize=$sampleSize)"
+                        "[TileLoader] Successfully decoded sheet. Size: ${decoded.bitmap.width}x${decoded.bitmap.height} " +
+                            "(sampleSize=${decoded.sampleSize})"
                     )
                 } else {
                     Log.e(
@@ -228,7 +199,7 @@ class TileSheetLoader(
                     )
                 }
 
-                bitmap
+                decoded?.bitmap
             } catch (e: Exception) {
                 Log.e(TAG, "[TileLoader] Exception during sheet download or decoding", e)
                 null

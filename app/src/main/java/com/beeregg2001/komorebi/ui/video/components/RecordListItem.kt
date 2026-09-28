@@ -89,6 +89,7 @@ fun RecordListItem(
         ImageRequest.Builder(context)
             .data(program.recordedThumbnailModel(currentThumbnailUrl))
             .size(180, 100)
+            .allowRgb565(true)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
