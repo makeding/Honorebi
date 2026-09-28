@@ -3,10 +3,6 @@
 package com.beeregg2001.komorebi.ui.onair
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -27,7 +23,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -40,7 +35,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -75,9 +69,9 @@ private val weekdayColors = listOf(
 // カードが小さくなりすぎないよう、1曜日ぶんの列幅を固定して横スクロールさせる。
 private val WEEK_COLUMN_WIDTH = 180.dp
 private val WEEK_COLUMN_SPACING = 12.dp
+private val WEEK_FOCUS_GUTTER = 8.dp
 private val WEEK_HEADER_HEIGHT = 34.dp
 private val WEEK_CARD_SPACING = 10.dp
-private const val WEEK_SKELETON_COUNT = 4
 
 @Composable
 fun OnAirScreen(
@@ -125,6 +119,8 @@ fun OnAirScreen(
 
     val columnWidthPx = with(density) { WEEK_COLUMN_WIDTH.roundToPx() }
     val columnSpacingPx = with(density) { WEEK_COLUMN_SPACING.roundToPx() }
+    val focusGutterPx = with(density) { WEEK_FOCUS_GUTTER.roundToPx() }
+    val focusInsetPx = with(density) { 8.dp.roundToPx() }
     // Keep the fixed header and horizontally scrolling card row on the exact same measured width.
     val weekContentWidth = WEEK_COLUMN_WIDTH * weekdays.size + WEEK_COLUMN_SPACING * (weekdays.size - 1)
     val cardHeightPx = (columnWidthPx * 10f / 16f).toInt()
@@ -162,12 +158,12 @@ fun OnAirScreen(
     // Keep the focused card visible while preserving the current viewport whenever it already fits.
     fun scrollToCard(day: Int, index: Int) {
         scope.launch {
-            val columnStart = day * (columnWidthPx + columnSpacingPx)
+            val columnStart = focusGutterPx + day * (columnWidthPx + columnSpacingPx)
             val visibleWidth = hScroll.viewportSize.takeIf { it > 0 } ?: columnWidthPx
             val horizontalTarget = when {
-                columnStart < hScroll.value -> columnStart
-                columnStart + columnWidthPx > hScroll.value + visibleWidth ->
-                    columnStart + columnWidthPx - visibleWidth
+                columnStart - focusInsetPx < hScroll.value -> columnStart - focusInsetPx
+                columnStart + columnWidthPx + focusInsetPx > hScroll.value + visibleWidth ->
+                    columnStart + columnWidthPx + focusInsetPx - visibleWidth
                 else -> hScroll.value
             }.coerceIn(0, hScroll.maxValue)
 
@@ -354,88 +350,83 @@ fun OnAirScreen(
                         val error = state.listStatus as OnAirLoadState.Error
                         OnAirEmpty("放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList)
                     }
-                    // 読み込み中でも曜日ヘッダーは即座に描画し、各列にスケルトンを出す。
                     else -> Column(Modifier.weight(1f).fillMaxWidth()) {
-                        // 曜日ヘッダーは縦スクロールしても固定。横スクロールに同期して動く。
-                        Box(Modifier.fillMaxWidth().height(WEEK_HEADER_HEIGHT).clipToBounds()) {
-                            Row(
-                                Modifier
-                                    .offset { IntOffset(-hScroll.value, 0) }
-                                    // Header and cards share the same seven-column measurement.
-                                    .requiredWidth(weekContentWidth)
-                                    .height(WEEK_HEADER_HEIGHT),
-                                horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                            val viewportWidth = maxWidth
+                            // Header and cards live under one horizontal scroll state, so their x positions cannot drift.
+                            Column(
+                                Modifier.fillMaxSize()
+                                    .horizontalScroll(hScroll)
+                                    .testTag("onair-grid"),
                             ) {
-                                (0..6).forEach { day ->
-                                    DayHeader(
-                                        label = weekdays[day],
-                                        count = byWeekday[day].size,
-                                        loading = isLoading,
-                                        color = weekdayColors[day % weekdayColors.size],
-                                        highlighted = day == state.selectedWeekday,
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        // 全体をひとつの縦スクロールに載せる（列ごとに独立スクロールしない）。
-                        Column(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(vScroll)
-                                .horizontalScroll(hScroll)
-                                .testTag("onair-grid"),
-                        ) {
-                            Row(
-                                Modifier.requiredWidth(weekContentWidth),
-                                horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
-                            ) {
-                                (0..6).forEach { day ->
-                                    val daySeries = byWeekday[day]
-                                    Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
-                                        if (daySeries.isEmpty()) {
-                                            if (isLoading) {
-                                                repeat(WEEK_SKELETON_COUNT) { i ->
-                                                    WeekSkeletonCard()
-                                                    if (i != WEEK_SKELETON_COUNT - 1) Spacer(Modifier.height(WEEK_CARD_SPACING))
-                                                }
-                                            } else {
-                                                Box(
-                                                    Modifier.fillMaxWidth().height(80.dp),
-                                                    contentAlignment = Alignment.TopCenter,
-                                                ) {
-                                                    Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-                                                }
-                                            }
-                                        } else {
-                                            daySeries.forEachIndexed { index, series ->
-                                                OnAirCard(
-                                                    series = series, selected = false,
-                                                    ip = konomiIp, port = konomiPort, timeFormat = timeFormat,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .focusRequester(cardFocus.getValue(series.id))
-                                                        .then(
-                                                            if (series.id == initialSeriesId) Modifier.focusRequester(initialFocusRequester)
-                                                            else Modifier
-                                                        )
-                                                        .testTag("onair-series-${series.id}")
-                                                        .onFocusChanged {
-                                                            if (it.isFocused) {
-                                                                viewModel.saveFocusedSeries(series.id)
-                                                                if (state.selectedWeekday != day) viewModel.selectWeekday(day)
+                                Column(Modifier.fillMaxHeight().padding(horizontal = WEEK_FOCUS_GUTTER)) {
+                                    Row(
+                                        Modifier.requiredWidth(weekContentWidth).height(WEEK_HEADER_HEIGHT),
+                                        horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                                    ) {
+                                        (0..6).forEach { day ->
+                                            DayHeader(
+                                                label = weekdays[day],
+                                                count = byWeekday[day].size,
+                                                loading = isLoading,
+                                                color = weekdayColors[day % weekdayColors.size],
+                                                highlighted = day == state.selectedWeekday,
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    if (isLoading && state.series.isEmpty()) {
+                                        // Keep the card area quiet until real content arrives; the header already says "取得中…".
+                                        Spacer(Modifier.width(viewportWidth).weight(1f))
+                                    } else {
+                                        // Only the card rows scroll vertically; weekday labels remain pinned above.
+                                        Column(Modifier.weight(1f).verticalScroll(vScroll)) {
+                                            Row(
+                                                Modifier.requiredWidth(weekContentWidth),
+                                                horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                                            ) {
+                                                (0..6).forEach { day ->
+                                                    val daySeries = byWeekday[day]
+                                                    Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
+                                                        if (daySeries.isEmpty()) {
+                                                            Box(
+                                                                Modifier.fillMaxWidth().height(80.dp),
+                                                                contentAlignment = Alignment.TopCenter,
+                                                            ) {
+                                                                Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                                            }
+                                                        } else {
+                                                            daySeries.forEachIndexed { index, series ->
+                                                                OnAirCard(
+                                                                    series = series, selected = false,
+                                                                    ip = konomiIp, port = konomiPort, timeFormat = timeFormat,
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .focusRequester(cardFocus.getValue(series.id))
+                                                                        .then(
+                                                                            if (series.id == initialSeriesId) Modifier.focusRequester(initialFocusRequester)
+                                                                            else Modifier
+                                                                        )
+                                                                        .testTag("onair-series-${series.id}")
+                                                                        .onFocusChanged {
+                                                                            if (it.isFocused) {
+                                                                                viewModel.saveFocusedSeries(series.id)
+                                                                                if (state.selectedWeekday != day) viewModel.selectWeekday(day)
+                                                                            }
+                                                                        }
+                                                                        .focusProperties {
+                                                                            left = cardLeft(day, index)
+                                                                            right = cardRight(day, index)
+                                                                            up = cardUp(day, index)
+                                                                            down = cardDown(day, index)
+                                                                        },
+                                                                    onClick = { viewModel.expandSeries(series.id) },
+                                                                )
+                                                                if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))
                                                             }
                                                         }
-                                                        .focusProperties {
-                                                            left = cardLeft(day, index)
-                                                            right = cardRight(day, index)
-                                                            up = cardUp(day, index)
-                                                            down = cardDown(day, index)
-                                                        },
-                                                    onClick = { viewModel.expandSeries(series.id) },
-                                                )
-                                                if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -463,24 +454,6 @@ private fun DayHeader(label: String, count: Int, loading: Boolean, color: Color,
         Spacer(Modifier.weight(1f))
         Text(if (loading) "取得中…" else "${count}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
     }
-}
-
-@Composable
-private fun WeekSkeletonCard() {
-    val colors = KomorebiTheme.colors
-    val transition = rememberInfiniteTransition(label = "week-skeleton")
-    val alpha by transition.animateFloat(
-        initialValue = 0.06f,
-        targetValue = 0.16f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
-        label = "week-skeleton-alpha",
-    )
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 10f)
-            .background(colors.textPrimary.copy(alpha = alpha), RoundedCornerShape(8.dp))
-    )
 }
 
 @Composable
