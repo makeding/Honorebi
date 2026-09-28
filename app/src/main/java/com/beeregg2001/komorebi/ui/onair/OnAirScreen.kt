@@ -15,11 +15,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -395,13 +398,14 @@ private fun OnAirCard(series: OnAirSeries, selected: Boolean, ip: String, port: 
                 )
             }
 
-            // 下端を暗くしてタイトル・メタ情報を読みやすくする。
+            // 下端を暗くしてタイトル・メタ情報を読みやすくする（TVでも視認できる濃さ）。
             Box(
                 Modifier.matchParentSize().background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.08f),
-                        0.55f to Color.Black.copy(alpha = 0.15f),
-                        1f to Color.Black.copy(alpha = 0.88f),
+                        0f to Color.Transparent,
+                        0.45f to Color.Transparent,
+                        0.68f to Color.Black.copy(alpha = 0.45f),
+                        1f to Color.Black.copy(alpha = 0.95f),
                     )
                 )
             )
@@ -410,31 +414,33 @@ private fun OnAirCard(series: OnAirSeries, selected: Boolean, ip: String, port: 
             Text(
                 displayBroadcastTime(series.broadcastTime, timeFormat),
                 color = Color.White,
-                fontSize = 16.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
+                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.9f), Offset(0f, 1f), 4f)),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                    .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
             )
 
-            // 左下: 話数 / 右下: チャンネルロゴ
+            // 左下: タイトル・話数 / 右下: チャンネルロゴ
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(horizontal = 9.dp, vertical = 8.dp)
+                    .padding(horizontal = 10.dp, vertical = 9.dp)
             ) {
                 Text(
                     series.title,
                     color = Color.White,
-                    fontSize = 12.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
+                    lineHeight = 19.sp,
                     maxLines = 2,
                     minLines = 2,
-                    lineHeight = 15.sp,
                     overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.95f), Offset(0f, 1f), 5f)),
                 )
                 Spacer(Modifier.height(5.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -443,10 +449,12 @@ private fun OnAirCard(series: OnAirSeries, selected: Boolean, ip: String, port: 
                             append(if (series.recordedEpisodesCount > 0) "${series.recordedEpisodesCount}話" else "話数情報なし")
                             if (series.missingEpisodesCount > 0) append("・${series.missingEpisodesCount}話未録画")
                         },
-                        color = if (series.missingEpisodesCount > 0) colors.accent else Color.White.copy(alpha = 0.88f),
-                        fontSize = 10.sp,
+                        color = if (series.missingEpisodesCount > 0) colors.accent else Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.9f), Offset(0f, 1f), 4f)),
                         modifier = Modifier.weight(1f),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -455,7 +463,7 @@ private fun OnAirCard(series: OnAirSeries, selected: Boolean, ip: String, port: 
                                 UrlBuilder.getKonomiTvLogoUrl(ip, port, channel),
                                 channel,
                                 imageLoader = logos,
-                                modifier = Modifier.size(34.dp, 20.dp).background(Color.White, RoundedCornerShape(3.dp)),
+                                modifier = Modifier.size(38.dp, 22.dp).background(Color.White, RoundedCornerShape(3.dp)),
                                 contentScale = ContentScale.Fit,
                             )
                         }

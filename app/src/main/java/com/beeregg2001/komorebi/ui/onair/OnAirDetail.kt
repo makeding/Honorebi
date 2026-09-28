@@ -2,6 +2,7 @@
 
 package com.beeregg2001.komorebi.ui.onair
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -12,7 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
@@ -52,6 +55,10 @@ internal fun OnAirDetail(
     LaunchedEffect(vertical) { snapshotFlow { vertical.value }.collect(viewModel::saveMatrixVerticalScroll) }
     LaunchedEffect(summaryScroll) { snapshotFlow { summaryScroll.value }.collect(viewModel::saveSummaryScroll) }
 
+    // 作品情報パネルの表示状態。マトリクスへ移動すると畳み、戻るで再表示する。
+    var summaryVisible by remember(series.id) { mutableStateOf(true) }
+    var restoreSummaryFocus by remember(series.id) { mutableStateOf(false) }
+
     // Deterministic D-pad navigation: resolve every neighbour from the playable cells only,
     // so non-focusable slots (未録画 / 解析中) can never trap focus.
     val playableKeysByRow = remember(matrix, series.id) {
@@ -66,13 +73,24 @@ internal fun OnAirDetail(
     playableKeysByRow.forEach { row -> row.filterNotNull().forEach { cellRequesters.getOrPut(it) { FocusRequester() } } }
     val firstCellKey = playableKeysByRow.firstNotNullOfOrNull { row -> row.firstOrNull { it != null } }
     val firstCell = firstCellKey?.let { cellRequesters.getValue(it) }
+    // 最新話（最も新しいスロット）に録画がある最も上の放送局セル。
+    val latestCellKey = remember(playableKeysByRow, matrix, series.id) {
+        (matrix.slots.lastIndex downTo 0).firstNotNullOfOrNull { slotIndex ->
+            playableKeysByRow.firstNotNullOfOrNull { row -> row.getOrNull(slotIndex) }
+        }
+    }
+    val latestCell = latestCellKey?.let { cellRequesters.getValue(it) }
+    val defaultCell = latestCell ?: firstCell
 
     fun requesterAt(row: Int, column: Int): FocusRequester? =
         playableKeysByRow.getOrNull(row)?.getOrNull(column)?.let { cellRequesters[it] }
 
+    fun fallbackAbove(): FocusRequester =
+        if (summaryVisible) summaryFocus else backFocus
+
     fun leftOf(row: Int, column: Int): FocusRequester {
         for (c in column - 1 downTo 0) requesterAt(row, c)?.let { return it }
-        return summaryFocus
+        return fallbackAbove()
     }
 
     fun rightOf(row: Int, column: Int): FocusRequester? {
@@ -87,7 +105,7 @@ internal fun OnAirDetail(
     }
 
     fun upOf(row: Int, column: Int): FocusRequester =
-        if (row == 0) summaryFocus else (nearestInRow(row - 1, column) ?: summaryFocus)
+        if (row == 0) fallbackAbove() else (nearestInRow(row - 1, column) ?: fallbackAbove())
 
     fun downOf(row: Int, column: Int): FocusRequester? =
         if (row >= playableKeysByRow.lastIndex) null else nearestInRow(row + 1, column)
@@ -97,21 +115,41 @@ internal fun OnAirDetail(
         if (detail.programsStatus == OnAirLoadState.Loading) return@LaunchedEffect
         if (returnCell != null) {
             autoFocused = true
-            (cellRequesters[returnCell] ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")
+            (cellRequesters[returnCell] ?: defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")
             onRestored()
         } else if (!autoFocused) {
             autoFocused = true
-            (firstCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirOpenDetail")
+            (defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirOpenDetail")
         }
     }
+
+    LaunchedEffect(summaryVisible, restoreSummaryFocus) {
+        if (summaryVisible && restoreSummaryFocus) {
+            summaryFocus.safeRequestFocusWithRetry("OnAirSummaryRestore")
+            restoreSummaryFocus = false
+        }
+    }
+
+    val handleBack = {
+        if (!summaryVisible) {
+            summaryVisible = true
+            restoreSummaryFocus = true
+        } else {
+            onBack()
+        }
+    }
+    BackHandler(enabled = true) { handleBack() }
 
     Surface(modifier, colors = SurfaceDefaults.colors(containerColor = colors.background),
         shape = RoundedCornerShape(0.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                OnAirAction("戻る", onBack,
+                OnAirAction("戻る", handleBack,
                     Modifier.focusRequester(backFocus)
-                        .focusProperties { up = FocusRequester.Cancel; left = FocusRequester.Cancel; right = FocusRequester.Cancel; down = summaryFocus }
+                        .focusProperties {
+                            up = FocusRequester.Cancel; left = FocusRequester.Cancel; right = FocusRequester.Cancel
+                            down = if (summaryVisible) summaryFocus else (defaultCell ?: FocusRequester.Cancel)
+                        }
                         .testTag("onair-detail-back"))
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
@@ -123,54 +161,20 @@ internal fun OnAirDetail(
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(Modifier.width(340.dp).fillMaxHeight()) {
-                    DetailStatus(detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.height(40.dp))
-                    Surface(
-                        onClick = { viewModel.setSummaryExpanded(!state.summaryExpanded) },
-                        modifier = Modifier.weight(1f).fillMaxWidth().focusRequester(summaryFocus).testTag("onair-summary")
-                            .focusProperties {
-                                up = backFocus
-                                right = firstCell ?: FocusRequester.Cancel
-                                down = firstCell ?: FocusRequester.Cancel
-                            }
-                            .onPreviewKeyEvent { event ->
-                                if (event.type != KeyEventType.KeyDown) false
-                                else when {
-                                    event.key == Key.DirectionDown && summaryScroll.value < summaryScroll.maxValue -> {
-                                        scope.launch { summaryScroll.scrollTo((summaryScroll.value + 120).coerceAtMost(summaryScroll.maxValue)) }; true
-                                    }
-                                    event.key == Key.DirectionUp && summaryScroll.value > 0 -> {
-                                        scope.launch { summaryScroll.scrollTo((summaryScroll.value - 120).coerceAtLeast(0)) }; true
-                                    }
-                                    else -> false
-                                }
-                            },
-                        colors = ClickableSurfaceDefaults.colors(containerColor = colors.surface, contentColor = colors.textPrimary,
-                            focusedContainerColor = colors.surface),
-                        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
-                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                    ) {
-                        Column(Modifier.fillMaxSize().verticalScroll(summaryScroll).padding(10.dp)) {
-                            Box(Modifier.fillMaxWidth().height(140.dp).background(colors.textPrimary.copy(alpha = .05f)), contentAlignment = Alignment.Center) {
-                                Text("ポスターなし", color = colors.textSecondary, fontSize = 12.sp)
-                                detail.summary?.bangumiSubjectImageUrl?.takeIf(String::isNotBlank)?.let { poster ->
-                                    AsyncImage(poster, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Text(detail.summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title,
-                                fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text(detail.summary?.bangumiSubjectNameCn?.takeIf(String::isNotBlank) ?: "中国語タイトル未登録",
-                                color = colors.textSecondary, fontSize = 13.sp)
-                            Spacer(Modifier.height(8.dp))
-                            Text("決定で${if (state.summaryExpanded) "紹介を短く表示" else "紹介の全文を読む"} · 上下でスクロール",
-                                color = colors.accent, fontSize = 11.sp)
-                            Text(detail.summary?.bangumiSubjectSummary?.takeIf(String::isNotBlank)
-                                ?: detail.summary?.description?.takeIf(String::isNotBlank) ?: "作品紹介はありません",
-                                color = colors.textSecondary, fontSize = 13.sp,
-                                maxLines = if (state.summaryExpanded) Int.MAX_VALUE else 4,
-                                overflow = TextOverflow.Ellipsis)
-                        }
+                if (summaryVisible) {
+                    Column(Modifier.width(360.dp).fillMaxHeight()) {
+                        DetailStatus(detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.height(40.dp))
+                        SeriesSummaryPanel(
+                            series = series,
+                            detail = detail,
+                            expanded = state.summaryExpanded,
+                            scrollState = summaryScroll,
+                            scope = scope,
+                            focusRequester = summaryFocus,
+                            downRequester = defaultCell ?: FocusRequester.Cancel,
+                            onToggleExpanded = { viewModel.setSummaryExpanded(!state.summaryExpanded) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -221,22 +225,53 @@ internal fun OnAirDetail(
                                                         modifier = Modifier.width(154.dp).fillMaxHeight().padding(end = 8.dp, bottom = 8.dp)
                                                             .focusRequester(cellRequesters.getValue(cellKey))
                                                             .testTag("onair-episode-$cellKey")
-                                                            .onFocusChanged { if (it.isFocused) viewModel.saveFocusedEpisodeCell(cellKey) }
+                                                            .onFocusChanged {
+                                                                if (it.isFocused) {
+                                                                    viewModel.saveFocusedEpisodeCell(cellKey)
+                                                                    // 既定セルから動いたら作品情報を畳む（戻るで再表示）。
+                                                                    if (summaryVisible && cellKey != latestCellKey) summaryVisible = false
+                                                                }
+                                                            }
                                                             .focusProperties {
                                                                 left = leftOf(rowIndex, index)
                                                                 right = rightOf(rowIndex, index) ?: FocusRequester.Cancel
                                                                 up = upOf(rowIndex, index)
                                                                 down = downOf(rowIndex, index) ?: FocusRequester.Cancel
                                                             },
-                                                        colors = ClickableSurfaceDefaults.colors(containerColor = colors.surface, contentColor = colors.textPrimary,
-                                                            focusedContainerColor = colors.accent, focusedContentColor = Color.Black),
-                                                        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.textPrimary))),
-                                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                                        colors = ClickableSurfaceDefaults.colors(
+                                                            containerColor = colors.surface, contentColor = Color.White,
+                                                            focusedContainerColor = colors.surface, focusedContentColor = Color.White),
+                                                        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
+                                                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
                                                     ) {
-                                                        Column(Modifier.padding(8.dp)) {
-                                                            Text(program.subtitle?.takeIf(String::isNotBlank) ?: program.title,
-                                                                fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                                            Text(if (program.isPartiallyRecorded) "部分録画" else "再生", fontSize = 10.sp)
+                                                        Box(Modifier.fillMaxSize().background(Color(0xFF191919))) {
+                                                            AsyncImage(
+                                                                UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, program.id.toString()),
+                                                                null,
+                                                                Modifier.fillMaxSize(),
+                                                                contentScale = ContentScale.Crop,
+                                                            )
+                                                            Box(Modifier.matchParentSize().background(
+                                                                Brush.verticalGradient(
+                                                                    0f to Color.Transparent,
+                                                                    0.45f to Color.Transparent,
+                                                                    1f to Color.Black.copy(alpha = 0.86f),
+                                                                )
+                                                            ))
+                                                            if (program.isPartiallyRecorded) {
+                                                                Text("⚠ 一部のみ録画",
+                                                                    color = Color(0xFFFFB4AB), fontSize = 9.sp, maxLines = 1,
+                                                                    modifier = Modifier.align(Alignment.TopStart).padding(5.dp)
+                                                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                                                                        .padding(horizontal = 4.dp, vertical = 1.dp))
+                                                            }
+                                                            Text(
+                                                                program.subtitle?.takeIf(String::isNotBlank) ?: program.title,
+                                                                color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                                                modifier = Modifier.align(Alignment.BottomStart)
+                                                                    .fillMaxWidth().padding(horizontal = 7.dp, vertical = 6.dp),
+                                                            )
                                                         }
                                                     }
                                                 }
@@ -249,6 +284,92 @@ internal fun OnAirDetail(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 作品情報パネル。HonomiTV の bangumi ブロックと同じく、
+ * ポスター + 邦題 / 中文題 + あらすじ（日本語・中国語）を横並びで表示する。
+ */
+@Composable
+private fun SeriesSummaryPanel(
+    series: OnAirSeries,
+    detail: OnAirExpandedSeries,
+    expanded: Boolean,
+    scrollState: androidx.compose.foundation.ScrollState,
+    scope: kotlinx.coroutines.CoroutineScope,
+    focusRequester: FocusRequester,
+    downRequester: FocusRequester,
+    onToggleExpanded: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val summary = detail.summary
+    val jpTitle = summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title
+    val cnTitle = summary?.bangumiSubjectNameCn?.takeIf(String::isNotBlank)
+    val jpSummary = summary?.bangumiSubjectSummary?.takeIf(String::isNotBlank)
+        ?: summary?.description?.takeIf(String::isNotBlank)
+    val poster = summary?.bangumiSubjectImageUrl?.takeIf(String::isNotBlank)
+
+    Surface(
+        onClick = onToggleExpanded,
+        modifier = modifier.fillMaxWidth().focusRequester(focusRequester).testTag("onair-summary")
+            .focusProperties {
+                up = FocusRequester.Cancel
+                right = downRequester
+                down = downRequester
+            }
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) false
+                else when {
+                    event.key == Key.DirectionDown && scrollState.value < scrollState.maxValue -> {
+                        scope.launch { scrollState.scrollTo((scrollState.value + 120).coerceAtMost(scrollState.maxValue)) }; true
+                    }
+                    event.key == Key.DirectionUp && scrollState.value > 0 -> {
+                        scope.launch { scrollState.scrollTo((scrollState.value - 120).coerceAtLeast(0)) }; true
+                    }
+                    else -> false
+                }
+            },
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface,
+            contentColor = colors.textPrimary,
+            focusedContainerColor = colors.surface,
+        ),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+    ) {
+        Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(14.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(
+                    Modifier.width(112.dp).height(158.dp).clip(RoundedCornerShape(6.dp))
+                        .background(colors.textPrimary.copy(alpha = .06f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("ポスターなし", color = colors.textSecondary, fontSize = 11.sp)
+                    poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(jpTitle, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (cnTitle != null) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(cnTitle, color = colors.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        jpSummary ?: "作品紹介はありません",
+                        color = colors.textSecondary, fontSize = 12.sp, lineHeight = 18.sp,
+                        maxLines = if (expanded) Int.MAX_VALUE else 6,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "決定で${if (expanded) "紹介を短く表示" else "紹介の全文を読む"} · 上下でスクロール · 戻るで一覧",
+                color = colors.accent, fontSize = 11.sp,
+            )
         }
     }
 }
