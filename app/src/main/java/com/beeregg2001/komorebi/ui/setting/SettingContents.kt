@@ -4,7 +4,17 @@ package com.beeregg2001.komorebi.ui.setting
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
@@ -15,9 +25,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
+import com.beeregg2001.komorebi.BuildConfig
+import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -1389,16 +1403,91 @@ fun CacheManagementContent(
 
 @Composable
 fun AppInfoContent(
-    onShow: () -> Unit,
+    onShowProject: () -> Unit,
+    onShowLicenses: () -> Unit,
+    logoR: FocusRequester,
+    projectR: FocusRequester,
     licR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
+    val colors = KomorebiTheme.colors
+    var logoPresses by remember { mutableIntStateOf(0) }
+    var onFire by remember { mutableStateOf(false) }
+
+    val logoInteraction = remember { MutableInteractionSource() }
+    val isLogoFocused by logoInteraction.collectIsFocusedAsState()
+
+    val flamePulse by rememberInfiniteTransition(label = "hono").animateFloat(
+        initialValue = 1f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(620, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "honoPulse"
+    )
+
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // ロゴ。フォーカスして 4 回押すと hono (= 火) になる隠し要素。
+        Surface(
+            onClick = {
+                if (onFire) {
+                    onFire = false
+                    logoPresses = 0
+                } else {
+                    logoPresses += 1
+                    if (logoPresses >= 4) {
+                        onFire = true
+                        logoPresses = 0
+                    }
+                }
+            },
+            interactionSource = logoInteraction,
+            modifier = Modifier
+                .size(176.dp)
+                .focusRequester(logoR)
+                .focusProperties {
+                    left = sidebarR
+                    up = FocusRequester.Cancel
+                    down = projectR
+                },
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = colors.textPrimary.copy(alpha = 0.08f),
+                contentColor = Color.Unspecified,
+                focusedContentColor = Color.Unspecified
+            ),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(28.dp)),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = if (isLogoFocused) 1.06f else 1f)
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (onFire) {
+                    Icon(
+                        imageVector = Icons.Default.LocalFireDepartment,
+                        contentDescription = null,
+                        tint = Color(0xFFFF7A00),
+                        modifier = Modifier
+                            .size(128.dp)
+                            .graphicsLayer {
+                                scaleX = flamePulse
+                                scaleY = flamePulse
+                            }
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher),
+                        contentDescription = "Honorebi",
+                        modifier = Modifier.size(112.dp)
+                    )
+                }
+            }
+        }
+
         Text(
             "Honorebi",
             style = MaterialTheme.typography.displayMedium,
@@ -1406,23 +1495,47 @@ fun AppInfoContent(
             fontWeight = FontWeight.Bold
         )
         Text(
-            "Version ${com.beeregg2001.komorebi.BuildConfig.VERSION_NAME}",
+            "Version ${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.titleMedium,
             color = KomorebiTheme.colors.textSecondary
         )
-        Spacer(Modifier.height(48.dp))
+        if (onFire) {
+            Text(
+                "隠し要素を見つけました。もう一度押すと元に戻ります。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary
+            )
+        }
+        Spacer(Modifier.height(40.dp))
+
+        SettingItem(
+            AppStrings.SETTINGS_ITEM_PROJECT_GITHUB,
+            "GitHub",
+            Icons.Default.Code,
+            modifier = Modifier
+                .width(420.dp)
+                .focusRequester(projectR)
+                .focusProperties {
+                    left = sidebarR
+                    up = logoR
+                    down = licR
+                },
+            onClick = { onClick(projectR); onShowProject() })
+
+        Spacer(Modifier.height(12.dp))
+
         SettingItem(
             AppStrings.SETTINGS_ITEM_OSS_LICENSES,
             "",
             Icons.Default.Info,
             modifier = Modifier
-                .width(400.dp)
+                .width(420.dp)
                 .focusRequester(licR)
                 .focusProperties {
                     left = sidebarR
-                    up = FocusRequester.Cancel
+                    up = projectR
                     down = FocusRequester.Cancel
                 },
-            onClick = { onClick(licR); onShow() })
+            onClick = { onClick(licR); onShowLicenses() })
     }
 }

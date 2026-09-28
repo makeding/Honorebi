@@ -96,6 +96,7 @@ sealed class SettingDialogState {
         SettingDialogState()
 
     object Licenses : SettingDialogState()
+    data class LinkQr(val title: String, val url: String) : SettingDialogState()
     object GeminiSetup : SettingDialogState()
     object DeviceCapabilities : SettingDialogState()
     object HonomiLogin : SettingDialogState()
@@ -488,6 +489,75 @@ fun HonomiLoginDialog(
                     Button(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.weight(1f)) { Text("キャンセル") }
                     if (isLoading) CircularProgressIndicator(Modifier.size(36.dp).align(Alignment.CenterVertically))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun LinkQrDialog(
+    title: String,
+    url: String,
+    onDismiss: () -> Unit,
+) {
+    val colors = KomorebiTheme.colors
+    val qrBitmap = rememberQrBitmap(url, 300)
+    val closeRequester = remember { FocusRequester() }
+
+    LaunchedEffect(url) {
+        delay(120)
+        closeRequester.safeRequestFocusWithRetry("LinkQrDialog_close")
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(0.8f))
+            .focusGroup()
+            .focusProperties { exit = { FocusRequester.Cancel } }
+            .onKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
+                    onDismiss(); true
+                } else false
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            colors = SurfaceDefaults.colors(containerColor = colors.surface),
+            modifier = Modifier.width(520.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    AppStrings.DIALOG_LINK_HINT,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                    textAlign = TextAlign.Center
+                )
+                if (qrBitmap != null) {
+                    Image(qrBitmap, null, Modifier.size(300.dp))
+                }
+                Text(
+                    url,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                    textAlign = TextAlign.Center
+                )
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(closeRequester)
+                ) { Text("閉じる") }
             }
         }
     }

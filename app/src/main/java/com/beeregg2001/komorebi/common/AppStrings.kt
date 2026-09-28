@@ -186,6 +186,7 @@ object AppStrings {
     const val SETTINGS_CATEGORY_COMMENT = "コメント設定"
     const val SETTINGS_CATEGORY_LAB = "アドオン・ラボ"
     const val SETTINGS_CATEGORY_CACHE = "データ管理"
+    const val SETTINGS_CATEGORY_UI = "UI設定"
     const val SETTINGS_CATEGORY_APP_INFO = "アプリ情報"
 
     // 基本設定
@@ -356,4 +357,8 @@ object AppStrings {
 
     // アプリ情報
     const val SETTINGS_ITEM_OSS_LICENSES = "オープンソースライセンス"
+    const val SETTINGS_ITEM_PROJECT_GITHUB = "プロジェクトページ (GitHub)"
+    const val DIALOG_LINK_TITLE = "プロジェクトページ"
+    const val DIALOG_LINK_HINT = "スマートフォンで QR コードを読み取ると、このアプリのリポジトリを開けます。"
+    const val PROJECT_GITHUB_URL = "https://github.com/makeding/Honorebi"
 }

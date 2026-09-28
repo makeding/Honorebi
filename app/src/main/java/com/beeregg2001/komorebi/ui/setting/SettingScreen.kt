@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
@@ -48,6 +49,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import java.time.LocalTime
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
+
+private data class SettingSidebarRow(
+    val contentIndex: Int,
+    val title: String,
+    val icon: ImageVector,
+    val isChild: Boolean = false,
+)
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -100,21 +108,35 @@ fun SettingsScreen(
         }
     }
 
-    val categories = listOf(
-        Category(AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications),
-        Category(AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.CastConnected),
-        Category(AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
-        Category("録画設定", Icons.Default.VideoSettings),
-        Category("番組表設定", Icons.Default.GridOn),
-        Category(AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
-        Category(AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home),
-        Category(AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps),
-        Category(AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard),
-        Category(AppStrings.SETTINGS_CATEGORY_LAB, Icons.Default.Science),
-        Category(AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.Cached),
-        Category(AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info)
-    )
-    val categoryFocusRequesters = remember { List(categories.size) { FocusRequester() } }
+    // サイドバーの表示順。contentIndex は下の when 分岐（既存の内容インデックス）に対応させ、
+    // 内容ロジックとディープリンクを一切変えずに並び順だけ組み替えられるようにする。
+    // isChild の項目は、直前にグループ見出しを挟んで UI 設定の子として表示する。
+    val sidebarRows = remember {
+        listOf(
+            SettingSidebarRow(0, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications),
+            SettingSidebarRow(1, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.CastConnected),
+            SettingSidebarRow(2, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
+            SettingSidebarRow(5, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
+            SettingSidebarRow(8, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard, isChild = true),
+            SettingSidebarRow(6, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home, isChild = true),
+            SettingSidebarRow(7, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps, isChild = true),
+            SettingSidebarRow(3, "録画設定", Icons.Default.VideoSettings, isChild = true),
+            SettingSidebarRow(4, "番組表設定", Icons.Default.GridOn, isChild = true),
+            SettingSidebarRow(9, AppStrings.SETTINGS_CATEGORY_LAB, Icons.Default.Science),
+            SettingSidebarRow(10, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.Cached),
+            SettingSidebarRow(11, AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info),
+        )
+    }
+    val sidebarRowRequesters = remember { List(sidebarRows.size) { FocusRequester() } }
+    // 内容インデックス → その内容に対応するサイドバー行の FocusRequester。
+    // 既存コードの categoryFocusRequesters[x] / getOrNull(...) / lastOrNull() を
+    // そのまま使えるよう、内容インデックスで引ける List として用意する。
+    val categoryFocusRequesters = remember(sidebarRows) {
+        val byContent = sidebarRows
+            .mapIndexed { i, row -> row.contentIndex to sidebarRowRequesters[i] }
+            .toMap()
+        List(12) { byContent[it] ?: FocusRequester.Default }
+    }
     val homeBackRequester = remember { FocusRequester() }
 
     val batchItemRs =
@@ -149,7 +171,7 @@ fun SettingsScreen(
             List(4) { FocusRequester() },
             List(1) { FocusRequester() },
             List(7) { FocusRequester() },
-            List(1) { FocusRequester() }
+            List(3) { FocusRequester() }
         )
     }
 
@@ -255,12 +277,12 @@ fun SettingsScreen(
                         Icons.Default.Settings,
                         null,
                         tint = colors.textPrimary,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(38.dp)
                     )
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(14.dp))
                     Text(
                         AppStrings.SETTINGS_TITLE,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.headlineMedium,
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
@@ -271,25 +293,37 @@ fun SettingsScreen(
                         .verticalScroll(sidebarScrollState),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    categories.forEachIndexed { index, category ->
-                        val targetR = itemFocusRequesters.getOrNull(index)?.firstOrNull()
-                            ?: FocusRequester.Default
+                    sidebarRows.forEachIndexed { index, row ->
+                        if (row.isChild && (index == 0 || !sidebarRows[index - 1].isChild)) {
+                            Text(
+                                text = AppStrings.SETTINGS_CATEGORY_UI,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)
+                            )
+                        }
+                        val targetR =
+                            itemFocusRequesters.getOrNull(row.contentIndex)?.firstOrNull()
+                                ?: FocusRequester.Default
                         CategoryItem(
-                            title = category.name,
-                            icon = category.icon,
-                            isSelected = uiState.selectedCategoryIndex == index,
+                            title = row.title,
+                            icon = row.icon,
+                            isSelected = uiState.selectedCategoryIndex == row.contentIndex,
                             onFocused = {
-                                if (uiState.isSidebarFocused) uiState.selectedCategoryIndex = index
+                                if (uiState.isSidebarFocused) {
+                                    uiState.selectedCategoryIndex = row.contentIndex
+                                }
                             },
                             onClick = { targetR.safeRequestFocus("CategoryItem_Click") },
                             enabled = !uiState.isRestoringFocus,
                             modifier = Modifier
-                                .focusRequester(categoryFocusRequesters[index])
+                                .padding(start = if (row.isChild) 16.dp else 0.dp)
+                                .focusRequester(sidebarRowRequesters[index])
                                 .focusProperties {
                                     left = FocusRequester.Cancel // ★ 修正: 左キーでフォーカスが迷子になるのを防ぐ
                                     right = targetR
                                     if (index == 0) up = FocusRequester.Cancel
-                                    if (index == categories.lastIndex) down = homeBackRequester
+                                    if (index == sidebarRows.lastIndex) down = homeBackRequester
                                 }
                         )
                     }
@@ -1121,8 +1155,17 @@ fun SettingsScreen(
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 10 }
 
                         11 -> AppInfoContent(
-                            { uiState.activeDialog = SettingDialogState.Licenses },
-                            itemFocusRequesters[11][0], categoryFocusRequesters[11]
+                            onShowProject = {
+                                uiState.activeDialog = SettingDialogState.LinkQr(
+                                    AppStrings.DIALOG_LINK_TITLE,
+                                    AppStrings.PROJECT_GITHUB_URL
+                                )
+                            },
+                            onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
+                            logoR = itemFocusRequesters[11][0],
+                            projectR = itemFocusRequesters[11][1],
+                            licR = itemFocusRequesters[11][2],
+                            sidebarR = categoryFocusRequesters[11]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 11 }
                     }
                     Spacer(Modifier.height(32.dp))
@@ -1195,6 +1238,10 @@ fun SettingsScreen(
                 { closeDialog() })
 
             is SettingDialogState.Licenses -> OpenSourceLicensesScreen(onBack = { closeDialog() })
+            is SettingDialogState.LinkQr -> LinkQrDialog(
+                state.title,
+                state.url,
+                { closeDialog() })
             is SettingDialogState.DeviceCapabilities -> DeviceCapabilitiesScreen(onBack = { closeDialog() })
             is SettingDialogState.DefaultHomeGuide -> DefaultHomeGuideDialog(
                 environment = homeEnvironment,
