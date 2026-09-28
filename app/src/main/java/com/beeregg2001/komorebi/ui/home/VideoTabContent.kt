@@ -77,7 +77,8 @@ fun VideoTabContent(
     isNetworkAvailable: Boolean = true,
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
-    onShowSmbLibrary: () -> Unit = {} // ★ 追加: SMBライブラリ画面への遷移
+    onShowSmbLibrary: () -> Unit = {}, // ★ 追加: SMBライブラリ画面への遷移
+    onShowOnAir: () -> Unit = {} // ★ 追加: 放送中画面への遷移
 ) {
     val colors = KomorebiTheme.colors
 
@@ -236,8 +237,9 @@ fun VideoTabContent(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
-                // ★ 変更点: 録画リストとSMBのボタンを並べて表示する
+                // ★ 変更点: 録画リスト・放送中・SMBのボタンを並べて表示する
                 item {
+                    val onAirRequester = remember { FocusRequester() }
                     Row(
                         modifier = Modifier
                             .padding(start = 48.dp, top = 12.dp, end = 48.dp)
@@ -251,6 +253,7 @@ fun VideoTabContent(
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = FocusRequester.Cancel
+                                    right = onAirRequester
                                     up = tabFocusRequester
                                 },
                             onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
@@ -266,11 +269,35 @@ fun VideoTabContent(
                             }
                         )
 
+                        OnAirBannerButton(
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(onAirRequester)
+                                .then(upToTabModifier)
+                                .focusProperties {
+                                    left = contentFirstItemRequester
+                                    right = FocusRequester.Cancel
+                                    up = tabFocusRequester
+                                },
+                            onClick = onShowOnAir,
+                            onFocus = {
+                                focusedProgramId = null
+                                pendingHeroInfo = HomeHeroInfo(
+                                    title = "放送中",
+                                    subtitle = "現在放送中の番組から探す",
+                                    description = "今放送されている番組をシリーズ単位で一覧表示します。気になる番組からそのまま視聴できます。",
+                                    isThumbnail = false,
+                                    tag = "放送中"
+                                )
+                            }
+                        )
+
                         SmbLibraryBannerButton(
                             modifier = Modifier
                                 .weight(1f)
                                 .then(upToTabModifier)
                                 .focusProperties {
+                                    left = onAirRequester
                                     right = FocusRequester.Cancel
                                     up = tabFocusRequester
                                 },

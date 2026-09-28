@@ -71,6 +71,7 @@ class MainRootState {
     var isRecordListOpen by mutableStateOf(false)
     var isSeriesListOpen by mutableStateOf(false)
     var isSmbLibraryOpen by mutableStateOf(false)
+    var isOnAirOpen by mutableStateOf(false)
 
     var showDeleteConfirmDialog by mutableStateOf(false)
 
@@ -116,6 +117,7 @@ class MainRootState {
         return playbackState.isPlaybackActive || epgProgram != null ||
                 settingsOpen || recordListOpen || reserveOverlayOpen ||
                 isSeriesListOpen || isAiConciergeOpen || isSmbLibraryOpen ||
+                isOnAirOpen ||
                 editingCondition != null || selectedConditionReserveItem != null ||
                 selectedReserve != null || editingReserveItem != null ||
                 editingNewProgram != null || reserveToDelete != null ||

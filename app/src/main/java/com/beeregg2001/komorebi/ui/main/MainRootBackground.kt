@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -58,6 +60,7 @@ fun MainRootBackground(
 ) {
     val scope = rememberCoroutineScope()
     val colors = KomorebiTheme.colors
+    val onAirInitialFocusRequester = remember { FocusRequester() }
 
     // ★ 修正: SMBアイテムが選択されている場合も背面を非表示（ホームレイヤー維持）にする
     val showHomeLayer = !state.playbackState.isPlaybackActive || state.playbackState.isMiniPlayerMode
@@ -114,6 +117,37 @@ fun MainRootBackground(
                         isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
                         lastPlayedPath = state.playbackState.lastPlayedSmbPath,
                         onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false }
+                    )
+                }
+
+                state.isOnAirOpen -> {
+                    com.beeregg2001.komorebi.ui.onair.OnAirScreen(
+                        konomiIp = konomiIp,
+                        konomiPort = konomiPort,
+                        timeFormat = timeFormat,
+                        onProgramClick = { program ->
+                            val isRecordingProgram =
+                                program.isRecording || program.recordedVideo.status == "Recording"
+                            val isAnalyzed =
+                                isRecordingProgram || (program.recordedVideo.hasKeyFrames ?: true)
+                            if (isAnalyzed) {
+                                state.playbackState.enterRecorded(
+                                    program,
+                                    playbackResumePositionMs(program, watchHistory),
+                                )
+                            }
+                        },
+                        onBack = { state.isOnAirOpen = false },
+                        onSettings = {
+                            state.settingsInitialCategoryIndex = 1
+                            state.settingsInitialFocusItemIndex = null
+                            state.settingsOpenDeviceCapabilities = false
+                            state.isSettingsOpen = true
+                        },
+                        initialFocusRequester = onAirInitialFocusRequester,
+                        isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
+                        onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false },
+                        showHeadline = true,
                     )
                 }
 
@@ -250,6 +284,7 @@ fun MainRootBackground(
                         onCloseRecordList = { state.isRecordListOpen = false },
                         onShowSeriesList = { state.isSeriesListOpen = true },
                         onShowSmbLibrary = { state.isSmbLibraryOpen = true },
+                        onShowOnAir = { state.isOnAirOpen = true },
                         isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
                         onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false },
                         isUiReadyFlag = state.isUiReady,

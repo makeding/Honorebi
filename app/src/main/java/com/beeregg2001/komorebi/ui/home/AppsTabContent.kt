@@ -7,23 +7,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -33,13 +26,17 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
+import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppCard
@@ -61,10 +58,9 @@ internal object AppsTabLayout {
     val iconSize = 72.dp
     val horizontalSpacing = 12.dp
     val verticalSpacing = 14.dp
-    val bottomScrollSafeArea = cardHeight
 
-    // フォーカス中カードが沈み込んで見えないよう、グリッド最下段に確保する余白。
-    val gridBottomPadding = 28.dp
+    // グリッドに余分な下余白を足すと、内容が収まっていても最終行で
+    // スクロールが発生するため、あえて contentPadding を持たせない。
     val scrollbarWidth = 4.dp
     val scrollbarEndPadding = 6.dp
 }
@@ -86,7 +82,6 @@ fun AppsTabContent(
         hiddenLauncherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }
     }
     val hideAppLabels by settingsViewModel.hideLauncherAppLabels.collectAsState()
-    val appColumnsSetting by settingsViewModel.launcherAppColumns.collectAsState()
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
@@ -202,29 +197,15 @@ fun AppsTabContent(
         }
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val autoColumnCount = calculateAppGridColumns(
+            val columnCount = calculateAppGridColumns(
                 maxWidth,
                 AppsTabLayout.cardWidth,
                 AppsTabLayout.horizontalSpacing,
             )
-            val columnCount = (appColumnsSetting.toIntOrNull() ?: autoColumnCount)
-                .coerceIn(1, autoColumnCount)
             val cellWidth =
                 ((maxWidth - AppsTabLayout.horizontalSpacing * (columnCount - 1)) / columnCount)
                     .coerceAtLeast(AppsTabLayout.cardWidth)
-
-            val showHiddenEntry = !isHiddenCatalog && hiddenApps.isNotEmpty()
-            val showVisibleEntry = isHiddenCatalog
-            val extraEntryCount = if (showHiddenEntry || showVisibleEntry) 1 else 0
-            val totalEntries = catalogApps.size + extraEntryCount
-
-            val gridItemModifier: (Int) -> Modifier = { index ->
-                Modifier.focusProperties {
-                    if (index < columnCount) up = tabFocusRequester
-                    if (index % columnCount == 0) left = FocusRequester.Cancel
-                    if (index == totalEntries - 1) right = FocusRequester.Cancel
-                }
-            }
+            val totalEntries = catalogApps.size
 
             if (totalEntries == 0) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -243,12 +224,10 @@ fun AppsTabContent(
                 LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Fixed(columnCount),
-                    contentPadding = PaddingValues(bottom = AppsTabLayout.gridBottomPadding),
                     horizontalArrangement = Arrangement.spacedBy(AppsTabLayout.horizontalSpacing),
                     verticalArrangement = Arrangement.spacedBy(AppsTabLayout.verticalSpacing),
                     modifier = Modifier
                         .fillMaxSize()
-                        .focusGroup()
                         .simpleGridVerticalScrollbar(
                             state = gridState,
                             color = KomorebiTheme.colors.textPrimary,
@@ -261,6 +240,7 @@ fun AppsTabContent(
                         val appFocusRequester = appFocusRequesters.getOrPut(app.stableId) {
                             FocusRequester()
                         }
+                        val isFirstRow = index / columnCount == 0
                         LauncherAppCard(
                             app = app,
                             onClick = {
@@ -315,7 +295,26 @@ fun AppsTabContent(
                                         Modifier.focusRequester(appFocusRequester)
                                     }
                                 )
-                                .then(gridItemModifier(index))
+                                .focusProperties {
+                                    if (index % columnCount == 0) left = FocusRequester.Cancel
+                                    if (index == totalEntries - 1) right = FocusRequester.Cancel
+                                }
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown &&
+                                        event.key == Key.DirectionUp &&
+                                        isFirstRow &&
+                                        editingAppId == null
+                                    ) {
+                                        if (isHiddenCatalog) {
+                                            isHiddenCatalog = false
+                                        } else {
+                                            tabFocusRequester.safeRequestFocus(TAG)
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
                                 .onFocusChanged {
                                     if (it.isFocused) {
                                         if (editingAppId != null &&
@@ -329,48 +328,6 @@ fun AppsTabContent(
                                     }
                                 }
                         )
-                    }
-
-                    if (showHiddenEntry) {
-                        item(key = "entry_hidden") {
-                            AppsCatalogEntryTile(
-                                label = "非表示のアプリ",
-                                description = "${hiddenApps.size} 件",
-                                icon = Icons.Default.VisibilityOff,
-                                onClick = { isHiddenCatalog = true },
-                                modifier = Modifier
-                                    .then(gridItemModifier(catalogApps.size))
-                                    .onFocusChanged {
-                                        if (it.isFocused) {
-                                            homeViewModel.lastClickedSection = "apps"
-                                            homeViewModel.lastClickedItemId = HIDDEN_CATALOG_STABLE_ID
-                                        }
-                                    },
-                                cardWidth = cellWidth,
-                                cardHeight = AppsTabLayout.cardHeight,
-                            )
-                        }
-                    }
-
-                    if (showVisibleEntry) {
-                        item(key = "entry_visible") {
-                            AppsCatalogEntryTile(
-                                label = "表示中のアプリ",
-                                description = "${apps.size} 件",
-                                icon = Icons.Default.Visibility,
-                                onClick = { isHiddenCatalog = false },
-                                modifier = Modifier
-                                    .then(gridItemModifier(catalogApps.size))
-                                    .onFocusChanged {
-                                        if (it.isFocused) {
-                                            homeViewModel.lastClickedSection = "apps"
-                                            homeViewModel.lastClickedItemId = VISIBLE_CATALOG_STABLE_ID
-                                        }
-                                    },
-                                cardWidth = cellWidth,
-                                cardHeight = AppsTabLayout.cardHeight,
-                            )
-                        }
                     }
                 }
             }
@@ -416,68 +373,6 @@ fun AppsTabContent(
             },
             onDismiss = { hiddenActionMenuApp = null }
         )
-    }
-}
-
-internal const val HIDDEN_CATALOG_STABLE_ID = "__catalog_hidden__"
-internal const val VISIBLE_CATALOG_STABLE_ID = "__catalog_visible__"
-
-@Composable
-private fun AppsCatalogEntryTile(
-    label: String,
-    description: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    cardWidth: Dp,
-    cardHeight: Dp,
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    val colors = KomorebiTheme.colors
-
-    Surface(
-        onClick = onClick,
-        modifier = modifier
-            .width(cardWidth)
-            .height(cardHeight)
-            .onFocusChanged { isFocused = it.isFocused },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.textPrimary.copy(alpha = if (isFocused) 0.1f else 0.05f),
-            focusedContainerColor = colors.textPrimary.copy(alpha = 0.1f),
-            contentColor = colors.textSecondary,
-            focusedContentColor = colors.textPrimary,
-        ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.12f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent)),
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(36.dp))
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = description,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.textSecondary,
-                maxLines = 1,
-            )
-        }
     }
 }
 

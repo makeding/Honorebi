@@ -146,8 +146,8 @@ fun MainRootPlaybackHost(
                 onBackPressed = { state.playbackState.leavePlayback() },
                 onCheckDeviceCapabilities = {
                     state.playbackState.leavePlayback()
-                    state.settingsInitialCategoryIndex = 2
-                    state.settingsInitialFocusItemIndex = 9
+                    state.settingsInitialCategoryIndex = 0
+                    state.settingsInitialFocusItemIndex = 3
                     state.settingsOpenDeviceCapabilities = true
                     state.isSettingsOpen = true
                 },

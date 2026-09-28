@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -544,6 +545,102 @@ fun RecordListBannerButton(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "すべての番組・シリーズから探す",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
+                            alpha = 0.8f
+                        )) else colors.textSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ★ 新規追加: 放送中画面へ遷移するためのボタン
+@Composable
+fun OnAirBannerButton(
+    onClick: () -> Unit,
+    onFocus: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+    var isFocused by remember { mutableStateOf(false) }
+    val backgroundBrush = remember(colors) {
+        Brush.horizontalGradient(
+            colors = listOf(
+                colors.surface,
+                colors.accent.copy(alpha = if (colors.isDark) 0.2f else 0.1f)
+            )
+        )
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .height(64.dp)
+            .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = colors.textPrimary,
+            contentColor = colors.textPrimary,
+            focusedContentColor = if (colors.isDark) Color.Black else Color.White
+        ),
+        border = ClickableSurfaceDefaults.border(
+            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
+            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (isFocused) SolidColor(Color.Transparent) else backgroundBrush)
+        ) {
+            Icon(
+                imageVector = Icons.Default.LiveTv,
+                contentDescription = null,
+                tint = (if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent).copy(
+                    alpha = 0.1f
+                ),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .offset(x = 24.dp, y = 16.dp)
+                    .size(100.dp)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            color = if (isFocused) Color.Transparent else colors.accent.copy(alpha = 0.2f),
+                            shape = CircleShape
+                        ), contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LiveTv,
+                        contentDescription = null,
+                        tint = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(verticalArrangement = Arrangement.Center) {
+                    Text(
+                        text = "放送中",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "今放送中の番組を探す",
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
                             alpha = 0.8f

@@ -106,11 +106,11 @@ fun SettingsScreen(
         Category(AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.CastConnected),
         Category(AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
         Category("録画設定", Icons.Default.VideoSettings),
+        Category("番組表設定", Icons.Default.GridOn),
+        Category(AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
         Category(AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home),
         Category(AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps),
         Category(AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard),
-        Category("番組表設定", Icons.Default.GridOn),
-        Category(AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
         Category(AppStrings.SETTINGS_CATEGORY_LAB, Icons.Default.Science),
         Category(AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.Cached),
         Category(AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info)
@@ -124,81 +124,33 @@ fun SettingsScreen(
     val smbItemRs =
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
+    // カテゴリごとの項目フォーカスリクエスタ
+    // [0] 基本設定: beta, startupTab, startupChannel, capability, dbInfo, clearChannel, clearHistory
+    // [1] 接続設定
+    // [2] 再生設定
+    // [3] 録画設定: recordView, addBatch
+    // [4] 番組表設定: column, hour, font
+    // [5] コメント設定
+    // [6] ホーム設定: genre, time, excludePaid
+    // [7] ランチャー設定
+    // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
+    // [9] アドオン・ラボ
+    // [10] キャッシュ管理
+    // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(FocusRequester()),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(FocusRequester(), FocusRequester(), FocusRequester(), FocusRequester()),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(FocusRequester()),
-            listOf(
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester(),
-                FocusRequester()
-            ),
-            listOf(FocusRequester())
+            List(7) { FocusRequester() },
+            List(10) { FocusRequester() },
+            List(11) { FocusRequester() },
+            List(2) { FocusRequester() },
+            List(4) { FocusRequester() },
+            List(5) { FocusRequester() },
+            List(3) { FocusRequester() },
+            List(4) { FocusRequester() },
+            List(4) { FocusRequester() },
+            List(1) { FocusRequester() },
+            List(5) { FocusRequester() },
+            List(1) { FocusRequester() }
         )
     }
 
@@ -253,8 +205,8 @@ fun SettingsScreen(
 
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
-            uiState.restoreFocusRequester = itemFocusRequesters[2][9]
-            uiState.restoreCategoryIndex = 2
+            uiState.restoreFocusRequester = itemFocusRequesters[0][3]
+            uiState.restoreCategoryIndex = 0
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
     }
@@ -372,6 +324,13 @@ fun SettingsScreen(
                             totalRecordCount,
                             lastSyncedAt,
                             receiveBetaUpdates,
+                            prefs.startupTab,
+                            when (prefs.startupChannel) {
+                                "OFF" -> AppStrings.SETTINGS_VALUE_STARTUP_OFF
+                                "LAST_WATCHED" -> AppStrings.SETTINGS_VALUE_STARTUP_LAST
+                                else -> flatChannels.find { it.id == prefs.startupChannel }?.name
+                                    ?: prefs.startupChannel
+                            },
                             {
                                 scope.launch {
                                     repository.saveBoolean(
@@ -381,13 +340,42 @@ fun SettingsScreen(
                                 }
                             },
                             itemFocusRequesters[0][0],
+                            itemFocusRequesters[0][1],
+                            itemFocusRequesters[0][2],
                             {
-                                uiState.selectedCategoryIndex = 10
-                                scope.launch {
-                                    delay(100)
-                                    itemFocusRequesters[10][0]
-                                        .safeRequestFocus("OpenCacheManagement")
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.SETTINGS_ITEM_STARTUP_TAB,
+                                    listOf(
+                                        "ホーム" to "ホーム",
+                                        "ライブ" to "ライブ",
+                                        "アプリ" to "アプリ",
+                                        "ビデオ" to "ビデオ",
+                                        "番組表" to "番組表",
+                                        "録画予約" to "録画予約"
+                                    ),
+                                    prefs.startupTab
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.STARTUP_TAB,
+                                            it
+                                        )
+                                    }
                                 }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.DIALOG_STARTUP_CHANNEL_TITLE,
+                                    (listOf(
+                                        AppStrings.SETTINGS_VALUE_STARTUP_OFF to "OFF",
+                                        AppStrings.SETTINGS_VALUE_STARTUP_LAST to "LAST_WATCHED"
+                                    ) + flatChannels.map { it.name to it.id }),
+                                    prefs.startupChannel
+                                ) { viewModel.updateStartupChannel(it) }
+                            },
+                            itemFocusRequesters[0][3],
+                            {
+                                uiState.activeDialog = SettingDialogState.DeviceCapabilities
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.ConfirmClear(
@@ -401,10 +389,9 @@ fun SettingsScreen(
                                     AppStrings.DIALOG_CLEAR_WATCH_HISTORY_MSG
                                 ) { onClearWatchHistory() }
                             },
-                            itemFocusRequesters[0][1],
-                            itemFocusRequesters[0][2],
-                            itemFocusRequesters[0][3],
                             itemFocusRequesters[0][4],
+                            itemFocusRequesters[0][5],
+                            itemFocusRequesters[0][6],
                             categoryFocusRequesters[0]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
 
@@ -603,7 +590,6 @@ fun SettingsScreen(
                             itemFocusRequesters[2][6],
                             itemFocusRequesters[2][7],
                             itemFocusRequesters[2][8],
-                            itemFocusRequesters[2][9],
                             categoryFocusRequesters[2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -744,13 +730,28 @@ fun SettingsScreen(
                                         if (preferOriginalMpegTs == "ON") "OFF" else "ON"
                                     )
                                 }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.DeviceCapabilities
                             }
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 2 }
 
                         3 -> RecordingSettingsContent(
+                            prefs.defaultRecordListView,
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.SETTINGS_ITEM_DEFAULT_RECORD_VIEW,
+                                    listOf(
+                                        AppStrings.SETTINGS_VALUE_VIEW_LIST to "LIST",
+                                        AppStrings.SETTINGS_VALUE_VIEW_GRID to "GRID"
+                                    ),
+                                    prefs.defaultRecordListView
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.DEFAULT_RECORD_LIST_VIEW,
+                                            it
+                                        )
+                                    }
+                                }
+                            },
                             prefs.postRecordingBatchList,
                             {
                                 uiState.activeDialog = SettingDialogState.BatchInput { n, p ->
@@ -766,25 +767,122 @@ fun SettingsScreen(
                                     "「${b.name}」を削除しますか？"
                                 ) { viewModel.deletePostRecordingBatch(b) }
                             },
-                            itemFocusRequesters[3][0], batchItemRs, categoryFocusRequesters[3]
+                            itemFocusRequesters[3][0],
+                            itemFocusRequesters[3][1],
+                            batchItemRs,
+                            categoryFocusRequesters[3]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 3 }
 
-                        4 -> HomeDisplaySettingsContent(
+                        6 -> HomeDisplaySettingsContent(
+                            prefs.pickupGenre,
+                            prefs.excludePaid,
+                            prefs.pickupTime,
+                            itemFocusRequesters[6][0],
+                            itemFocusRequesters[6][1],
+                            itemFocusRequesters[6][2],
+                            categoryFocusRequesters[6],
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.DIALOG_PICKUP_GENRE_TITLE,
+                                    listOf(
+                                        "アニメ" to "アニメ",
+                                        "映画" to "映画",
+                                        "ドラマ" to "ドラマ",
+                                        "スポーツ" to "スポーツ",
+                                        "音楽" to "音楽",
+                                        "バラエティ" to "バラエティ",
+                                        "ドキュメンタリー" to "ドキュメンタリー"
+                                    ),
+                                    prefs.pickupGenre
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.HOME_PICKUP_GENRE,
+                                            it
+                                        )
+                                    }
+                                }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.DIALOG_PICKUP_TIME_TITLE,
+                                    listOf(
+                                        "自動" to "自動",
+                                        "朝" to "朝",
+                                        "昼" to "昼",
+                                        "夜" to "夜"
+                                    ),
+                                    prefs.pickupTime
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.HOME_PICKUP_TIME,
+                                            it
+                                        )
+                                    }
+                                }
+                            },
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.EXCLUDE_PAID_BROADCASTS,
+                                        if (prefs.excludePaid == "ON") "OFF" else "ON"
+                                    )
+                                }
+                            }
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6 }
+
+                        7 -> LauncherSettingsContent(
+                            showAppsTab = !prefs.hideAppsTab,
+                            appColumns = prefs.launcherAppColumns,
+                            showAppLabels = !prefs.hideLauncherAppLabels,
+                            environment = homeEnvironment,
+                            isDefaultHome = isDefaultHome,
+                            itemRs = itemFocusRequesters[7],
+                            sidebarR = categoryFocusRequesters[7],
+                            onToggleAppsTab = { viewModel.toggleHideAppsTab() },
+                            onEditColumns = {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.SETTINGS_ITEM_LAUNCHER_APP_COLUMNS,
+                                    listOf(
+                                        AppStrings.SETTINGS_VALUE_LAUNCHER_COLUMNS_AUTO to "AUTO",
+                                        "4列" to "4",
+                                        "5列" to "5",
+                                        "6列" to "6",
+                                        "7列" to "7",
+                                        "8列" to "8"
+                                    ),
+                                    prefs.launcherAppColumns
+                                ) { viewModel.updateLauncherAppColumns(it) }
+                            },
+                            onToggleAppLabels = {
+                                scope.launch {
+                                    repository.saveBoolean(
+                                        SettingsRepository.HIDE_LAUNCHER_APP_LABELS,
+                                        !prefs.hideLauncherAppLabels
+                                    )
+                                }
+                            },
+                            onOpenDefaultHomeGuide = {
+                                isDefaultHome = LauncherEnvironmentDetector.isDefaultHome(context)
+                                uiState.activeDialog = SettingDialogState.DefaultHomeGuide
+                            },
+                            onClick = {
+                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 7
+                            }
+                        )
+
+                        8 -> DisplaySettingsContent(
                             prefs.currentThemeName.contains("LIGHT") || prefs.currentThemeName == "HIGHTONE" || prefs.currentThemeName == "KOMOREBI_DAY" || prefs.currentThemeName == "KYLE_DAY",
                             when (prefs.currentThemeName) {
                                 "SPRING", "SPRING_LIGHT" -> "SPRING"; "SUMMER", "SUMMER_LIGHT" -> "SUMMER"; "AUTUMN", "AUTUMN_LIGHT" -> "AUTUMN"; "WINTER_DARK", "WINTER_LIGHT" -> "WINTER"; "EPG_BLUE", "EPG_BLUE_LIGHT" -> "BLUE"; "KOMOREBI", "KOMOREBI_DAY", "KOMOREBI_NIGHT" -> "KOMOREBI"; "KYLE", "KYLE_DAY", "KYLE_NIGHT" -> "KYLE"; else -> "DEFAULT"
                             },
-                            prefs.pickupGenre,
-                            prefs.excludePaid,
-                            prefs.pickupTime,
-                            prefs.startupTab,
-                            itemFocusRequesters[4][0],
-                            itemFocusRequesters[4][1],
-                            itemFocusRequesters[4][2],
-                            itemFocusRequesters[4][3],
-                            itemFocusRequesters[4][4],
-                            itemFocusRequesters[4][5],
-                            categoryFocusRequesters[4],
+                            prefs,
+                            itemFocusRequesters[8][0],
+                            itemFocusRequesters[8][1],
+                            itemFocusRequesters[8][2],
+                            itemFocusRequesters[8][3],
+                            categoryFocusRequesters[8],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_BASE_THEME,
@@ -847,191 +945,15 @@ fun SettingsScreen(
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.SETTINGS_ITEM_STARTUP_TAB,
-                                    listOf(
-                                        "ホーム" to "ホーム",
-                                        "ライブ" to "ライブ",
-                                        "アプリ" to "アプリ",
-                                        "ビデオ" to "ビデオ",
-                                        "番組表" to "番組表",
-                                        "録画予約" to "録画予約"
-                                    ),
-                                    prefs.startupTab
-                                ) {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.STARTUP_TAB,
-                                            it
-                                        )
-                                    }
-                                }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.DIALOG_PICKUP_GENRE_TITLE,
-                                    listOf(
-                                        "アニメ" to "アニメ",
-                                        "映画" to "映画",
-                                        "ドラマ" to "ドラマ",
-                                        "スポーツ" to "スポーツ",
-                                        "音楽" to "音楽",
-                                        "バラエティ" to "バラエティ",
-                                        "ドキュメンタリー" to "ドキュメンタリー"
-                                    ),
-                                    prefs.pickupGenre
-                                ) {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.HOME_PICKUP_GENRE,
-                                            it
-                                        )
-                                    }
-                                }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.DIALOG_PICKUP_TIME_TITLE,
-                                    listOf(
-                                        "自動" to "自動",
-                                        "朝" to "朝",
-                                        "昼" to "昼",
-                                        "夜" to "夜"
-                                    ),
-                                    prefs.pickupTime
-                                ) {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.HOME_PICKUP_TIME,
-                                            it
-                                        )
-                                    }
-                                }
-                            },
-                            {
-                                scope.launch {
-                                    repository.saveString(
-                                        SettingsRepository.EXCLUDE_PAID_BROADCASTS,
-                                        if (prefs.excludePaid == "ON") "OFF" else "ON"
-                                    )
-                                }
-                            }
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 4 }
-
-                        5 -> LauncherSettingsContent(
-                            showAppsTab = !prefs.hideAppsTab,
-                            appColumns = prefs.launcherAppColumns,
-                            showAppLabels = !prefs.hideLauncherAppLabels,
-                            environment = homeEnvironment,
-                            isDefaultHome = isDefaultHome,
-                            itemRs = itemFocusRequesters[5],
-                            sidebarR = categoryFocusRequesters[5],
-                            onToggleAppsTab = { viewModel.toggleHideAppsTab() },
-                            onEditColumns = {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.SETTINGS_ITEM_LAUNCHER_APP_COLUMNS,
-                                    listOf(
-                                        AppStrings.SETTINGS_VALUE_LAUNCHER_COLUMNS_AUTO to "AUTO",
-                                        "4列" to "4",
-                                        "5列" to "5",
-                                        "6列" to "6",
-                                        "7列" to "7",
-                                        "8列" to "8"
-                                    ),
-                                    prefs.launcherAppColumns
-                                ) { viewModel.updateLauncherAppColumns(it) }
-                            },
-                            onToggleAppLabels = {
-                                scope.launch {
-                                    repository.saveBoolean(
-                                        SettingsRepository.HIDE_LAUNCHER_APP_LABELS,
-                                        !prefs.hideLauncherAppLabels
-                                    )
-                                }
-                            },
-                            onOpenDefaultHomeGuide = {
-                                isDefaultHome = LauncherEnvironmentDetector.isDefaultHome(context)
-                                uiState.activeDialog = SettingDialogState.DefaultHomeGuide
-                            },
-                            onClick = {
-                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5
-                            }
-                        )
-
-                        6 -> DisplaySettingsContent(
-                            prefs,
-                            when (prefs.startupChannel) {
-                                "OFF" -> AppStrings.SETTINGS_VALUE_STARTUP_OFF; "LAST_WATCHED" -> AppStrings.SETTINGS_VALUE_STARTUP_LAST; else -> flatChannels.find { it.id == prefs.startupChannel }?.name
-                                ?: prefs.startupChannel
-                            },
-                            categoryFocusRequesters[6],
-                            {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.SETTINGS_ITEM_STARTUP_TAB,
-                                    listOf(
-                                        "ホーム" to "ホーム",
-                                        "ライブ" to "ライブ",
-                                        "アプリ" to "アプリ",
-                                        "ビデオ" to "ビデオ",
-                                        "番組表" to "番組表",
-                                        "録画予約" to "録画予約"
-                                    ),
-                                    prefs.startupTab
-                                ) {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.STARTUP_TAB,
-                                            it
-                                        )
-                                    }
-                                }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.DIALOG_STARTUP_CHANNEL_TITLE,
-                                    (listOf(
-                                        AppStrings.SETTINGS_VALUE_STARTUP_OFF to "OFF",
-                                        AppStrings.SETTINGS_VALUE_STARTUP_LAST to "LAST_WATCHED"
-                                    ) + flatChannels.map { it.name to it.id }),
-                                    prefs.startupChannel
-                                ) { viewModel.updateStartupChannel(it) }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.SETTINGS_ITEM_DEFAULT_RECORD_VIEW,
-                                    listOf(
-                                        AppStrings.SETTINGS_VALUE_VIEW_LIST to "LIST",
-                                        AppStrings.SETTINGS_VALUE_VIEW_GRID to "GRID"
-                                    ),
-                                    prefs.defaultRecordListView
-                                ) {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.DEFAULT_RECORD_LIST_VIEW,
-                                            it
-                                        )
-                                    }
-                                }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.Selection(
                                     "時刻の表示形式",
                                     listOf("24時間表記" to "24H", "12時間表記 (AM/PM)" to "12H"),
                                     prefs.timeFormat
                                 ) { viewModel.updateTimeFormat(it) }
                             },
-                            { viewModel.toggleHideSubChannels() },
-                            {
-                                scope.launch {
-                                    repository.saveBoolean(
-                                        SettingsRepository.HIDE_LAUNCHER_APP_LABELS,
-                                        !prefs.hideLauncherAppLabels
-                                    )
-                                }
-                            },
-                            itemFocusRequesters[6].dropLast(1), itemFocusRequesters[6].last()
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6 }
+                            { viewModel.toggleHideSubChannels() }
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 }
 
-                        7 -> EpgSettingsContent(
+                        4 -> EpgSettingsContent(
                             pref = prefs,
                             onEditColumn = {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1070,16 +992,16 @@ fun SettingsScreen(
                                     prefs.epgFontSizeScale
                                 ) { viewModel.updateEpgFontSizeScale(it) }
                             },
-                            colR = itemFocusRequesters[7][0],
-                            hourR = itemFocusRequesters[7][1],
-                            fontR = itemFocusRequesters[7][2],
-                            sidebarR = categoryFocusRequesters[7],
+                            colR = itemFocusRequesters[4][0],
+                            hourR = itemFocusRequesters[4][1],
+                            fontR = itemFocusRequesters[4][2],
+                            sidebarR = categoryFocusRequesters[4],
                             onClick = {
-                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 7
+                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 4
                             }
                         )
 
-                        8 -> CommentSettingsContent(
+                        5 -> CommentSettingsContent(
                             prefs.commentDefaultDisplay,
                             prefs.commentSpeed,
                             prefs.commentFontSize,
@@ -1103,13 +1025,13 @@ fun SettingsScreen(
                                     )
                                 }
                             },
-                            itemFocusRequesters[8][0],
-                            itemFocusRequesters[8][1],
-                            itemFocusRequesters[8][2],
-                            itemFocusRequesters[8][3],
-                            itemFocusRequesters[8][4],
-                            categoryFocusRequesters[8]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 }
+                            itemFocusRequesters[5][0],
+                            itemFocusRequesters[5][1],
+                            itemFocusRequesters[5][2],
+                            itemFocusRequesters[5][3],
+                            itemFocusRequesters[5][4],
+                            categoryFocusRequesters[5]
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
 
                         9 -> LabSettingsContent(
                             prefs.labAllowMirakurunDual,

@@ -496,6 +496,7 @@ fun MainRootScreen(
         state.isRecordListOpen = false
         state.isSeriesListOpen = false
         state.isSmbLibraryOpen = false
+        state.isOnAirOpen = false
         state.isEpgJumpMenuOpen = false
         state.showDeleteConfirmDialog = false
         state.isAiConciergeOpen = false
@@ -539,6 +540,8 @@ fun MainRootScreen(
             state.isEpgJumpMenuOpen -> state.isEpgJumpMenuOpen = false
 
             state.isSmbLibraryOpen -> state.isSmbLibraryOpen = false
+
+            state.isOnAirOpen -> state.isOnAirOpen = false
 
             state.isRecordListOpen -> {
                 state.isRecordListOpen = false
@@ -816,8 +819,8 @@ fun MainRootScreen(
                 closeAiConcierge = closeAiConcierge,
                 onGoToSettings = {
                     closeAiConcierge(true)
-                    state.settingsInitialCategoryIndex = 7
-                    state.settingsInitialFocusItemIndex = 2
+                    state.settingsInitialCategoryIndex = 0
+                    state.settingsInitialFocusItemIndex = null
                     state.isSettingsOpen = true
                 }
             )

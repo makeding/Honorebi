@@ -15,9 +15,11 @@ class AppsTabLayoutPolicyTest {
     }
 
     @Test
-    fun bottomScrollSafeAreaCanExposeAnEntireFinalRow() {
-        assertTrue(AppsTabLayout.bottomScrollSafeArea >= AppsTabLayout.cardHeight)
+    fun gridDoesNotAddBottomPaddingThatWouldForceScrollWhenContentFits() {
+        // 内容が収まっているのに最終行でスクロールしないよう、下方向の
+        // 余分なスクロール領域は確保しない方針を固定化する。
         assertEquals(24.dp, AppsTabLayout.viewportBottomPadding)
+        assertTrue(AppsTabLayout.verticalSpacing < AppsTabLayout.cardHeight)
     }
 
     @Test
@@ -25,17 +27,5 @@ class AppsTabLayoutPolicyTest {
         assertEquals(1, calculateAppGridColumns(159.dp, 160.dp, 12.dp))
         assertEquals(2, calculateAppGridColumns(332.dp, 160.dp, 12.dp))
         assertEquals(5, calculateAppGridColumns(848.dp, 160.dp, 12.dp))
-    }
-
-    @Test
-    fun gridKeepsRoomBelowTheLastRowForTheFocusedCard() {
-        assertTrue(AppsTabLayout.gridBottomPadding >= AppsTabLayout.verticalSpacing)
-    }
-
-    @Test
-    fun catalogEntryIdentifiersCannotCollideWithEachOther() {
-        assertTrue(HIDDEN_CATALOG_STABLE_ID != VISIBLE_CATALOG_STABLE_ID)
-        assertTrue(HIDDEN_CATALOG_STABLE_ID.isNotBlank())
-        assertTrue(VISIBLE_CATALOG_STABLE_ID.isNotBlank())
     }
 }

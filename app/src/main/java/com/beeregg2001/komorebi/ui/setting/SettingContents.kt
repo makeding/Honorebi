@@ -55,13 +55,19 @@ fun GeneralSettingsContent(
     totalRecordCount: Int,
     lastSyncedAt: Long,
     receiveBetaUpdates: Boolean,
+    startupTab: String,
+    startupChannelName: String,
     onToggleBetaUpdates: (Boolean) -> Unit,
     betaUpdateR: FocusRequester,
-    onOpenCacheManagement: () -> Unit,
+    startupTabR: FocusRequester,
+    startupChannelR: FocusRequester,
+    onEditStartupTab: () -> Unit,
+    onEditStartupChannel: () -> Unit,
+    capabilityR: FocusRequester,
+    onCapabilities: () -> Unit,
     onClearChannel: () -> Unit,
     onClearHistory: () -> Unit,
     dbInfoR: FocusRequester,
-    forceSyncR: FocusRequester,
     clearChannelR: FocusRequester,
     clearHistoryR: FocusRequester,
     sidebarR: FocusRequester,
@@ -80,7 +86,7 @@ fun GeneralSettingsContent(
             fontWeight = FontWeight.Bold
         )
 
-        SettingsSection("システム設定") {
+        SettingsSection("アプリ設定") {
             SettingItem(
                 title = "ベータ版のアップデートを受け取る",
                 value = if (receiveBetaUpdates) "ON" else "OFF",
@@ -90,9 +96,54 @@ fun GeneralSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = FocusRequester.Cancel
-                        down = dbInfoR
+                        down = startupTabR
                     },
                 onClick = { onClick(betaUpdateR); onToggleBetaUpdates(!receiveBetaUpdates) }
+            )
+        }
+
+        SettingsSection("起動時の動作") {
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_STARTUP_TAB,
+                value = startupTab,
+                icon = Icons.Default.Launch,
+                modifier = Modifier
+                    .focusRequester(startupTabR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = betaUpdateR
+                        down = startupChannelR
+                    },
+                onClick = { onClick(startupTabR); onEditStartupTab() }
+            )
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_STARTUP_CHANNEL,
+                value = startupChannelName,
+                icon = Icons.Default.LiveTv,
+                modifier = Modifier
+                    .focusRequester(startupChannelR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = startupTabR
+                        down = capabilityR
+                    },
+                onClick = { onClick(startupChannelR); onEditStartupChannel() }
+            )
+        }
+
+        SettingsSection("デバイス") {
+            SettingItem(
+                title = "テレビ再生能力",
+                value = "HEVC / 4K / 8K / HDR / 音声を確認",
+                icon = Icons.Default.Memory,
+                modifier = Modifier
+                    .focusRequester(capabilityR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = startupChannelR
+                        down = dbInfoR
+                    },
+                onClick = { onClick(capabilityR); onCapabilities() }
             )
         }
 
@@ -105,27 +156,17 @@ fun GeneralSettingsContent(
                     .focusRequester(dbInfoR)
                     .focusProperties {
                         left = sidebarR
-                        up = betaUpdateR
-                        down = forceSyncR
+                        up = capabilityR
+                        down = clearChannelR
                     },
                 onClick = { onClick(dbInfoR) }
             )
-            SettingItem(
-                title = "キャッシュ管理",
-                value = "最終同期: $lastSyncStr",
-                icon = Icons.Default.Cached,
-                modifier = Modifier
-                    .focusRequester(forceSyncR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = dbInfoR
-                        down = clearChannelR
-                    },
-                onClick = { onClick(forceSyncR); onOpenCacheManagement() }
+            Text(
+                "最終同期: $lastSyncStr",
+                modifier = Modifier.padding(horizontal = 24.dp),
+                color = KomorebiTheme.colors.textSecondary,
+                style = MaterialTheme.typography.bodyMedium
             )
-        }
-
-        SettingsSection(AppStrings.SETTINGS_SECTION_DATA_MANAGEMENT) {
             SettingItem(
                 AppStrings.SETTINGS_ITEM_CLEAR_CHANNEL_HISTORY,
                 "",
@@ -134,7 +175,7 @@ fun GeneralSettingsContent(
                     .focusRequester(clearChannelR)
                     .focusProperties {
                         left = sidebarR
-                        up = forceSyncR
+                        up = dbInfoR
                         down = clearHistoryR
                     },
                 onClick = { onClick(clearChannelR); onClearChannel() })
@@ -157,9 +198,12 @@ fun GeneralSettingsContent(
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RecordingSettingsContent(
+    defaultRecordListView: String,
+    onEditDefaultView: () -> Unit,
     batchList: List<PostRecordingBatch>,
     onAdd: () -> Unit,
     onDelete: (PostRecordingBatch) -> Unit,
+    recordViewR: FocusRequester,
     addR: FocusRequester,
     itemRs: List<FocusRequester>,
     sidebarR: FocusRequester,
@@ -174,6 +218,22 @@ fun RecordingSettingsContent(
             fontWeight = FontWeight.Bold
         )
 
+        SettingsSection(AppStrings.SETTINGS_SECTION_RECORD_LIST) {
+            SettingItem(
+                AppStrings.SETTINGS_ITEM_DEFAULT_RECORD_VIEW,
+                if (defaultRecordListView == "GRID") AppStrings.SETTINGS_VALUE_VIEW_GRID else AppStrings.SETTINGS_VALUE_VIEW_LIST,
+                Icons.Default.GridView,
+                modifier = Modifier
+                    .focusRequester(recordViewR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = FocusRequester.Cancel
+                        down = addR
+                    },
+                onClick = { onClick(recordViewR); onEditDefaultView() }
+            )
+        }
+
         SettingsSection("録画後実行バッチの設定") {
             SettingItem(
                 title = "新しいバッチを追加",
@@ -183,7 +243,7 @@ fun RecordingSettingsContent(
                     .focusRequester(addR)
                     .focusProperties {
                         left = sidebarR
-                        up = FocusRequester.Cancel
+                        up = recordViewR
                         down =
                             if (batchList.isEmpty()) FocusRequester.Cancel else itemRs.firstOrNull()
                                 ?: FocusRequester.Cancel
@@ -597,7 +657,6 @@ fun PlaybackSettingsContent(
     uiModeR: FocusRequester,
     autoCmSkipR: FocusRequester,
     preferOriginalR: FocusRequester,
-    capabilityR: FocusRequester,
     sidebarR: FocusRequester,
     onL: () -> Unit,
     onV: () -> Unit,
@@ -609,7 +668,6 @@ fun PlaybackSettingsContent(
     onUiMode: () -> Unit,
     onAutoCmSkip: () -> Unit,
     onPreferOriginalMpegTs: () -> Unit,
-    onCapabilities: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -756,25 +814,9 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = uiModeR
-                        down = capabilityR
-                    },
-                onClick = { onClick(autoCmSkipR); onAutoCmSkip() }
-            )
-        }
-
-        SettingsSection("デバイス") {
-            SettingItem(
-                title = "テレビ再生能力",
-                value = "HEVC / 4K / 8K / HDR / 音声を確認",
-                icon = Icons.Default.Memory,
-                modifier = Modifier
-                    .focusRequester(capabilityR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = autoCmSkipR
                         down = FocusRequester.Cancel
                     },
-                onClick = { onClick(capabilityR); onCapabilities() }
+                onClick = { onClick(autoCmSkipR); onAutoCmSkip() }
             )
         }
     }
@@ -838,85 +880,20 @@ fun EpgSettingsContent(
 }
 
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun HomeDisplaySettingsContent(
-    isDarkMode: Boolean,
-    themeSeason: String,
     genre: String,
     excludePaid: String,
     pickupTime: String,
-    startupTab: String,
-    modeR: FocusRequester,
-    colorR: FocusRequester,
-    startR: FocusRequester,
     genreR: FocusRequester,
     timeR: FocusRequester,
     exPaidR: FocusRequester,
     sidebarR: FocusRequester,
-    onMode: () -> Unit,
-    onColor: () -> Unit,
-    onStart: () -> Unit,
     onG: () -> Unit,
     onTime: () -> Unit,
     onExPaid: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
-    val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
-    val baseThemeLabel =
-        if (isTimeLinked) "時間連動テーマ" else if (!isDarkMode) AppStrings.SETTINGS_VALUE_THEME_DARK else AppStrings.SETTINGS_VALUE_THEME_LIGHT
-
-    var currentTime by remember { mutableStateOf(LocalTime.now()) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            delay(60000)
-            currentTime = LocalTime.now()
-        }
-    }
-
-    val hour = currentTime.hour
-    val timeZoneName = when {
-        hour in 5..8 -> "MORNING"
-        hour in 9..15 -> "DAY"
-        hour in 16..18 -> "EVENING"
-        else -> "NIGHT"
-    }
-
-    val colorSettingTitle =
-        if (isTimeLinked) "時間連動セット" else AppStrings.SETTINGS_ITEM_THEME_COLOR
-    val detailThemeLabel = if (isTimeLinked) {
-        when (themeSeason) {
-            "KOMOREBI" -> when (timeZoneName) {
-                "MORNING" -> "朝焼け"
-                "DAY" -> "木漏れ日"
-                "EVENING" -> "夕焼け"
-                else -> "月光"
-            }
-
-            "KYLE" -> when (timeZoneName) {
-                "MORNING" -> "朝凪のカイル"
-                "DAY" -> "海辺のカイル"
-                "EVENING" -> "夕凪のカイル"
-                else -> "深海の夜のカイル"
-            }
-
-            else -> themeSeason
-        }
-    } else {
-        when (themeSeason) {
-            "SPRING" -> AppStrings.SETTINGS_VALUE_SEASON_SPRING
-            "SUMMER" -> AppStrings.SETTINGS_VALUE_SEASON_SUMMER
-            "AUTUMN" -> AppStrings.SETTINGS_VALUE_SEASON_AUTUMN
-            "WINTER" -> AppStrings.SETTINGS_VALUE_SEASON_WINTER
-            "BLUE" -> AppStrings.SETTINGS_VALUE_SEASON_BLUE
-            "KOMOREBI_DAY" -> "木漏れ日"
-            "KOMOREBI_NIGHT" -> "月光"
-            "KYLE_DAY" -> "海辺のカイル"
-            "KYLE_NIGHT" -> "深海のカイル"
-            else -> AppStrings.SETTINGS_VALUE_SEASON_DEFAULT
-        }
-    }
-
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(
             AppStrings.SETTINGS_CATEGORY_HOME,
@@ -924,33 +901,6 @@ fun HomeDisplaySettingsContent(
             color = KomorebiTheme.colors.textPrimary,
             fontWeight = FontWeight.Bold
         )
-        SettingsSection(AppStrings.SETTINGS_SECTION_UI_CUSTOM) {
-            SettingItem(
-                AppStrings.SETTINGS_ITEM_BASE_THEME,
-                baseThemeLabel,
-                Icons.Default.Brightness4,
-                modifier = Modifier
-                    .focusRequester(modeR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = FocusRequester.Cancel
-                        down = colorR
-                    },
-                onClick = { onClick(modeR); onMode() })
-
-            SettingItem(
-                colorSettingTitle,
-                detailThemeLabel,
-                Icons.Default.ColorLens,
-                modifier = Modifier
-                    .focusRequester(colorR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = modeR
-                        down = genreR
-                    },
-                onClick = { onClick(colorR); onColor() })
-        }
         SettingsSection(AppStrings.SETTINGS_SECTION_HOME_PICKUP) {
             SettingItem(
                 AppStrings.SETTINGS_ITEM_PICKUP_GENRE,
@@ -960,7 +910,7 @@ fun HomeDisplaySettingsContent(
                     .focusRequester(genreR)
                     .focusProperties {
                         left = sidebarR
-                        up = colorR
+                        up = FocusRequester.Cancel
                         down = timeR
                     },
                 onClick = { onClick(genreR); onG() })
@@ -1084,21 +1034,78 @@ fun LauncherSettingsContent(
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun DisplaySettingsContent(
+    isDarkMode: Boolean,
+    themeSeason: String,
     preferences: SettingPreferences,
-    startupChannelName: String,
+    modeR: FocusRequester,
+    colorR: FocusRequester,
+    timeFormatR: FocusRequester,
+    hideSubChannelsR: FocusRequester,
     sidebarR: FocusRequester,
-    onEditTab: () -> Unit,
-    onEditStartupChannel: () -> Unit,
-    onEditDefaultView: () -> Unit,
+    onMode: () -> Unit,
+    onColor: () -> Unit,
     onEditTimeFormat: () -> Unit,
     onToggleHideSubChannels: () -> Unit,
-    onToggleHideLauncherAppLabels: () -> Unit,
-    itemRs: List<FocusRequester>,
-    hideSubChannelsR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
+    val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
+    val baseThemeLabel =
+        if (isTimeLinked) "時間連動テーマ" else if (!isDarkMode) AppStrings.SETTINGS_VALUE_THEME_DARK else AppStrings.SETTINGS_VALUE_THEME_LIGHT
+
+    var currentTime by remember { mutableStateOf(LocalTime.now()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(60000)
+            currentTime = LocalTime.now()
+        }
+    }
+
+    val hour = currentTime.hour
+    val timeZoneName = when {
+        hour in 5..8 -> "MORNING"
+        hour in 9..15 -> "DAY"
+        hour in 16..18 -> "EVENING"
+        else -> "NIGHT"
+    }
+
+    val colorSettingTitle =
+        if (isTimeLinked) "時間連動セット" else AppStrings.SETTINGS_ITEM_THEME_COLOR
+    val detailThemeLabel = if (isTimeLinked) {
+        when (themeSeason) {
+            "KOMOREBI" -> when (timeZoneName) {
+                "MORNING" -> "朝焼け"
+                "DAY" -> "木漏れ日"
+                "EVENING" -> "夕焼け"
+                else -> "月光"
+            }
+
+            "KYLE" -> when (timeZoneName) {
+                "MORNING" -> "朝凪のカイル"
+                "DAY" -> "海辺のカイル"
+                "EVENING" -> "夕凪のカイル"
+                else -> "深海の夜のカイル"
+            }
+
+            else -> themeSeason
+        }
+    } else {
+        when (themeSeason) {
+            "SPRING" -> AppStrings.SETTINGS_VALUE_SEASON_SPRING
+            "SUMMER" -> AppStrings.SETTINGS_VALUE_SEASON_SUMMER
+            "AUTUMN" -> AppStrings.SETTINGS_VALUE_SEASON_AUTUMN
+            "WINTER" -> AppStrings.SETTINGS_VALUE_SEASON_WINTER
+            "BLUE" -> AppStrings.SETTINGS_VALUE_SEASON_BLUE
+            "KOMOREBI_DAY" -> "木漏れ日"
+            "KOMOREBI_NIGHT" -> "月光"
+            "KYLE_DAY" -> "海辺のカイル"
+            "KYLE_NIGHT" -> "深海のカイル"
+            else -> AppStrings.SETTINGS_VALUE_SEASON_DEFAULT
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(
             AppStrings.SETTINGS_CATEGORY_DISPLAY,
@@ -1106,72 +1113,46 @@ fun DisplaySettingsContent(
             color = KomorebiTheme.colors.textPrimary,
             fontWeight = FontWeight.Bold
         )
-        SettingsSection(AppStrings.SETTINGS_SECTION_UI_CUSTOM) {
+        SettingsSection(AppStrings.SETTINGS_SECTION_THEME) {
             SettingItem(
-                AppStrings.SETTINGS_ITEM_STARTUP_TAB,
-                preferences.startupTab,
-                Icons.Default.Launch,
+                AppStrings.SETTINGS_ITEM_BASE_THEME,
+                baseThemeLabel,
+                Icons.Default.Brightness4,
                 modifier = Modifier
-                    .focusRequester(itemRs[0])
+                    .focusRequester(modeR)
                     .focusProperties {
                         left = sidebarR
                         up = FocusRequester.Cancel
-                        down = itemRs[1]
+                        down = colorR
                     },
-                onClick = { onClick(itemRs[0]); onEditTab() })
+                onClick = { onClick(modeR); onMode() })
 
             SettingItem(
-                AppStrings.SETTINGS_ITEM_STARTUP_CHANNEL,
-                startupChannelName,
-                Icons.Default.LiveTv,
+                colorSettingTitle,
+                detailThemeLabel,
+                Icons.Default.ColorLens,
                 modifier = Modifier
-                    .focusRequester(itemRs[1])
+                    .focusRequester(colorR)
                     .focusProperties {
                         left = sidebarR
-                        up = itemRs[0]
-                        down = itemRs[2]
+                        up = modeR
+                        down = timeFormatR
                     },
-                onClick = { onClick(itemRs[1]); onEditStartupChannel() })
-
-            SettingItem(
-                AppStrings.SETTINGS_ITEM_DEFAULT_RECORD_VIEW,
-                if (preferences.defaultRecordListView == "LIST") AppStrings.SETTINGS_VALUE_VIEW_LIST else AppStrings.SETTINGS_VALUE_VIEW_GRID,
-                Icons.Default.GridView,
-                modifier = Modifier
-                    .focusRequester(itemRs[2])
-                    .focusProperties {
-                        left = sidebarR
-                        up = itemRs[1]
-                        down = itemRs[3]
-                    },
-                onClick = { onClick(itemRs[2]); onEditDefaultView() })
-
+                onClick = { onClick(colorR); onColor() })
+        }
+        SettingsSection(AppStrings.SETTINGS_SECTION_UI_CUSTOM) {
             SettingItem(
                 "時刻の表示形式",
                 if (preferences.timeFormat == "12H") "12時間表記 (AM/PM)" else "24時間表記",
                 Icons.Default.Schedule,
                 modifier = Modifier
-                    .focusRequester(itemRs[3])
+                    .focusRequester(timeFormatR)
                     .focusProperties {
                         left = sidebarR
-                        up = itemRs[2]
-                        down = hideSubChannelsR
-                },
-                onClick = { onClick(itemRs[3]); onEditTimeFormat() })
-
-            SettingItem(
-                title = "アプリ名を非表示にする",
-                value = if (preferences.hideLauncherAppLabels) "ON" else "OFF",
-                icon = Icons.Default.Apps,
-                modifier = Modifier
-                    .focusRequester(itemRs[4])
-                    .focusProperties {
-                        left = sidebarR
-                        up = itemRs[3]
+                        up = colorR
                         down = hideSubChannelsR
                     },
-                onClick = { onClick(itemRs[4]); onToggleHideLauncherAppLabels() }
-            )
+                onClick = { onClick(timeFormatR); onEditTimeFormat() })
 
             SettingItem(
                 title = "サブチャンネルを非表示にする",
@@ -1180,8 +1161,8 @@ fun DisplaySettingsContent(
                 modifier = Modifier
                     .focusRequester(hideSubChannelsR)
                     .focusProperties {
-                    left = sidebarR
-                    up = itemRs[4]
+                        left = sidebarR
+                        up = timeFormatR
                         down = FocusRequester.Cancel
                     },
                 onClick = { onClick(hideSubChannelsR); onToggleHideSubChannels() }
