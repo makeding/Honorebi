@@ -23,6 +23,7 @@ val media3Version = libs.versions.media3.get()
 android {
     namespace = "com.beeregg2001.komorebi"
     compileSdk = 37
+    ndkVersion = "28.2.13676358"
 
     splits {
         abi {
@@ -63,10 +64,6 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
         }
     }
-
-    // NDKのバージョンを明示的に指定（Android Studio の SDK Manager でインストール済みのもの）
-    // 指定しない場合は最新が使われますが、固定したほうがビルドが安定します
-    // ndkVersion = "25.1.8937393"
 
     signingConfigs {
         if (hasReleaseSigningConfig) {

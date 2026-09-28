@@ -11,6 +11,44 @@ set(ARIBCC_USE_EMBEDDED_FREETYPE ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 
+include(FetchContent)
+find_package(ZLIB REQUIRED)
+
+set(PNG_SHARED OFF CACHE BOOL "" FORCE)
+set(PNG_STATIC ON CACHE BOOL "" FORCE)
+set(PNG_TESTS OFF CACHE BOOL "" FORCE)
+set(PNG_TOOLS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(libpng
+    GIT_REPOSITORY https://github.com/pnggroup/libpng.git
+    GIT_TAG v1.6.47
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(libpng)
+if(NOT TARGET PNG::PNG)
+    add_library(PNG::PNG INTERFACE IMPORTED GLOBAL)
+    set_target_properties(PNG::PNG PROPERTIES
+        INTERFACE_LINK_LIBRARIES "png_static;ZLIB::ZLIB"
+        INTERFACE_INCLUDE_DIRECTORIES "${libpng_SOURCE_DIR};${libpng_BINARY_DIR}"
+    )
+endif()
+set(PNG_PNG_INCLUDE_DIR "${libpng_SOURCE_DIR}" CACHE PATH "" FORCE)
+set(PNG_LIBRARY png_static CACHE FILEPATH "" FORCE)
+
+set(PLUTOSVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(PLUTOVG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(plutosvg
+    GIT_REPOSITORY https://github.com/sammycage/plutosvg.git
+    GIT_TAG v0.0.8
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(plutosvg)
+
+add_library(PkgConfig::PLUTOSVG INTERFACE IMPORTED GLOBAL)
+target_link_libraries(PkgConfig::PLUTOSVG INTERFACE plutosvg)
+set(PLUTOSVG_FOUND TRUE)
+set(__pkg_config_checked_PLUTOSVG 999)
+set(__pkg_config_arguments_PLUTOSVG "REQUIRED;IMPORTED_TARGET;plutosvg")
+
 add_subdirectory(third_party/libaribcaption EXCLUDE_FROM_ALL)
 
 # tlvdemux は playback helper を提供し、同じ libaribtlv source checkout を
