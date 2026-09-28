@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,20 +90,16 @@ fun OnAirScreen(
     val colors = KomorebiTheme.colors
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val searchButtonFocus = remember { FocusRequester() }
-    val searchFieldFocus = remember { FocusRequester() }
     val cardFocus = remember { mutableMapOf<Int, FocusRequester>() }
     state.series.forEach { cardFocus.getOrPut(it.id) { FocusRequester() } }
     var pageFocused by remember { mutableStateOf(false) }
-    var searchOpen by remember { mutableStateOf(false) }
     var returnCell by remember { mutableStateOf<String?>(null) }
     var restoreSeries by remember { mutableStateOf<Int?>(null) }
     val expanded = state.expanded?.takeIf { detail -> state.series.any { it.id == detail.seriesId } }
 
     // HonomiTV と同じ週間グリッド: 曜日ごとの縦リストを横に並べ、全体をまとめて縦横スクロールする。
-    val byWeekday = remember(state.series, state.query) {
-        val filtered = state.series.filter { it.title.contains(state.query.trim(), ignoreCase = true) }
-        (0..6).map { day -> filtered.filter { it.weekday == day } }
+    val byWeekday = remember(state.series) {
+        (0..6).map { day -> state.series.filter { it.weekday == day } }
     }
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
@@ -149,7 +143,7 @@ fun OnAirScreen(
             ?: FocusRequester.Cancel
 
     fun cardUp(day: Int, index: Int): FocusRequester =
-        if (index > 0) requesterAt(day, index - 1) ?: searchButtonFocus else searchButtonFocus
+        if (index > 0) requesterAt(day, index - 1) ?: topFocusRequester else topFocusRequester
 
     fun cardDown(day: Int, index: Int): FocusRequester =
         if (index < byWeekday[day].lastIndex) requesterAt(day, index + 1) ?: FocusRequester.Cancel
@@ -195,14 +189,9 @@ fun OnAirScreen(
         viewModel.collapseSeries()
         restoreSeries = id
     }
-    fun closeSearch() {
-        searchOpen = false
-        scope.launch { searchButtonFocus.safeRequestFocusWithRetry("OnAirCloseSearch") }
-    }
     fun pageBack() {
         when {
             expanded != null -> closeDetail()
-            searchOpen -> closeSearch()
             else -> onBack()
         }
     }
@@ -219,7 +208,7 @@ fun OnAirScreen(
             scrollToCard(day, 0)
             initialFocusRequester.safeRequestFocusWithRetry("OnAirInitialFocus")
         } else {
-            searchButtonFocus.safeRequestFocusWithRetry("OnAirInitialFallback")
+            topFocusRequester.safeRequestFocusWithRetry("OnAirInitialFallback")
         }
     }
 
@@ -232,7 +221,7 @@ fun OnAirScreen(
             scrollToCard(day, index)
             cardFocus[id]?.safeRequestFocusWithRetry("OnAirCardRestore")
         } else {
-            searchButtonFocus.safeRequestFocusWithRetry("OnAirCardRestoreFallback")
+            topFocusRequester.safeRequestFocusWithRetry("OnAirCardRestoreFallback")
         }
         restoreSeries = null
     }
@@ -293,65 +282,31 @@ fun OnAirScreen(
                     modifier = Modifier.fillMaxSize().testTag("onair-details"),
                 )
             } else {
-                Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (showHeadline) {
-                        // 検索ボタンと同じ高さのボックスに載せ、縦位置を完全に揃える。
-                        Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
-                            Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (showHeadline) {
+                            Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
+                                Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
-                        Spacer(Modifier.width(24.dp))
                     }
-                    if (searchOpen) {
-                        OutlinedTextField(
-                            value = state.query,
-                            onValueChange = { viewModel.updateSearchQuery(it) },
-                            singleLine = true,
-                            label = { androidx.compose.material3.Text("シリーズを検索") },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = colors.textPrimary, unfocusedTextColor = colors.textPrimary,
-                                focusedBorderColor = colors.accent, unfocusedBorderColor = colors.textSecondary,
-                                focusedLabelColor = colors.accent, unfocusedLabelColor = colors.textSecondary,
-                                cursorColor = colors.accent,
-                            ),
-                            modifier = Modifier.width(310.dp).focusRequester(searchFieldFocus).testTag("onair-search-field")
-                                .focusProperties {
-                                    down = initialSeriesId?.let { cardFocus[it] } ?: FocusRequester.Cancel
-                                    up = FocusRequester.Cancel
-                                    left = FocusRequester.Cancel
-                                },
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        if (state.query.isNotBlank()) {
-                            OnAirAction("クリア", { viewModel.updateSearchQuery("") }, Modifier.testTag("onair-search-clear"))
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        OnAirAction("閉じる", { closeSearch() }, Modifier.testTag("onair-search-close"))
-                    } else {
-                        OnAirAction(
-                            if (state.query.isBlank()) "検索" else "検索中",
-                            {
-                                searchOpen = true
-                                scope.launch { searchFieldFocus.safeRequestFocusWithRetry("OnAirOpenSearch") }
-                            },
-                            Modifier.focusRequester(searchButtonFocus).testTag("onair-search")
-                                .focusProperties { up = topFocusRequester },
-                            selected = state.query.isNotBlank(),
-                        )
-                    }
-                }
 
-                val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
-                when {
-                    !state.backendSupported -> OnAirEmpty(
-                        "このバックエンドは「放送中」に対応していません",
-                        "HonomiTV の接続を設定してください。 [ON_AIR_UNSUPPORTED]", "接続設定を開く", onSettings,
-                    )
-                    state.series.isEmpty() && state.listStatus is OnAirLoadState.Error -> {
-                        val error = state.listStatus as OnAirLoadState.Error
-                        OnAirEmpty("放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList)
-                    }
-                    else -> Column(Modifier.weight(1f).fillMaxWidth()) {
-                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
+                    when {
+                        !state.backendSupported -> OnAirEmpty(
+                            "このバックエンドは「放送中」に対応していません",
+                            "HonomiTV の接続を設定してください。 [ON_AIR_UNSUPPORTED]", "接続設定を開く", onSettings,
+                            modifier = Modifier.weight(1f),
+                        )
+                        state.series.isEmpty() && state.listStatus is OnAirLoadState.Error -> {
+                            val error = state.listStatus as OnAirLoadState.Error
+                            OnAirEmpty(
+                                "放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        else -> Column(Modifier.weight(1f).fillMaxWidth()) {
+                            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                             val viewportWidth = maxWidth
                             // Header and cards live under one horizontal scroll state, so their x positions cannot drift.
                             Column(
@@ -368,7 +323,6 @@ fun OnAirScreen(
                                             DayHeader(
                                                 label = weekdays[day],
                                                 count = byWeekday[day].size,
-                                                loading = isLoading,
                                                 color = weekdayColors[day % weekdayColors.size],
                                                 highlighted = day == state.selectedWeekday,
                                             )
@@ -376,7 +330,7 @@ fun OnAirScreen(
                                     }
                                     Spacer(Modifier.height(8.dp))
                                     if (isLoading && state.series.isEmpty()) {
-                                        // Keep the card area quiet until real content arrives; the header already says "取得中…".
+                                        // Keep the card area quiet until real content arrives.
                                         Spacer(Modifier.width(viewportWidth).weight(1f))
                                     } else {
                                         // Only the card rows scroll vertically; weekday labels remain pinned above.
@@ -423,11 +377,12 @@ fun OnAirScreen(
                                                                     onClick = { viewModel.expandSeries(series.id) },
                                                                 )
                                                                 if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                    }
+                }
+            }
+        }
+    }
+}
                                         }
                                     }
                                 }
@@ -441,7 +396,7 @@ fun OnAirScreen(
 }
 
 @Composable
-private fun DayHeader(label: String, count: Int, loading: Boolean, color: Color, highlighted: Boolean) {
+private fun DayHeader(label: String, count: Int, color: Color, highlighted: Boolean) {
     Row(
         Modifier
             .width(WEEK_COLUMN_WIDTH)
@@ -452,7 +407,7 @@ private fun DayHeader(label: String, count: Int, loading: Boolean, color: Color,
     ) {
         Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Spacer(Modifier.weight(1f))
-        Text(if (loading) "取得中…" else "${count}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
+        Text("${count}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
     }
 }
 
@@ -473,8 +428,14 @@ internal fun OnAirAction(text: String, onClick: () -> Unit, modifier: Modifier =
 }
 
 @Composable
-internal fun OnAirEmpty(title: String, detail: String = "", action: String? = null, onAction: () -> Unit = {}) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+internal fun OnAirEmpty(
+    title: String,
+    detail: String = "",
+    action: String? = null,
+    onAction: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, color = KomorebiTheme.colors.textPrimary)
         if (detail.isNotBlank()) Text(detail, color = KomorebiTheme.colors.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
         if (action != null) OnAirAction(action, onAction)

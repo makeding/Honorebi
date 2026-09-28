@@ -173,11 +173,11 @@ internal fun OnAirDetail(
                     Column(Modifier.weight(1f).fillMaxWidth()) {
                         DetailStatus(detail.programsStatus, "録画", viewModel::retryPrograms, Modifier.height(24.dp))
                         if (matrix.rows.isEmpty()) {
-                            OnAirEmpty(when (detail.programsStatus) {
-                                OnAirLoadState.Loading, OnAirLoadState.Idle -> "全ての録画を読み込み中…"
-                                is OnAirLoadState.Error -> "録画一覧を取得できませんでした"
-                                else -> "録画番組がありません"
-                            })
+                            when (detail.programsStatus) {
+                                OnAirLoadState.Loading, OnAirLoadState.Idle -> Spacer(Modifier.weight(1f).fillMaxWidth())
+                                is OnAirLoadState.Error -> OnAirEmpty("録画一覧を取得できませんでした", modifier = Modifier.weight(1f))
+                                else -> OnAirEmpty("録画番組がありません", modifier = Modifier.weight(1f))
+                            }
                         } else {
                             val logos = rememberChannelLogoImageLoader()
                             Row(Modifier.weight(1f).fillMaxWidth().verticalScroll(vertical)) {
@@ -288,6 +288,7 @@ private fun SeriesSummaryPanel(
 ) {
     val colors = KomorebiTheme.colors
     val summary = detail.summary
+    val summaryReady = detail.summaryStatus == OnAirLoadState.Ready
     val jpTitle = summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title
     val cnTitle = summary?.bangumiSubjectNameCn?.takeIf(String::isNotBlank)
     val jpSummary = summary?.bangumiSubjectSummary?.takeIf(String::isNotBlank)
@@ -330,7 +331,9 @@ private fun SeriesSummaryPanel(
                         .background(colors.textPrimary.copy(alpha = .06f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("ポスターなし", color = colors.textSecondary, fontSize = 11.sp)
+                    if (summaryReady && poster == null) {
+                        Text("ポスターなし", color = colors.textSecondary, fontSize = 11.sp)
+                    }
                     poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
@@ -340,12 +343,14 @@ private fun SeriesSummaryPanel(
                         Text(cnTitle, color = colors.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        jpSummary ?: "作品紹介はありません",
-                        color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp,
-                        maxLines = if (expanded) Int.MAX_VALUE else 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
+                        Text(
+                            summaryText,
+                            color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp,
+                            maxLines = if (expanded) Int.MAX_VALUE else 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             Text("決定で${if (expanded) "紹介を短く表示" else "紹介の全文を読む"} · 上下でスクロール",
@@ -357,10 +362,13 @@ private fun SeriesSummaryPanel(
 @Composable
 private fun DetailStatus(status: OnAirLoadState, label: String, retry: () -> Unit, modifier: Modifier) {
     val error = status as? OnAirLoadState.Error
+    if (status == OnAirLoadState.Loading || status == OnAirLoadState.Idle) {
+        Spacer(modifier)
+        return
+    }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(when (status) {
             is OnAirLoadState.Error -> "$label: ${status.message} [${status.code}]"
-            OnAirLoadState.Loading, OnAirLoadState.Idle -> "$label を読み込み中…"
             else -> label
         }, Modifier.weight(1f), color = KomorebiTheme.colors.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (error != null) {

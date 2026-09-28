@@ -45,7 +45,6 @@ data class OnAirExpandedSeries(
 data class OnAirUiState(
     val backendSupported: Boolean = true,
     val selectedWeekday: Int = currentJapanWeekday(),
-    val query: String = "",
     /** All server results, in stable display order. */
     val series: List<OnAirSeries> = emptyList(),
     val listStatus: OnAirLoadState = OnAirLoadState.Idle,
@@ -60,15 +59,8 @@ data class OnAirUiState(
     /** channelId:episode-slot:recordingId; IDs keep restoration stable across reordering. */
     val focusedEpisodeCellKey: String? = null,
 ) {
-    /** Search applies to the full week; this count map keeps every weekday label honest. */
-    val weekdayCounts: Map<Int, Int>
-        get() = filteredSeries.groupingBy { it.weekday }.eachCount()
-
-    val filteredSeries: List<OnAirSeries>
-        get() = series.filter { it.title.contains(query.trim(), ignoreCase = true) }
-
     val visibleSeries: List<OnAirSeries>
-        get() = filteredSeries.filter { it.weekday == selectedWeekday }
+        get() = series.filter { it.weekday == selectedWeekday }
 }
 
 data class OnAirReturnFocus(
@@ -121,7 +113,7 @@ class OnAirViewModel private constructor(
         }
     }
 
-    /** Resume after navigating back from the player while retaining day, query, and expansion identity. */
+    /** Resume after navigating back from the player while retaining day and expansion identity. */
     fun onEnterPage() {
         isPageActive = true
         val configuration = currentBackendConfiguration ?: return
@@ -179,10 +171,6 @@ class OnAirViewModel private constructor(
     fun selectWeekday(weekday: Int) {
         require(weekday in 0..6) { "weekday must be Monday (0) through Sunday (6)" }
         _uiState.value = _uiState.value.copy(selectedWeekday = weekday)
-    }
-
-    fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(query = query)
     }
 
     fun saveGridScroll(index: Int, offset: Int) {
