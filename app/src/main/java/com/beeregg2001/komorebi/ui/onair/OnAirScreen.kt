@@ -3,6 +3,11 @@
 package com.beeregg2001.komorebi.ui.onair
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -66,6 +71,7 @@ private val WEEK_COLUMN_WIDTH = 180.dp
 private val WEEK_COLUMN_SPACING = 12.dp
 private val WEEK_HEADER_HEIGHT = 34.dp
 private val WEEK_CARD_SPACING = 10.dp
+private const val WEEK_SKELETON_COUNT = 4
 
 @Composable
 fun OnAirScreen(
@@ -303,6 +309,7 @@ fun OnAirScreen(
             }
         }
 
+        val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
         when {
             !state.backendSupported -> OnAirEmpty(
                 "このバックエンドは「放送中」に対応していません",
@@ -312,11 +319,7 @@ fun OnAirScreen(
                 val error = state.listStatus as OnAirLoadState.Error
                 OnAirEmpty("放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList)
             }
-            state.series.isEmpty() && (state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle) ->
-                OnAirEmpty("放送中を読み込み中…")
-            state.filteredSeries.isEmpty() -> OnAirEmpty(
-                if (state.query.isBlank()) "放送中のシリーズはありません" else "検索に一致するシリーズがありません",
-            )
+            // 読み込み中でも曜日ヘッダーは即座に描画し、各列にスケルトンを出す。
             else -> Column(Modifier.weight(1f).fillMaxWidth()) {
                 // 曜日ヘッダーは縦スクロールしても固定。横スクロールに同期して動く。
                 Box(Modifier.fillMaxWidth().height(WEEK_HEADER_HEIGHT).clipToBounds()) {
@@ -332,6 +335,7 @@ fun OnAirScreen(
                             DayHeader(
                                 label = weekdays[day],
                                 count = byWeekday[day].size,
+                                loading = isLoading,
                                 color = weekdayColors[day % weekdayColors.size],
                                 highlighted = day == state.selectedWeekday,
                             )
@@ -353,11 +357,18 @@ fun OnAirScreen(
                             val daySeries = byWeekday[day]
                             Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
                                 if (daySeries.isEmpty()) {
-                                    Box(
-                                        Modifier.fillMaxWidth().height(80.dp),
-                                        contentAlignment = Alignment.TopCenter,
-                                    ) {
-                                        Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                    if (isLoading) {
+                                        repeat(WEEK_SKELETON_COUNT) { i ->
+                                            WeekSkeletonCard()
+                                            if (i != WEEK_SKELETON_COUNT - 1) Spacer(Modifier.height(WEEK_CARD_SPACING))
+                                        }
+                                    } else {
+                                        Box(
+                                            Modifier.fillMaxWidth().height(80.dp),
+                                            contentAlignment = Alignment.TopCenter,
+                                        ) {
+                                            Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                        }
                                     }
                                 } else {
                                     daySeries.forEachIndexed { index, series ->
@@ -399,7 +410,7 @@ fun OnAirScreen(
 }
 
 @Composable
-private fun DayHeader(label: String, count: Int, color: Color, highlighted: Boolean) {
+private fun DayHeader(label: String, count: Int, loading: Boolean, color: Color, highlighted: Boolean) {
     Row(
         Modifier
             .width(WEEK_COLUMN_WIDTH)
@@ -410,8 +421,26 @@ private fun DayHeader(label: String, count: Int, color: Color, highlighted: Bool
     ) {
         Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Spacer(Modifier.weight(1f))
-        Text("${count}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
+        Text(if (loading) "取得中…" else "${count}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
     }
+}
+
+@Composable
+private fun WeekSkeletonCard() {
+    val colors = KomorebiTheme.colors
+    val transition = rememberInfiniteTransition(label = "week-skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.06f,
+        targetValue = 0.16f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
+        label = "week-skeleton-alpha",
+    )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 10f)
+            .background(colors.textPrimary.copy(alpha = alpha), RoundedCornerShape(8.dp))
+    )
 }
 
 @Composable

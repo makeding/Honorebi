@@ -265,6 +265,7 @@ fun AppsTabContent(
                             FocusRequester()
                         }
                         val isFirstRow = index / columnCount == 0
+                        val isLastRow = index / columnCount == (totalEntries - 1) / columnCount
                         LauncherAppCard(
                             app = app,
                             onClick = {
@@ -334,6 +335,16 @@ fun AppsTabContent(
                                         } else {
                                             tabFocusRequester.safeRequestFocus(TAG)
                                         }
+                                        true
+                                    } else if (event.type == KeyEventType.KeyDown &&
+                                        event.key == Key.DirectionDown &&
+                                        isLastRow &&
+                                        hiddenApps.isNotEmpty() &&
+                                        editingAppId == null &&
+                                        !isHiddenCatalog
+                                    ) {
+                                        // 最終行から下へ: 非表示アプリ一覧へ遷移する。
+                                        isHiddenCatalog = true
                                         true
                                     } else {
                                         false

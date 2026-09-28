@@ -63,7 +63,8 @@ class OnAirScreenTest {
         val empty = OnAirViewModel(FakeProvider(empty = true), MutableStateFlow(OnAirBackendConfiguration("KONOMITV", "tv", "7000", "")))
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
         compose.setContent { screen(empty) }
-        compose.onNodeWithTag("onair-grid").assertDoesNotExist()
+        // 空でも曜日ヘッダーとグリッドは描画される。
+        compose.onNodeWithTag("onair-grid").assertIsDisplayed()
     }
 
     @Test fun playbackReturnRestoresSameCompositeEpisodeCell() {
