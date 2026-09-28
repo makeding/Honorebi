@@ -117,7 +117,9 @@ class VideoPlayerState {
         onPause: () -> Unit,
         onPlay: () -> Unit,
         onSkipPreviousChapter: () -> Unit,
-        onSkipNextChapter: () -> Unit
+        onSkipNextChapter: () -> Unit,
+        onSpeedUp: () -> Unit = {},
+        onSpeedDown: () -> Unit = {}
     ): Boolean {
         if (isPiPMode) { resetMediaKeys(); return false }
         val keyCode = keyEvent.nativeKeyEvent.keyCode
@@ -148,6 +150,14 @@ class VideoPlayerState {
         }
 
         if (isSubOverlayOpen) { resetMediaKeys(); return false }
+
+        // CH+/CH- で再生速度を変更 (1.0 → 1.25 → 1.5 → 1.75 → 2.0 → 0.8)
+        if (keyCode == NativeKeyEvent.KEYCODE_CHANNEL_UP || keyCode == NativeKeyEvent.KEYCODE_CHANNEL_DOWN) {
+            if (isActionDown && keyEvent.nativeKeyEvent.repeatCount == 0) {
+                if (keyCode == NativeKeyEvent.KEYCODE_CHANNEL_UP) onSpeedUp() else onSpeedDown()
+            }
+            return true
+        }
 
         if (mediaKeys.handle(keyEvent.nativeKeyEvent, chapters.isNotEmpty()) { action ->
             onShowControlsChange(true)

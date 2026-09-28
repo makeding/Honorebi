@@ -208,6 +208,16 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "OFF"
     )
+    val videoPlaybackSpeed: StateFlow<String> = settingsRepository.videoPlaybackSpeed.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "1.0"
+    )
+    val smbSubtitleEnabled: StateFlow<String> = settingsRepository.smbSubtitleEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "OFF"
+    )
     val subtitleCommentLayer: StateFlow<String> = settingsRepository.subtitleCommentLayer.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -420,6 +430,17 @@ class SettingsViewModel @Inject constructor(
 
     fun setCmSkipMode(mode: CmSkipMode) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(SettingsRepository.AUTO_CM_SKIP, mode.name)
+    }
+
+    fun updateVideoPlaybackSpeed(speed: Float) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.VIDEO_PLAYBACK_SPEED, speed.toString())
+    }
+
+    fun updateSmbSubtitleEnabled(enabled: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(
+            SettingsRepository.SMB_SUBTITLE_ENABLED,
+            if (enabled) "ON" else "OFF"
+        )
     }
 
     fun updateBackendType(newType: String) = viewModelScope.launch(Dispatchers.IO) {

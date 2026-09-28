@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -117,6 +118,16 @@ internal fun SmbPlayerScreen(
         player.prepare()
         player.playWhenReady = true
     }
+    val videoPlaybackSpeedStr by settingsViewModel.videoPlaybackSpeed.collectAsState()
+    val smbSubtitleEnabledStr by settingsViewModel.smbSubtitleEnabled.collectAsState()
+    LaunchedEffect(player, videoPlaybackSpeedStr) {
+        val saved = videoPlaybackSpeedStr.toFloatOrNull()?.takeIf { it in PLAYBACK_SPEEDS } ?: 1.0f
+        state.currentSpeed = saved
+        player.setPlaybackSpeed(saved)
+    }
+    LaunchedEffect(smbSubtitleEnabledStr) {
+        state.isSubtitleEnabled = smbSubtitleEnabledStr == "ON"
+    }
     SystemMediaSession(
         player = player,
         title = metadata.title,
@@ -160,6 +171,22 @@ internal fun SmbPlayerScreen(
                     onPlay = player::play,
                     onSkipPreviousChapter = {},
                     onSkipNextChapter = {},
+                    onSpeedUp = {
+                        val idx = PLAYBACK_SPEEDS.indexOf(state.currentSpeed).coerceAtLeast(0)
+                        val next = PLAYBACK_SPEEDS[(idx + 1).coerceAtMost(PLAYBACK_SPEEDS.lastIndex)]
+                        state.currentSpeed = next
+                        player.setPlaybackSpeed(next)
+                        onShowToast("速度: ${next}x")
+                        settingsViewModel.updateVideoPlaybackSpeed(next)
+                    },
+                    onSpeedDown = {
+                        val idx = PLAYBACK_SPEEDS.indexOf(state.currentSpeed).coerceAtLeast(0)
+                        val next = PLAYBACK_SPEEDS[(idx - 1).coerceAtLeast(0)]
+                        state.currentSpeed = next
+                        player.setPlaybackSpeed(next)
+                        onShowToast("速度: ${next}x")
+                        settingsViewModel.updateVideoPlaybackSpeed(next)
+                    },
                 )
             },
     ) {
@@ -204,6 +231,7 @@ internal fun SmbPlayerScreen(
             isSeekingPreviewVisible = false,
             isModernUi = false,
             isPlaying = state.isPlayerPlaying,
+            playbackSpeed = state.currentSpeed,
             hasChapters = false,
             initialPositionMs = positionMs,
             totalDurationMs = durationMs,
@@ -247,12 +275,18 @@ internal fun SmbPlayerScreen(
             availableQualities = emptyList(),
             focusRequester = subMenuFocusRequester,
             onAudioToggle = { toggleRecordedAudio(state, onShowToast) },
-            onSpeedToggle = { cycleRecordedPlaybackSpeed(state, player, onShowToast) },
+            onSpeedToggle = {
+                cycleRecordedPlaybackSpeed(state, player, onShowToast)
+                settingsViewModel.updateVideoPlaybackSpeed(state.currentSpeed)
+            },
             onProgramInfo = {
                 isProgramInfoOpen = true
                 onSubMenuToggle(false)
             },
-            onSubtitleToggle = { toggleRecordedSubtitle(state, onShowToast) },
+            onSubtitleToggle = {
+                toggleRecordedSubtitle(state, onShowToast)
+                settingsViewModel.updateSmbSubtitleEnabled(state.isSubtitleEnabled)
+            },
             onSubtitleLanguageToggle = {
                 val (id, message) = nextRecordedSubtitleLanguage(subtitleLanguageId.toInt(), subtitleLanguages)
                 subtitleLanguageId = id.toLong()

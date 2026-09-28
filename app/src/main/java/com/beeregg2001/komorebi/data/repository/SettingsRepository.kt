@@ -79,6 +79,8 @@ class SettingsRepository @Inject constructor(
         val SUBTITLE_COMMENT_LAYER = stringPreferencesKey("subtitle_comment_layer")
         val AUDIO_OUTPUT_MODE = stringPreferencesKey("audio_output_mode")
         val HDR_RENDER_MODE = stringPreferencesKey("hdr_render_mode")
+        val VIDEO_PLAYBACK_SPEED = stringPreferencesKey("video_playback_speed")
+        val SMB_SUBTITLE_ENABLED = stringPreferencesKey("smb_subtitle_enabled")
 
         val PLAYER_UI_MODE = stringPreferencesKey("player_ui_mode")
         val AUTO_CM_SKIP = stringPreferencesKey("auto_cm_skip")
@@ -171,6 +173,10 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[AUDIO_OUTPUT_MODE] ?: "DOWNMIX" }
     val hdrRenderMode: Flow<String> =
         context.dataStore.data.map { it[HDR_RENDER_MODE] ?: "ORIGINAL" }
+    val videoPlaybackSpeed: Flow<String> =
+        context.dataStore.data.map { it[VIDEO_PLAYBACK_SPEED] ?: "1.0" }
+    val smbSubtitleEnabled: Flow<String> =
+        context.dataStore.data.map { it[SMB_SUBTITLE_ENABLED] ?: "OFF" }
     val playerUiMode: Flow<String> = context.dataStore.data.map { it[PLAYER_UI_MODE] ?: "CLASSIC" }
     val autoCmSkip: Flow<String> = context.dataStore.data.map { normalizeCmSkipMode(it[AUTO_CM_SKIP]) }
     val preferOriginalMpegTs: Flow<String> =

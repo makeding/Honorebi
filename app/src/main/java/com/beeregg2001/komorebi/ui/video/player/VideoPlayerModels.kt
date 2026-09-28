@@ -40,6 +40,10 @@ data class IndicatorState(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+// 録画プレイヤーとファイルライブラリ (SMB) プレイヤーで共有する再生速度の段階。
+// 選択値は SettingsRepository.VIDEO_PLAYBACK_SPEED に保存し、ファイルをまたいで維持する。
+val PLAYBACK_SPEEDS = listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 0.8f)
+
 object VideoPlayerConstants {
     // KonomiTVの生成仕様に合わせ、10秒刻みの間隔
     val SEARCH_INTERVALS = listOf(10, 30, 60, 120, 300, 600)

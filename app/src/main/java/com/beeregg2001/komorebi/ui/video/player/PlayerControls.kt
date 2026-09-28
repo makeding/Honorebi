@@ -78,6 +78,7 @@ fun PlayerControls(
     isSeekingPreviewVisible: Boolean,
     isModernUi: Boolean,
     isPlaying: Boolean,
+    playbackSpeed: Float = 1.0f,
     hasChapters: Boolean,
     externalChapters: List<ChapterInfo> = emptyList(),
     initialPositionMs: Long,
@@ -248,6 +249,7 @@ fun PlayerControls(
                     externalChapters = externalChapters,
                     isModernUi = isModernUi,
                     isSeekBarFocused = isSeekBarFocused,
+                    playbackSpeed = playbackSpeed,
                     onSeekBarFocusChanged = {
                         isSeekBarFocused = it
                         onSeekBarFocusChanged(it)
@@ -462,6 +464,7 @@ private fun RecordedControlsProgressRow(
     externalChapters: List<ChapterInfo>,
     isModernUi: Boolean,
     isSeekBarFocused: Boolean,
+    playbackSpeed: Float,
     onSeekBarFocusChanged: (Boolean) -> Unit,
     trackHeight: Dp,
     playHeadSize: Dp,
@@ -592,6 +595,14 @@ private fun RecordedControlsProgressRow(
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
+        if (playbackSpeed != 1.0f) {
+            Text(
+                text = "${playbackSpeed}x",
+                color = colors.accent,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("playback-speed"),
+            )
+        }
         Text(
             text = formatMillisToTime(totalDurationMs),
             color = Color.White.copy(alpha = 0.9f),

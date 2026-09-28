@@ -376,6 +376,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         isSeekingPreviewVisible = isSeekingPreviewVisible,
         isModernUi = isModern,
         isPlaying = isPlaying,
+        playbackSpeed = state.currentSpeed,
         hasChapters = chapters.isNotEmpty(),
         externalChapters = chapters,
         initialPositionMs = initialControlsPositionMs,
@@ -612,7 +613,7 @@ internal fun cycleRecordedPlaybackSpeed(
     player: ExoPlayer,
     onShowToast: (String) -> Unit
 ) {
-    val speeds = listOf(1.0f, 1.5f, 2.0f, 0.8f)
+    val speeds = PLAYBACK_SPEEDS
     state.currentSpeed = speeds[(speeds.indexOf(state.currentSpeed) + 1) % speeds.size]
     player.setPlaybackSpeed(state.currentSpeed)
     onShowToast("速度: ${state.currentSpeed}x")
@@ -746,6 +747,8 @@ internal fun handleRecordedPlayerKeyEvent(
     onPlay: () -> Unit,
     onSkipPreviousChapter: () -> Unit,
     onSkipNextChapter: () -> Unit,
+    onSpeedUp: () -> Unit = {},
+    onSpeedDown: () -> Unit = {},
 ): Boolean {
     if (isPiPMode || isSubOverlayOpen || isProgramInfoOpen) state.resetMediaKeys()
     if (isPiPMode) return false
@@ -844,7 +847,9 @@ internal fun handleRecordedPlayerKeyEvent(
         onPause = onPause,
         onPlay = onPlay,
         onSkipPreviousChapter = onSkipPreviousChapter,
-        onSkipNextChapter = onSkipNextChapter
+        onSkipNextChapter = onSkipNextChapter,
+        onSpeedUp = onSpeedUp,
+        onSpeedDown = onSpeedDown
     )
 }
 

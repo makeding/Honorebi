@@ -338,6 +338,7 @@ internal fun RecordedPlayerScreen(
     val commentDefaultDisplayStr by settingsViewModel.commentDefaultDisplay.collectAsState()
     val subtitleCommentLayer by settingsViewModel.subtitleCommentLayer.collectAsState()
     val videoSubtitleDefaultStr by settingsViewModel.videoSubtitleDefault.collectAsState()
+    val videoPlaybackSpeedStr by settingsViewModel.videoPlaybackSpeed.collectAsState()
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
 
     val commentSpeed = commentSpeedStr.toFloatOrNull() ?: 1.0f
@@ -783,6 +784,12 @@ internal fun RecordedPlayerScreen(
             }
         }
     )
+
+    LaunchedEffect(exoPlayer, videoPlaybackSpeedStr) {
+        val saved = videoPlaybackSpeedStr.toFloatOrNull()?.takeIf { it in PLAYBACK_SPEEDS } ?: 1.0f
+        vs.currentSpeed = saved
+        exoPlayer.setPlaybackSpeed(saved)
+    }
 
     val showHdrRenderMode = isHdrRenderModeSupported &&
         rememberHlgToneMappingContent(videoTracks, currentProgram.id)
@@ -1689,6 +1696,23 @@ internal fun RecordedPlayerScreen(
     }
     val toggleSpeed: () -> Unit = {
         cycleRecordedPlaybackSpeed(vs, exoPlayer, onShowToast)
+        settingsViewModel.updateVideoPlaybackSpeed(vs.currentSpeed)
+    }
+    val speedUp: () -> Unit = {
+        val idx = PLAYBACK_SPEEDS.indexOf(vs.currentSpeed).coerceAtLeast(0)
+        val next = PLAYBACK_SPEEDS[(idx + 1).coerceAtMost(PLAYBACK_SPEEDS.lastIndex)]
+        vs.currentSpeed = next
+        exoPlayer.setPlaybackSpeed(next)
+        onShowToast("速度: ${next}x")
+        settingsViewModel.updateVideoPlaybackSpeed(next)
+    }
+    val speedDown: () -> Unit = {
+        val idx = PLAYBACK_SPEEDS.indexOf(vs.currentSpeed).coerceAtLeast(0)
+        val next = PLAYBACK_SPEEDS[(idx - 1).coerceAtLeast(0)]
+        vs.currentSpeed = next
+        exoPlayer.setPlaybackSpeed(next)
+        onShowToast("速度: ${next}x")
+        settingsViewModel.updateVideoPlaybackSpeed(next)
     }
     val toggleSubtitle: () -> Unit = {
         toggleRecordedSubtitle(vs, onShowToast)
@@ -1797,7 +1821,9 @@ internal fun RecordedPlayerScreen(
                     onPause = exoPlayer::pause,
                     onPlay = exoPlayer::play,
                     onSkipPreviousChapter = { skipToPreviousChapter() },
-                    onSkipNextChapter = { skipToNextChapter() }
+                    onSkipNextChapter = { skipToNextChapter() },
+                    onSpeedUp = speedUp,
+                    onSpeedDown = speedDown
                 )
             }
     ) {
