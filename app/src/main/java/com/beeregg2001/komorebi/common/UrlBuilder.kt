@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 object UrlBuilder {
 
@@ -11,15 +12,28 @@ object UrlBuilder {
      * ベースURLを組み立てる
      */
     fun formatBaseUrl(ip: String, port: String, defaultProtocol: String): String {
-        val configured = ip.trim().removeSuffix("/").let {
-            if (it.startsWith("http://") || it.startsWith("https://")) it else "$defaultProtocol://$it"
+        val cleanIp = ip.trim().removeSuffix("/")
+        val configured = cleanIp.let {
+            if (it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true)) it else "$defaultProtocol://$it"
         }
         return runCatching {
             val uri = java.net.URI(configured)
             val effectivePort = if (uri.port >= 0) uri.port else port.toInt()
-            java.net.URI(uri.scheme, null, requireNotNull(uri.host), effectivePort,
+            java.net.URI(uri.scheme.lowercase(), null, requireNotNull(uri.host), effectivePort,
                 uri.path, null, null).toASCIIString().removeSuffix("/")
         }.getOrDefault(configured)
+    }
+
+    /** EDCBのTCP直接接続用に、入力からホスト名/IPだけを取り出す。 */
+    fun extractBareHost(ip: String): String {
+        val cleanIp = ip.trim().removeSuffix("/")
+        val normalized = if (
+            cleanIp.startsWith("http://", ignoreCase = true) ||
+            cleanIp.startsWith("https://", ignoreCase = true)
+        ) cleanIp else "http://$cleanIp"
+        return normalized.toHttpUrlOrNull()?.host
+            ?: cleanIp.replace(Regex("^https?://", RegexOption.IGNORE_CASE), "")
+                .substringBefore("/").substringBefore(":")
     }
 
     /**
@@ -98,6 +112,11 @@ object UrlBuilder {
     fun getKonomiTvWatchUrl(ip: String, port: String, displayChannelId: String): String {
         val baseUrl = formatBaseUrl(ip, port, "https")
         return "$baseUrl/tv/watch/${Uri.encode(displayChannelId)}"
+    }
+
+    fun getKonomiTvJikkyoWatchSessionUrl(ip: String, port: String, displayChannelId: String): String {
+        val baseUrl = formatBaseUrl(ip, port, "https")
+        return "$baseUrl/api/channels/$displayChannelId/jikkyo"
     }
 
     @OptIn(UnstableApi::class)

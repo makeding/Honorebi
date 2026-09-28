@@ -30,7 +30,7 @@ class EdcbReserveRepository @Inject constructor(
 
     private suspend fun getTcpIpAndPort(): Pair<String, Int> {
         val rawIp = settingsRepository.edcbIp.first()
-        val cleanIp = rawIp.replace(Regex("^https?://"), "")
+        val cleanIp = com.beeregg2001.komorebi.common.UrlBuilder.extractBareHost(rawIp)
         val port = settingsRepository.edcbPort.first().toIntOrNull() ?: 4510
         return Pair(cleanIp, port)
     }

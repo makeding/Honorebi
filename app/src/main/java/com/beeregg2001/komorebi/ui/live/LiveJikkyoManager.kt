@@ -122,8 +122,11 @@ class LiveJikkyoManager @Inject constructor(
             val config = settingsRepository.getBackendConfig(source) as? BackendConfig.KonomiTv
             if (config == null) return null
             try {
-                val apiUrl =
-                    "${config.ip}:${config.port}/api/channels/${channel.displayChannelId}/jikkyo"
+                val apiUrl = com.beeregg2001.komorebi.common.UrlBuilder.getKonomiTvJikkyoWatchSessionUrl(
+                    config.ip,
+                    config.port,
+                    channel.displayChannelId,
+                )
                 val request = Request.Builder().url(apiUrl).build()
                 val response = okHttpClient.newCall(request).execute()
 
