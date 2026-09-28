@@ -254,6 +254,7 @@ object AppStrings {
     const val SETTINGS_VALUE_SEASON_AUTUMN = "秋"
     const val SETTINGS_VALUE_SEASON_WINTER = "冬"
     const val SETTINGS_VALUE_SEASON_DEFAULT = "デフォルト"
+    const val SETTINGS_VALUE_SEASON_BLUE = "ブルー (EPGStation風)"
 
     // --- テーマ設定の追加分 ---
 // --- 時間連動テーマ用動的ラベル ---

@@ -114,6 +114,7 @@ fun getThemeFromModeAndSeason(isDark: Boolean, season: String): String {
         "SUMMER" -> if (isDark) "SUMMER" else "SUMMER_LIGHT"
         "AUTUMN" -> if (isDark) "AUTUMN" else "AUTUMN_LIGHT"
         "WINTER" -> if (isDark) "WINTER_DARK" else "WINTER_LIGHT"
+        "BLUE" -> if (isDark) "EPG_BLUE" else "EPG_BLUE_LIGHT"
         else -> if (isDark) "MONOTONE" else "HIGHTONE"
     }
 }

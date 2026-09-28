@@ -62,6 +62,10 @@ enum class AppTheme(val label: String) {
     AUTUMN("秋 (夜長) - Autumn Dark"),
     AUTUMN_LIGHT("秋 (紅葉) - Autumn Light"),
 
+    // EPGStation 風の青系テーマ
+    EPG_BLUE("ブルー (EPGStation風) - Blue Dark"),
+    EPG_BLUE_LIGHT("ブルー (EPGStation風) - Blue Light"),
+
     // ★ 統合された時間連動テーマ
     KOMOREBI("時間連動 (木漏れ日)"),
     KYLE("時間連動 (海辺のカイル)"),
@@ -155,6 +159,24 @@ val AutumnLightPalette = KomorebiColors(
     accent = Color(0xFFD84315),
     textPrimary = Color(0xFF3E2723),
     textSecondary = Color(0xFF8D6E63),
+    isDark = false
+)
+
+// EPGStation 風の青系パレット (アクセントは EPGStation のアプリバーに近いブルー)
+val BlueDarkPalette = KomorebiColors(
+    background = Color(0xFF101418),  // 寒色トーンの深いダークグレー
+    surface = Color(0xFF1A2027),
+    accent = Color(0xFF2196F3),      // ダーク背景でも視認しやすい Material Blue 500
+    textPrimary = Color(0xFFE8EFF7),
+    textSecondary = Color(0xFF8A99A8),
+    isDark = true
+)
+val BlueLightPalette = KomorebiColors(
+    background = Color(0xFFEAF1F8),
+    surface = Color(0xFFFFFFFF),
+    accent = Color(0xFF1976D2),      // EPGStation のアプリバーと同じブルー
+    textPrimary = Color(0xFF1F2933),
+    textSecondary = Color(0xFF5F6B78),
     isDark = false
 )
 
@@ -369,6 +391,7 @@ fun KomorebiTheme(theme: AppTheme = AppTheme.MONOTONE, content: @Composable () -
         AppTheme.SPRING -> SpringDarkPalette; AppTheme.SPRING_LIGHT -> SpringLightPalette
         AppTheme.SUMMER -> SummerDarkPalette; AppTheme.SUMMER_LIGHT -> SummerLightPalette
         AppTheme.AUTUMN -> AutumnDarkPalette; AppTheme.AUTUMN_LIGHT -> AutumnLightPalette
+        AppTheme.EPG_BLUE -> BlueDarkPalette; AppTheme.EPG_BLUE_LIGHT -> BlueLightPalette
         // ★ 時間帯によるパレットの出し分け
         AppTheme.KOMOREBI, AppTheme.KOMOREBI_DAY, AppTheme.KOMOREBI_NIGHT -> {
             when (timeZone) {

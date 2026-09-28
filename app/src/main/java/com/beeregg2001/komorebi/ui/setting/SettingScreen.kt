@@ -733,7 +733,7 @@ fun SettingsScreen(
                         4 -> HomeDisplaySettingsContent(
                             prefs.currentThemeName.contains("LIGHT") || prefs.currentThemeName == "HIGHTONE" || prefs.currentThemeName == "KOMOREBI_DAY" || prefs.currentThemeName == "KYLE_DAY",
                             when (prefs.currentThemeName) {
-                                "SPRING", "SPRING_LIGHT" -> "SPRING"; "SUMMER", "SUMMER_LIGHT" -> "SUMMER"; "AUTUMN", "AUTUMN_LIGHT" -> "AUTUMN"; "WINTER_DARK", "WINTER_LIGHT" -> "WINTER"; "KOMOREBI", "KOMOREBI_DAY", "KOMOREBI_NIGHT" -> "KOMOREBI"; "KYLE", "KYLE_DAY", "KYLE_NIGHT" -> "KYLE"; else -> "DEFAULT"
+                                "SPRING", "SPRING_LIGHT" -> "SPRING"; "SUMMER", "SUMMER_LIGHT" -> "SUMMER"; "AUTUMN", "AUTUMN_LIGHT" -> "AUTUMN"; "WINTER_DARK", "WINTER_LIGHT" -> "WINTER"; "EPG_BLUE", "EPG_BLUE_LIGHT" -> "BLUE"; "KOMOREBI", "KOMOREBI_DAY", "KOMOREBI_NIGHT" -> "KOMOREBI"; "KYLE", "KYLE_DAY", "KYLE_NIGHT" -> "KYLE"; else -> "DEFAULT"
                             },
                             prefs.pickupGenre,
                             prefs.excludePaid,
@@ -790,7 +790,8 @@ fun SettingsScreen(
                                         AppStrings.SETTINGS_VALUE_SEASON_SPRING to "SPRING",
                                         AppStrings.SETTINGS_VALUE_SEASON_SUMMER to "SUMMER",
                                         AppStrings.SETTINGS_VALUE_SEASON_AUTUMN to "AUTUMN",
-                                        AppStrings.SETTINGS_VALUE_SEASON_WINTER to "WINTER"
+                                        AppStrings.SETTINGS_VALUE_SEASON_WINTER to "WINTER",
+                                        AppStrings.SETTINGS_VALUE_SEASON_BLUE to "BLUE"
                                     ),
                                     "DEFAULT"
                                 ) {
