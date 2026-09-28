@@ -52,11 +52,10 @@ private fun ValidationErrorText(message: String) {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GeneralSettingsContent(
-    totalRecordCount: Int,
-    lastSyncedAt: Long,
     receiveBetaUpdates: Boolean,
     startupTab: String,
     startupChannelName: String,
+    excludePaid: String,
     onToggleBetaUpdates: (Boolean) -> Unit,
     betaUpdateR: FocusRequester,
     startupTabR: FocusRequester,
@@ -65,19 +64,11 @@ fun GeneralSettingsContent(
     onEditStartupChannel: () -> Unit,
     capabilityR: FocusRequester,
     onCapabilities: () -> Unit,
-    onClearChannel: () -> Unit,
-    onClearHistory: () -> Unit,
-    dbInfoR: FocusRequester,
-    clearChannelR: FocusRequester,
-    clearHistoryR: FocusRequester,
+    exPaidR: FocusRequester,
+    onToggleExcludePaid: () -> Unit,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
-    val dateFormat =
-        remember { java.text.SimpleDateFormat("yyyy/MM/dd HH:mm", java.util.Locale.getDefault()) }
-    val lastSyncStr =
-        if (lastSyncedAt > 0L) dateFormat.format(java.util.Date(lastSyncedAt)) else "未同期"
-
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(
             AppStrings.SETTINGS_CATEGORY_GENERAL,
@@ -141,56 +132,25 @@ fun GeneralSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = startupChannelR
-                        down = dbInfoR
+                        down = exPaidR
                     },
                 onClick = { onClick(capabilityR); onCapabilities() }
             )
         }
 
-        SettingsSection("データベース情報") {
+        SettingsSection("視聴") {
             SettingItem(
-                title = "ローカル保存件数",
-                value = "$totalRecordCount 件",
-                icon = Icons.Default.Storage,
+                AppStrings.SETTINGS_ITEM_EXCLUDE_PAID,
+                excludePaid,
+                Icons.Default.Lock,
                 modifier = Modifier
-                    .focusRequester(dbInfoR)
+                    .focusRequester(exPaidR)
                     .focusProperties {
                         left = sidebarR
                         up = capabilityR
-                        down = clearChannelR
-                    },
-                onClick = { onClick(dbInfoR) }
-            )
-            Text(
-                "最終同期: $lastSyncStr",
-                modifier = Modifier.padding(horizontal = 24.dp),
-                color = KomorebiTheme.colors.textSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            SettingItem(
-                AppStrings.SETTINGS_ITEM_CLEAR_CHANNEL_HISTORY,
-                "",
-                Icons.Default.History,
-                modifier = Modifier
-                    .focusRequester(clearChannelR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = dbInfoR
-                        down = clearHistoryR
-                    },
-                onClick = { onClick(clearChannelR); onClearChannel() })
-            SettingItem(
-                AppStrings.SETTINGS_ITEM_CLEAR_WATCH_HISTORY,
-                "",
-                Icons.Default.DeleteSweep,
-                modifier = Modifier
-                    .focusRequester(clearHistoryR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = clearChannelR
                         down = FocusRequester.Cancel
                     },
-                onClick = { onClick(clearHistoryR); onClearHistory() })
+                onClick = { onClick(exPaidR); onToggleExcludePaid() })
         }
     }
 }
@@ -883,15 +843,12 @@ fun EpgSettingsContent(
 @Composable
 fun HomeDisplaySettingsContent(
     genre: String,
-    excludePaid: String,
     pickupTime: String,
     genreR: FocusRequester,
     timeR: FocusRequester,
-    exPaidR: FocusRequester,
     sidebarR: FocusRequester,
     onG: () -> Unit,
     onTime: () -> Unit,
-    onExPaid: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -923,21 +880,9 @@ fun HomeDisplaySettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = genreR
-                        down = exPaidR
-                    },
-                onClick = { onClick(timeR); onTime() })
-            SettingItem(
-                AppStrings.SETTINGS_ITEM_EXCLUDE_PAID,
-                excludePaid,
-                Icons.Default.Lock,
-                modifier = Modifier
-                    .focusRequester(exPaidR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = timeR
                         down = FocusRequester.Cancel
                     },
-                onClick = { onClick(exPaidR); onExPaid() })
+                onClick = { onClick(timeR); onTime() })
         }
     }
 }
@@ -1322,11 +1267,15 @@ fun CacheManagementContent(
     onClearThumbnail: () -> Unit,
     onClearEpg: () -> Unit,
     onClearRecording: () -> Unit,
+    onClearChannelHistory: () -> Unit,
+    onClearWatchHistory: () -> Unit,
     allR: FocusRequester,
     logoR: FocusRequester,
     thumbR: FocusRequester,
     epgR: FocusRequester,
     recordingR: FocusRequester,
+    channelHistoryR: FocusRequester,
+    watchHistoryR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -1403,10 +1352,37 @@ fun CacheManagementContent(
                     .focusProperties {
                         left = sidebarR
                         up = epgR
-                        down = FocusRequester.Cancel
+                        down = channelHistoryR
                     },
                 onClick = { onClick(recordingR); onClearRecording() }
             )
+        }
+
+        SettingsSection(AppStrings.SETTINGS_SECTION_HISTORY) {
+            SettingItem(
+                AppStrings.SETTINGS_ITEM_CLEAR_CHANNEL_HISTORY,
+                "",
+                Icons.Default.History,
+                modifier = Modifier
+                    .focusRequester(channelHistoryR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = recordingR
+                        down = watchHistoryR
+                    },
+                onClick = { onClick(channelHistoryR); onClearChannelHistory() })
+            SettingItem(
+                AppStrings.SETTINGS_ITEM_CLEAR_WATCH_HISTORY,
+                "",
+                Icons.Default.DeleteSweep,
+                modifier = Modifier
+                    .focusRequester(watchHistoryR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = channelHistoryR
+                        down = FocusRequester.Cancel
+                    },
+                onClick = { onClick(watchHistoryR); onClearWatchHistory() })
         }
     }
 }

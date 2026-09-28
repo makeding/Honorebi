@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.viewmodel.SmbServer
@@ -500,16 +501,19 @@ fun DefaultHomeGuideDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = KomorebiTheme.colors
-    val qrBitmap = rememberQrBitmap(LauncherEnvironmentDetector.TV_TWEAKS_URL, 260)
+    val qrBitmap = rememberQrBitmap(LauncherEnvironmentDetector.TV_TWEAKS_URL, 170)
     val primaryRequester = remember { FocusRequester() }
     val closeRequester = remember { FocusRequester() }
 
+    // ダイアログ表示直後はノードが未 attach のことがあるため、リトライ付きで
+    // 確実にダイアログ内へフォーカスを移す。失敗すると背面の設定リストに
+    // フォーカスが残り、操作を奪われたように見える。
     LaunchedEffect(environment) {
         delay(120)
         if (environment == HomeEnvironment.ANDROID_TV) {
-            primaryRequester.safeRequestFocus()
+            primaryRequester.safeRequestFocusWithRetry("DefaultHomeGuide_primary")
         } else {
-            closeRequester.safeRequestFocus()
+            closeRequester.safeRequestFocusWithRetry("DefaultHomeGuide_close")
         }
     }
 
@@ -519,11 +523,13 @@ fun DefaultHomeGuideDialog(
         HomeEnvironment.UNKNOWN -> "不明なデバイス"
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(0.8f))
             .focusGroup()
+            // ダイアログ外（背面の設定画面）へフォーカスが逃げないようにする。
+            .focusProperties { exit = { FocusRequester.Cancel } }
             .onKeyEvent {
                 if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
                     onDismiss(); true
@@ -531,14 +537,22 @@ fun DefaultHomeGuideDialog(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // 1080p の Android TV は概ね 540dp 高。固定高の大きい QR を置くと
+        // ダイアログが画面からはみ出し、下端の閉じるボタンが切れる。
+        val dialogMaxHeight = maxHeight * 0.9f
+
         Surface(
             shape = RoundedCornerShape(16.dp),
             colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(560.dp),
+            modifier = Modifier
+                .width(560.dp)
+                .heightIn(max = dialogMaxHeight),
         ) {
             Column(
-                Modifier.padding(32.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
                     AppStrings.DIALOG_DEFAULT_HOME_TITLE,
@@ -583,7 +597,7 @@ fun DefaultHomeGuideDialog(
                             bitmap = qrBitmap,
                             contentDescription = null,
                             modifier = Modifier
-                                .size(240.dp)
+                                .size(180.dp)
                                 .align(Alignment.CenterHorizontally)
                         )
                         Text(

@@ -4,6 +4,7 @@ package com.beeregg2001.komorebi.ui.setting
 
 import android.os.Build
 import android.view.KeyEvent as NativeKeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -73,8 +74,6 @@ fun SettingsScreen(
     val prefs = rememberSettingPreferences(repository)
     val uiState = rememberSettingUiState(initialCategoryIndex)
 
-    val totalRecordCount by viewModel.totalRecordCount.collectAsState()
-    val lastSyncedAt by viewModel.lastSyncedAt.collectAsState()
     val receiveBetaUpdates by viewModel.receiveBetaUpdates.collectAsState()
     val playerUiMode by viewModel.playerUiMode.collectAsState()
     val autoCmSkip by viewModel.autoCmSkip.collectAsState()
@@ -125,31 +124,31 @@ fun SettingsScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: beta, startupTab, startupChannel, capability, dbInfo, clearChannel, clearHistory
+    // [0] 基本設定: beta, startupTab, startupChannel, capability, excludePaid
     // [1] 接続設定
     // [2] 再生設定
     // [3] 録画設定: recordView, addBatch
     // [4] 番組表設定: column, hour, font
     // [5] コメント設定
-    // [6] ホーム設定: genre, time, excludePaid
+    // [6] ホーム設定: genre, time
     // [7] ランチャー設定
     // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
     // [9] アドオン・ラボ
-    // [10] キャッシュ管理
+    // [10] データ管理: cache(all/logo/thumb/epg/recording) + history(channel/watch)
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(7) { FocusRequester() },
+            List(5) { FocusRequester() },
             List(10) { FocusRequester() },
             List(11) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(5) { FocusRequester() },
-            List(3) { FocusRequester() },
+            List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(4) { FocusRequester() },
             List(1) { FocusRequester() },
-            List(5) { FocusRequester() },
+            List(7) { FocusRequester() },
             List(1) { FocusRequester() }
         )
     }
@@ -212,6 +211,13 @@ fun SettingsScreen(
     }
 
     val isDialogOpen = uiState.activeDialog !is SettingDialogState.None
+
+    // ダイアログ表示中の戻るキーは「ダイアログを閉じる」に割り当てる。
+    // ここで消費しないと MainRoot 側の BackHandler が動いてホームへ戻ってしまう。
+    // 個別ダイアログ側が自前で処理する場合はそちらが優先される。
+    BackHandler(enabled = isDialogOpen) {
+        closeDialog()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -321,8 +327,6 @@ fun SettingsScreen(
                 ) {
                     when (uiState.selectedCategoryIndex) {
                         0 -> GeneralSettingsContent(
-                            totalRecordCount,
-                            lastSyncedAt,
                             receiveBetaUpdates,
                             prefs.startupTab,
                             when (prefs.startupChannel) {
@@ -331,6 +335,7 @@ fun SettingsScreen(
                                 else -> flatChannels.find { it.id == prefs.startupChannel }?.name
                                     ?: prefs.startupChannel
                             },
+                            prefs.excludePaid,
                             {
                                 scope.launch {
                                     repository.saveBoolean(
@@ -377,21 +382,15 @@ fun SettingsScreen(
                             {
                                 uiState.activeDialog = SettingDialogState.DeviceCapabilities
                             },
-                            {
-                                uiState.activeDialog = SettingDialogState.ConfirmClear(
-                                    AppStrings.DIALOG_CLEAR_HISTORY_TITLE,
-                                    AppStrings.DIALOG_CLEAR_CHANNEL_HISTORY_MSG
-                                ) { onClearLastChannel() }
-                            },
-                            {
-                                uiState.activeDialog = SettingDialogState.ConfirmClear(
-                                    AppStrings.DIALOG_CLEAR_HISTORY_TITLE,
-                                    AppStrings.DIALOG_CLEAR_WATCH_HISTORY_MSG
-                                ) { onClearWatchHistory() }
-                            },
                             itemFocusRequesters[0][4],
-                            itemFocusRequesters[0][5],
-                            itemFocusRequesters[0][6],
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.EXCLUDE_PAID_BROADCASTS,
+                                        if (prefs.excludePaid == "ON") "OFF" else "ON"
+                                    )
+                                }
+                            },
                             categoryFocusRequesters[0]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
 
@@ -775,11 +774,9 @@ fun SettingsScreen(
 
                         6 -> HomeDisplaySettingsContent(
                             prefs.pickupGenre,
-                            prefs.excludePaid,
                             prefs.pickupTime,
                             itemFocusRequesters[6][0],
                             itemFocusRequesters[6][1],
-                            itemFocusRequesters[6][2],
                             categoryFocusRequesters[6],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -822,14 +819,6 @@ fun SettingsScreen(
                                     }
                                 }
                             },
-                            {
-                                scope.launch {
-                                    repository.saveString(
-                                        SettingsRepository.EXCLUDE_PAID_BROADCASTS,
-                                        if (prefs.excludePaid == "ON") "OFF" else "ON"
-                                    )
-                                }
-                            }
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6 }
 
                         7 -> LauncherSettingsContent(
@@ -1108,11 +1097,26 @@ fun SettingsScreen(
                                     toastMessage = "録画リストキャッシュを削除しました"
                                 }
                             },
+                            // 履歴の削除はキャッシュ一括削除とは独立。グローバル削除では消さない。
+                            onClearChannelHistory = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    AppStrings.DIALOG_CLEAR_HISTORY_TITLE,
+                                    AppStrings.DIALOG_CLEAR_CHANNEL_HISTORY_MSG
+                                ) { onClearLastChannel() }
+                            },
+                            onClearWatchHistory = {
+                                uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                    AppStrings.DIALOG_CLEAR_HISTORY_TITLE,
+                                    AppStrings.DIALOG_CLEAR_WATCH_HISTORY_MSG
+                                ) { onClearWatchHistory() }
+                            },
                             allR = itemFocusRequesters[10][0],
                             logoR = itemFocusRequesters[10][1],
                             thumbR = itemFocusRequesters[10][2],
                             epgR = itemFocusRequesters[10][3],
                             recordingR = itemFocusRequesters[10][4],
+                            channelHistoryR = itemFocusRequesters[10][5],
+                            watchHistoryR = itemFocusRequesters[10][6],
                             sidebarR = categoryFocusRequesters[10]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 10 }
 

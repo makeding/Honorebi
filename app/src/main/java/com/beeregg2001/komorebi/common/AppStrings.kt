@@ -185,11 +185,12 @@ object AppStrings {
     const val SETTINGS_CATEGORY_DISPLAY = "表示設定"
     const val SETTINGS_CATEGORY_COMMENT = "コメント設定"
     const val SETTINGS_CATEGORY_LAB = "アドオン・ラボ"
-    const val SETTINGS_CATEGORY_CACHE = "キャッシュ管理"
+    const val SETTINGS_CATEGORY_CACHE = "データ管理"
     const val SETTINGS_CATEGORY_APP_INFO = "アプリ情報"
 
     // 基本設定
     const val SETTINGS_SECTION_DATA_MANAGEMENT = "データ管理"
+    const val SETTINGS_SECTION_HISTORY = "履歴の削除"
     const val SETTINGS_ITEM_CLEAR_CHANNEL_HISTORY = "前回視聴したチャンネル履歴を削除"
     const val SETTINGS_ITEM_CLEAR_WATCH_HISTORY = "録画の視聴履歴を削除"
     const val SETTINGS_VALUE_DELETE = "削除"
