@@ -44,6 +44,7 @@ import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoUrl
 import com.beeregg2001.komorebi.ui.player.PlayerSurface
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
@@ -465,12 +466,8 @@ fun DualChannelInfoOverlay(
     shouldCropLogo: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var logoUrl by remember(channel.id) { mutableStateOf<String>("") }
+    val logoUrl = rememberChannelLogoUrl(channel.id, getLogoUrl)
     val imageLoader = rememberChannelLogoImageLoader()
-
-    LaunchedEffect(channel.id) {
-        logoUrl = getLogoUrl(channel.id)
-    }
 
 
     Row(

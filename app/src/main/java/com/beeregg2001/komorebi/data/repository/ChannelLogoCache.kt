@@ -2,11 +2,16 @@ package com.beeregg2001.komorebi.data.repository
 
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.Channel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +25,29 @@ class ChannelLogoCache @Inject constructor(
     private val inFlightLogoIds = ConcurrentHashMap.newKeySet<String>()
     private val _channelLogoUrls = MutableStateFlow<Map<String, String>>(emptyMap())
     val channelLogoUrls: StateFlow<Map<String, String>> = _channelLogoUrls.asStateFlow()
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        // URL はバックエンド種別ごとに決まるため、切替時に古い URL を引きずらないよう全消しする。
+        scope.launch {
+            settingsRepository.backendType.distinctUntilChanged().collect {
+                logoCache.clear()
+                inFlightLogoIds.clear()
+                _channelLogoUrls.value = emptyMap()
+            }
+        }
+    }
+
+    /**
+     * Compose の初回フレームから同期で参照するための覗き見。
+     * 解決済みなら URL、未解決なら null を返す。`"" -> URL` の2段階再コンポーズ（ちらつき）を避ける。
+     */
+    fun peek(channelId: String): String? =
+        logoCache[channelId]?.takeUnless { it.isBlank() }
+
+    fun peek(channel: Channel): String? =
+        peek(channel.id) ?: channel.displayChannelId.takeIf { it.isNotBlank() }?.let(::peek)
 
     suspend fun prefetchChannelLogoUrls(channels: Collection<Channel>) {
         val backend = settingsRepository.backendType.first()

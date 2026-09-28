@@ -40,6 +40,7 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.components.rememberChannelLogoUrl
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -66,10 +67,7 @@ fun LastWatchedChannelCard(
     val typeLabels =
         mapOf("GR" to "地デジ", "BS" to "BS", "CS" to "CS", "BS4K" to "BS4K", "SKY" to "スカパー", "IPTV" to "ネットテレビ")
 
-    var logoUrl by remember(channel.id) { mutableStateOf("") }
-    LaunchedEffect(channel.id) {
-        logoUrl = getLogoUrl(channel.id)
-    }
+    val logoUrl = rememberChannelLogoUrl(channel.id, getLogoUrl)
 
     Surface(
         onClick = onClick,
@@ -169,10 +167,7 @@ fun HotChannelCard(
     val channelLogoImageLoader = rememberChannelLogoImageLoader()
     val colors = KomorebiTheme.colors
 
-    var logoUrl by remember(uiState.channel.id) { mutableStateOf("") }
-    LaunchedEffect(uiState.channel.id) {
-        logoUrl = getLogoUrl(uiState.channel.id)
-    }
+    val logoUrl = rememberChannelLogoUrl(uiState.channel.id, getLogoUrl)
 
     Surface(
         onClick = onClick,
