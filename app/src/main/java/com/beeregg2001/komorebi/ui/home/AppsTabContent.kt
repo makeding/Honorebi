@@ -51,16 +51,29 @@ private const val TAG = "AppsTabContent"
 internal object AppsTabLayout {
     val horizontalPadding = 48.dp
     val topPadding = 36.dp
-    val viewportBottomPadding = 24.dp
+    val viewportBottomPadding = 12.dp
     val cardWidth = 160.dp
-    val cardHeight = 136.dp
-    val bannerHeight = 90.dp
+
+    // 行高は「表示領域に整数行がぴったり収まる」ように動的算出する。
+    // 1080p の Android TV は概ね 540dp 高のため、136dp 固定だと 3 行が
+    // 入りきらず最終行で微スクロール（ガタつき）が起きる。
+    val idealCardHeight = 136.dp
+    // バナー無し（アイコン + ラベル）のカードでも縦に潰れない下限。
+    val minCardHeight = 116.dp
+
+    // カード内のラベル領域（上下パディング + ラベル + 余白）の概算。
+    // バナー高 = 実効カード高 - この値。
+    val labelAreaHeight = 44.dp
+    val minBannerHeight = 48.dp
+
     val iconSize = 72.dp
     val horizontalSpacing = 12.dp
-    val verticalSpacing = 14.dp
+    val verticalSpacing = 12.dp
 
-    // グリッドに余分な下余白を足すと、内容が収まっていても最終行で
-    // スクロールが発生するため、あえて contentPadding を持たせない。
+    // 最終行のフォーカスリングが下辺に接しないよう僅かな余白だけ確保する。
+    // contentPadding をグリッドに持たせると収まっていてもスクロールするため、
+    // 行高算出時のバッファとしてのみ使う。
+    val gridBottomGap = 8.dp
     val scrollbarWidth = 4.dp
     val scrollbarEndPadding = 6.dp
 }
@@ -207,6 +220,17 @@ fun AppsTabContent(
                     .coerceAtLeast(AppsTabLayout.cardWidth)
             val totalEntries = catalogApps.size
 
+            // 表示領域に整数行が収まるよう行高を調整する。こうしないと
+            // 3 行目が半端に切れ、フォーカス移動のたびに微スクロールして揺れる。
+            val neededRows = ((totalEntries + columnCount - 1) / columnCount).coerceAtLeast(1)
+            val maxCardHeightToFit =
+                (maxHeight - AppsTabLayout.verticalSpacing * (neededRows - 1) - AppsTabLayout.gridBottomGap) / neededRows
+            val effectiveCardHeight = AppsTabLayout.idealCardHeight
+                .coerceAtMost(maxCardHeightToFit)
+                .coerceAtLeast(AppsTabLayout.minCardHeight)
+            val effectiveBannerHeight = (effectiveCardHeight - AppsTabLayout.labelAreaHeight)
+                .coerceAtLeast(AppsTabLayout.minBannerHeight)
+
             if (totalEntries == 0) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
@@ -257,9 +281,9 @@ fun AppsTabContent(
                             onManage = { editingAppId = app.stableId },
                             onFocus = {},
                             cardWidth = cellWidth,
-                            cardHeight = AppsTabLayout.cardHeight,
+                            cardHeight = effectiveCardHeight,
                             bannerWidth = cellWidth,
-                            bannerHeight = AppsTabLayout.bannerHeight,
+                            bannerHeight = effectiveBannerHeight,
                             iconSize = AppsTabLayout.iconSize,
                             showBorder = false,
                             fullBleedBanner = true,

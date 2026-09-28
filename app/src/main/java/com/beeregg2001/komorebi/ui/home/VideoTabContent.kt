@@ -240,6 +240,7 @@ fun VideoTabContent(
                 // ★ 変更点: 録画リスト・放送中・SMBのボタンを並べて表示する
                 item {
                     val onAirRequester = remember { FocusRequester() }
+                    val smbRequester = remember { FocusRequester() }
                     Row(
                         modifier = Modifier
                             .padding(start = 48.dp, top = 12.dp, end = 48.dp)
@@ -276,7 +277,7 @@ fun VideoTabContent(
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = contentFirstItemRequester
-                                    right = FocusRequester.Cancel
+                                    right = smbRequester
                                     up = tabFocusRequester
                                 },
                             onClick = onShowOnAir,

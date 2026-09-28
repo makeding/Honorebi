@@ -9,17 +9,31 @@ class AppsTabLayoutPolicyTest {
     @Test
     fun cardGeometryDoesNotShrinkToFitAdditionalRows() {
         assertEquals(160.dp, AppsTabLayout.cardWidth)
-        assertEquals(136.dp, AppsTabLayout.cardHeight)
-        assertEquals(90.dp, AppsTabLayout.bannerHeight)
-        assertEquals(14.dp, AppsTabLayout.verticalSpacing)
+        assertEquals(136.dp, AppsTabLayout.idealCardHeight)
+        assertTrue(AppsTabLayout.minCardHeight < AppsTabLayout.idealCardHeight)
+        assertEquals(12.dp, AppsTabLayout.verticalSpacing)
     }
 
     @Test
-    fun gridDoesNotAddBottomPaddingThatWouldForceScrollWhenContentFits() {
-        // 内容が収まっているのに最終行でスクロールしないよう、下方向の
-        // 余分なスクロール領域は確保しない方針を固定化する。
-        assertEquals(24.dp, AppsTabLayout.viewportBottomPadding)
-        assertTrue(AppsTabLayout.verticalSpacing < AppsTabLayout.cardHeight)
+    fun threeRowsFitOnA1080pAndroidTvViewport() {
+        // 1080p の Android TV は概ね 540dp 高。外殻の上部バー(80dp)と
+        // 上下パディングを引いた表示領域で 3 行が収まることを保証する。
+        // 収まらないと最終行が半端に切れ、フォーカス移動で微スクロールする。
+        val viewport =
+            540.dp - 80.dp - AppsTabLayout.topPadding - AppsTabLayout.viewportBottomPadding
+        val neededRows = 3
+        val maxCardHeightToFit =
+            (viewport - AppsTabLayout.verticalSpacing * (neededRows - 1) - AppsTabLayout.gridBottomGap) / neededRows
+        val effectiveCardHeight = AppsTabLayout.idealCardHeight
+            .coerceAtMost(maxCardHeightToFit)
+            .coerceAtLeast(AppsTabLayout.minCardHeight)
+        val contentHeight =
+            effectiveCardHeight * neededRows + AppsTabLayout.verticalSpacing * (neededRows - 1)
+        assertTrue(
+            "3 rows must fit: content=$contentHeight viewport=$viewport",
+            contentHeight <= viewport,
+        )
+        assertTrue(effectiveCardHeight >= AppsTabLayout.minCardHeight)
     }
 
     @Test

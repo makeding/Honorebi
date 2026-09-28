@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.*
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
@@ -39,6 +40,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val weekdays = listOf("月", "火", "水", "木", "金", "土", "日")
+
+// HonomiTV の放送中グリッドに合わせた曜日ごとのカラー。
+private val weekdayColors = listOf(
+    Color(0xFFE76F51), // 月
+    Color(0xFFE9A23B), // 火
+    Color(0xFF84A83F), // 水
+    Color(0xFF3AA889), // 木
+    Color(0xFF438AC7), // 金
+    Color(0xFF646FC1), // 土
+    Color(0xFFFF69B4), // 日
+)
 
 @Composable
 fun OnAirScreen(
@@ -124,6 +136,11 @@ fun OnAirScreen(
                 onReturnFocusConsumed()
             }
         }
+    }
+    // 初回表示時は検索ボタンではなく、選択中の曜日へフォーカスを置く。
+    LaunchedEffect(Unit) {
+        if (isReturningFromPlayer) return@LaunchedEffect
+        initialFocusRequester.safeRequestFocusWithRetry("OnAirInitialFocus")
     }
     BackHandler(enabled = pageFocused) { pageBack() }
 
@@ -215,13 +232,15 @@ fun OnAirScreen(
         }
         Row(Modifier.fillMaxWidth().height(46.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             weekdays.forEachIndexed { day, label ->
-                OnAirAction(
-                    "$label ${state.weekdayCounts[day] ?: 0}",
-                    {
+                OnAirDayButton(
+                    text = "$label ${state.weekdayCounts[day] ?: 0}",
+                    color = weekdayColors[day % weekdayColors.size],
+                    selected = day == state.selectedWeekday,
+                    onClick = {
                         viewModel.selectWeekday(day)
                         scope.launch { grid.scrollToItem(0) }
                     },
-                    Modifier.weight(1f).focusRequester(dayFocus[day])
+                    modifier = Modifier.weight(1f).focusRequester(dayFocus[day])
                         .then(if (day == state.selectedWeekday) Modifier.focusRequester(initialFocusRequester) else Modifier)
                         .testTag("onair-day-$day")
                         .focusProperties {
@@ -230,7 +249,6 @@ fun OnAirScreen(
                             left = if (day == 0) FocusRequester.Cancel else dayFocus[day - 1]
                             right = if (day == 6) FocusRequester.Cancel else dayFocus[day + 1]
                         },
-                    selected = day == state.selectedWeekday,
                 )
             }
         }
@@ -289,6 +307,45 @@ internal fun OnAirAction(text: String, onClick: () -> Unit, modifier: Modifier =
     ) { Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { Text(text, fontSize = 13.sp) } }
 }
 
+/**
+ * 曜日選択ボタン。HonomiTV の曜日ヘッダーと同じ配色を使い、
+ * フォーカス（ホバー相当）時は色を鮮やかにして拡大する。
+ */
+@Composable
+private fun OnAirDayButton(
+    text: String,
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 40.dp),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = color.copy(alpha = if (selected) 0.95f else 0.4f),
+            contentColor = Color.White,
+            focusedContainerColor = color,
+            focusedContentColor = Color.White,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                BorderStroke(
+                    if (selected) 2.dp else 1.dp,
+                    if (selected) Color.White.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.16f),
+                )
+            ),
+            focusedBorder = Border(BorderStroke(2.5.dp, Color.White)),
+        ),
+    ) {
+        Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+    }
+}
+
 @Composable
 internal fun OnAirEmpty(title: String, detail: String = "", action: String? = null, onAction: () -> Unit = {}) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -302,35 +359,108 @@ internal fun OnAirEmpty(title: String, detail: String = "", action: String? = nu
 private fun OnAirCard(series: OnAirSeries, selected: Boolean, ip: String, port: String, timeFormat: String, modifier: Modifier, onClick: () -> Unit) {
     val colors = KomorebiTheme.colors
     val logos = rememberChannelLogoImageLoader()
+    val thumbId = series.thumbnailRecordedProgramIds.firstOrNull()
+
     Surface(
-        onClick = onClick, modifier = modifier.height(180.dp),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        onClick = onClick,
+        modifier = modifier.aspectRatio(16f / 10f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        colors = ClickableSurfaceDefaults.colors(containerColor = colors.surface, contentColor = colors.textPrimary),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface,
+            contentColor = Color.White,
+            focusedContainerColor = colors.surface,
+            focusedContentColor = Color.White,
+        ),
         border = ClickableSurfaceDefaults.border(
             border = Border(BorderStroke(1.dp, if (selected) colors.accent else Color.Transparent)),
-            focusedBorder = Border(BorderStroke(2.dp, colors.accent)),
+            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent)),
         ),
     ) {
-        Column {
-            Box(Modifier.fillMaxWidth().height(90.dp).background(colors.textPrimary.copy(alpha = .06f)), contentAlignment = Alignment.Center) {
-                Text("サムネイルなし", color = colors.textSecondary, fontSize = 11.sp)
-                series.thumbnailRecordedProgramIds.firstOrNull()?.let { id ->
-                    AsyncImage(UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, id.toString()), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                }
-                Row(Modifier.align(Alignment.TopEnd).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    series.channelIds.forEach { channel ->
-                        AsyncImage(UrlBuilder.getKonomiTvLogoUrl(ip, port, channel), channel, imageLoader = logos,
-                            modifier = Modifier.size(26.dp, 18.dp).background(Color.White, RoundedCornerShape(3.dp)), contentScale = ContentScale.Fit)
+        // HonomiTV と同じく、全画面サムネイルの上に情報を重ねる（画像の上・説明の下にしない）。
+        Box(Modifier.fillMaxSize().background(Color(0xFF111111))) {
+            if (thumbId != null) {
+                AsyncImage(
+                    UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, thumbId.toString()),
+                    null,
+                    Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Text(
+                    "サムネイルなし",
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+
+            // 下端を暗くしてタイトル・メタ情報を読みやすくする。
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.08f),
+                        0.55f to Color.Black.copy(alpha = 0.15f),
+                        1f to Color.Black.copy(alpha = 0.88f),
+                    )
+                )
+            )
+
+            // 右上: 放送時刻
+            Text(
+                displayBroadcastTime(series.broadcastTime, timeFormat),
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+            )
+
+            // 左下: 話数 / 右下: チャンネルロゴ
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 9.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    series.title,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    minLines = 2,
+                    lineHeight = 15.sp,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(5.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        buildString {
+                            append(if (series.recordedEpisodesCount > 0) "${series.recordedEpisodesCount}話" else "話数情報なし")
+                            if (series.missingEpisodesCount > 0) append("・${series.missingEpisodesCount}話未録画")
+                        },
+                        color = if (series.missingEpisodesCount > 0) colors.accent else Color.White.copy(alpha = 0.88f),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        series.channelIds.take(2).forEach { channel ->
+                            AsyncImage(
+                                UrlBuilder.getKonomiTvLogoUrl(ip, port, channel),
+                                channel,
+                                imageLoader = logos,
+                                modifier = Modifier.size(34.dp, 20.dp).background(Color.White, RoundedCornerShape(3.dp)),
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
                     }
                 }
-            }
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
-                Text(series.title, fontSize = 13.sp, maxLines = 2, minLines = 2, lineHeight = 16.sp, overflow = TextOverflow.Ellipsis)
-                Text("${displayBroadcastTime(series.broadcastTime, timeFormat)} · ${series.recordedEpisodesCount}話録画", fontSize = 11.sp)
-                Text("未録画 ${series.missingEpisodesCount} · 部分録画 ${series.partiallyRecordedEpisodesCount}",
-                    color = if (series.missingEpisodesCount + series.partiallyRecordedEpisodesCount > 0) colors.accent else colors.textSecondary,
-                    fontSize = 11.sp, maxLines = 1)
             }
         }
     }
