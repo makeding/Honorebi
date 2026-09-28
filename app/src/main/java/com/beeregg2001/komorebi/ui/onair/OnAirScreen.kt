@@ -6,18 +6,17 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -25,10 +24,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,7 +43,6 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.*
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -63,6 +63,9 @@ private val weekdayColors = listOf(
 
 // カードが小さくなりすぎないよう、1曜日ぶんの列幅を固定して横スクロールさせる。
 private val WEEK_COLUMN_WIDTH = 180.dp
+private val WEEK_COLUMN_SPACING = 12.dp
+private val WEEK_HEADER_HEIGHT = 34.dp
+private val WEEK_CARD_SPACING = 10.dp
 
 @Composable
 fun OnAirScreen(
@@ -82,6 +85,7 @@ fun OnAirScreen(
     val state by viewModel.uiState.collectAsState()
     val colors = KomorebiTheme.colors
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     val searchButtonFocus = remember { FocusRequester() }
     val searchFieldFocus = remember { FocusRequester() }
     val cardFocus = remember { mutableMapOf<Int, FocusRequester>() }
@@ -92,13 +96,13 @@ fun OnAirScreen(
     var restoreSeries by remember { mutableStateOf<Int?>(null) }
     val expanded = state.expanded?.takeIf { detail -> state.series.any { it.id == detail.seriesId } }
 
-    // HonomiTV と同じ週間グリッド: 曜日ごとの縦リストを横に並べる。検索は全曜日に適用。
+    // HonomiTV と同じ週間グリッド: 曜日ごとの縦リストを横に並べ、全体をまとめて縦横スクロールする。
     val byWeekday = remember(state.series, state.query) {
         val filtered = state.series.filter { it.title.contains(state.query.trim(), ignoreCase = true) }
         (0..6).map { day -> filtered.filter { it.weekday == day } }
     }
-    val weekRowState = rememberLazyListState()
-    val columnListStates = remember { List(7) { LazyListState() } }
+    val hScroll = rememberScrollState()
+    val vScroll = rememberScrollState()
 
     val initialDay = remember(byWeekday) {
         val preferred = state.selectedWeekday
@@ -106,6 +110,11 @@ fun OnAirScreen(
         else byWeekday.indexOfFirst { it.isNotEmpty() }
     }
     val initialSeriesId = initialDay.takeIf { it in 0..6 }?.let { byWeekday[it].firstOrNull()?.id }
+
+    val columnWidthPx = with(density) { WEEK_COLUMN_WIDTH.roundToPx() }
+    val columnSpacingPx = with(density) { WEEK_COLUMN_SPACING.roundToPx() }
+    val cardHeightPx = (columnWidthPx * 10f / 16f).toInt()
+    val cardSpacingPx = with(density) { WEEK_CARD_SPACING.roundToPx() }
 
     fun requesterAt(day: Int, index: Int): FocusRequester? =
         byWeekday.getOrNull(day)?.getOrNull(index)?.let { cardFocus[it.id] }
@@ -119,24 +128,38 @@ fun OnAirScreen(
         return day
     }
 
-    // 焦点移動は手動で行う（LazyRow の未コンポーズ列にも確実に飛ぶため）。
-    fun moveFocus(fromDay: Int, index: Int, dayStep: Int, indexStep: Int) {
-        val targetDay = if (dayStep != 0) neighborDay(fromDay, dayStep) else fromDay
-        val list = byWeekday.getOrNull(targetDay).orEmpty()
-        if (list.isEmpty()) return
-        val targetIndex = if (indexStep != 0) (index + indexStep).coerceIn(0, list.lastIndex)
-        else index.coerceIn(0, list.lastIndex)
-        val targetId = list[targetIndex].id
-        viewModel.selectWeekday(targetDay)
-        // 既に見えている場合は即座にフォーカス（同期的に確定させる）。
-        cardFocus[targetId]?.safeRequestFocus("OnAirCardMove")
-        // 列が画面外の場合はスクロールしてから確実にフォーカスし直す。
+    fun cardLeft(day: Int, index: Int): FocusRequester =
+        if (day == 0) FocusRequester.Cancel
+        else requesterAt(neighborDay(day, -1), index.coerceIn(0, (byWeekday[neighborDay(day, -1)].size - 1).coerceAtLeast(0)))
+            ?: FocusRequester.Cancel
+
+    fun cardRight(day: Int, index: Int): FocusRequester =
+        if (day == 6) FocusRequester.Cancel
+        else requesterAt(neighborDay(day, 1), index.coerceIn(0, (byWeekday[neighborDay(day, 1)].size - 1).coerceAtLeast(0)))
+            ?: FocusRequester.Cancel
+
+    fun cardUp(day: Int, index: Int): FocusRequester =
+        if (index > 0) requesterAt(day, index - 1) ?: searchButtonFocus else searchButtonFocus
+
+    fun cardDown(day: Int, index: Int): FocusRequester =
+        if (index < byWeekday[day].lastIndex) requesterAt(day, index + 1) ?: FocusRequester.Cancel
+        else FocusRequester.Cancel
+
+    // 列・行をまとめてスクロールして対象カードを見える位置に寄せる。
+    fun scrollToCard(day: Int, index: Int) {
         scope.launch {
-            weekRowState.animateScrollToItem(targetDay)
-            columnListStates[targetDay].scrollToItem(targetIndex)
-            delay(80)
-            cardFocus[targetId]?.safeRequestFocusWithRetry("OnAirCardMoveRetry")
+            hScroll.animateScrollTo((day * (columnWidthPx + columnSpacingPx)).coerceIn(0, hScroll.maxValue))
+            vScroll.animateScrollTo((index * (cardHeightPx + cardSpacingPx)).coerceIn(0, vScroll.maxValue))
         }
+    }
+
+    // フォーカスがカードへ移るたびに、その列・行が見える位置へスクロールする。
+    LaunchedEffect(state.focusedSeriesId) {
+        val id = state.focusedSeriesId ?: return@LaunchedEffect
+        val day = byWeekday.indexOfFirst { list -> list.any { it.id == id } }
+        if (day < 0) return@LaunchedEffect
+        val index = byWeekday[day].indexOfFirst { it.id == id }
+        scrollToCard(day, index)
     }
 
     fun closeDetail() {
@@ -165,10 +188,7 @@ fun OnAirScreen(
         if (isReturningFromPlayer) return@LaunchedEffect
         val day = initialDay
         if (day in 0..6 && initialSeriesId != null) {
-            weekRowState.scrollToItem(day)
-            columnListStates[day].scrollToItem(0)
-        }
-        if (initialSeriesId != null) {
+            scrollToCard(day, 0)
             initialFocusRequester.safeRequestFocusWithRetry("OnAirInitialFocus")
         } else {
             searchButtonFocus.safeRequestFocusWithRetry("OnAirInitialFallback")
@@ -181,8 +201,7 @@ fun OnAirScreen(
         if (day >= 0) {
             val index = byWeekday[day].indexOfFirst { it.id == id }
             viewModel.selectWeekday(day)
-            weekRowState.scrollToItem(day)
-            columnListStates[day].scrollToItem(index)
+            scrollToCard(day, index)
             cardFocus[id]?.safeRequestFocusWithRetry("OnAirCardRestore")
         } else {
             searchButtonFocus.safeRequestFocusWithRetry("OnAirCardRestoreFallback")
@@ -239,7 +258,10 @@ fun OnAirScreen(
 
         Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
             if (showHeadline) {
-                Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                // 検索ボタンと同じ高さのボックスに載せ、縦位置を完全に揃える。
+                Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
+                    Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
                 Spacer(Modifier.width(24.dp))
             }
             if (searchOpen) {
@@ -279,24 +301,6 @@ fun OnAirScreen(
                     selected = state.query.isNotBlank(),
                 )
             }
-            Spacer(Modifier.weight(1f))
-            OnAirAction("更新", viewModel::refresh, Modifier.testTag("onair-refresh"))
-            Spacer(Modifier.width(12.dp))
-            OnAirAction("接続設定", onSettings)
-        }
-        // This slot always exists: refresh/error text never shifts the weekdays or cards.
-        Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-            val failure = state.listStatus as? OnAirLoadState.Error
-            Text(
-                when {
-                    failure != null -> "放送中の取得失敗 · ${failure.message} [${failure.code}]"
-                    state.listStatus == OnAirLoadState.Loading -> if (state.series.isEmpty()) "放送中を読み込み中…" else "放送中を更新中…"
-                    else -> "${state.filteredSeries.size} シリーズ · 日本時間"
-                },
-                color = colors.textSecondary, fontSize = 12.sp,
-                modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
-            if (failure != null && state.backendSupported) OnAirAction("再試行", viewModel::retryList)
         }
 
         when {
@@ -313,79 +317,77 @@ fun OnAirScreen(
             state.filteredSeries.isEmpty() -> OnAirEmpty(
                 if (state.query.isBlank()) "放送中のシリーズはありません" else "検索に一致するシリーズがありません",
             )
-            else -> LazyRow(
-                state = weekRowState,
-                modifier = Modifier.weight(1f).fillMaxWidth().testTag("onair-grid"),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 12.dp),
-            ) {
-                items(7) { day ->
-                    val daySeries = byWeekday[day]
-                    Column(Modifier.width(WEEK_COLUMN_WIDTH).fillParentMaxHeight()) {
-                        // 曜日ヘッダーはフォーカス不可のラベル（左右移動で選択が決まる）。
-                        Row(
-                            Modifier.fillMaxWidth().height(34.dp)
-                                .background(
-                                    weekdayColors[day % weekdayColors.size].copy(
-                                        alpha = if (day == state.selectedWeekday) 1f else 0.72f
-                                    ),
-                                    RoundedCornerShape(6.dp),
-                                )
-                                .padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(weekdays[day], color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Spacer(Modifier.weight(1f))
-                            Text("${daySeries.size}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
+            else -> Column(Modifier.weight(1f).fillMaxWidth()) {
+                // 曜日ヘッダーは縦スクロールしても固定。横スクロールに同期して動く。
+                Box(Modifier.fillMaxWidth().height(WEEK_HEADER_HEIGHT).clipToBounds()) {
+                    Row(
+                        Modifier
+                            .offset { IntOffset(-hScroll.value, 0) }
+                            // requiredWidth で親幅の制約を無視し、7曜日ぶんを必ず確保する。
+                            .requiredWidth(WEEK_COLUMN_WIDTH * 7 + WEEK_COLUMN_SPACING * 6)
+                            .height(WEEK_HEADER_HEIGHT),
+                        horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                    ) {
+                        (0..6).forEach { day ->
+                            DayHeader(
+                                label = weekdays[day],
+                                count = byWeekday[day].size,
+                                color = weekdayColors[day % weekdayColors.size],
+                                highlighted = day == state.selectedWeekday,
+                            )
                         }
-                        Spacer(Modifier.height(8.dp))
-                        if (daySeries.isEmpty()) {
-                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                                Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-                            }
-                        } else {
-                            LazyColumn(
-                                state = columnListStates[day],
-                                modifier = Modifier.weight(1f).fillMaxWidth().focusGroup().testTag("onair-column-$day"),
-                                contentPadding = PaddingValues(bottom = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                itemsIndexed(daySeries, key = { _, s -> "series:${s.id}" }) { index, series ->
-                                    OnAirCard(
-                                        series = series, selected = false,
-                                        ip = konomiIp, port = konomiPort, timeFormat = timeFormat,
-                                        modifier = Modifier
-                                            .focusRequester(cardFocus.getValue(series.id))
-                                            .then(
-                                                if (series.id == initialSeriesId) Modifier.focusRequester(initialFocusRequester)
-                                                else Modifier
-                                            )
-                                            .testTag("onair-series-${series.id}")
-                                            .onFocusChanged {
-                                                if (it.isFocused) {
-                                                    viewModel.saveFocusedSeries(series.id)
-                                                    if (state.selectedWeekday != day) viewModel.selectWeekday(day)
-                                                }
-                                            }
-                                            .onPreviewKeyEvent { event ->
-                                                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                                                when (event.key) {
-                                                    Key.DirectionLeft -> { moveFocus(day, index, -1, 0); true }
-                                                    Key.DirectionRight -> { moveFocus(day, index, 1, 0); true }
-                                                    Key.DirectionDown -> {
-                                                        if (index < daySeries.lastIndex) moveFocus(day, index, 0, 1)
-                                                        true
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                // 全体をひとつの縦スクロールに載せる（列ごとに独立スクロールしない）。
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(vScroll)
+                        .horizontalScroll(hScroll)
+                        .testTag("onair-grid"),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING)) {
+                        (0..6).forEach { day ->
+                            val daySeries = byWeekday[day]
+                            Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
+                                if (daySeries.isEmpty()) {
+                                    Box(
+                                        Modifier.fillMaxWidth().height(80.dp),
+                                        contentAlignment = Alignment.TopCenter,
+                                    ) {
+                                        Text("放送中なし", color = colors.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                    }
+                                } else {
+                                    daySeries.forEachIndexed { index, series ->
+                                        OnAirCard(
+                                            series = series, selected = false,
+                                            ip = konomiIp, port = konomiPort, timeFormat = timeFormat,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(cardFocus.getValue(series.id))
+                                                .then(
+                                                    if (series.id == initialSeriesId) Modifier.focusRequester(initialFocusRequester)
+                                                    else Modifier
+                                                )
+                                                .testTag("onair-series-${series.id}")
+                                                .onFocusChanged {
+                                                    if (it.isFocused) {
+                                                        viewModel.saveFocusedSeries(series.id)
+                                                        if (state.selectedWeekday != day) viewModel.selectWeekday(day)
                                                     }
-                                                    Key.DirectionUp -> {
-                                                        if (index > 0) moveFocus(day, index, 0, -1)
-                                                        else searchButtonFocus.safeRequestFocus("OnAirCardUp")
-                                                        true
-                                                    }
-                                                    else -> false
                                                 }
-                                            },
-                                        onClick = { viewModel.expandSeries(series.id) },
-                                    )
+                                                .focusProperties {
+                                                    left = cardLeft(day, index)
+                                                    right = cardRight(day, index)
+                                                    up = cardUp(day, index)
+                                                    down = cardDown(day, index)
+                                                },
+                                            onClick = { viewModel.expandSeries(series.id) },
+                                        )
+                                        if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))
+                                    }
                                 }
                             }
                         }
@@ -393,6 +395,22 @@ fun OnAirScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DayHeader(label: String, count: Int, color: Color, highlighted: Boolean) {
+    Row(
+        Modifier
+            .width(WEEK_COLUMN_WIDTH)
+            .fillMaxHeight()
+            .background(color.copy(alpha = if (highlighted) 1f else 0.72f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(Modifier.weight(1f))
+        Text("${count}件", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp)
     }
 }
 
