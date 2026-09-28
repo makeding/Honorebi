@@ -1,7 +1,7 @@
 [submodule "app/src/main/cpp/third_party/libaribcaption"]
 	path = app/src/main/cpp/third_party/libaribcaption
-	url = https://github.com/NekobaTechnology/libaribcaption.git
-	branch = bravia-32bit-fix
+	url = https://github.com/makeding/libaribcaption.git
+	branch = b62
 [submodule "app/src/main/cpp/third_party/libaribtlv"]
 	path = app/src/main/cpp/third_party/libaribtlv
 	url = https://github.com/makeding/libaribtlv.git

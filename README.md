@@ -1,46 +1,5 @@
 # Komorebi / Honorebi fork
 
-## NekobaTechnology フォークについて
-
-このリポジトリは [makeding/Honorebi](https://github.com/makeding/Honorebi) を、自宅の環境
-(Sony BRAVIA XRJ-65X95J / Chromecast with Google TV 4K、いずれも **armeabi-v7a (32bit)**、
-バックエンドは EDCB-Wine + Mirakurun + [NekobaTechnology/HonomiTV](https://github.com/NekobaTechnology/HonomiTV))
-で使うために手を入れた個人用フォークです。上流へのプルリクエストは今のところ出していません。
-変更はすべて `h-dev` ブランチ上のコミットとして残しています。
-
-### 変更点
-
-- **32bit Android TV で視聴開始時にクラッシュする問題を修正** — サブモジュール
-  [libaribcaption](https://github.com/NekobaTechnology/libaribcaption) の `FontProviderAndroid` で、
-  `ANDROID_ROOT` 未設定時の null 参照と、フォント一覧再確保時のダングリング参照を修正。
-- **流れるコメントの一瞬停止を改善** — コメント描画を `DanmakuView` (UI スレッド) から
-  `DanmakuSurfaceView` (専用スレッド) に変更。あわせてライブ・録画の両プレイヤーで、
-  SurfaceView の hole punch で字幕が消えないよう「コメント → 字幕」の描画順に固定。
-- **長い録画で再生位置変更時にアプリごと落ちる問題を修正** — シーン検索用のタイル画像
-  (例: 16320x4590) を等倍デコードすると Android の Canvas 描画上限 (100MB) を超えていたため、
-  上限内に収まるよう縮小デコードする。
-- **録画直接再生 (オリジナル画質) のシーク後の再生再開を高速化** — ファイルサイズ比例の
-  推定位置ではなく、HonomiTV フォークに追加した `GET /api/videos/{id}/seek-position` で
-  キーフレーム位置を解決してからシークする (数十秒かかっていた再開が数秒に)。
-  HonomiTV 側に同 API が無い場合は従来の比例シークに自動フォールバック。
-- **起動時の自動アップデート確認を無効化** — 参照先が本家 Komorebi の `version.json` で、
-  このフォークのビルドとは無関係な通知が毎回出るため。
-- **上流の EDCB バックエンド修正を取り込み (本 fork では追加検証していない)** — 本家 Komorebi の
-  EDCB 関連修正 (録画一覧の通信失敗が「録画0件」として隠蔽・キャッシュされる問題、EPG 時刻
-  フィルタの JST/UTC ずれ、URL・ホスト解析、チャプター取得、サービス種別 `0xAD` の取りこぼし、
-  Linux 向けセットアップスクリプトの不整合など) を cherry-pick で取り込んでいます。
-  本 fork の作者は EDCB を常用していないため、**これらの変更は追加検証していません**。
-  なお EPGStation バックエンドは本 fork では未実装 (スタブ) のままです。
-- ビルド補助: `scripts/build-media3-local.sh` の作業ディレクトリ上限を 4GiB に緩和。
-
-### ビルド
-
-上流と同じ手順です (`./gradlew assembleDebug`)。libaribcaption サブモジュールは
-このフォーク (`NekobaTechnology/libaribcaption`, ブランチ `bravia-32bit-fix`) を参照するよう
-`.gitmodules` を変更しています。
-
----
-
 **Komorebi** は、KonomiTV、 EDCB バックエンド、Mirakurun（オプション）に対応した、Android TV 向けの高機能視聴クライアントアプリです。
 モダンな UI と直感的なリモコン操作、市販のハイエンドレコーダーを凌駕する高度なストリーミング制御を組み合わせ、これまでにない快適なテレビ視聴体験を提供します。
 
@@ -63,6 +22,15 @@
 * **SMB も同じ動画プレイヤーへ統合**: libVLC 依存を外し、SMB 上の動画も ExoPlayer ベースの録画プレイヤーで扱えるようにしました。外部チャプターも録画再生と同じ操作体系で利用できます。
 * **オフライン・キャッシュ時の起動を改善**: サーバーに接続できない場合でも、ローカルに残っている録画情報やキャッシュを使って継続できる導線を用意しています。
 * **重い機能は日常視聴優先で整理**: `AppContentStore` による共有キャッシュで画面遷移時の待ちを減らし、AI コンシェルジュや辞書解決など、自分の利用に不要な重い機能は無効化しています。
+- 32bit Android TV (Sony BRAVIA) の視聴開始時クラッシュを修正 (`libaribcaption` の `FontProviderAndroid`)。
+- 流れるコメントの一瞬停止を改善 (`DanmakuView` → `DanmakuSurfaceView` 化)。
+- コメントが字幕を消す問題を修正 (SurfaceView の hole punch 対策で描画順を固定)。
+- シーン検索のタイル画像を縮小デコードし、シーク時の Canvas 描画上限クラッシュを修正。
+- 録画直接再生のシーク再開を高速化 (HonomiTV の `seek-position` API でキーフレーム解決)。
+- 起動時の自動アップデート確認を無効化 (参照先が本家 `version.json` のため)。
+- 上流の EDCB バックエンド修正を cherry-pick で取り込み (本 fork では追加検証なし)。
+- `libaribcaption` サブモジュールを自前フォーク (`makeding/libaribcaption`, `b62`) へ変更。
+- ビルド補助: `scripts/build-media3-local.sh` の作業ディレクトリ上限を 4GiB に緩和。
 
 ## ⚠️ 初回セットアップとバックエンド環境について
 * **初回セットアップ**: インストール後の初回起動時は、**KonomiTV** もしくは **EDCB** および **Mirakurun（オプション）** のサーバー設定が必要です。画面の指示に従ってIPアドレスやポート番号を入力してください。バックエンドにMirakurunを使用していない場合は、MirakurunのIPアドレスとポート番号の入力は不要です。
