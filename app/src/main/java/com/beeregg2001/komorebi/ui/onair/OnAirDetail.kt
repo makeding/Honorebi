@@ -140,7 +140,7 @@ internal fun OnAirDetail(
     }
     BackHandler(enabled = true) { handleBack() }
 
-    Surface(modifier, colors = SurfaceDefaults.colors(containerColor = colors.background),
+    Surface(modifier, colors = SurfaceDefaults.colors(containerColor = Color.Transparent),
         shape = RoundedCornerShape(0.dp)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {

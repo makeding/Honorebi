@@ -296,6 +296,7 @@ fun VideoTabContent(
                         SmbLibraryBannerButton(
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(smbRequester)
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = onAirRequester

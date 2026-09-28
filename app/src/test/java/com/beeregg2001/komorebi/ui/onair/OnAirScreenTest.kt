@@ -35,18 +35,17 @@ class OnAirScreenTest {
         val vm = OnAirViewModel(FakeProvider(), MutableStateFlow(OnAirBackendConfiguration("KONOMITV", "tv", "7000", "")))
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
         compose.setContent { KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), false, {}, vm) } }
-        compose.onNodeWithTag("onair-day-0").assertIsDisplayed()
-        compose.onNodeWithTag("onair-day-0").confirm()
-        compose.onNodeWithTag("onair-series-1").confirm()
+        // 最初の非空曜日（月=series:1）へ自動フォーカスされる。
+        compose.onNodeWithTag("onair-series-1").assertIsDisplayed().confirm()
         compose.onNodeWithTag("onair-details").assertIsDisplayed()
     }
 
     @Test fun dpadDayChangesOnlyAfterConfirm_thenDetailBackRestoresCardFocus() {
         val vm = viewModel()
         compose.setContent { screen(vm) }
-        compose.onNodeWithTag("onair-day-0").confirm().requestFocus().performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
-        compose.onNodeWithTag("onair-day-1").assertIsFocused().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
-        compose.onNodeWithTag("onair-series-2").assertIsDisplayed().requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.onNodeWithTag("onair-series-1").requestFocus().assertIsFocused()
+            .performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
+        compose.onNodeWithTag("onair-series-2").assertIsFocused().confirm()
         // 決定で全画面詳細へ。録画が無い作品は作品情報へ自動フォーカスする。
         compose.onNodeWithTag("onair-details").assertIsDisplayed()
         compose.onNodeWithTag("onair-summary").requestFocus().assertIsFocused().performKeyInput { keyDown(Key.Back); keyUp(Key.Back) }
@@ -57,7 +56,6 @@ class OnAirScreenTest {
         val unsupported = OnAirViewModel(FakeProvider(), MutableStateFlow(OnAirBackendConfiguration("EDCB", "tv", "7000", "")))
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
         compose.setContent { screen(unsupported) }
-        compose.onNodeWithTag("onair-day-0").assertIsDisplayed()
         compose.onNodeWithTag("onair-grid").assertDoesNotExist()
     }
 
@@ -72,7 +70,6 @@ class OnAirScreenTest {
         val vm = viewModel()
         val returning = androidx.compose.runtime.mutableStateOf(false)
         compose.setContent { KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), returning.value, { returning.value = false }, vm) } }
-        compose.onNodeWithTag("onair-day-0").confirm()
         compose.onNodeWithTag("onair-series-1").confirm()
         // 決定で全画面詳細が開き、最初の再生可能エピソードへ入る。
         compose.onNodeWithTag("onair-details").assertIsDisplayed()
