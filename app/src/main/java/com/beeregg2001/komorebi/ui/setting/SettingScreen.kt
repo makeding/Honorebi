@@ -1162,7 +1162,7 @@ fun SettingsScreen(
                                 )
                             },
                             onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
-                            logoR = itemFocusRequesters[11][0],
+                            versionR = itemFocusRequesters[11][0],
                             projectR = itemFocusRequesters[11][1],
                             licR = itemFocusRequesters[11][2],
                             sidebarR = categoryFocusRequesters[11]

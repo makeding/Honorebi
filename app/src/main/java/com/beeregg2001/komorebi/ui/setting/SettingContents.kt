@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.setting
 
 import android.os.Build
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -26,6 +27,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1405,18 +1407,16 @@ fun CacheManagementContent(
 fun AppInfoContent(
     onShowProject: () -> Unit,
     onShowLicenses: () -> Unit,
-    logoR: FocusRequester,
+    versionR: FocusRequester,
     projectR: FocusRequester,
     licR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
     val colors = KomorebiTheme.colors
-    var logoPresses by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    var versionPresses by remember { mutableIntStateOf(0) }
     var onFire by remember { mutableStateOf(false) }
-
-    val logoInteraction = remember { MutableInteractionSource() }
-    val isLogoFocused by logoInteraction.collectIsFocusedAsState()
 
     val flamePulse by rememberInfiniteTransition(label = "hono").animateFloat(
         initialValue = 1f,
@@ -1433,58 +1433,28 @@ fun AppInfoContent(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // ロゴ。フォーカスして 4 回押すと hono (= 火) になる隠し要素。
-        Surface(
-            onClick = {
-                if (onFire) {
-                    onFire = false
-                    logoPresses = 0
-                } else {
-                    logoPresses += 1
-                    if (logoPresses >= 4) {
-                        onFire = true
-                        logoPresses = 0
-                    }
-                }
-            },
-            interactionSource = logoInteraction,
-            modifier = Modifier
-                .size(176.dp)
-                .focusRequester(logoR)
-                .focusProperties {
-                    left = sidebarR
-                    up = FocusRequester.Cancel
-                    down = projectR
-                },
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = Color.Transparent,
-                focusedContainerColor = colors.textPrimary.copy(alpha = 0.08f),
-                contentColor = Color.Unspecified,
-                focusedContentColor = Color.Unspecified
-            ),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(28.dp)),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = if (isLogoFocused) 1.06f else 1f)
+        Box(
+            modifier = Modifier.size(176.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                if (onFire) {
-                    Icon(
-                        imageVector = Icons.Default.LocalFireDepartment,
-                        contentDescription = null,
-                        tint = Color(0xFFFF7A00),
-                        modifier = Modifier
-                            .size(128.dp)
-                            .graphicsLayer {
-                                scaleX = flamePulse
-                                scaleY = flamePulse
-                            }
-                    )
-                } else {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher),
-                        contentDescription = "Honorebi",
-                        modifier = Modifier.size(112.dp)
-                    )
-                }
+            if (onFire) {
+                Icon(
+                    imageVector = Icons.Default.LocalFireDepartment,
+                    contentDescription = null,
+                    tint = Color(0xFFFF7A00),
+                    modifier = Modifier
+                        .size(128.dp)
+                        .graphicsLayer {
+                            scaleX = flamePulse
+                            scaleY = flamePulse
+                        }
+                )
+            } else {
+                Image(
+                    painter = painterResource(R.drawable.honorebi_mark),
+                    contentDescription = "Honorebi",
+                    modifier = Modifier.size(112.dp)
+                )
             }
         }
 
@@ -1494,19 +1464,33 @@ fun AppInfoContent(
             color = KomorebiTheme.colors.textPrimary,
             fontWeight = FontWeight.Bold
         )
-        Text(
-            "Version ${BuildConfig.VERSION_NAME}",
-            style = MaterialTheme.typography.titleMedium,
-            color = KomorebiTheme.colors.textSecondary
+        Spacer(Modifier.height(20.dp))
+
+        SettingItem(
+            title = "Version",
+            value = BuildConfig.VERSION_NAME,
+            icon = Icons.Default.Info,
+            modifier = Modifier
+                .width(420.dp)
+                .focusRequester(versionR)
+                .focusProperties {
+                    left = sidebarR
+                    up = FocusRequester.Cancel
+                    down = projectR
+                },
+            onClick = {
+                onClick(versionR)
+                if (!onFire) {
+                    versionPresses += 1
+                    when (versionPresses) {
+                        4 -> Toast.makeText(context, "🔥🔥🔥🔥", Toast.LENGTH_SHORT).show()
+                        5 -> onFire = true
+                    }
+                }
+            }
         )
-        if (onFire) {
-            Text(
-                "隠し要素を見つけました。もう一度押すと元に戻ります。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary
-            )
-        }
-        Spacer(Modifier.height(40.dp))
+
+        Spacer(Modifier.height(24.dp))
 
         SettingItem(
             AppStrings.SETTINGS_ITEM_PROJECT_GITHUB,
@@ -1517,7 +1501,7 @@ fun AppInfoContent(
                 .focusRequester(projectR)
                 .focusProperties {
                     left = sidebarR
-                    up = logoR
+                    up = versionR
                     down = licR
                 },
             onClick = { onClick(projectR); onShowProject() })
