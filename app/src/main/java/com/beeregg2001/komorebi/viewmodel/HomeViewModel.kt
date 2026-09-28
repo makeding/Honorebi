@@ -37,6 +37,9 @@ private val STRING_LIST_TYPE = object : TypeToken<List<String>>() {}.type
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(FlowPreview::class)
+/** 起動時の自動アップデート確認を行うか。ローカルパッチ入りビルドでは無効化する。 */
+private const val AUTO_UPDATE_CHECK_ENABLED = false
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val liveProvider: LiveProvider,
@@ -364,10 +367,15 @@ class HomeViewModel @Inject constructor(
         }
 
         // ★ 修正: アプリアップデート確認は急がないので、UI描画後（3秒後）に実行
-        viewModelScope.launch {
-            delay(3000)
-            val receiveBeta = settingsRepository.receiveBetaUpdates.first()
-            appUpdater.checkForUpdates(receiveBetaUpdates = receiveBeta)
+        // ローカル改造ビルドでは自動アップデート確認を行わない (AUTO_UPDATE_CHECK_ENABLED)。
+        // AppUpdater の参照先は本家 Komorebi の version.json で、この fork のローカルパッチとは無関係な
+        // 「アップデートのお知らせ」が毎回起動時に出てしまうため。
+        if (AUTO_UPDATE_CHECK_ENABLED) {
+            viewModelScope.launch {
+                delay(3000)
+                val receiveBeta = settingsRepository.receiveBetaUpdates.first()
+                appUpdater.checkForUpdates(receiveBetaUpdates = receiveBeta)
+            }
         }
 
         // ★ 修正: バックエンドのヘルスチェックも、UIが立ち上がってから（1.5秒後）実行

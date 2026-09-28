@@ -1,5 +1,40 @@
 # Komorebi / Honorebi fork
 
+## NekobaTechnology フォークについて
+
+このリポジトリは [makeding/Honorebi](https://github.com/makeding/Honorebi) を、自宅の環境
+(Sony BRAVIA XRJ-65X95J / Chromecast with Google TV 4K、いずれも **armeabi-v7a (32bit)**、
+バックエンドは EDCB-Wine + Mirakurun + [NekobaTechnology/HonomiTV](https://github.com/NekobaTechnology/HonomiTV))
+で使うために手を入れた個人用フォークです。上流へのプルリクエストは今のところ出していません。
+変更はすべて `h-dev` ブランチ上のコミットとして残しています。
+
+### 変更点
+
+- **32bit Android TV で視聴開始時にクラッシュする問題を修正** — サブモジュール
+  [libaribcaption](https://github.com/NekobaTechnology/libaribcaption) の `FontProviderAndroid` で、
+  `ANDROID_ROOT` 未設定時の null 参照と、フォント一覧再確保時のダングリング参照を修正。
+- **流れるコメントの一瞬停止を改善** — コメント描画を `DanmakuView` (UI スレッド) から
+  `DanmakuSurfaceView` (専用スレッド) に変更。あわせてライブ・録画の両プレイヤーで、
+  SurfaceView の hole punch で字幕が消えないよう「コメント → 字幕」の描画順に固定。
+- **長い録画で再生位置変更時にアプリごと落ちる問題を修正** — シーン検索用のタイル画像
+  (例: 16320x4590) を等倍デコードすると Android の Canvas 描画上限 (100MB) を超えていたため、
+  上限内に収まるよう縮小デコードする。
+- **録画直接再生 (オリジナル画質) のシーク後の再生再開を高速化** — ファイルサイズ比例の
+  推定位置ではなく、HonomiTV フォークに追加した `GET /api/videos/{id}/seek-position` で
+  キーフレーム位置を解決してからシークする (数十秒かかっていた再開が数秒に)。
+  HonomiTV 側に同 API が無い場合は従来の比例シークに自動フォールバック。
+- **起動時の自動アップデート確認を無効化** — 参照先が本家 Komorebi の `version.json` で、
+  このフォークのビルドとは無関係な通知が毎回出るため。
+- ビルド補助: `scripts/build-media3-local.sh` の作業ディレクトリ上限を 4GiB に緩和。
+
+### ビルド
+
+上流と同じ手順です (`./gradlew assembleDebug`)。libaribcaption サブモジュールは
+このフォーク (`NekobaTechnology/libaribcaption`, ブランチ `bravia-32bit-fix`) を参照するよう
+`.gitmodules` を変更しています。
+
+---
+
 **Komorebi** は、KonomiTV、 EDCB バックエンド、Mirakurun（オプション）に対応した、Android TV 向けの高機能視聴クライアントアプリです。
 モダンな UI と直感的なリモコン操作、市販のハイエンドレコーダーを凌駕する高度なストリーミング制御を組み合わせ、これまでにない快適なテレビ視聴体験を提供します。
 

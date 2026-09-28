@@ -406,6 +406,7 @@ internal fun buildRecordedExtractorsFactory(
     fileSizeReferenceDurationUsRef: AtomicLong,
     onRawMmtsSubtitleData: (com.beeregg2001.komorebi.util.mmts.B62SubtitleSample) -> Unit,
     dataBroadcastingCallback: B60DataBroadcastingCallback?,
+    seekResolutionRef: AtomicReference<RecordedSeekResolution?>? = null,
 ): ExtractorsFactory = ExtractorsFactory {
     if (constructionKey.isRawMmtsPlayback) {
         return@ExtractorsFactory TlvExtractorsFactory(
@@ -468,6 +469,7 @@ internal fun buildRecordedExtractorsFactory(
                     programDurationUsRef = programDurationUsRef,
                     fileSizeBytesRef = fileSizeBytesRef,
                     fileSizeReferenceDurationUsRef = fileSizeReferenceDurationUsRef,
+                    seekResolutionRef = seekResolutionRef,
                 )
             }
         }
@@ -482,6 +484,7 @@ private fun seekMapWrappedTsExtractor(
     programDurationUsRef: AtomicLong,
     fileSizeBytesRef: AtomicLong,
     fileSizeReferenceDurationUsRef: AtomicLong,
+    seekResolutionRef: AtomicReference<RecordedSeekResolution?>? = null,
 ): Extractor = object : Extractor {
     private var downstreamOutput: ExtractorOutput? = null
     private var growingSeekMap: SeekMap? = null
@@ -512,6 +515,15 @@ private fun seekMapWrappedTsExtractor(
                     override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
                         val size = fileSizeBytesRef.get()
                         if (size <= 0L) return SeekMap.SeekPoints(SeekPoint.START)
+                        // サーバー (HonomiTV seek-position API) で解決済みのキーフレーム位置があれば、
+                        // ファイルサイズ比例の推定ではなくそれを使う (RecordedSeekResolver 参照)
+                        seekResolutionRef?.get()?.let { resolved ->
+                            if (kotlin.math.abs(resolved.timeUs - timeUs) <= RecordedSeekResolver.MATCH_TOLERANCE_US &&
+                                resolved.position >= 0L && resolved.position < size
+                            ) {
+                                return SeekMap.SeekPoints(SeekPoint(resolved.timeUs, resolved.position))
+                            }
+                        }
                         val currentDurationUs = durationUs.coerceAtLeast(1L)
                         val safeTime = timeUs.coerceIn(0L, currentDurationUs)
                         val referenceDurationUs = if (constructionKey.isOriginalMpegTsPlayback &&

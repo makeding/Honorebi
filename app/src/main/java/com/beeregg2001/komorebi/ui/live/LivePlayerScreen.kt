@@ -876,20 +876,8 @@ fun LivePlayerScreen(
             )
 
             if (!isPiPMode) {
-                if (isHeavyUiReady) {
-                    NativeCaptionOverlay(
-                        cue = mainCaptionCue.value,
-                        visible = isSubtitleEnabled && !isSubtitleBlockingUiVisible,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .zIndex(
-                                if (showOverlay || isPinnedOverlay || isMiniListOpen) 3f else 0f
-                            ),
-                        avoidanceObstacles = subtitleAvoidanceObstacles,
-                        avoidanceProgress = subtitleAvoidanceProgress,
-                    )
-                }
-
+                // DanmakuOverlay は SurfaceView なので、自分の領域に先に描かれたウィンドウ内容を
+                // 消去する (hole punch)。字幕の Canvas より先に置き、字幕が常に上に描かれるようにする。
                 if (isHeavyUiReady && isCommentEnabled) {
                     DanmakuOverlay(
                         modifier = Modifier.fillMaxSize(),
@@ -902,6 +890,20 @@ fun LivePlayerScreen(
                         if (mainSessionToken != null) danmakuViewRef.value = view
                         if (!ps.isPlayerPlaying) view.pause()
                     }
+                }
+
+                if (isHeavyUiReady) {
+                    NativeCaptionOverlay(
+                        cue = mainCaptionCue.value,
+                        visible = isSubtitleEnabled && !isSubtitleBlockingUiVisible,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(
+                                if (showOverlay || isPinnedOverlay || isMiniListOpen) 3f else 0f
+                            ),
+                        avoidanceObstacles = subtitleAvoidanceObstacles,
+                        avoidanceProgress = subtitleAvoidanceProgress,
+                    )
                 }
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(

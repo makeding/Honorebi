@@ -17,6 +17,7 @@ import master.flame.danmaku.danmaku.model.IDanmakus
 import master.flame.danmaku.danmaku.model.android.DanmakuContext
 import master.flame.danmaku.danmaku.model.android.Danmakus
 import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
+import master.flame.danmaku.ui.widget.DanmakuSurfaceView
 import master.flame.danmaku.ui.widget.DanmakuView
 import android.graphics.Color as AndroidColor
 
@@ -71,15 +72,10 @@ fun DanmakuOverlay(
         AndroidView(
             modifier = modifier,
             factory = { context ->
-                DanmakuView(context).apply {
+                fun <T> setup(view: T): T where T : View, T : IDanmakuView = view.apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                    setBackgroundColor(AndroidColor.TRANSPARENT)
-                    setLayerType(
-                        if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE,
-                        null,
                     )
                     // Live and archived comments are overwhelmingly one-shot strings. Keeping the
                     // library bitmap cache disabled avoids competing with video/caption memory.
@@ -93,14 +89,33 @@ fun DanmakuOverlay(
                     post { if (isAttachedToWindow) prepare(parser, danmakuContext) }
                     onViewCreated(this)
                 }
+                if (useSoftwareRendering) {
+                    setup(DanmakuView(context)).apply {
+                        setBackgroundColor(AndroidColor.TRANSPARENT)
+                        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                    }
+                } else {
+                    // DanmakuView は UI スレッドの onDraw で描くため、Compose の再コンポーズや GC で
+                    // UI スレッドが 100ms 程度止まるだけで流れるコメントが目に見えて止まる。
+                    // DanmakuSurfaceView はライブラリ側の描画スレッドが専用 Surface に直接描くので、
+                    // UI スレッドの引っかかりからコメントの動きを切り離せる（低スペック TV 向け）。
+                    // DanmakuTextureView は Compose の AndroidView 配下だと SurfaceTexture が生成されず
+                    // 何も描画されないため使えない。SurfaceView は init で setZOrderMediaOverlay(true) と
+                    // 半透明フォーマットが設定済みで、動画の SurfaceView の上・Compose UI の下に重なる。
+                    setup(DanmakuSurfaceView(context))
+                }
             },
             update = { view ->
-                val layerType = if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
-                if (view.layerType != layerType) view.setLayerType(layerType, null)
+                if (view is DanmakuView) {
+                    val layerType = if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
+                    if (view.layerType != layerType) view.setLayerType(layerType, null)
+                }
             },
             onRelease = { view ->
-                view.stop()
-                view.release()
+                (view as? IDanmakuView)?.let {
+                    it.stop()
+                    it.release()
+                }
             },
         )
     }

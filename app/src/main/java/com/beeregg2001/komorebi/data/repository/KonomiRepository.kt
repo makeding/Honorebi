@@ -224,6 +224,10 @@ class KonomiRepository @Inject constructor(
         runCatching { apiService.updateWatchHistory(HistoryUpdateRequest(programId, position)) }
     }
 
+    /** HonomiTV ローカル拡張: 録画ファイル内の指定時刻直前のキーフレーム位置を解決する */
+    suspend fun getSeekPosition(videoId: Int, timeSeconds: Double): SeekPositionResponse =
+        apiService.getSeekPosition(videoId, timeSeconds)
+
     override suspend fun getArchivedJikkyo(videoId: Int): Result<List<ArchivedComment>> {
         return try {
             val response = apiService.getArchivedJikkyo(videoId)

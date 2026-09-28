@@ -609,6 +609,21 @@ internal fun RecordedPlayerScreen(
     var initialUrlRetryNonce by remember(recordedPlaybackToken) { mutableIntStateOf(0) }
     val currentPlaybackFence by rememberUpdatedState(recordedPlaybackFence)
     val currentTerminalSwitchFailure by rememberUpdatedState(onRecordedSwitchTerminalFailure)
+    // 録画ファイル直接再生 (オリジナル画質の MPEG-TS) では、シーク先のバイト位置を HonomiTV 側で解決する。
+    // ファイルサイズ比例の推定だと可変ビットレートの録画で数十秒〜数分手前に着地し、再生再開が大きく遅れるため。
+    val usesResolvedByteSeek = (!isLiveStream || isRecordingChasePlayback) &&
+        currentProgram.recordedVideo.containerFormat.equals("MPEG-TS", ignoreCase = true) &&
+        currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true) &&
+        vs.currentQuality.value == StreamQuality.ORIGINAL_MPEG_TS_VALUE
+    val seekResolver = remember(currentProgram.id, usesResolvedByteSeek) {
+        RecordedSeekResolver(
+            videoId = currentProgram.id,
+            enabled = usesResolvedByteSeek,
+            resolvePosition = { videoId, timeSeconds ->
+                videoPlayerViewModel.resolveSeekPosition(videoId, timeSeconds)
+            },
+        )
+    }
     val renewStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
         if (!currentPlaybackFence.accepts() || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
             false
@@ -637,7 +652,7 @@ internal fun RecordedPlayerScreen(
                 currentStreamUrlRef.set(newUrl)
                 val mediaItem = buildVideoMediaItem(newUrl)
                 if (resumePositionMs > 0L && (!isLiveStream || isRecordingChasePlayback)) {
-                    player.setMediaItem(mediaItem, resumePositionMs)
+                    player.setMediaItem(mediaItem, seekResolver.resolve(resumePositionMs))
                 } else {
                     player.setMediaItem(mediaItem)
                 }
@@ -669,6 +684,7 @@ internal fun RecordedPlayerScreen(
     var videoTracks by remember(currentProgram.id) { mutableStateOf(androidx.media3.common.Tracks.EMPTY) }
     val exoPlayer = rememberManagedExoPlayer(
         program = currentProgram,
+        seekResolutionRef = seekResolver.resolutionRef,
         recordedPlaybackFence = recordedPlaybackFence,
         vs = vs,
         isLiveStream = isLiveStream,
@@ -929,6 +945,9 @@ internal fun RecordedPlayerScreen(
     var activeRawMmtsSeekPositionMs by remember(exoPlayer, currentProgram.id) {
         mutableStateOf<Long?>(null)
     }
+    var seekResolveJob by remember(exoPlayer, currentProgram.id) {
+        mutableStateOf<Job?>(null)
+    }
 
     fun scheduleRawMmtsSeekCommit() {
         pendingRawMmtsSeekJob?.cancel()
@@ -1102,7 +1121,13 @@ internal fun RecordedPlayerScreen(
             }
         } else {
             val commitSeek = {
-                exoPlayer.seekTo(safeTarget)
+                // サーバーでキーフレーム位置を解決してからシークする (解決できなければ従来通り比例シーク)
+                seekResolveJob?.cancel()
+                seekResolveJob = scope.launch {
+                    val resolvedTargetMs = seekResolver.resolve(safeTarget)
+                    if (!currentPlaybackFence.accepts()) return@launch
+                    exoPlayer.seekTo(resolvedTargetMs)
+                }
                 if (currentProgram.id != 0) {
                     videoPlayerViewModel.updateWatchHistory(
                         currentProgram,
@@ -1265,7 +1290,7 @@ internal fun RecordedPlayerScreen(
                 else -> null
             }
             if (startPositionMs != null) {
-                exoPlayer.setMediaItem(mediaItem, startPositionMs)
+                exoPlayer.setMediaItem(mediaItem, seekResolver.resolve(startPositionMs))
             } else {
                 exoPlayer.setMediaItem(mediaItem)
             }

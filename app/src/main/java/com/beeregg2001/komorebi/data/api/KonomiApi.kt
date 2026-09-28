@@ -99,6 +99,13 @@ interface KonomiApi {
     @GET("api/videos/{videoId}/jikkyo")
     suspend fun getArchivedJikkyo(@Path("videoId") videoId: Int): ArchivedJikkyoResponse
 
+    // ★追加 (HonomiTV ローカル拡張): 録画ファイル内の指定時刻直前のキーフレーム位置を解決する
+    @GET("api/videos/{videoId}/seek-position")
+    suspend fun getSeekPosition(
+        @Path("videoId") videoId: Int,
+        @Query("time") timeSeconds: Double,
+    ): SeekPositionResponse
+
     // --- 予約関連 ---
     @GET("api/recording/reservations")
     suspend fun getReserves(): ReserveApiResponse

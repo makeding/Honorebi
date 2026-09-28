@@ -31,7 +31,7 @@ temp_root="${TMPDIR:-/tmp}"
 work_root="$temp_root/komorebi-media3-build"
 source_dir="$work_root/androidx-media"
 staging_repo="$work_root/maven"
-work_budget_kib=$((1024 * 1024))
+work_budget_kib=$((1024 * 1024 * 4))
 monitor_pid=""
 cleanup() {
   if [[ -n "$monitor_pid" ]]; then

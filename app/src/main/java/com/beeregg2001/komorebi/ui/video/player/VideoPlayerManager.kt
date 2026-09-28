@@ -162,6 +162,7 @@ fun rememberManagedExoPlayer(
     onDurationChanged: (Long) -> Unit = {},
     onPlaybackEnded: () -> Unit = {},
     dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
+    seekResolutionRef: AtomicReference<RecordedSeekResolution?>? = null,
     enableHdrToSdrToneMapping: Boolean = false,
     isNetworkAvailable: () -> Boolean = { true },
     onStreamSessionExpired: suspend (ExoPlayer) -> Boolean = { false },
@@ -358,6 +359,7 @@ fun rememberManagedExoPlayer(
                 }
             },
             dataBroadcastingCallback = dataBroadcastingCallback,
+            seekResolutionRef = seekResolutionRef,
         )
 
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, customExtractorsFactory)

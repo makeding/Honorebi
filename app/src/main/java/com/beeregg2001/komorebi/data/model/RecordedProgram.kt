@@ -133,3 +133,9 @@ data class TileInfo(
     @SerializedName("interval_sec") val intervalSec: Double,
     @SerializedName("total_tiles") val totalTiles: Int
 )
+
+/** HonomiTV ローカル拡張: 録画ファイル内の指定時刻直前のキーフレーム位置解決 API のレスポンス */
+data class SeekPositionResponse(
+    @SerializedName("position") val position: Long,
+    @SerializedName("time") val time: Double,
+)

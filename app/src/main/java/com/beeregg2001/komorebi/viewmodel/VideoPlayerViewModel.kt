@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.viewmodel
 
+import com.beeregg2001.komorebi.data.model.SeekPositionResponse
+
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -523,6 +525,21 @@ class VideoPlayerViewModel @Inject constructor(
     suspend fun getArchivedComments(videoId: Int): List<ArchivedComment> {
         return withContext(Dispatchers.IO) {
             recordProvider.getArchivedJikkyo(videoId).getOrDefault(emptyList()).sortedBy { it.time }
+        }
+    }
+
+    /**
+     * HonomiTV ローカル拡張: 録画ファイル内の指定時刻直前のキーフレーム位置を解決する。
+     * 失敗時は null を返し、呼び出し側は従来のファイルサイズ比例シークにフォールバックする。
+     */
+    suspend fun resolveSeekPosition(videoId: Int, timeSeconds: Double): SeekPositionResponse? {
+        return try {
+            withContext(Dispatchers.IO) { konomiRepository.getSeekPosition(videoId, timeSeconds) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to resolve seek position. [video=$videoId, time=$timeSeconds]", e)
+            null
         }
     }
 

@@ -298,7 +298,11 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         }
     }
 
-    if (subtitleCommentLayer == "CommentOnTop") {
+    // コメントは DanmakuSurfaceView (SurfaceView) で描画されるため、Compose 上で後に置いても
+    // 字幕より上には来ず、逆に SurfaceView の hole punch が先に描かれた字幕 Canvas を消してしまう。
+    // そのため SurfaceView を使う通常時は設定に関わらず「コメント → 字幕」の順で配置する。
+    // 設定 (subtitleCommentLayer) は、通常の View で描画するソフトウェアレンダリング時だけ反映する。
+    if (subtitleCommentLayer == "CommentOnTop" && isEmulator) {
         subtitleLayer()
         commentLayer()
     } else {
