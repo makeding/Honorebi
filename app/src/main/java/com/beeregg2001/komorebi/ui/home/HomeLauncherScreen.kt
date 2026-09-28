@@ -5,6 +5,7 @@ package com.beeregg2001.komorebi.ui.home
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -191,6 +192,59 @@ private fun OfflineNoticeBanner(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * 「ビデオ」タブ内部のサブタブ（録画 / 放送中）ボタン。
+ * 上はトップナビの「ビデオ」タブ、下は対応するサブビューの先頭項目へフォーカスを流す。
+ */
+@Composable
+private fun VideoSubTabButton(
+    title: String,
+    selected: Boolean,
+    focusRequester: FocusRequester,
+    upRequester: FocusRequester,
+    downRequester: FocusRequester,
+    leftRequester: FocusRequester?,
+    rightRequester: FocusRequester?,
+    onFocused: () -> Unit,
+    onClick: () -> Unit
+) {
+    val colors = KomorebiTheme.colors
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .focusProperties {
+                up = upRequester
+                down = downRequester
+                left = leftRequester ?: FocusRequester.Cancel
+                right = rightRequester ?: FocusRequester.Cancel
+            }
+            .onFocusChanged { if (it.isFocused) onFocused() },
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (selected) colors.accent.copy(alpha = 0.3f) else colors.surface,
+            contentColor = colors.textPrimary,
+            focusedContainerColor = colors.accent,
+            focusedContentColor = Color.Black
+        ),
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = Border(BorderStroke(2.dp, colors.textPrimary))
+        )
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -269,6 +323,13 @@ fun HomeLauncherScreen(
     val tabs = remember(hideAppsTab) { visibleHomeTabs(hideAppsTab) }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+
+    // 「ビデオ」タブは内部サブタブ行 (録画 / 放送中) が上からの最初のフォーカス先になる。
+    fun firstContentRequesterFor(index: Int): FocusRequester =
+        if (tabs.getOrNull(index) == "ビデオ")
+            ui.videoSubTabFocusRequesters.getOrNull(ui.videoSubTabIndex) ?: FocusRequester.Default
+        else
+            ui.contentFirstItemRequesters.getOrNull(index) ?: FocusRequester.Default
 
     val isFullScreenMode = ui.isFullScreen(
         selectedChannel, selectedProgram, epgSelectedProgram,
@@ -424,12 +485,12 @@ fun HomeLauncherScreen(
     }
 
     LaunchedEffect(isReturningFromPlayer) {
-        if (isReturningFromPlayer && !isFullScreenMode && tabs.getOrNull(safeTabIndex) != "放送中") {
+        if (isReturningFromPlayer && !isFullScreenMode) {
             ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
             delay(150)
 
             val currentTabName = tabs.getOrNull(safeTabIndex)
-            if (currentTabName != "ライブ" && currentTabName != "ビデオ" && currentTabName != "放送中") {
+            if (currentTabName != "ライブ" && currentTabName != "ビデオ") {
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
                 if (currentTabName == "ホーム" && section != null && itemId != null) {
@@ -502,15 +563,15 @@ fun HomeLauncherScreen(
                 ticketManager.consume(HomeFocusTicket.TAB_BAR)
 
                 val currentTabName = tabs.getOrNull(safeTabIndex)
-                if (isReturningFromPlayer && currentTabName != "ライブ" && currentTabName != "ビデオ" && currentTabName != "放送中") {
+                if (isReturningFromPlayer && currentTabName != "ライブ" && currentTabName != "ビデオ") {
                     onReturnFocusConsumed()
                 }
             }
 
             HomeFocusTicket.CONTENT_TOP -> {
                 delay(150)
-                ui.contentFirstItemRequesters.getOrNull(safeTabIndex)
-                    ?.safeRequestFocusWithRetry("HomeTicket_CONTENT_TOP")
+                firstContentRequesterFor(safeTabIndex)
+                    .safeRequestFocusWithRetry("HomeTicket_CONTENT_TOP")
                 ticketManager.consume(HomeFocusTicket.CONTENT_TOP)
             }
 
@@ -570,8 +631,7 @@ fun HomeLauncherScreen(
                             focusRequester = inputSourceFocusRequester,
                             rightFocusRequester = ui.tabFocusRequesters.getOrNull(0)
                                 ?: FocusRequester.Default,
-                            downFocusRequester = ui.contentFirstItemRequesters.getOrNull(safeTabIndex)
-                                ?: FocusRequester.Default,
+                            downFocusRequester = firstContentRequesterFor(safeTabIndex),
                             canMoveDown = ui.isCurrentTabContentReady,
                             onClick = { homeViewModel.launchInputSourcePicker(inputSourceApp) }
                         )
@@ -620,8 +680,7 @@ fun HomeLauncherScreen(
                                     .focusProperties {
                                         down =
                                             if (safeTabIndex == index && ui.isCurrentTabContentReady)
-                                                ui.contentFirstItemRequesters.getOrNull(index)
-                                                    ?: FocusRequester.Default
+                                                firstContentRequesterFor(index)
                                             else FocusRequester.Default
 
                                         canFocus = !(title == "番組表" && ui.isEpgJumping)
@@ -840,44 +899,88 @@ fun HomeLauncherScreen(
                         }
 
                         "ビデオ" -> {
-                            VideoTabContent(
-                                recordViewModel = recordViewModel,
-                                onProgramClick = { onProgramSelected(it) },
-                                onShowAllRecordings = onShowAllRecordings,
-                                onShowSeriesList = onShowSeriesList,
-                                onShowSmbLibrary = onShowSmbLibrary,
-                                openedSeriesTitle = ui.openedSeriesTitle,
-                                onOpenedSeriesTitleChange = { ui.openedSeriesTitle = it },
-                                tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
-                                contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                isTopNavFocused = ui.topNavHasFocus,
-                                isReturningFromPlayer = isReturningFromPlayer && currentTabLabel == "ビデオ",
-                                lastPlayedProgramId = lastPlayerProgramId,
-                                onReturnFocusConsumed = onReturnFocusConsumed,
-                                konomiIp = konomiIp,
-                                konomiPort = konomiPort,
-                                timeFormat = timeFormat,
-                                watchHistory = ui.watchHistory,
-                                isNetworkAvailable = networkConnectionStatus.isAvailable,
-                                aiFocusReturnTick = if (currentTabLabel == "ビデオ") aiFocusReturnTick else 0,
-                                onAiReturnConsumed = onAiReturnConsumed
-                            )
-                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
-                        }
+                            val activeVideoSubTab = ui.videoSubTabIndex
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 40.dp, end = 40.dp, top = 4.dp, bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    VIDEO_SUB_TAB_TITLES.forEachIndexed { subIndex, subTitle ->
+                                        VideoSubTabButton(
+                                            title = subTitle,
+                                            selected = activeVideoSubTab == subIndex,
+                                            focusRequester = ui.videoSubTabFocusRequesters[subIndex],
+                                            upRequester = ui.tabFocusRequesters[activeRenderIndex],
+                                            downRequester = ui.videoSubTabContentRequesters[subIndex],
+                                            leftRequester = if (subIndex == 0) null
+                                                else ui.videoSubTabFocusRequesters[subIndex - 1],
+                                            rightRequester = if (subIndex == VIDEO_SUB_TAB_TITLES.lastIndex) null
+                                                else ui.videoSubTabFocusRequesters[subIndex + 1],
+                                            onFocused = {
+                                                if (ui.videoSubTabIndex != subIndex) {
+                                                    ui.videoSubTabIndex = subIndex
+                                                    ui.isCurrentTabContentReady = false
+                                                }
+                                            },
+                                            onClick = {
+                                                if (ui.videoSubTabIndex != subIndex) {
+                                                    ui.videoSubTabIndex = subIndex
+                                                    ui.isCurrentTabContentReady = false
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
 
-                        "放送中" -> {
-                            com.beeregg2001.komorebi.ui.onair.OnAirScreen(
-                                konomiIp = konomiIp,
-                                konomiPort = konomiPort,
-                                timeFormat = timeFormat,
-                                onProgramClick = { onProgramSelected(it) },
-                                onBack = { ui.tabFocusRequesters[activeRenderIndex].safeRequestFocus(TAG) },
-                                onSettings = onConnectionSettings,
-                                initialFocusRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                isReturningFromPlayer = isReturningFromPlayer,
-                                onReturnFocusConsumed = onReturnFocusConsumed,
-                            )
-                            LaunchedEffect(Unit) { handleUiReady() }
+                                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                    if (activeVideoSubTab == 1) {
+                                        com.beeregg2001.komorebi.ui.onair.OnAirScreen(
+                                            konomiIp = konomiIp,
+                                            konomiPort = konomiPort,
+                                            timeFormat = timeFormat,
+                                            onProgramClick = { onProgramSelected(it) },
+                                            onBack = {
+                                                ui.videoSubTabFocusRequesters[1].safeRequestFocus(TAG)
+                                            },
+                                            onSettings = onConnectionSettings,
+                                            initialFocusRequester = ui.videoSubTabContentRequesters[1],
+                                            isReturningFromPlayer = isReturningFromPlayer &&
+                                                currentTabLabel == "ビデオ" && activeVideoSubTab == 1,
+                                            onReturnFocusConsumed = onReturnFocusConsumed,
+                                            topFocusRequester = ui.videoSubTabFocusRequesters[1],
+                                            showHeadline = false
+                                        )
+                                        LaunchedEffect(Unit) { handleUiReady() }
+                                    } else {
+                                        VideoTabContent(
+                                            recordViewModel = recordViewModel,
+                                            onProgramClick = { onProgramSelected(it) },
+                                            onShowAllRecordings = onShowAllRecordings,
+                                            onShowSeriesList = onShowSeriesList,
+                                            onShowSmbLibrary = onShowSmbLibrary,
+                                            openedSeriesTitle = ui.openedSeriesTitle,
+                                            onOpenedSeriesTitleChange = { ui.openedSeriesTitle = it },
+                                            tabFocusRequester = ui.videoSubTabFocusRequesters[0],
+                                            contentFirstItemRequester = ui.videoSubTabContentRequesters[0],
+                                            isTopNavFocused = ui.topNavHasFocus && activeVideoSubTab == 0,
+                                            isReturningFromPlayer = isReturningFromPlayer &&
+                                                currentTabLabel == "ビデオ" && activeVideoSubTab == 0,
+                                            lastPlayedProgramId = lastPlayerProgramId,
+                                            onReturnFocusConsumed = onReturnFocusConsumed,
+                                            konomiIp = konomiIp,
+                                            konomiPort = konomiPort,
+                                            timeFormat = timeFormat,
+                                            watchHistory = ui.watchHistory,
+                                            isNetworkAvailable = networkConnectionStatus.isAvailable,
+                                            aiFocusReturnTick = if (currentTabLabel == "ビデオ") aiFocusReturnTick else 0,
+                                            onAiReturnConsumed = onAiReturnConsumed
+                                        )
+                                        LaunchedEffect(Unit) { delay(500); handleUiReady() }
+                                    }
+                                }
+                            }
                         }
 
                         "番組表" -> {

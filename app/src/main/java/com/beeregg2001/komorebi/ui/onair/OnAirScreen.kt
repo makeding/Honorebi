@@ -52,6 +52,8 @@ fun OnAirScreen(
     isReturningFromPlayer: Boolean,
     onReturnFocusConsumed: () -> Unit,
     viewModel: OnAirViewModel = hiltViewModel(),
+    topFocusRequester: FocusRequester = FocusRequester.Default,
+    showHeadline: Boolean = true,
 ) {
     val state by viewModel.uiState.collectAsState()
     val colors = KomorebiTheme.colors
@@ -151,8 +153,10 @@ fun OnAirScreen(
         }
 
         Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(24.dp))
+            if (showHeadline) {
+                Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(24.dp))
+            }
             if (searchOpen) {
                 OutlinedTextField(
                     value = state.query,
@@ -185,7 +189,8 @@ fun OnAirScreen(
                         searchOpen = true
                         scope.launch { searchFieldFocus.safeRequestFocusWithRetry("OnAirOpenSearch") }
                     },
-                    Modifier.focusRequester(searchButtonFocus).testTag("onair-search"),
+                    Modifier.focusRequester(searchButtonFocus).testTag("onair-search")
+                        .focusProperties { up = topFocusRequester },
                     selected = state.query.isNotBlank(),
                 )
             }

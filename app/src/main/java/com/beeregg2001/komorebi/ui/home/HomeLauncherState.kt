@@ -17,7 +17,13 @@ enum class HomeFocusTicket { NONE, TAB_BAR, CONTENT_TOP, HOME_RESTORE }
  * ランチャー上部のタブ定義。タブ数とフォーカス要求リストのサイズを
  * 一致させるため、画面側と StateHolder 側でこの 1 箇所を共有する。
  */
-internal val HOME_TAB_TITLES = listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約", "放送中")
+internal val HOME_TAB_TITLES = listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
+
+/**
+ * 「ビデオ」タブ内部のサブタブ定義。「放送中」は独立したメインタブではなく、
+ * ビデオタブ内のサブビューとして扱う。
+ */
+internal val VIDEO_SUB_TAB_TITLES = listOf("録画", "放送中")
 
 /**
  * 設定でアプリタブを無効化したときに、ランチャーとルート画面で同じタブ構成を
@@ -109,6 +115,11 @@ class HomeLauncherState(
 
     val safeHouseRequester = FocusRequester()
 
+    // 「ビデオ」タブ内部のサブタブ (録画 / 放送中) 用の状態とフォーカス要求。
+    var videoSubTabIndex by mutableIntStateOf(0)
+    val videoSubTabFocusRequesters = List(VIDEO_SUB_TAB_TITLES.size) { FocusRequester() }
+    val videoSubTabContentRequesters = List(VIDEO_SUB_TAB_TITLES.size) { FocusRequester() }
+
     val watchHistoryPrograms: List<RecordedProgram>
         @RequiresApi(Build.VERSION_CODES.O) get() = watchHistory.map {
             KonomiDataMapper.toDomainModel(it)
@@ -178,7 +189,8 @@ fun rememberHomeLauncherState(
                     it.selectedTabIndex,
                     it.internalLastPlayerChannelId,
                     it.openedSeriesTitle,
-                    it.isSeriesListOpen
+                    it.isSeriesListOpen,
+                    it.videoSubTabIndex
                 )
             },
             restore = {
@@ -188,6 +200,7 @@ fun rememberHomeLauncherState(
                     internalLastPlayerChannelId = list[1] as String?
                     openedSeriesTitle = list[2] as String?
                     isSeriesListOpen = list[3] as Boolean
+                    videoSubTabIndex = (list.getOrNull(4) as? Int) ?: 0
                 }
             }
         )
