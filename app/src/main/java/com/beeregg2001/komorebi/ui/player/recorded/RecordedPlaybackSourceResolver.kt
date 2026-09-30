@@ -21,6 +21,7 @@ data class RecordedPlaybackSource(
 class RecordedPlaybackSourceResolver @Inject constructor(
     private val recordProvider: RecordProvider,
     private val settingsRepository: SettingsRepository,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) {
     suspend fun resolve(
         videoId: Int,
@@ -29,6 +30,13 @@ class RecordedPlaybackSourceResolver @Inject constructor(
         offsetSeconds: Double = 0.0,
         isRecording: Boolean = false,
     ): RecordedPlaybackSource = try {
+        nhkExclusionRepository.state.first { it.isLoaded }
+        if (nhkExclusionRepository.state.value.isActive) {
+            val program = recordProvider.getRecordedProgram(videoId).getOrThrow()
+            if (nhkExclusionRepository.isExcluded(program)) {
+                throw IllegalStateException("NHK_EXCLUDED")
+            }
+        }
         when (quality) {
             StreamQuality.RAW_MMTS_PRIMARY_VALUE -> RecordedPlaybackSource(
                 url = UrlBuilder.getVideoRawMmtsUrl(

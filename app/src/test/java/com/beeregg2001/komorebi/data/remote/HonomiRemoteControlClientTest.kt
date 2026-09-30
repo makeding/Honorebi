@@ -87,6 +87,23 @@ class HonomiRemoteControlClientTest {
         )
     }
 
+    @Test
+    fun parsesOnlyTheExactTemporaryNhkHideCommandEnvelope() {
+        assertEquals(
+            HonomiRemoteCommand.EnableTemporaryNHKHide("command-123"),
+            parseHonomiRemoteCommand(
+                gson,
+                """{"type":"Command","command_id":"command-123","command":{"type":"EnableTemporaryNHKHide","duration_seconds":1800}}""",
+            ),
+        )
+        listOf(
+            """{"type":"Command","command":{"type":"EnableTemporaryNHKHide","duration_seconds":1800}}""",
+            """{"type":"Command","command_id":" ","command":{"type":"EnableTemporaryNHKHide","duration_seconds":1800}}""",
+            """{"type":"Command","command_id":"command-123","command":{"type":"EnableTemporaryNHKHide","duration_seconds":1799}}""",
+            """{"type":"Command","command_id":"command-123","command":{"type":"EnableTemporaryNHKHide","duration_seconds":1801}}""",
+        ).forEach { payload -> assertNull(parseHonomiRemoteCommand(gson, payload)) }
+    }
+
     /** 壊れた値で意図しないシークや設定変更を起こさないよう、未知の列挙値はコマンドごと捨てる。 */
     @Test
     fun dropsCommandsWithUnknownEnumValues() {

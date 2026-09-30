@@ -8,6 +8,7 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.SeriesProgram
 import com.beeregg2001.komorebi.data.repository.OnAirProvider
 import com.beeregg2001.komorebi.data.repository.OnAirUnsupportedException
+import com.beeregg2001.komorebi.data.repository.NHKExclusionRepository
 import com.google.gson.JsonParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -25,6 +26,7 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 private const val ON_AIR_UNSUPPORTED = "ON_AIR_UNSUPPORTED"
+private const val ON_AIR_CARD_PAGE_LIMIT = 8
 
 sealed interface OnAirLoadState {
     data object Idle : OnAirLoadState
@@ -72,9 +74,14 @@ data class OnAirReturnFocus(
 class OnAirViewModel private constructor(
     private val onAirProvider: OnAirProvider,
     private val backendConfigurations: kotlinx.coroutines.flow.Flow<OnAirBackendConfiguration>,
+    private val nhkExclusionRepository: NHKExclusionRepository?,
 ) : ViewModel() {
     @Inject
-    constructor(onAirProvider: OnAirProvider, settingsRepository: SettingsRepository) : this(
+    constructor(
+        onAirProvider: OnAirProvider,
+        settingsRepository: SettingsRepository,
+        nhkExclusionRepository: NHKExclusionRepository,
+    ) : this(
         onAirProvider,
         combine(
             settingsRepository.backendType,
@@ -82,13 +89,14 @@ class OnAirViewModel private constructor(
             settingsRepository.konomiPort,
             settingsRepository.cloudflareAccessConfiguration,
         ) { backend, ip, port, access -> OnAirBackendConfiguration(backend, ip, port, access.toString()) },
+        nhkExclusionRepository,
     )
 
     internal constructor(
         onAirProvider: OnAirProvider,
         backendConfigurations: kotlinx.coroutines.flow.Flow<OnAirBackendConfiguration>,
         testOnly: Unit = Unit,
-    ) : this(onAirProvider, backendConfigurations)
+    ) : this(onAirProvider, backendConfigurations, null)
     private val _uiState = MutableStateFlow(OnAirUiState())
     val uiState: StateFlow<OnAirUiState> = _uiState.asStateFlow()
 
@@ -110,6 +118,26 @@ class OnAirViewModel private constructor(
                     currentBackendConfiguration = configuration
                     if (isPageActive && configuration.requiresReloadFrom(appliedBackendConfiguration)) applyBackendConfiguration(configuration)
                 }
+        }
+        nhkExclusionRepository?.let { repository ->
+            viewModelScope.launch {
+                repository.state.collect { exclusion ->
+                    cancelRequests()
+                    val state = _uiState.value
+                    _uiState.value = state.copy(
+                        series = if (exclusion.isLoaded) state.series
+                            .filterNot(::isExcludedSeries)
+                            .map(::withoutExcludedThumbnails)
+                        else emptyList(),
+                        expanded = state.expanded?.let { expanded ->
+                            expanded.copy(programs = if (exclusion.isLoaded) {
+                                expanded.programs.filterNot(repository::isExcluded)
+                            } else emptyList())
+                        },
+                    )
+                    if (exclusion.isLoaded && isPageActive) loadList()
+                }
+            }
         }
     }
 
@@ -221,6 +249,7 @@ class OnAirViewModel private constructor(
     fun retryList() = loadList()
 
     fun expandSeries(seriesId: Int) {
+        if (nhkExclusionRepository?.state?.value?.isLoaded == false) return
         if (_uiState.value.expanded?.seriesId == seriesId) return
         summaryJob?.cancel()
         programsJob?.cancel()
@@ -265,12 +294,17 @@ class OnAirViewModel private constructor(
 
     private fun loadList() {
         if (!_uiState.value.backendSupported) return
+        if (nhkExclusionRepository?.state?.value?.isLoaded == false) {
+            _uiState.value = _uiState.value.copy(series = emptyList(), listStatus = OnAirLoadState.Loading)
+            return
+        }
         listJob?.cancel()
         val generation = listRequestGate.next()
         _uiState.value = _uiState.value.copy(listStatus = OnAirLoadState.Loading)
         listJob = viewModelScope.launch {
             try {
-                val series = onAirProvider.getOnAirSeries().seriesList.sortedWith(onAirSeriesComparator)
+                val series = visibleOnAirSeriesCards(onAirProvider.getOnAirSeries().seriesList)
+                    .sortedWith(onAirSeriesComparator)
                 if (listRequestGate.isCurrent(generation) && isPageActive) {
                     _uiState.value = _uiState.value.copy(
                         series = series,
@@ -359,7 +393,7 @@ class OnAirViewModel private constructor(
             }
             page++
         }
-        return programs
+        return programs.filterNot { program -> nhkExclusionRepository?.isExcluded(program) == true }
     }
 
     private fun updateExpanded(seriesId: Int, transform: (OnAirExpandedSeries) -> OnAirExpandedSeries) {
@@ -376,6 +410,42 @@ class OnAirViewModel private constructor(
         summaryJob?.cancel(); summaryJob = null
         programsJob?.cancel(); programsJob = null
     }
+
+    private fun isExcludedSeries(series: OnAirSeries): Boolean =
+        nhkExclusionRepository?.state?.value?.isActive == true &&
+                series.channelIds.isNotEmpty() &&
+                series.channelIds.all(nhkExclusionRepository::isExcludedChannelId)
+
+    private suspend fun visibleOnAirSeriesCards(series: List<OnAirSeries>): List<OnAirSeries> =
+        series.mapNotNull { item ->
+            if (isExcludedSeries(item)) return@mapNotNull null
+            if (!hasExcludedChannel(item)) return@mapNotNull item
+            val visiblePrograms = loadVisibleProgramsForCard(item.id)
+            if (visiblePrograms.isEmpty()) null else item.copy(
+                thumbnailRecordedProgramIdsValue = visiblePrograms.take(3).map(RecordedProgram::id),
+            )
+        }
+
+    private suspend fun loadVisibleProgramsForCard(seriesId: Int): List<RecordedProgram> {
+        val rawPrograms = mutableListOf<RecordedProgram>()
+        var page = 1
+        var total = Int.MAX_VALUE
+        while (page <= ON_AIR_CARD_PAGE_LIMIT && rawPrograms.size < total) {
+            val response = onAirProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
+            total = response.total
+            if (response.recordedPrograms.isEmpty()) break
+            rawPrograms += response.recordedPrograms
+            page++
+        }
+        return rawPrograms.filterNot { program -> nhkExclusionRepository?.isExcluded(program) == true }
+    }
+
+    private fun hasExcludedChannel(series: OnAirSeries): Boolean =
+        nhkExclusionRepository?.state?.value?.isActive == true &&
+                (series.channelIds.isEmpty() || series.channelIds.any(nhkExclusionRepository::isExcludedChannelId))
+
+    private fun withoutExcludedThumbnails(series: OnAirSeries): OnAirSeries =
+        if (hasExcludedChannel(series)) series.copy(thumbnailRecordedProgramIdsValue = emptyList()) else series
 }
 
 internal val onAirSeriesComparator: Comparator<OnAirSeries> = compareBy<OnAirSeries>(

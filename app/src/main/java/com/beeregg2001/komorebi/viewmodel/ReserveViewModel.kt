@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,7 +30,8 @@ private const val TAG = "ReserveViewModel"
 @HiltViewModel
 class ReserveViewModel @Inject constructor(
     // ★ 修正: KonomiRepositoryへの直接依存を排除し、抽象化されたインターフェースをInject
-    private val reserveProvider: ReserveProvider
+    private val reserveProvider: ReserveProvider,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) : ViewModel() {
 
     // ==========================================
@@ -52,7 +54,9 @@ class ReserveViewModel @Inject constructor(
 
     // サーバーから取得したすべての録画予約リスト
     private val _reserves = MutableStateFlow<List<ReserveItem>>(emptyList())
-    val reserves: StateFlow<List<ReserveItem>> = _reserves.asStateFlow()
+    val reserves: StateFlow<List<ReserveItem>> = combine(_reserves, nhkExclusionRepository.state) { reservations, exclusion ->
+        if (!exclusion.isLoaded) emptyList() else reservations.filterNot(nhkExclusionRepository::isExcluded)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // バックエンド（EDCBなど）の自動予約によって生成された予約（EPG自動予約）を除外し、
     // 手動で登録した「単発予約」のみを抽出したリスト。UIの「単発予約タブ」で表示します。

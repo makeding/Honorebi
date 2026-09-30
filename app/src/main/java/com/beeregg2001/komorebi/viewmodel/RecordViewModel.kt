@@ -9,6 +9,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.paging.filter
 import androidx.paging.map
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.local.dao.ChannelProjection
@@ -17,10 +18,12 @@ import com.beeregg2001.komorebi.data.local.dao.SeriesProjection
 import com.beeregg2001.komorebi.data.mapper.RecordDataMapper
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.NHKExclusionState
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.paging.RecordedProgramPagingSource
 import com.beeregg2001.komorebi.data.repository.AppContentStore
 import com.beeregg2001.komorebi.data.repository.LiveProvider
+import com.beeregg2001.komorebi.data.repository.NHKExclusionRepository
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.ReserveProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
@@ -30,6 +33,7 @@ import com.beeregg2001.komorebi.ui.video.components.RecordCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -44,6 +48,7 @@ import javax.inject.Inject
 private const val TAG = "Komorebi_RecordVM"
 private const val PREF_NAME = "search_history_pref"
 private const val KEY_HISTORY = "history_list"
+private const val SERIES_VISIBILITY_PAGE_LIMIT = 8
 
 // ★ 追加: 録画リスト用のソート列挙型
 enum class RecordSortType { DATE, TITLE, DURATION }
@@ -69,7 +74,9 @@ data class SeriesInfo(
     val thumbnailVideoIds: List<Int> = emptyList(),
     val isEpisodic: Boolean = false,
     val directThumbnailUrl: String? = null,
-    val apiThumbnailUrl: String? = null
+    val apiThumbnailUrl: String? = null,
+    val channelIds: List<String> = emptyList(),
+    val hasVisibleOnlyMetadata: Boolean = false,
 )
 
 data class ExpandedSeriesState(
@@ -90,6 +97,7 @@ class RecordViewModel @Inject constructor(
     private val syncEngine: RecordSyncEngine,
     private val programDao: RecordedProgramDao,
     private val appContentStore: AppContentStore,
+    private val nhkExclusionRepository: NHKExclusionRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -166,6 +174,11 @@ class RecordViewModel @Inject constructor(
     private var onlineChannelIndexJob: Job? = null
     private var onlineFilterIndexJob: Job? = null
     private var expandedSeriesJob: Job? = null
+    private var channelIndexRequested = false
+    private var filterIndexesRequested = false
+    private var rawGroupedChannels: Map<String, List<Pair<String, String>>> = emptyMap()
+    private var rawGroupedSeries: Map<String, List<SeriesInfo>> = emptyMap()
+    private var rawOnlineSeries: List<com.beeregg2001.komorebi.data.model.SeriesProgram> = emptyList()
 
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
@@ -177,11 +190,15 @@ class RecordViewModel @Inject constructor(
     }
 
     fun fetchProgramDetail(videoId: Int) {
+        if (!nhkExclusionRepository.state.value.isLoaded) {
+            _programDetail.value = null
+            return
+        }
         detailFetchJob?.cancel()
         detailFetchJob = viewModelScope.launch(Dispatchers.IO) {
             delay(300)
             recordProvider.getRecordedProgram(videoId).onSuccess {
-                _programDetail.value = it
+                _programDetail.value = it.takeUnless(nhkExclusionRepository::isExcluded)
             }.onFailure { Log.e(TAG, "Failed to fetch program detail", it) }
         }
     }
@@ -192,10 +209,16 @@ class RecordViewModel @Inject constructor(
 
     /** HonomiTV のリモート操作で指定された録画番組を、そのまま再生開始できる形で取得する。 */
     suspend fun getRemoteProgram(videoId: Int): RecordedProgram? = withContext(Dispatchers.IO) {
-        recordProvider.getRecordedProgram(videoId).getOrNull()
+        if (!nhkExclusionRepository.state.value.isLoaded) return@withContext null
+        recordProvider.getRecordedProgram(videoId).getOrNull()?.takeUnless(nhkExclusionRepository::isExcluded)
     }
 
-    val recentRecordings: StateFlow<List<RecordedProgram>> = appContentStore.recentRecordings
+    val recentRecordings: StateFlow<List<RecordedProgram>> = combine(
+        appContentStore.recentRecordings,
+        nhkExclusionRepository.state,
+    ) { recordings, exclusion ->
+        if (!exclusion.isLoaded) emptyList() else recordings.filterNot(nhkExclusionRepository::isExcluded)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val localRecordedCount: StateFlow<Int> = programDao.getTotalCountFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -204,6 +227,23 @@ class RecordViewModel @Inject constructor(
 
     init {
         loadSearchHistory()
+        viewModelScope.launch {
+            nhkExclusionRepository.state.collect { exclusion ->
+                detailFetchJob?.cancel()
+                _programDetail.value = _programDetail.value?.takeUnless(nhkExclusionRepository::isExcluded)
+                collapseSeries()
+                onlineChannelIndexJob?.cancel()
+                onlineFilterIndexJob?.cancel()
+                onlineChannelIndexJob = null
+                onlineFilterIndexJob = null
+                publishVisibleChannels()
+                publishVisibleSeries()
+                if (exclusion.isLoaded) {
+                    if (channelIndexRequested) ensureOnlineChannels(forceReload = true)
+                    if (filterIndexesRequested) loadOnlineFilterIndexes(forceReload = true)
+                }
+            }
+        }
     }
 
     fun handleBackNavigation(onExit: () -> Unit) {
@@ -219,8 +259,7 @@ class RecordViewModel @Inject constructor(
         ensureOnlineChannels()
     }
 
-    // ★ 修正: ソート状態も Pager のトリガーとして Combine に含める
-    val pagedRecordings: Flow<PagingData<RecordedProgram>> = combine(
+    private val pagingFilterState = combine(
         combine(
             _selectedCategory,
             _selectedChannelId,
@@ -234,8 +273,17 @@ class RecordViewModel @Inject constructor(
         _sortOrder
     ) { partialState, type, order ->
         partialState.copy(sortType = type, sortOrder = order)
-    }.flatMapLatest { state ->
+    }
+
+    val pagedRecordings: Flow<PagingData<RecordedProgram>> = combine(
+        pagingFilterState,
+        nhkExclusionRepository.state,
+    ) { state, exclusion -> state to exclusion }.flatMapLatest { (state, exclusion) ->
         flow {
+            if (!exclusion.isLoaded) {
+                emit(PagingData.empty())
+                return@flow
+            }
             val isDesc = state.sortOrder == RecordSortOrder.DESC
             val order = if (isDesc) "desc" else "asc"
             val pagingConfig = PagingConfig(
@@ -267,7 +315,8 @@ class RecordViewModel @Inject constructor(
                         order = order,
                         channelId = onlineChannelId,
                         genre = onlineGenre,
-                        seriesId = selectedSeriesId
+                        seriesId = selectedSeriesId,
+                        isProgramExcluded = nhkExclusionRepository::isExcluded,
                     )
                 }.flow
             } else {
@@ -305,7 +354,10 @@ class RecordViewModel @Inject constructor(
                             }
                         }
                     }
-                }.flow.map { pagingData -> pagingData.map { entity -> RecordDataMapper.toDomainModel(entity) } }
+                }.flow.map { pagingData ->
+                    pagingData.map { entity -> RecordDataMapper.toDomainModel(entity) }
+                        .filter { !nhkExclusionRepository.isExcluded(it) }
+                }
             }
 
             emitAll(pagerFlow)
@@ -332,6 +384,7 @@ class RecordViewModel @Inject constructor(
     }
 
     fun toggleSeries(seriesId: Int) {
+        if (!nhkExclusionRepository.state.value.isLoaded) return
         if (_expandedSeries.value.seriesId == seriesId) {
             collapseSeries()
             return
@@ -341,17 +394,20 @@ class RecordViewModel @Inject constructor(
         _expandedSeries.value = ExpandedSeriesState(seriesId = seriesId, isLoading = true)
         expandedSeriesJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val programs = mutableListOf<RecordedProgram>()
+                val rawPrograms = mutableListOf<RecordedProgram>()
                 var page = 1
                 var total = Int.MAX_VALUE
-                while (programs.size < total) {
+                while (rawPrograms.size < total) {
                     val response = recordProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
                     total = response.total
                     if (response.recordedPrograms.isEmpty()) break
-                    programs += response.recordedPrograms
+                    rawPrograms += response.recordedPrograms
                     page++
                 }
-                _expandedSeries.value = ExpandedSeriesState(seriesId = seriesId, programs = programs)
+                _expandedSeries.value = ExpandedSeriesState(
+                    seriesId = seriesId,
+                    programs = rawPrograms.filterNot(nhkExclusionRepository::isExcluded),
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load expanded series", e)
                 _expandedSeries.value = ExpandedSeriesState(
@@ -444,9 +500,11 @@ class RecordViewModel @Inject constructor(
         channel: Channel,
         recordings: List<RecordedProgram> = recentRecordings.value
     ): RecordedProgram? {
+        if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return null
         val present = channel.programPresent
         val recordingCandidates = recordings.filter {
-            it.isRecording || it.recordedVideo.status.equals("Recording", ignoreCase = true)
+            !nhkExclusionRepository.isExcluded(it) &&
+                    (it.isRecording || it.recordedVideo.status.equals("Recording", ignoreCase = true))
         }
 
         return recordingCandidates.firstOrNull { program ->
@@ -470,6 +528,7 @@ class RecordViewModel @Inject constructor(
 
     suspend fun fetchCurrentRecordingForChannel(channel: Channel): RecordedProgram? =
         withContext(Dispatchers.IO) {
+            if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return@withContext null
             findCurrentRecordingForChannel(channel)?.let { return@withContext it }
 
             runCatching {
@@ -479,7 +538,7 @@ class RecordViewModel @Inject constructor(
                     appContentStore.refreshRecentRecordings()
                 }
             }.map { latest ->
-                findCurrentRecordingForChannel(channel, latest)
+                findCurrentRecordingForChannel(channel, latest.filterNot(nhkExclusionRepository::isExcluded))
             }.getOrNull()
         }
 
@@ -586,74 +645,76 @@ class RecordViewModel @Inject constructor(
 
     fun buildSeriesIndex() {}
 
-    private fun ensureOnlineChannels() {
-        if (_groupedChannels.value.isNotEmpty() || onlineChannelIndexJob?.isActive == true) return
+    private fun ensureOnlineChannels(forceReload: Boolean = false) {
+        channelIndexRequested = true
+        if (!nhkExclusionRepository.state.value.isLoaded) return
+        if (!forceReload && _groupedChannels.value.isNotEmpty() || onlineChannelIndexJob?.isActive == true) return
+        val exclusion = nhkExclusionRepository.state.value
         onlineChannelIndexJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val channelsResponse = liveProvider.getChannels()
-                buildOnlineChannelMap(channelsResponse)
+                buildOnlineChannelMap(channelsResponse, exclusion)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Failed to load online channel index", e)
             }
         }
     }
 
-    private fun loadOnlineFilterIndexes() {
+    private fun loadOnlineFilterIndexes(forceReload: Boolean = false) {
+        filterIndexesRequested = true
+        if (!nhkExclusionRepository.state.value.isLoaded) return
         if (
-            (_availableGenres.value.isNotEmpty() && _groupedSeries.value.isNotEmpty()) ||
+            (!forceReload && _availableGenres.value.isNotEmpty() && _groupedSeries.value.isNotEmpty()) ||
             onlineFilterIndexJob?.isActive == true
         ) {
             return
         }
 
         onlineFilterIndexJob = viewModelScope.launch(Dispatchers.IO) {
+            val exclusion = nhkExclusionRepository.state.value
             _isSeriesLoading.value = true
             try {
                 val channelsResponse = runCatching { liveProvider.getChannels() }.getOrNull()
-                channelsResponse?.let { buildOnlineChannelMap(it) }
+                channelsResponse?.let { buildOnlineChannelMap(it, exclusion) }
 
-                val genresSet = mutableSetOf<String>()
                 val grouped = mutableMapOf<String, MutableList<SeriesInfo>>()
+                val rawSeries = mutableListOf<com.beeregg2001.komorebi.data.model.SeriesProgram>()
                 var page = 1
                 var loaded = 0
                 do {
                     val response = recordProvider.getSeriesList(page = page, order = "desc")
                     val seriesList = response.seriesList
+                    rawSeries += seriesList
                     seriesList.forEach { series ->
+                        val visibleSeries = buildVisibleSeriesInfo(series) ?: return@forEach
                         val majorGenre = series.genres?.firstOrNull()?.major
                             ?: "その他"
-                        genresSet.add(majorGenre)
-                        grouped.getOrPut(majorGenre) { mutableListOf() }.add(
-                            SeriesInfo(
-                                seriesId = series.id,
-                                displayTitle = series.title,
-                                searchKeyword = "series:${series.id}",
-                                programCount = series.recordedProgramsCount,
-                                representativeVideoId = series.thumbnailRecordedProgramIds.firstOrNull()
-                                    ?: series.id,
-                                description = series.description,
-                                thumbnailVideoIds = series.thumbnailRecordedProgramIds,
-                                isEpisodic = true,
-                            )
-                        )
+                        grouped.getOrPut(majorGenre) { mutableListOf() }.add(visibleSeries)
                     }
                     loaded += seriesList.size
                     page += 1
                 } while (seriesList.isNotEmpty() && loaded < response.total)
 
-                _availableGenres.value = genresSet.sorted()
-                _groupedSeries.value = grouped.mapValues { (_, list) ->
+                if (!isActive || exclusion != nhkExclusionRepository.state.value) return@launch
+                rawOnlineSeries = rawSeries
+                rawGroupedSeries = grouped.mapValues { (_, list) ->
                     list.distinctBy { it.seriesId ?: it.displayTitle }.sortedBy { it.displayTitle }
                 }.filterValues { it.isNotEmpty() }
+                publishVisibleSeries()
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Failed to load online filter indexes", e)
             } finally {
-                _isSeriesLoading.value = false
+                if (isActive && exclusion == nhkExclusionRepository.state.value) _isSeriesLoading.value = false
             }
         }
     }
 
-    private fun buildOnlineChannelMap(response: com.beeregg2001.komorebi.data.model.ChannelApiResponse) {
+    private fun buildOnlineChannelMap(
+        response: com.beeregg2001.komorebi.data.model.ChannelApiResponse,
+        exclusion: NHKExclusionState = nhkExclusionRepository.state.value,
+    ) {
         val grouped = linkedMapOf(
             "地デジ" to response.terrestrial.orEmpty(),
             "BS" to response.bs.orEmpty(),
@@ -661,13 +722,104 @@ class RecordViewModel @Inject constructor(
             "CS" to response.cs.orEmpty(),
             "SKY" to response.sky.orEmpty()
         )
-        _groupedChannels.value = grouped
+        if (exclusion != nhkExclusionRepository.state.value) return
+        rawGroupedChannels = grouped
             .filterValues { it.isNotEmpty() }
             .mapValues { (_, channels) ->
                 channels.sortedWith(compareBy({ it.channelNumber }, { it.displayChannelId }))
                     .map { it.name to it.id }
             }
+        publishVisibleChannels()
     }
+
+    private fun publishVisibleChannels() {
+        _groupedChannels.value = rawGroupedChannels.mapValues { (_, channels) ->
+            channels.filterNot { (_, id) -> nhkExclusionRepository.isExcludedChannelId(id) }
+        }.filterValues { it.isNotEmpty() }
+    }
+
+    private fun publishVisibleSeries() {
+        val active = nhkExclusionRepository.state.value.isActive
+        if (!active && rawOnlineSeries.isNotEmpty()) {
+            rawGroupedSeries = rawOnlineSeries.groupBy { it.genres?.firstOrNull()?.major ?: "その他" }
+                .mapValues { (_, series) ->
+                    series.map(::unfilteredSeriesInfo).distinctBy { it.seriesId }.sortedBy { it.displayTitle }
+                }
+        }
+        val visible = rawGroupedSeries.mapValues { (_, series) -> series.filter { item ->
+            !active || if (item.channelIds.isEmpty()) {
+                item.hasVisibleOnlyMetadata
+            } else {
+                !item.channelIds.all(nhkExclusionRepository::isExcludedChannelId) &&
+                    (!item.channelIds.any(nhkExclusionRepository::isExcludedChannelId) || item.hasVisibleOnlyMetadata)
+            }
+        } }.filterValues { it.isNotEmpty() }
+        _groupedSeries.value = visible
+        _availableGenres.value = visible.keys.sorted()
+    }
+
+    /** Derives mixed-series thumbnails and counts from the visible recordings only. */
+    private suspend fun buildVisibleSeriesInfo(
+        series: com.beeregg2001.komorebi.data.model.SeriesProgram,
+    ): SeriesInfo? {
+        val channelIds = series.channelIds
+        if (!nhkExclusionRepository.state.value.isActive) {
+            return unfilteredSeriesInfo(series)
+        }
+        if (channelIds.isNotEmpty() && channelIds.all(nhkExclusionRepository::isExcludedChannelId)) return null
+        val needsVisibleScan = channelIds.isEmpty() || channelIds.any(nhkExclusionRepository::isExcludedChannelId)
+        if (!needsVisibleScan) {
+            return SeriesInfo(
+                seriesId = series.id,
+                displayTitle = series.title,
+                searchKeyword = "series:${series.id}",
+                programCount = series.recordedProgramsCount,
+                representativeVideoId = series.thumbnailRecordedProgramIds.firstOrNull() ?: series.id,
+                description = series.description,
+                thumbnailVideoIds = series.thumbnailRecordedProgramIds,
+                isEpisodic = true,
+                channelIds = channelIds,
+                hasVisibleOnlyMetadata = true,
+            )
+        }
+
+        val rawPrograms = mutableListOf<RecordedProgram>()
+        var page = 1
+        var total = Int.MAX_VALUE
+        while (page <= SERIES_VISIBILITY_PAGE_LIMIT && rawPrograms.size < total) {
+            val response = recordProvider.getRecordedProgramsBySeries(series.id, page, "desc")
+            total = response.total
+            if (response.recordedPrograms.isEmpty()) break
+            rawPrograms += response.recordedPrograms
+            page++
+        }
+        val visiblePrograms = rawPrograms.filterNot(nhkExclusionRepository::isExcluded)
+        if (visiblePrograms.isEmpty()) return null
+        return SeriesInfo(
+            seriesId = series.id,
+            displayTitle = series.title,
+            searchKeyword = "series:${series.id}",
+            programCount = visiblePrograms.size,
+            representativeVideoId = visiblePrograms.first().id,
+            description = series.description,
+            thumbnailVideoIds = visiblePrograms.take(3).map { it.id },
+            isEpisodic = true,
+            channelIds = channelIds,
+            hasVisibleOnlyMetadata = true,
+        )
+    }
+
+    private fun unfilteredSeriesInfo(series: com.beeregg2001.komorebi.data.model.SeriesProgram): SeriesInfo = SeriesInfo(
+        seriesId = series.id,
+        displayTitle = series.title,
+        searchKeyword = "series:${series.id}",
+        programCount = series.recordedProgramsCount,
+        representativeVideoId = series.thumbnailRecordedProgramIds.firstOrNull() ?: series.id,
+        description = series.description,
+        thumbnailVideoIds = series.thumbnailRecordedProgramIds,
+        isEpisodic = true,
+        channelIds = series.channelIds,
+    )
 
     private suspend fun buildSeriesAndChannelMaps(
         seriesList: List<SeriesProjection>,
@@ -690,7 +842,7 @@ class RecordViewModel @Inject constructor(
             val extractNumber = { idStr: String ->
                 Regex("\\d+").find(idStr)?.value?.toIntOrNull() ?: Int.MAX_VALUE
             }
-            _groupedChannels.value = allChannelMap.entries
+            rawGroupedChannels = allChannelMap.entries
                 .sortedBy { (type, _) ->
                     typePriority.indexOf(type).let { if (it != -1) it else typePriority.size }
                 }
@@ -699,15 +851,13 @@ class RecordViewModel @Inject constructor(
                         compareBy({ extractNumber(it.third) }, { it.third })
                     ).map { Pair(it.first, it.second) }
                 }
+            publishVisibleChannels()
 
-            val genresSet = mutableSetOf<String>()
             val finalGroupedSeries = mutableMapOf<String, MutableList<SeriesInfo>>()
 
             seriesList.forEach { proj ->
                 if (proj.programCount >= 2 || proj.isEpisodic) {
                     val majorGenre = proj.genres?.firstOrNull()?.major ?: "その他"
-                    genresSet.add(majorGenre)
-
                     val seriesInfo = SeriesInfo(
                         displayTitle = proj.seriesName,
                         searchKeyword = proj.seriesName,
@@ -723,11 +873,10 @@ class RecordViewModel @Inject constructor(
                 }
             }
 
-            _availableGenres.value = genresSet.sorted()
-
-            _groupedSeries.value = finalGroupedSeries.mapValues { entry ->
+            rawGroupedSeries = finalGroupedSeries.mapValues { entry ->
                 entry.value.sortedBy { it.displayTitle }
             }.filterValues { it.isNotEmpty() }
+            publishVisibleSeries()
 
         } catch (e: Exception) {
             Log.e(TAG, "Map Build Error", e)

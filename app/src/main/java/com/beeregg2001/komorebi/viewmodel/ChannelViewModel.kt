@@ -19,7 +19,8 @@ import javax.inject.Inject
 class ChannelViewModel @Inject constructor(
     private val watchHistoryRepository: WatchHistoryRepository,
     private val channelLogoCache: ChannelLogoCache,
-    private val appContentStore: AppContentStore
+    private val appContentStore: AppContentStore,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) : ViewModel() {
 
     val isLoading: StateFlow<Boolean> = appContentStore.isChannelsLoading
@@ -33,9 +34,9 @@ class ChannelViewModel @Inject constructor(
      * the station is still present in the live channel catalogue.
      */
     val lastWatchedChannels: StateFlow<List<Channel>> =
-        combine(watchHistoryRepository.getLastChannels(), groupedChannels) { history, grouped ->
+        combine(watchHistoryRepository.getLastChannels(), groupedChannels, nhkExclusionRepository.state) { history, grouped, exclusion ->
             val liveChannels = grouped.values.flatten()
-            history.map { entity ->
+            if (!exclusion.isLoaded) emptyList() else history.map { entity ->
                 liveChannels.firstOrNull { channel ->
                     channel.networkId == entity.networkId && channel.serviceId == entity.serviceId
                 } ?: Channel(
@@ -52,7 +53,7 @@ class ChannelViewModel @Inject constructor(
                     programFollowing = null,
                     remocon_Id = 0
                 )
-            }
+            }.filterNot(nhkExclusionRepository::isExcluded)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

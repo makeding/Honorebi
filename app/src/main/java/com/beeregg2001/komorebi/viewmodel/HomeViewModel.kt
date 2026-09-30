@@ -49,7 +49,9 @@ class HomeViewModel @Inject constructor(
     private val lastChannelRepository: LastChannelRepository,
     private val watchHistoryRepository: WatchHistoryRepository,
     private val launcherAppRepository: LauncherAppRepository,
-    private val appUpdater: AppUpdater
+    private val appUpdater: AppUpdater,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
+    private val recordProvider: com.beeregg2001.komorebi.data.repository.RecordProvider,
 ) : ViewModel() {
 
     private val _isLoading = MutableStateFlow(false)
@@ -185,13 +187,23 @@ class HomeViewModel @Inject constructor(
     }
 
     val watchHistory: StateFlow<List<KonomiHistoryProgram>> =
-        watchHistoryRepository.getLocalWatchHistory()
-            .map { entities -> entities.map { KonomiDataMapper.toUiModel(it) } }
+        combine(watchHistoryRepository.getLocalWatchHistory(), nhkExclusionRepository.state) { entities, exclusion ->
+            entities to exclusion
+        }.transformLatest { (entities, exclusion) ->
+            emit(emptyList())
+            if (exclusion.isLoaded) emit(withContext(Dispatchers.IO) {
+                entities.filter { entity ->
+                    !exclusion.isActive || recordProvider.getRecordedProgram(entity.id).getOrNull()
+                        ?.let { !nhkExclusionRepository.isExcluded(it) } == true
+                }.map { KonomiDataMapper.toUiModel(it) }
+            })
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val lastWatchedChannelFlow: StateFlow<List<Channel>> = watchHistoryRepository.getLastChannels()
-        .map { entities ->
-            entities.map { entity ->
+    val lastWatchedChannelFlow: StateFlow<List<Channel>> = combine(
+        watchHistoryRepository.getLastChannels(), nhkExclusionRepository.state,
+    ) { entities, exclusion ->
+            if (!exclusion.isLoaded) emptyList() else entities.map { entity ->
                 Channel(
                     id = entity.channelId, name = entity.name, type = entity.type,
                     channelNumber = entity.channelNumber ?: "", displayChannelId = entity.channelId,
@@ -199,7 +211,7 @@ class HomeViewModel @Inject constructor(
                     isWatchable = true, isDisplay = true, programPresent = null,
                     programFollowing = null, remocon_Id = 0
                 )
-            }
+            }.filterNot(nhkExclusionRepository::isExcluded)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -213,8 +225,11 @@ class HomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "自動")
 
     private val _genrePickupPrograms = MutableStateFlow<List<Pair<EpgProgram, String>>>(emptyList())
-    val genrePickupPrograms: StateFlow<List<Pair<EpgProgram, String>>> =
-        _genrePickupPrograms.asStateFlow()
+    val genrePickupPrograms: StateFlow<List<Pair<EpgProgram, String>>> = combine(
+        _genrePickupPrograms, nhkExclusionRepository.state,
+    ) { programs, exclusion ->
+        if (!exclusion.isLoaded) emptyList() else programs.filterNot { nhkExclusionRepository.isExcludedChannelId(it.first.channel_id) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _genrePickupTimeSlot = MutableStateFlow("夜")
     val genrePickupTimeSlot: StateFlow<String> = _genrePickupTimeSlot.asStateFlow()

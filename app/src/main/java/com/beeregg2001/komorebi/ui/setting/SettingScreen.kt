@@ -160,7 +160,7 @@ fun SettingsScreen(
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(5) { FocusRequester() },
+            List(6) { FocusRequester() },
             List(10) { FocusRequester() },
             List(11) { FocusRequester() },
             List(2) { FocusRequester() },
@@ -424,6 +424,15 @@ fun SettingsScreen(
                                         if (prefs.excludePaid == "ON") "OFF" else "ON"
                                     )
                                 }
+                            },
+                            viewModel.nhkExclusionState.collectAsState().value.mode.displayLabel,
+                            itemFocusRequesters[0][5],
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    "N〇K除外モード",
+                                    com.beeregg2001.komorebi.data.model.NHKExclusionMode.entries.map { it.displayLabel to it.name },
+                                    viewModel.nhkExclusionState.value.mode.name,
+                                ) { viewModel.setNHKExclusionMode(com.beeregg2001.komorebi.data.model.NHKExclusionMode.fromPreference(it)) }
                             },
                             categoryFocusRequesters[0]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }

@@ -60,6 +60,42 @@ fun MainRootScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = rememberMainRootState()
+    val nhkExclusionRepository = settingsViewModel.nhkExclusionRepository
+    val nhkExclusionState by nhkExclusionRepository.state.collectAsState()
+
+    fun excludeCurrentNHKContent(): Boolean {
+        fun isExcludedTarget(target: PlaybackTarget): Boolean = when (target) {
+            is PlaybackTarget.Live -> nhkExclusionRepository.isExcluded(target.channel)
+            is PlaybackTarget.Recorded -> nhkExclusionRepository.isExcluded(target.program)
+            else -> false
+        }
+        val excluded = isExcludedTarget(state.playbackState.renderPlaybackTarget) ||
+            isExcludedTarget(state.playbackState.playbackTarget)
+        if (excluded) {
+            state.playbackState.resetPlayback()
+            remoteControlViewModel.client.sendState(contentType = "Idle")
+        }
+        if (nhkExclusionRepository.state.value.isActive) {
+            state.playbackState.invalidatePlaybackOpenIntents()
+            if (state.epgSelectedProgram?.channel_id?.let(nhkExclusionRepository::isExcludedChannelId) == true) {
+                state.epgSelectedProgram = null
+            }
+            if (state.selectedProgramForAutoReserve?.let(nhkExclusionRepository::isExcluded) == true) {
+                state.selectedProgramForAutoReserve = null
+            }
+            if (state.selectedReserve?.let(nhkExclusionRepository::isExcluded) == true) state.selectedReserve = null
+            if (state.editingReserveItem?.let(nhkExclusionRepository::isExcluded) == true) state.editingReserveItem = null
+            if (state.reserveToDelete?.let(nhkExclusionRepository::isExcluded) == true) state.reserveToDelete = null
+            if (state.selectedConditionReserveItem?.let(nhkExclusionRepository::isExcluded) == true) state.selectedConditionReserveItem = null
+            if (state.editingNewProgram?.channel_id?.let(nhkExclusionRepository::isExcludedChannelId) == true) state.editingNewProgram = null
+        }
+        return excluded
+    }
+
+    LaunchedEffect(nhkExclusionState, state.playbackState.renderPlaybackTarget) {
+        excludeCurrentNHKContent()
+        remoteControlViewModel.client.refreshNHKExclusionState()
+    }
 
     // HonomiTV Web クライアントで選択されたライブ放送・録画番組を、既存の再生状態へ直接引き渡す。
     // 再生開始後の操作は既存の Android MediaSession / Cast 経路へ任せ、独自制御を重複実装しない。
@@ -86,7 +122,7 @@ fun MainRootScreen(
                                 findChannel()
                             }
                         }
-                        if (channel != null && state.playbackState.completePlaybackOpenIntent(intent)) {
+                        if (channel != null && !nhkExclusionRepository.isExcluded(channel) && state.playbackState.completePlaybackOpenIntent(intent)) {
                             onRemotePlaybackOpened()
                             state.playbackState.enterLive(channel)
                             homeViewModel.saveLastChannel(channel)
@@ -99,7 +135,7 @@ fun MainRootScreen(
                     val intent = state.playbackState.beginPlaybackOpenIntent()
                     scope.launch {
                         val program = recordViewModel.getRemoteProgram(command.recordedProgramId)
-                        if (program != null && state.playbackState.completePlaybackOpenIntent(intent)) {
+                        if (program != null && !nhkExclusionRepository.isExcluded(program) && state.playbackState.completePlaybackOpenIntent(intent)) {
                             onRemotePlaybackOpened()
                             val positionMs = (command.positionSeconds * 1_000).toLong()
                             if (!state.playbackState.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {
@@ -112,6 +148,20 @@ fun MainRootScreen(
                 }
                 // CM スキップ設定は再生セッションではなくアプリ全体の設定なので、
                 // 再生画面が開いていなくても反映できるようここで受ける。
+                is HonomiRemoteCommand.EnableTemporaryNHKHide -> {
+                    try {
+                        if (!remoteControlViewModel.client.wasNHKCommandApplied(command.commandId)) {
+                            nhkExclusionRepository.enableTemporaryNHKHide()
+                        }
+                        excludeCurrentNHKContent()
+                        withFrameNanos { }
+                        remoteControlViewModel.client.reportNHKExclusionResult(command.commandId, applied = true)
+                    } catch (failure: Exception) {
+                        if (failure is kotlinx.coroutines.CancellationException) throw failure
+                        remoteControlViewModel.client.reportNHKExclusionResult(command.commandId, applied = false)
+                        state.toastMessage = "N〇K除外モードを保存できませんでした。もう一度操作してください。（NHK_EXCLUSION_SAVE_FAILED）"
+                    }
+                }
                 is HonomiRemoteCommand.SetCMSkipMode -> {
                     settingsViewModel.setCmSkipMode(command.mode)
                     state.toastMessage = "CMスキップ: ${command.mode.displayLabel}"
@@ -145,6 +195,7 @@ fun MainRootScreen(
                 }
 
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    scope.launch { nhkExclusionRepository.refreshExpiry() }
                     // アプリ画面に戻ってきた時（かつ、一度裏に回っていた場合のみ実行）
                     if (!isAppInForeground) {
                         isAppInForeground = true

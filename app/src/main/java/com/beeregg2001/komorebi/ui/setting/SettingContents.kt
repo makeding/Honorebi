@@ -82,6 +82,9 @@ fun GeneralSettingsContent(
     onCapabilities: () -> Unit,
     exPaidR: FocusRequester,
     onToggleExcludePaid: () -> Unit,
+    nhkExclusionLabel: String,
+    nhkExclusionR: FocusRequester,
+    onEditNHKExclusion: () -> Unit,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -164,9 +167,20 @@ fun GeneralSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = capabilityR
-                        down = FocusRequester.Cancel
+                        down = nhkExclusionR
                     },
                 onClick = { onClick(exPaidR); onToggleExcludePaid() })
+            SettingItem(
+                "N〇K除外モード",
+                nhkExclusionLabel,
+                Icons.Default.Lock,
+                modifier = Modifier.focusRequester(nhkExclusionR).focusProperties {
+                    left = sidebarR
+                    up = exPaidR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(nhkExclusionR); onEditNHKExclusion() },
+            )
         }
     }
 }

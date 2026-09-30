@@ -6,6 +6,9 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import com.beeregg2001.komorebi.data.model.NHKExclusionMode
+import com.beeregg2001.komorebi.data.model.NHKExclusionState
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.beeregg2001.komorebi.data.model.CmSkipMode
@@ -98,6 +101,8 @@ class SettingsRepository @Inject constructor(
 
         val HOME_PICKUP_GENRE = stringPreferencesKey("home_pickup_genre")
         val EXCLUDE_PAID_BROADCASTS = stringPreferencesKey("exclude_paid_broadcasts")
+        val NHK_EXCLUSION_MODE = stringPreferencesKey("nhk_exclusion_mode")
+        val NHK_EXCLUSION_EXPIRES_AT = longPreferencesKey("nhk_exclusion_expires_at")
         val HOME_PICKUP_TIME = stringPreferencesKey("home_pickup_time")
         val STARTUP_TAB = stringPreferencesKey("startup_tab")
         val STARTUP_CHANNEL = stringPreferencesKey("startup_channel")
@@ -204,6 +209,20 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[HOME_PICKUP_GENRE] ?: "アニメ" }
     val excludePaidBroadcasts: Flow<String> =
         context.dataStore.data.map { it[EXCLUDE_PAID_BROADCASTS] ?: "ON" }
+    val nhkExclusionPreferences: Flow<NHKExclusionState> = context.dataStore.data.map {
+        NHKExclusionState(
+            mode = NHKExclusionMode.fromPreference(it[NHK_EXCLUSION_MODE]),
+            expiresAtMillis = it[NHK_EXCLUSION_EXPIRES_AT],
+        )
+    }
+
+    suspend fun saveNHKExclusion(state: NHKExclusionState) {
+        context.dataStore.edit {
+            it[NHK_EXCLUSION_MODE] = state.mode.name
+            if (state.expiresAtMillis == null) it.remove(NHK_EXCLUSION_EXPIRES_AT)
+            else it[NHK_EXCLUSION_EXPIRES_AT] = state.expiresAtMillis
+        }
+    }
     val homePickupTime: Flow<String> = context.dataStore.data.map { it[HOME_PICKUP_TIME] ?: "自動" }
     val startupTab: Flow<String> = context.dataStore.data.map {
         normalizeStartupTab(it[STARTUP_TAB])

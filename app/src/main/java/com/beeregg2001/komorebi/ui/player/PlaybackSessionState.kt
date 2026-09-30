@@ -83,7 +83,8 @@ internal fun shouldDismissPlayerOverlaysForRemoteCommand(command: HonomiRemoteCo
     HonomiRemoteCommand.VolumeUp,
     HonomiRemoteCommand.VolumeDown,
     HonomiRemoteCommand.VolumeMute,
-    is HonomiRemoteCommand.SetCMSkipMode -> false
+    is HonomiRemoteCommand.SetCMSkipMode,
+    is HonomiRemoteCommand.EnableTemporaryNHKHide -> false
 }
 
 enum class PlaybackBackResult { Ignored, Handled, RestoredFullscreen }
@@ -344,7 +345,7 @@ class PlaybackSessionState {
     }
 
     @Synchronized
-    private fun invalidatePlaybackOpenIntents() {
+    fun invalidatePlaybackOpenIntents() {
         currentPlaybackOpenIntent = null
     }
 

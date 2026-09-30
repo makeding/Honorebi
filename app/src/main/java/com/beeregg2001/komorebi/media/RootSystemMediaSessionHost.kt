@@ -38,7 +38,8 @@ internal fun shouldDispatchRemoteTransport(
     // MainRootScreen 側のコレクターが担当する。
     is HonomiRemoteCommand.OpenLive,
     is HonomiRemoteCommand.OpenRecording,
-    is HonomiRemoteCommand.SetCMSkipMode -> false
+    is HonomiRemoteCommand.SetCMSkipMode,
+    is HonomiRemoteCommand.EnableTemporaryNHKHide -> false
 }
 
 /** Provides one media-session owner for the current root playback epoch. */
@@ -107,7 +108,8 @@ fun RootSystemMediaSessionHost(
                 )
                 is HonomiRemoteCommand.OpenLive,
                 is HonomiRemoteCommand.OpenRecording,
-                is HonomiRemoteCommand.SetCMSkipMode -> Unit
+                is HonomiRemoteCommand.SetCMSkipMode,
+                is HonomiRemoteCommand.EnableTemporaryNHKHide -> Unit
             }
         }
     }

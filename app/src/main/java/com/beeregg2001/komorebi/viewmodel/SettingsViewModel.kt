@@ -73,7 +73,14 @@ class SettingsViewModel @Inject constructor(
     private val watchHistoryRepository: WatchHistoryRepository,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val cacheManager: CacheManager,
+    val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) : ViewModel() {
+
+    val nhkExclusionState = nhkExclusionRepository.state
+
+    fun setNHKExclusionMode(mode: com.beeregg2001.komorebi.data.model.NHKExclusionMode) {
+        viewModelScope.launch { nhkExclusionRepository.setMode(mode) }
+    }
 
     private val gson = Gson()
 

@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -60,6 +61,14 @@ fun MainRootPlaybackHost(
     onSaveLastChannel: (Channel) -> Unit,
     onPlaybackEnded: () -> Unit,
 ) {
+    val settingsViewModel: com.beeregg2001.komorebi.viewmodel.SettingsViewModel = hiltViewModel()
+    val exclusion by settingsViewModel.nhkExclusionState.collectAsState()
+    val target = state.playbackState.renderPlaybackTarget
+    if (!exclusion.isLoaded || when (target) {
+            is PlaybackTarget.Live -> settingsViewModel.nhkExclusionRepository.isExcluded(target.channel)
+            is PlaybackTarget.Recorded -> settingsViewModel.nhkExclusionRepository.isExcluded(target.program)
+            else -> false
+        }) return
     // Keep MediaRouter2 route discovery alive for the whole playback session.
     // A recorded-program transition replaces the keyed VideoPlayerScreen below,
     // but must not make Cast targets disappear while the next episode starts.

@@ -105,7 +105,8 @@ class LivePlayerViewModel @Inject constructor(
     private val livePlaybackSourceResolver: LivePlaybackSourceResolver,
     private val channelLogoCache: ChannelLogoCache,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
-    private val liveJikkyoManager: LiveJikkyoManager
+    private val liveJikkyoManager: LiveJikkyoManager,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) : ViewModel() {
 
     companion object {
@@ -305,6 +306,14 @@ class LivePlayerViewModel @Inject constructor(
     private var dualIntent: LiveSlotIntent? = null
 
     init {
+        viewModelScope.launch {
+            nhkExclusionRepository.state.collect { exclusion ->
+                if (exclusion.isLoaded) {
+                    if (mainCurrentChannel?.let(nhkExclusionRepository::isExcluded) == true) stopAllPlayers()
+                    else if (dualCurrentChannel?.let(nhkExclusionRepository::isExcluded) == true) stopDualPlayer()
+                }
+            }
+        }
         viewModelScope.launch {
             settingsRepository.subtitleFont.collect { fontId ->
                 mainCaptionDecoder.setFontId(fontId)
@@ -806,6 +815,7 @@ class LivePlayerViewModel @Inject constructor(
         isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false,
         onPlaybackRequestCommitted: (Channel) -> Unit = {}
     ) {
+        if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
         if (!isAutoRetry) mainIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.MAIN, channel.id)
@@ -940,6 +950,7 @@ class LivePlayerViewModel @Inject constructor(
         uiContext: Context, channel: Channel, source: StreamSource,
         isEdcbDirect: Boolean, quality: StreamQuality, isAutoRetry: Boolean = false
     ) {
+        if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
         if (!isAutoRetry) dualIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.DUAL, channel.id)

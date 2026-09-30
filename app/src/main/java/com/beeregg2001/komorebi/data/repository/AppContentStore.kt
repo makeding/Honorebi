@@ -27,6 +27,9 @@ import javax.inject.Singleton
 import com.beeregg2001.komorebi.data.api.interceptor.BackendRetryGate
 import com.beeregg2001.komorebi.data.api.interceptor.backendApiFailure
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 
 private const val TAG = "AppContentStore"
 private const val CHANNEL_REFRESH_INTERVAL_MS = 60_000L
@@ -39,6 +42,7 @@ class AppContentStore @Inject constructor(
     private val liveProvider: LiveProvider,
     private val recordProvider: RecordProvider,
     private val settingsRepository: SettingsRepository,
+    private val nhkExclusionRepository: NHKExclusionRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -46,13 +50,29 @@ class AppContentStore @Inject constructor(
     val isChannelsLoading: StateFlow<Boolean> = _isChannelsLoading.asStateFlow()
 
     private val _groupedChannels = MutableStateFlow<Map<String, List<Channel>>>(emptyMap())
-    val groupedChannels: StateFlow<Map<String, List<Channel>>> = _groupedChannels.asStateFlow()
+    val groupedChannels: StateFlow<Map<String, List<Channel>>> = combine(
+        _groupedChannels, nhkExclusionRepository.state,
+    ) { grouped, exclusion ->
+        if (!exclusion.isLoaded) emptyMap() else grouped.mapValues { (_, channels) ->
+            channels.filterNot(nhkExclusionRepository::isExcluded)
+        }.filterValues { it.isNotEmpty() }
+    }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
     private val _liveRows = MutableStateFlow<List<LiveRowState>>(emptyList())
-    val liveRows: StateFlow<List<LiveRowState>> = _liveRows.asStateFlow()
+    val liveRows: StateFlow<List<LiveRowState>> = combine(
+        _liveRows, nhkExclusionRepository.state,
+    ) { rows, exclusion ->
+        if (!exclusion.isLoaded) emptyList() else rows.map { row ->
+            row.copy(channels = row.channels.filterNot { nhkExclusionRepository.isExcluded(it.channel) })
+        }.filter { it.channels.isNotEmpty() }
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val _recentRecordings = MutableStateFlow<List<RecordedProgram>>(emptyList())
-    val recentRecordings: StateFlow<List<RecordedProgram>> = _recentRecordings.asStateFlow()
+    val recentRecordings: StateFlow<List<RecordedProgram>> = combine(
+        _recentRecordings, nhkExclusionRepository.state,
+    ) { programs, exclusion ->
+        if (!exclusion.isLoaded) emptyList() else programs.filterNot(nhkExclusionRepository::isExcluded).take(20)
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val _isRecordingsLoading = MutableStateFlow(true)
     val isRecordingsLoading: StateFlow<Boolean> = _isRecordingsLoading.asStateFlow()
@@ -82,6 +102,11 @@ class AppContentStore @Inject constructor(
     private var isRecordingPollingEnabled = false
 
     init {
+        scope.launch {
+            nhkExclusionRepository.state.drop(1).collect { exclusion ->
+                if (exclusion.isLoaded && isRecordingPollingEnabled) refreshRecentRecordings()
+            }
+        }
         startMaintenance()
         scope.launch {
             settingsRepository.cloudflareAccessConfiguration.drop(1).collect {
@@ -213,6 +238,8 @@ class AppContentStore @Inject constructor(
                     channels
                 }
 
+                nhkExclusionRepository.updateChannels(channels)
+
                 filtered.filter { it.isDisplay }.groupBy { it.type }
             }
 
@@ -242,10 +269,17 @@ class AppContentStore @Inject constructor(
         if (isFetchingRecordings) return
         isFetchingRecordings = true
         try {
-            val response = withContext(Dispatchers.IO) {
-                recordProvider.getRecordedPrograms(page = 1, order = "desc")
+            val firstPage = withContext(Dispatchers.IO) {
+                val raw = mutableListOf<RecordedProgram>()
+                var page = 1
+                do {
+                    val response = recordProvider.getRecordedPrograms(page = page, order = "desc")
+                    raw.addAll(response.recordedPrograms)
+                    if (response.recordedPrograms.isEmpty() || raw.size >= response.total) break
+                    page++
+                } while (raw.count { !nhkExclusionRepository.isExcluded(it) } < 20)
+                raw.toList()
             }
-            val firstPage = response.recordedPrograms.take(20)
             _recordingError.value = null
             recordingRetry.reset()
             if (_recentRecordings.value != firstPage) {

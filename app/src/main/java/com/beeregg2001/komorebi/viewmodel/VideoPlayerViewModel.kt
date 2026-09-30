@@ -13,6 +13,7 @@ import com.beeregg2001.komorebi.data.model.CmSection
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.repository.KonomiRepository
+import com.beeregg2001.komorebi.data.repository.NHKExclusionRepository
 import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
@@ -56,6 +57,7 @@ class VideoPlayerViewModel @Inject constructor(
     private val channelLogoCache: com.beeregg2001.komorebi.data.repository.ChannelLogoCache,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val playbackSourceResolver: RecordedPlaybackSourceResolver,
+    private val nhkExclusionRepository: NHKExclusionRepository,
 ) : ViewModel() {
 
     companion object {
@@ -121,6 +123,24 @@ class VideoPlayerViewModel @Inject constructor(
     private var quickSeriesIdentity: String? = null
     private var preferredQuickSeriesChannelId: String? = null
     private var bangumiProgressReportedProgramId: Int? = null
+
+    init {
+        viewModelScope.launch {
+            nhkExclusionRepository.state.collect {
+                quickVideoFetchJob?.cancel()
+                quickVideoCache.clear()
+                val current = _quickVideoCandidates.value
+                _quickVideoCandidates.value = current.copy(
+                    seriesPrograms = current.seriesPrograms.filterNot(nhkExclusionRepository::isExcluded),
+                    recentPrograms = current.recentPrograms.filterNot(nhkExclusionRepository::isExcluded),
+                    isLoading = false,
+                )
+                if (nhkExclusionRepository.isExcluded(_programDetail.value ?: return@collect)) {
+                    clearProgramDetail()
+                }
+            }
+        }
+    }
 
     fun reportBangumiPlaybackProgress(programId: Int, positionMs: Long, durationMs: Long) {
         if (bangumiProgressReportedProgramId == programId) return
@@ -206,6 +226,10 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
     fun fetchProgramDetail(videoId: Int) {
+        if (!nhkExclusionRepository.state.value.isLoaded) {
+            clearProgramDetail()
+            return
+        }
         detailFetchJob?.cancel()
         _programDetail.value = null
         _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId, loading = true)
@@ -223,6 +247,11 @@ class VideoPlayerViewModel @Inject constructor(
             }
             if (!isActive) return@launch
             result.onSuccess { program ->
+                if (nhkExclusionRepository.isExcluded(program)) {
+                    _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId)
+                    _programDetail.value = null
+                    return@onSuccess
+                }
                 if (settingsRepository.backendType.first() == "KONOMITV" &&
                     program.recordedVideo.containerFormat.isBlank()) {
                     _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(
@@ -271,6 +300,11 @@ class VideoPlayerViewModel @Inject constructor(
         localRecentPrograms: List<RecordedProgram>,
         force: Boolean = false
     ) {
+        if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(program)) {
+            cancelQuickVideoRefresh()
+            _quickVideoCandidates.value = QuickVideoCandidates()
+            return
+        }
         val seriesTitle = quickSeriesDisplayTitle(program)
         val seriesKey = normalizeQuickSeriesKey(seriesTitle)
         val seriesIdentity = program.seriesId?.let { "series:$it" } ?: seriesKey
@@ -437,6 +471,7 @@ class VideoPlayerViewModel @Inject constructor(
             currentProgram = program,
             candidates = (listOf(program) + candidates)
             .distinctBy { it.id }
+            .filterNot(nhkExclusionRepository::isExcluded)
             .filter { candidate ->
                 val candidateTitle = quickSeriesDisplayTitle(candidate)
                 val candidateKey = normalizeQuickSeriesKey(candidateTitle)
@@ -454,6 +489,7 @@ class VideoPlayerViewModel @Inject constructor(
     ): List<RecordedProgram> =
         (listOf(program) + candidates)
             .distinctBy { it.id }
+            .filterNot(nhkExclusionRepository::isExcluded)
             .sortedByDescending { it.startTime }
             .take(QUICK_VIDEO_LIMIT)
 

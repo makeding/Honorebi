@@ -55,6 +55,7 @@ sealed interface HonomiRemoteCommand {
     data class SkipChapter(val direction: HonomiRemoteSkipDirection) : HonomiRemoteCommand
     data object SkipCM : HonomiRemoteCommand
     data class SetCMSkipMode(val mode: CmSkipMode) : HonomiRemoteCommand
+    data class EnableTemporaryNHKHide(val commandId: String) : HonomiRemoteCommand
     data object VolumeUp : HonomiRemoteCommand
     data object VolumeDown : HonomiRemoteCommand
     data object VolumeMute : HonomiRemoteCommand
@@ -94,6 +95,12 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
             else -> null
         }
         "SkipCM" -> HonomiRemoteCommand.SkipCM
+        "EnableTemporaryNHKHide" -> {
+            val commandId = envelope.get("command_id")?.asString?.takeIf { it.isNotBlank() }
+            if (command.get("duration_seconds")?.asInt == 1800 && commandId != null) {
+                HonomiRemoteCommand.EnableTemporaryNHKHide(commandId)
+            } else null
+        }
         "SetCMSkipMode" -> when (command.get("mode")?.asString) {
             "Off" -> HonomiRemoteCommand.SetCMSkipMode(CmSkipMode.OFF)
             "Manual" -> HonomiRemoteCommand.SetCMSkipMode(CmSkipMode.MANUAL)
@@ -123,6 +130,7 @@ class HonomiRemoteControlClient @Inject constructor(
     okHttpClient: OkHttpClient,
     private val gson: Gson,
     private val sessionStore: HonomiSessionStore,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) {
     private val webSocketClient = okHttpClient.newBuilder()
         .followRedirects(false)
@@ -134,6 +142,43 @@ class HonomiRemoteControlClient @Inject constructor(
     private var connectionJob: Job? = null
     @Volatile private var activeWebSocket: WebSocket? = null
     @Volatile private var latestStateJson: String? = null
+    private var nhkCommandResult: JsonObject? = null
+    private val appliedNHKCommands = linkedSetOf<String>()
+
+    fun wasNHKCommandApplied(commandId: String): Boolean = commandId in appliedNHKCommands
+
+    fun reportNHKExclusionResult(commandId: String, applied: Boolean) {
+        if (applied) {
+            appliedNHKCommands.add(commandId)
+            if (appliedNHKCommands.size > 64) appliedNHKCommands.remove(appliedNHKCommands.first())
+        }
+        nhkCommandResult = JsonObject().apply {
+            addProperty("command_id", commandId)
+            addProperty("status", if (applied) "Applied" else "Failed")
+            if (!applied) addProperty("error_code", "NHK_EXCLUSION_SAVE_FAILED")
+        }
+        refreshNHKExclusionState()
+    }
+
+    fun refreshNHKExclusionState() {
+        val current = latestStateJson?.let { gson.fromJson(it, JsonObject::class.java) } ?: JsonObject().apply {
+            addProperty("type", "State")
+            addProperty("content_type", "Idle")
+        }
+        addNHKExclusionState(current)
+        current.addProperty("state_sequence", ++stateSequence)
+        val json = gson.toJson(current)
+        latestStateJson = json
+        activeWebSocket?.send(json)
+    }
+
+    private fun addNHKExclusionState(target: JsonObject) {
+        val exclusion = nhkExclusionRepository.state.value
+        target.addProperty("supports_nhk_exclusion", exclusion.isLoaded)
+        target.addProperty("nhk_exclusion_mode", exclusion.mode.name)
+        target.addProperty("nhk_exclusion_expires_at", exclusion.expiresAtMillis)
+        target.add("nhk_exclusion_command_result", nhkCommandResult)
+    }
     // sendState() は常にメインスレッドから呼ばれるが、再接続時の再送と競合しないよう連番も @Volatile で保持する。
     @Volatile private var stateSequence: Long = 0L
 
@@ -155,6 +200,7 @@ class HonomiRemoteControlClient @Inject constructor(
     ) {
         val state = JsonObject().apply {
             addProperty("type", "State")
+            addNHKExclusionState(this)
             addProperty("content_type", contentType)
             title?.let { addProperty("title", it) }
             subtitle?.let { addProperty("subtitle", it) }

@@ -11,7 +11,8 @@ class RecordedProgramPagingSource(
     private val order: String,
     private val channelId: String? = null,
     private val genre: String? = null,
-    private val seriesId: Int? = null
+    private val seriesId: Int? = null,
+    private val isProgramExcluded: (RecordedProgram) -> Boolean = { false },
 ) : PagingSource<Int, RecordedProgram>() {
 
     private companion object {
@@ -47,10 +48,12 @@ class RecordedProgramPagingSource(
                     genre = genre
                 )
             }
-            val programs = response.recordedPrograms
+            // Cursor termination follows the raw server response, even if a page is all hidden.
+            val rawPrograms = response.recordedPrograms
+            val programs = rawPrograms.filterNot(isProgramExcluded)
             val total = response.total
             val reachedEnd =
-                programs.size < SERVER_PAGE_SIZE || (total > 0 && page * SERVER_PAGE_SIZE >= total)
+                rawPrograms.size < SERVER_PAGE_SIZE || (total > 0 && page * SERVER_PAGE_SIZE >= total)
 
             LoadResult.Page(
                 data = programs,

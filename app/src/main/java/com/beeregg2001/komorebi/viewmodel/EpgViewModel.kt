@@ -42,11 +42,25 @@ class EpgViewModel @OptIn(UnstableApi::class)
     private val repository: EpgRepository,
     private val liveProvider: LiveProvider,
     private val settingsRepository: SettingsRepository,
+    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    var uiState by mutableStateOf<EpgUiState>(EpgUiState.Loading)
+    private var rawUiState by mutableStateOf<EpgUiState>(EpgUiState.Loading)
         private set
+    private var exclusionState by mutableStateOf(nhkExclusionRepository.state.value)
+    var uiState: EpgUiState
+        get() {
+            val current = rawUiState
+            if (!exclusionState.isLoaded) return EpgUiState.Loading
+            if (current !is EpgUiState.Success) return current
+            val visibleIndices = current.data.indices.filter { !nhkExclusionRepository.isExcluded(current.data[it].channel) }
+            return current.copy(
+                data = visibleIndices.map { current.data[it] },
+                logoUrls = visibleIndices.map { current.logoUrls.getOrElse(it) { "" } },
+            )
+        }
+        private set(value) { rawUiState = value }
 
     private val _isPreloading = MutableStateFlow(true)
     val isPreloading: StateFlow<Boolean> = _isPreloading
@@ -81,7 +95,11 @@ class EpgViewModel @OptIn(UnstableApi::class)
     val activeSearchQuery: StateFlow<String> = _activeSearchQuery.asStateFlow()
 
     private val _searchResults = MutableStateFlow<List<UiSearchResultItem>>(emptyList())
-    val searchResults: StateFlow<List<UiSearchResultItem>> = _searchResults.asStateFlow()
+    val searchResults: StateFlow<List<UiSearchResultItem>> = combine(
+        _searchResults, nhkExclusionRepository.state,
+    ) { results, exclusion ->
+        if (!exclusion.isLoaded) emptyList() else results.filterNot { nhkExclusionRepository.isExcluded(it.channel) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
@@ -106,6 +124,7 @@ class EpgViewModel @OptIn(UnstableApi::class)
     }
 
     init {
+        viewModelScope.launch { nhkExclusionRepository.state.collect { exclusionState = it } }
         loadSearchHistory()
 
         viewModelScope.launch {
