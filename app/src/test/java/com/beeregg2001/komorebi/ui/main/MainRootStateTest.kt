@@ -191,6 +191,7 @@ class MainRootStateTest {
     @Test
     fun resetForLauncherHome_clearsTargetAndRestoresPlaybackUiDefaults() {
         val state = MainRootState()
+        state.currentTabIndex = state.getVisibleTabs().indexOf("ビデオ")
         val previousFocusTick = state.launcherHomeFocusTick
         state.playbackState.enterLive(channel())
         state.playbackState.initialPlaybackPositionMs = 9_999L
@@ -208,6 +209,7 @@ class MainRootStateTest {
 
         state.resetForLauncherHome()
 
+        assertEquals(0, state.currentTabIndex)
         assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
         assertEquals(0L, state.playbackState.initialPlaybackPositionMs)
         assertFalse(state.playbackState.isMiniPlayerMode)
@@ -221,6 +223,44 @@ class MainRootStateTest {
         assertTrue(state.playbackState.showPlayerControls)
         assertFalse(state.playbackState.isReturningFromPlayer)
         assertEquals(previousFocusTick + 1, state.launcherHomeFocusTick)
+        assertFalse(state.triggerHomeBack)
+    }
+
+    @Test
+    fun resetForLauncherHome_selectsEveryConfiguredVisibleTab() {
+        listOf(false, true).forEach { hideAppsTab ->
+            val state = MainRootState()
+            state.getVisibleTabs(hideAppsTab).forEachIndexed { expectedIndex, tab ->
+                state.resetForLauncherHome(tab, hideAppsTab)
+
+                assertEquals(tab, expectedIndex, state.currentTabIndex)
+            }
+        }
+    }
+
+    @Test
+    fun resetForLauncherHome_fallsBackForHiddenOrUnsupportedTabs() {
+        val state = MainRootState()
+
+        state.resetForLauncherHome("アプリ", hideAppsTab = true)
+        assertEquals(0, state.currentTabIndex)
+
+        state.resetForLauncherHome("unsupported")
+        assertEquals(0, state.currentTabIndex)
+    }
+
+    @Test
+    fun resetForLauncherHome_reappliesChangedSettingAndFocusWithoutPlayback() {
+        val state = MainRootState()
+        state.playbackState.enterLive(channel())
+
+        state.resetForLauncherHome("ライブ")
+        assertEquals(state.getVisibleTabs().indexOf("ライブ"), state.currentTabIndex)
+
+        state.resetForLauncherHome("ビデオ", hideAppsTab = true)
+        assertEquals(state.getVisibleTabs(hideAppsTab = true).indexOf("ビデオ"), state.currentTabIndex)
+        assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertEquals(2, state.launcherHomeFocusTick)
         assertFalse(state.triggerHomeBack)
     }
 

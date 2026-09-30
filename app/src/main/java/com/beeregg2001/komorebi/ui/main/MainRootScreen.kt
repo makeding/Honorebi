@@ -527,14 +527,13 @@ fun MainRootScreen(
         state.settingsOpenDeviceCapabilities = false
     }
 
-    val returnToLauncherHome = {
+    val returnToLauncherHome = { startupTab: String ->
         if (state.isSettingsOpen) {
             closeSettingsAndRefresh()
-        } else {
-            state.currentTabIndex = 0
         }
 
-        state.resetForLauncherHome()
+        state.resetForLauncherHome(startupTab, hideAppsTab)
+        if (tabs.getOrNull(state.currentTabIndex) == "番組表") epgViewModel.ensureInitialDataLoaded()
         state.epgSelectedProgram = null
         state.selectedReserve = null
         state.editingReserveItem = null
@@ -556,7 +555,7 @@ fun MainRootScreen(
 
     LaunchedEffect(homeIntentVersion) {
         if (homeIntentVersion > 0) {
-            returnToLauncherHome()
+            returnToLauncherHome(settingsViewModel.getStartupTabOnce())
         }
     }
 

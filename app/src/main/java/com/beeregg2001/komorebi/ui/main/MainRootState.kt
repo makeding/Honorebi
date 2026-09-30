@@ -91,7 +91,8 @@ class MainRootState {
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
 
     /** The playback portion of a system Home reset. Root destinations are reset by their owner. */
-    fun resetForLauncherHome() {
+    fun resetForLauncherHome(startupTab: String = "ホーム", hideAppsTab: Boolean = false) {
+        currentTabIndex = getVisibleTabs(hideAppsTab).indexOf(startupTab).coerceAtLeast(0)
         playbackState.resetPlayback()
         launcherHomeFocusTick++
         triggerHomeBack = false
