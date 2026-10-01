@@ -578,7 +578,7 @@ private fun OnAirCard(
 ) {
     val colors = KomorebiTheme.colors
     val logos = rememberChannelLogoImageLoader()
-    val thumbs = remember(series.id, series.thumbnailRecordedProgramIds) { series.thumbnailRecordedProgramIds.take(3) }
+    val thumbs = remember(series.id, series.thumbnailRecordedProgramIds) { series.thumbnailRecordedProgramIds.take(1) }
     val hasImage = thumbs.isNotEmpty()
 
     Surface(
@@ -596,14 +596,8 @@ private fun OnAirCard(
     ) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp))) {
             if (hasImage) {
-                // HonomiTV と同じ多枚デッキ: 手前 94% + 奥にずらした残りを重ねる。
-                if (thumbs.size >= 3) {
-                    CrossfadeImage(thumbnailUrl(ip, port, thumbs[2]), Modifier.align(Alignment.TopStart).fillMaxSize(0.94f).offset(x = (-6).dp).clip(RoundedCornerShape(7.dp)))
-                }
-                if (thumbs.size >= 2) {
-                    CrossfadeImage(thumbnailUrl(ip, port, thumbs[1]), Modifier.align(Alignment.TopStart).fillMaxSize(0.94f).offset(x = 2.dp, y = 3.dp).clip(RoundedCornerShape(7.dp)))
-                }
-                CrossfadeImage(thumbnailUrl(ip, port, thumbs[0]), Modifier.align(Alignment.BottomEnd).fillMaxSize(0.94f).clip(RoundedCornerShape(7.dp)))
+                // 1 枚のサムネイルで全面表示。TV の小さいカードでは複数枚の重ねはノイズになる。
+                CrossfadeImage(thumbnailUrl(ip, port, thumbs[0]), Modifier.fillMaxSize())
                 // 下端を暗くしてタイトル・メタ情報を読みやすくする（HonomiTV の shade: 8% → 88%）。
                 Box(
                     Modifier.matchParentSize().background(

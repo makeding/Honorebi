@@ -61,7 +61,21 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-series-1").confirm()
         compose.onNodeWithTag("onair-summary").assertIsFocused()
             .performKeyInput { keyDown(Key.DirectionDown); keyUp(Key.DirectionDown) }
-        compose.onNodeWithTag("onair-episode-1:ch:episode:1:10").assertIsFocused()
+        compose.onNodeWithTag("onair-episode-1:ch:episode:4:14").assertIsFocused()
+    }
+
+    @Test fun matrixLeftRightWalksThroughMissingSlotsAcrossStations() {
+        val vm = viewModel()
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-series-1").confirm()
+        compose.onNodeWithTag("onair-summary").assertIsFocused()
+        // A 局の第2話から右へ: 第3話は A 局に無いので B 局の同じ話数へ回り道する。
+        compose.onNodeWithTag("onair-episode-1:ch:episode:2:12").requestFocus().assertIsFocused()
+            .performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
+        compose.onNodeWithTag("onair-episode-1:ch2:episode:3:23").assertIsFocused()
+        // さらに左へ戻ると、A 局に録画がある話数では元の局へ戻る。
+            .performKeyInput { keyDown(Key.DirectionLeft); keyUp(Key.DirectionLeft) }
+        compose.onNodeWithTag("onair-episode-1:ch:episode:2:12").assertIsFocused()
     }
 
     @Test fun dayHeaderFocusSwitchesDayAndDownReturnsToColumn() {
@@ -131,7 +145,15 @@ class OnAirScreenTest {
             if (failSummary) throw RuntimeException("summary unavailable")
             return SeriesProgram(seriesId, "概要")
         }
-        override suspend fun getRecordedProgramsBySeries(seriesId: Int, page: Int, order: String) = if (seriesId == 1 && page == 1) RecordedApiResponse(1, listOf(program())) else RecordedApiResponse(0, emptyList())
-        private fun program() = RecordedProgram(10, "第1話", seriesId = 1, episodeNumber = "1", description = "", startTime = "2026-09-13T00:00:00+09:00", endTime = "2026-09-13T00:30:00+09:00", duration = 1800.0, isPartiallyRecorded = false, channel = com.beeregg2001.komorebi.data.model.RecordedChannel("ch", displayChannelId = "ch", type = "GR", name = "局", channelNumber = "1"), recordedVideo = RecordedVideo(10, "Recorded", "/10.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC"))
+        override suspend fun getRecordedProgramsBySeries(seriesId: Int, page: Int, order: String) =
+            if (seriesId == 1 && page == 1) RecordedApiResponse(6, listOf(
+                program(10, "1", "ch", "A局"),
+                program(12, "2", "ch", "A局"),
+                program(14, "4", "ch", "A局"),
+                program(20, "1", "ch2", "B局"),
+                program(23, "3", "ch2", "B局"),
+                program(24, "4", "ch2", "B局"),
+            )) else RecordedApiResponse(0, emptyList())
+        private fun program(id: Int, episodeNumber: String, channelId: String, channelName: String) = RecordedProgram(id, "作品 第${episodeNumber}話", seriesId = 1, episodeNumber = episodeNumber, description = "", startTime = "2026-09-13T00:00:00+09:00", endTime = "2026-09-13T00:30:00+09:00", duration = 1800.0, isPartiallyRecorded = false, channel = com.beeregg2001.komorebi.data.model.RecordedChannel(channelId, displayChannelId = channelId, type = "GR", name = channelName, channelNumber = "1"), recordedVideo = RecordedVideo(id, "Recorded", "/${id}.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC"))
     }
 }

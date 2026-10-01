@@ -158,6 +158,30 @@ internal fun OnAirDetail(
     fun downOf(row: Int, column: Int): FocusRequester? =
         if (row >= playableKeysByRow.lastIndex) null else nearestInRow(row + 1, column)
 
+    // 左右移動の起点となる局（行）。横方向の回り道では更新せず、縦移動や入口での移動でのみ更新する。
+    var focusedCellPosition by remember(series.id) { mutableStateOf<Pair<Int, Int>?>(null) }
+    var horizontalOriginRow by remember(series.id) { mutableStateOf<Int?>(null) }
+    var pendingHop by remember(series.id) { mutableStateOf<Pair<Int, Int>?>(null) }
+
+    fun nearestRowWithProgram(originRow: Int, column: Int): Int? =
+        playableKeysByRow.indices
+            .filter { playableKeysByRow[it].getOrNull(column) != null }
+            .minByOrNull { abs(it - originRow) }
+
+    /**
+     * 左右は時系列（話数）に沿って進む: 自局に録画がなければその話数を持つ最も近い局へ回り、
+     * 以降は自局に録画があれば元の局へ戻る。両局とも無い話数は列ごとスキップする。
+     */
+    fun walkHorizontally(originRow: Int, startColumn: Int, step: Int): Pair<Int, Int>? {
+        var column = startColumn
+        while (column in 0 until matrix.slots.size) {
+            if (playableKeysByRow.getOrNull(originRow)?.getOrNull(column) != null) return originRow to column
+            nearestRowWithProgram(originRow, column)?.let { return it to column }
+            column += step
+        }
+        return null
+    }
+
     var autoFocused by remember(series.id) { mutableStateOf(false) }
     LaunchedEffect(series.id, detail.programsStatus, returnCell) {
         if (returnCell != null) {
@@ -252,7 +276,35 @@ internal fun OnAirDetail(
                                         fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
                                 }
                             }
-                            Row(Modifier.weight(1f).fillMaxWidth().verticalScroll(vertical)) {
+                            Row(
+                                Modifier.weight(1f).fillMaxWidth().verticalScroll(vertical)
+                                    .onPreviewKeyEvent { event ->
+                                        // 左右は時系列に歩く: 欠けている話数は他局の同じ話数へ回り道し、
+                                        // 再び自局に録画があれば元の局へ戻る。
+                                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                        when (event.key) {
+                                            Key.DirectionLeft, Key.DirectionRight -> {
+                                                val position = focusedCellPosition ?: return@onPreviewKeyEvent false
+                                                val step = if (event.key == Key.DirectionRight) 1 else -1
+                                                val origin = horizontalOriginRow ?: position.first
+                                                when (val target = walkHorizontally(origin, position.second + step, step)) {
+                                                    null -> if (step < 0) {
+                                                        scope.launch { summaryFocus.safeRequestFocusWithRetry("OnAirMatrixLeftEdge") }
+                                                        true
+                                                    } else false
+                                                    else -> {
+                                                        val requester = requesterAt(target.first, target.second)
+                                                            ?: return@onPreviewKeyEvent false
+                                                        pendingHop = target
+                                                        scope.launch { requester.safeRequestFocusWithRetry("OnAirMatrixWalk") }
+                                                        true
+                                                    }
+                                                }
+                                            }
+                                            else -> false
+                                        }
+                                    },
+                            ) {
                                 Column(Modifier.width(CHANNEL_COL_WIDTH)) {
                                     matrix.rows.forEach { row ->
                                         ChannelCell(row, matrix, Modifier.height(ROW_HEIGHT), ip, port, logos)
@@ -280,7 +332,19 @@ internal fun OnAirDetail(
                                                                 modifier = cellModifier
                                                                     .focusRequester(cellRequesters.getValue(cellKey))
                                                                     .testTag("onair-episode-$cellKey")
-                                                                    .onFocusChanged { if (it.isFocused) viewModel.saveFocusedEpisodeCell(cellKey) }
+                                                                    .onFocusChanged {
+                                                                        if (it.isFocused) {
+                                                                            val pending = pendingHop
+                                                                            if (pending != null && pending.first == rowIndex && pending.second == index) {
+                                                                                // 横方向の回り道で到達した場合も起点局は変えない。
+                                                                                pendingHop = null
+                                                                            } else {
+                                                                                horizontalOriginRow = rowIndex
+                                                                            }
+                                                                            focusedCellPosition = rowIndex to index
+                                                                            viewModel.saveFocusedEpisodeCell(cellKey)
+                                                                        }
+                                                                    }
                                                                     .focusProperties {
                                                                         left = leftOf(rowIndex, index)
                                                                         right = rightOf(rowIndex, index) ?: FocusRequester.Cancel
@@ -419,7 +483,8 @@ private fun SeriesSummaryPanel(
                 down = downRequester
             }
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) false
+                // 収納時は Down で直接マトリクス（局選択）へ。全文表示中だけ上下でスクロールする。
+                if (!expanded || event.type != KeyEventType.KeyDown) false
                 else when {
                     event.key == Key.DirectionDown && scrollState.value < scrollState.maxValue -> {
                         scope.launch { scrollState.scrollTo((scrollState.value + 120).coerceAtMost(scrollState.maxValue)) }; true
@@ -439,8 +504,7 @@ private fun SeriesSummaryPanel(
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Row(
+            Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 12.dp, vertical = 10.dp)) {                Row(
                     Modifier.fillMaxWidth().heightIn(min = 108.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -481,13 +545,6 @@ private fun SeriesSummaryPanel(
                         }
                     }
                 }
-            }
-            if (!expanded && jpSummary != null) {
-                Text(
-                    "決定で全文",
-                    color = colors.textSecondary, fontSize = 10.sp,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(horizontal = 12.dp, vertical = 6.dp),
-                )
             }
         }
     }
