@@ -276,6 +276,13 @@ fun HomeLauncherScreen(
     fun firstContentRequesterFor(index: Int): FocusRequester =
         ui.contentFirstItemRequesters.getOrNull(index) ?: FocusRequester.Default
 
+    // タブコンテンツの準備完了通知。グローバルな起動準備と、
+    // タブバー直下へのフォーカス移動許可(isCurrentTabContentReady)を両方更新する。
+    val handleUiReady = {
+        onUiReady()
+        ui.isCurrentTabContentReady = true
+    }
+
     val isFullScreenMode = ui.isFullScreen(
         selectedChannel, selectedProgram, epgSelectedProgram,
         isSettingsOpen, isRecordListOpen, isReserveOverlayOpen
@@ -284,6 +291,10 @@ fun HomeLauncherScreen(
     val shouldRestoreTopNavOnResume = rememberUpdatedState(
         !isFullScreenMode && !isReturningFromPlayer
     )
+    // ★ 追加: LifecycleEventObserver は状態変化で再起動しないため、
+    // ON_RESUME 内で参照する値は rememberUpdatedState 経由で最新を読む。
+    val visibleTabsState = rememberUpdatedState(tabs)
+    val safeTabIndexState = rememberUpdatedState(safeTabIndex)
 
     DisposableEffect(lifecycleOwner) {
         var wasPaused = false
@@ -296,7 +307,19 @@ fun HomeLauncherScreen(
                         scope.launch {
                             delay(250)
                             if (shouldRestoreTopNavOnResume.value) {
-                                ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                                // ★ 修正: アプリタブにフォーカス記憶(lastClickedSection="apps")が
+                                // ある場合はタブバーではなく、記憶したアプリ項目へ復帰する。
+                                val currentTabName =
+                                    visibleTabsState.value.getOrNull(safeTabIndexState.value)
+                                val itemId = homeViewModel.lastClickedItemId
+                                if (currentTabName == "アプリ" &&
+                                    homeViewModel.lastClickedSection == "apps" &&
+                                    itemId != null
+                                ) {
+                                    ticketManager.issueForHomeRestore("apps", itemId)
+                                } else {
+                                    ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                                }
                             }
                         }
                     }
@@ -364,6 +387,14 @@ fun HomeLauncherScreen(
         ui.isCurrentTabContentReady = false
     }
 
+    // ★ 修正: 先頭項目の描画完了を外部に通知しないタブ(ライブ/ビデオ/番組表/録画予約)向けの
+    // 準備完了フォールバック。ホーム/アプリタブはコンテンツ側から描画駆動で通知されるため、
+    // 先に準備が整った場合はここでは何もしない(通知は冪等)。
+    LaunchedEffect(activeRenderIndex) {
+        delay(TAB_CONTENT_READY_FALLBACK_MS)
+        handleUiReady()
+    }
+
     LaunchedEffect(activeRenderIndex, networkConnectionStatus.isAvailable) {
         val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
 
@@ -420,6 +451,18 @@ fun HomeLauncherScreen(
                     onAiReturnConsumed()
                 }
 
+                "アプリ" -> {
+                    // ★ 追加: アプリタブのフォーカス記憶から復帰する。
+                    val itemId = homeViewModel.lastClickedItemId
+                    if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
+                        ticketManager.issueForHomeRestore("apps", itemId)
+                    } else {
+                        ui.tabFocusRequesters.getOrNull(safeTabIndex)
+                            ?.safeRequestFocusWithRetry("FallbackAiReturn")
+                    }
+                    onAiReturnConsumed()
+                }
+
                 else -> {
                     ui.tabFocusRequesters.getOrNull(safeTabIndex)
                         ?.safeRequestFocusWithRetry("FallbackAiReturn")
@@ -438,26 +481,47 @@ fun HomeLauncherScreen(
             if (currentTabName != "ライブ" && currentTabName != "ビデオ") {
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
-                if (currentTabName == "ホーム" && section != null && itemId != null) {
-                    ticketManager.issueForHomeRestore(section, itemId)
-                } else if (currentTabName == "番組表" || currentTabName == "録画予約") {
-                    if (currentTabName == "番組表") {
-                        onReturnFocusConsumed()
+                when {
+                    currentTabName == "ホーム" && section != null && itemId != null -> {
+                        ticketManager.issueForHomeRestore(section, itemId)
                     }
-                } else {
-                    ticketManager.issue(HomeFocusTicket.TAB_BAR)
+
+                    currentTabName == "アプリ" && section == "apps" && itemId != null -> {
+                        // ★ 追加: アプリタブのフォーカス記憶から復帰する。
+                        ticketManager.issueForHomeRestore("apps", itemId)
+                    }
+
+                    currentTabName == "番組表" || currentTabName == "録画予約" -> {
+                        if (currentTabName == "番組表") {
+                            onReturnFocusConsumed()
+                        }
+                    }
+
+                    else -> {
+                        ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                    }
                 }
             }
         }
     }
 
+    // ★ 修正: ネットワーク状態の変化を「前回値との比較」で判定する小さなステートマシン。
+    // 初回は状態を記録するだけで何もしない。オフラインへ遷移した時だけフォーカスを
+    // 安全な位置(タブバー)へ戻す。オンライン復帰時や通常の閲覧中はフォーカスを奪わない。
+    var previousNetworkAvailable by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(networkConnectionStatus.isAvailable) {
-        if (networkConnectionStatus.isAvailable && ui.selectedTabIndex == 0) {
+        val current = networkConnectionStatus.isAvailable
+        val previous = previousNetworkAvailable
+        previousNetworkAvailable = current
+
+        if (current && (previous == null || !previous) && ui.selectedTabIndex == 0) {
             homeViewModel.refreshHomeData()
             channelViewModel.fetchChannels()
         }
-        if (!isReturningFromPlayer && !isFullScreenMode) {
-            delay(300)
+
+        if (previous != null && previous != current && !current &&
+            !isReturningFromPlayer && !isFullScreenMode
+        ) {
             ticketManager.issue(HomeFocusTicket.TAB_BAR)
         }
     }
@@ -466,17 +530,32 @@ fun HomeLauncherScreen(
         if (!isFullScreenMode && !isReturningFromPlayer) {
             delay(300)
             val currentTabName = tabs.getOrNull(safeTabIndex)
-            if (currentTabName == "録画予約") {
-            } else if (currentTabName == "ホーム") {
-                val section = homeViewModel.lastClickedSection
-                val itemId = homeViewModel.lastClickedItemId
-                if (section != null && itemId != null) {
-                    ticketManager.issueForHomeRestore(section, itemId)
-                } else {
+            when {
+                currentTabName == "録画予約" -> {}
+
+                currentTabName == "ホーム" -> {
+                    val section = homeViewModel.lastClickedSection
+                    val itemId = homeViewModel.lastClickedItemId
+                    if (section != null && itemId != null) {
+                        ticketManager.issueForHomeRestore(section, itemId)
+                    } else {
+                        ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                    }
+                }
+
+                currentTabName == "アプリ" -> {
+                    // ★ 追加: アプリタブのフォーカス記憶から復帰する。
+                    val itemId = homeViewModel.lastClickedItemId
+                    if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
+                        ticketManager.issueForHomeRestore("apps", itemId)
+                    } else {
+                        ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                    }
+                }
+
+                currentTabName != "番組表" -> {
                     ticketManager.issue(HomeFocusTicket.TAB_BAR)
                 }
-            } else if (currentTabName != "番組表") {
-                ticketManager.issue(HomeFocusTicket.TAB_BAR)
             }
         }
     }
@@ -589,7 +668,12 @@ fun HomeLauncherScreen(
                         modifier = Modifier
                             .weight(1f)
                             .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                                if (event.type == KeyEventType.KeyDown &&
+                                    event.key == Key.DirectionUp &&
+                                    inputSourceApp != null
+                                ) {
+                                    // ★ 修正: 入力ソースアプリが未設定の場合はキーを握りつぶさず、
+                                    // 既定のフォーカス移動に任せる。
                                     homeViewModel.launchInputSourcePicker(inputSourceApp)
                                     true
                                 } else {
@@ -758,10 +842,6 @@ fun HomeLauncherScreen(
                 // ★ 完全に物理的に1つのタブのみを描画する（他はツリーから完全に消去され、フォーカス迷子が100%防がれる）
                 if (activeRenderIndex == safeTabIndex) {
                     val currentTabLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
-                    val handleUiReady = {
-                        onUiReady()
-                        ui.isCurrentTabContentReady = true
-                    }
 
                     when (currentTabLabel) {
                         "ホーム" -> HomeContents(
@@ -786,13 +866,15 @@ fun HomeLauncherScreen(
                             },
                             onReserveClick = onReserveSelected,
                             onProgramClick = { onEpgProgramSelected(it) },
-                            onNavigateToTab = { targetIndex ->
-                                ui.tabFocusRequesters.getOrNull(targetIndex)
-                                    ?.safeRequestFocus(TAG); ui.onTabSelected(
-                                targetIndex,
-                                onTabChange,
-                                homeViewModel
-                            )
+                            onNavigateToTab = { targetTitle ->
+                                // ★ 修正: タブタイトルから「現在表示中のタブ一覧」での索引を解決する。
+                                // アプリタブの非表示有無で一覧の索引がずれるため、固定索引は使わない。
+                                val targetIndex = tabs.indexOf(targetTitle)
+                                if (targetIndex != -1) {
+                                    ui.tabFocusRequesters.getOrNull(targetIndex)
+                                        ?.safeRequestFocus(TAG)
+                                    ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
+                                }
                             },
                             konomiIp = konomiIp,
                             konomiPort = konomiPort,
@@ -831,7 +913,6 @@ fun HomeLauncherScreen(
                                 aiFocusReturnTick = if (currentTabLabel == "ライブ") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
-                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
 
                         "アプリ" -> {
@@ -839,7 +920,8 @@ fun HomeLauncherScreen(
                                 homeViewModel = homeViewModel,
                                 tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                onUiReady = handleUiReady
+                                onUiReady = handleUiReady,
+                                ticketManager = ticketManager
                             )
                         }
 
@@ -867,7 +949,6 @@ fun HomeLauncherScreen(
                                 aiFocusReturnTick = if (currentTabLabel == "ビデオ") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
-                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
 
                         "番組表" -> {
@@ -898,7 +979,6 @@ fun HomeLauncherScreen(
                                 onClearSearch = { epgViewModel.clearSearch() },
                                 timeFormat = timeFormat
                             )
-                            LaunchedEffect(Unit) { delay(800); handleUiReady() }
                         }
 
                         "録画予約" -> {
@@ -922,7 +1002,6 @@ fun HomeLauncherScreen(
                                 aiFocusReturnTick = if (currentTabLabel == "録画予約") aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed
                             )
-                            LaunchedEffect(Unit) { delay(500); handleUiReady() }
                         }
                     }
                 }

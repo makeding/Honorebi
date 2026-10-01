@@ -54,7 +54,9 @@ fun HomeContents(
     onHistoryClick: (KonomiHistoryProgram) -> Unit,
     onReserveClick: (ReserveItem) -> Unit,
     onProgramClick: (EpgProgram) -> Unit,
-    onNavigateToTab: (Int) -> Unit,
+    // ★ 修正: タブ索引ではなくタブタイトルを渡す。アプリタブの非表示有無で
+    // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
+    onNavigateToTab: (String) -> Unit,
     konomiIp: String, konomiPort: String,
     mirakurunIp: String, mirakurunPort: String,
     tabFocusRequester: FocusRequester,
@@ -71,28 +73,16 @@ fun HomeContents(
 ) {
     val lazyListState = rememberLazyListState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
+
+    // ★ 修正: 固定スリープによる準備完了通知をやめ、先頭セクションが実際に
+    // 描画された(LazyColumn に項目が構築された)時点で即座に通知する描画駆動方式に変更。
+    // これによりタブ切替直後の「下」キーが無効になる時間を最小化する。
     val isFirstItemRendered =
         remember { derivedStateOf { lazyListState.layoutInfo.visibleItemsInfo.isNotEmpty() } }
 
     LaunchedEffect(isFirstItemRendered.value) {
-        if (isFirstItemRendered.value) {
-            delay(100); onUiReady()
-        }
+        if (isFirstItemRendered.value) onUiReady()
     }
-
-    LaunchedEffect(lastWatchedChannels, hotChannels) {
-        if (lastWatchedChannels.isNotEmpty() || hotChannels.isNotEmpty()) {
-            delay(400); onUiReady()
-        }
-    }
-
-    LaunchedEffect(lastWatchedChannels, hotChannels, genrePickup) {
-        if (lastWatchedChannels.isNotEmpty() || hotChannels.isNotEmpty() || genrePickup.isNotEmpty()) {
-            delay(300); onUiReady()
-        }
-    }
-
-    LaunchedEffect(Unit) { delay(3000); onUiReady() }
 
     val welcomeHeroInfo = remember {
         HomeHeroInfo(

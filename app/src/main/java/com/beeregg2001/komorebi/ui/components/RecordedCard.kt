@@ -1,8 +1,6 @@
 package com.beeregg2001.komorebi.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +25,12 @@ import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.StatusAnalyzingColor
+import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 
 private fun formatTime(seconds: Long): String {
     val h = seconds / 3600
@@ -50,7 +54,7 @@ fun RecordedCard(
 ) {
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
-    val isAnalyzed = program.recordedVideo.hasKeyFrames?: true
+    val isPlayable = program.isPlayableForBrowse()
 
     val scrolling = isScrolling()
 
@@ -92,16 +96,19 @@ fun RecordedCard(
 
     val inverseColor = if (colors.isDark) Color.Black else Color.White
 
+    // フォーカス演出 (スケール / 枠 / スクリム) は共通トークンに一元化
+    val focusSpec = tvCardFocus(TvCardFamily.GRID)
+
     Surface(
-        onClick = { if (isAnalyzed) onClick() },
-        enabled = isAnalyzed,
+        onClick = { if (isPlayable) onClick() },
+        enabled = isPlayable,
         modifier = modifier
             .width(185.dp)
             .height(104.dp)
             .onFocusChanged { isFocused = it.isFocused }
-            .alpha(if (isAnalyzed) 1f else 0.5f),
-        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = if (isAnalyzed) 1.05f else 1.0f),
+            .alpha(if (isPlayable) 1f else 0.5f),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = if (isPlayable) focusSpec.focusedScale else 1.0f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface,
             focusedContainerColor = colors.textPrimary,
@@ -109,10 +116,7 @@ fun RecordedCard(
             focusedContentColor = inverseColor
         ),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(
-                border = BorderStroke(width = 2.dp, color = colors.accent),
-                shape = MaterialTheme.shapes.medium
-            )
+            focusedBorder = focusSpec.focusedBorder
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -153,10 +157,15 @@ fun RecordedCard(
                 )
             }
 
+            // グリッドカードは文字可読性のため常設スクリム (フォーカス時は薄く / 非フォーカスは濃く)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(colors.background.copy(alpha = if (isFocused) 0.1f else 0.4f))
+                    .background(
+                        colors.background.copy(
+                            alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
+                        )
+                    )
             )
 
             Box(
@@ -177,7 +186,7 @@ fun RecordedCard(
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
-                                .background(Color.Red, CircleShape)
+                                .background(StatusRecordingColor, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
@@ -187,11 +196,11 @@ fun RecordedCard(
                             color = Color.White
                         )
                     }
-                } else if (!isAnalyzed) {
+                } else if (!isPlayable) {
                     Box(
                         modifier = Modifier
                             .background(
-                                color = Color(0xFFE65100).copy(alpha = 0.8f),
+                                color = StatusAnalyzingColor.copy(alpha = 0.8f),
                                 shape = RoundedCornerShape(4.dp)
                             )
                             .padding(horizontal = 4.dp, vertical = 2.dp)
@@ -220,12 +229,7 @@ fun RecordedCard(
                     color = colors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.then(
-                        if (isFocused && !scrolling) Modifier.basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            repeatDelayMillis = 1000
-                        ) else Modifier
-                    )
+                    modifier = Modifier.tvCardMarquee(isFocused && !scrolling)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(

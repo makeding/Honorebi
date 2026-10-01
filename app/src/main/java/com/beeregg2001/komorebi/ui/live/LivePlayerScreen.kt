@@ -60,6 +60,8 @@ import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
+import com.beeregg2001.komorebi.ui.player.PLAYER_CONTROLS_AUTO_HIDE_MS
+import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingHorizontal
 import com.beeregg2001.komorebi.ui.player.b60MediaPlane
 import com.beeregg2001.komorebi.ui.player.rememberDataBroadcastingInputState
 import com.beeregg2001.komorebi.ui.player.isDataBroadcastingToggleKeyEvent
@@ -149,9 +151,6 @@ fun LivePlayerScreen(
     }
     val liveSubtitleDefaultStr by settingsViewModel.liveSubtitleDefault.collectAsState()
     val allowMirakurunDual by settingsViewModel.labAllowMirakurunDual.collectAsState()
-
-    val playerUiMode by settingsViewModel.playerUiMode.collectAsState()
-    val isModern = playerUiMode == "MODERN"
 
     val commentSpeed = commentSpeedStr.toFloatOrNull() ?: 1.0f
     val commentFontSizeScale = commentFontSizeStr.toFloatOrNull() ?: 1.0f
@@ -617,10 +616,20 @@ fun LivePlayerScreen(
         onManualOverlayChange(false); onPinnedOverlayChange(false); onShowOverlayChange(true); scrollState.scrollTo(
         0
     )
-        delay(4500)
+        delay(PLAYER_CONTROLS_AUTO_HIDE_MS)
         if (!currentIsManualOverlay && !currentIsPinnedOverlay && !currentIsSubMenuOpen) onShowOverlayChange(
             false
         )
+    }
+
+    // ユーザー操作 (手元のキー入力) のたびに非表示タイマーを起動し直す。
+    // 録画側の lastInteractionTime 再起動と同じ挙動。強制的な再表示は行わない。
+    LaunchedEffect(ps.lastInteractionTime) {
+        if (currentIsManualOverlay || currentIsPinnedOverlay) return@LaunchedEffect
+        delay(PLAYER_CONTROLS_AUTO_HIDE_MS)
+        if (!currentIsManualOverlay && !currentIsPinnedOverlay && !currentIsSubMenuOpen) {
+            onShowOverlayChange(false)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -974,7 +983,7 @@ fun LivePlayerScreen(
                 Row(
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(32.dp)
+                        .padding(PlayerOverlayEdgePaddingHorizontal)
                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1008,7 +1017,7 @@ fun LivePlayerScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(32.dp)
+                        .padding(PlayerOverlayEdgePaddingHorizontal)
                         .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 20.dp, vertical = 14.dp)
                 )
@@ -1033,7 +1042,8 @@ fun LivePlayerScreen(
         }
 
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && showOverlay && ps.playerError == null && !isMiniListOpen,
+            visible = !isPiPMode && !ps.isDualDisplayMode && showOverlay && ps.playerError == null &&
+                !isMiniListOpen && !isSubMenuOpen && ps.crop.mode == PlayerCropMode.HIDDEN,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
         ) {

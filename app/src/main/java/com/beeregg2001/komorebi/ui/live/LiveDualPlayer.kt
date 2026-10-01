@@ -45,6 +45,7 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoUrl
+import com.beeregg2001.komorebi.ui.player.PLAYER_CONTROLS_AUTO_HIDE_MS
 import com.beeregg2001.komorebi.ui.player.PlayerSurface
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
@@ -96,7 +97,7 @@ fun DualDisplayPlayer(
 
     LaunchedEffect(state.lastInteractionTime) {
         isIdle = false
-        delay(5000L) // 5秒間操作がなければ idle 状態へ
+        delay(PLAYER_CONTROLS_AUTO_HIDE_MS) // 5秒間操作がなければ idle 状態へ
         isIdle = true
     }
 
@@ -278,7 +279,7 @@ internal fun LiveSlotStatus(
                 style = MaterialTheme.typography.bodyLarge
             )
             if (error != null) {
-                androidx.tv.material3.Button(onClick = onRetry, modifier = Modifier.focusRequester(retryFocus)) { Text("再試行") }
+                androidx.tv.material3.Button(onClick = onRetry, modifier = Modifier.focusRequester(retryFocus)) { Text(AppStrings.BUTTON_RETRY_TV) }
             }
         }
     }
@@ -306,7 +307,7 @@ fun DualDisplayMock(
 
     LaunchedEffect(state.lastInteractionTime) {
         isIdle = false
-        delay(5000L)
+        delay(PLAYER_CONTROLS_AUTO_HIDE_MS)
         isIdle = true
     }
 

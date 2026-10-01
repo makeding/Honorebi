@@ -1,9 +1,7 @@
 package com.beeregg2001.komorebi.ui.video.smb
 
 import android.annotation.SuppressLint
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +33,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
@@ -59,6 +62,8 @@ fun SmbListContent(
 ) {
     val listState = rememberLazyListState()
     val colors = KomorebiTheme.colors
+    // フォーカス演出 (スケール / 枠) は共通トークンに一元化
+    val focusSpec = tvCardFocus(TvCardFamily.LIST_ROW)
     val isScrollInProgress = listState.isScrollInProgress
     val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
 
@@ -151,13 +156,16 @@ fun SmbListContent(
                         }
                         false
                     },
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = if (isFocused) colors.textPrimary else Color.Transparent,
                     focusedContainerColor = colors.textPrimary,
                     contentColor = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary,
                     focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                ),
+                border = ClickableSurfaceDefaults.border(
+                    focusedBorder = focusSpec.focusedBorder
                 )
             ) {
                 Row(
@@ -179,7 +187,7 @@ fun SmbListContent(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .weight(1f)
-                            .then(if (isFocused) Modifier.basicMarquee() else Modifier),
+                            .tvCardMarquee(isFocused),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -224,6 +232,8 @@ fun SmbGridContent(
 ) {
     val gridState = rememberLazyGridState()
     val colors = KomorebiTheme.colors
+    // フォーカス演出 (スケール / 枠 / スクリム) は共通トークンに一元化
+    val focusSpec = tvCardFocus(TvCardFamily.GRID)
     val isScrollInProgress = gridState.isScrollInProgress
     val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
 
@@ -316,8 +326,8 @@ fun SmbGridContent(
                         }
                         false
                     },
-                shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = colors.surface,
                     focusedContainerColor = colors.textPrimary,
@@ -325,17 +335,19 @@ fun SmbGridContent(
                     focusedContentColor = inverseColor
                 ),
                 border = ClickableSurfaceDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(width = 2.dp, color = colors.accent),
-                        shape = MaterialTheme.shapes.medium
-                    )
+                    focusedBorder = focusSpec.focusedBorder
                 )
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    // グリッドカードは文字可読性のため常設スクリム (フォーカス時は薄く / 非フォーカスは濃く)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(colors.background.copy(alpha = if (isFocused) 0.1f else 0.4f))
+                            .background(
+                                colors.background.copy(
+                                    alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
+                                )
+                            )
                     )
 
                     Box(
@@ -367,7 +379,7 @@ fun SmbGridContent(
                             color = colors.textPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.then(if (isFocused) Modifier.basicMarquee() else Modifier)
+                            modifier = Modifier.tvCardMarquee(isFocused)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Row(

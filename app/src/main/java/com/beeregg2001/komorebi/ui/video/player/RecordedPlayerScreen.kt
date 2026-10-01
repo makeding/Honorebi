@@ -38,6 +38,7 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
 import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
@@ -1748,7 +1749,7 @@ internal fun RecordedPlayerScreen(
             ) {
                 videoPlayerViewModel.saveVideoQuality(quality.value)
             }
-            onShowToast("画質を ${quality.label} に変更しました")
+            onShowToast(String.format(AppStrings.TOAST_QUALITY_CHANGED, quality.label))
         }
         isModernSettingsOpen = false
         onSubMenuToggle(false)
@@ -2052,7 +2053,7 @@ internal fun RecordedPlayerScreen(
                         },
                         modifier = Modifier.focusRequester(detailRetryFocusRequester)
                             .testTag("recorded-container-detail-retry")
-                    ) { androidx.tv.material3.Text("再試行") }
+                    ) { androidx.tv.material3.Text(AppStrings.BUTTON_RETRY_TV) }
                 }
             }
         }

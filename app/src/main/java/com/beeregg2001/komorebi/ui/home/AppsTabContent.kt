@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -84,6 +85,8 @@ fun AppsTabContent(
     tabFocusRequester: FocusRequester,
     contentFirstItemRequester: FocusRequester,
     onUiReady: () -> Unit,
+    // ★ 追加: アプリタブのフォーカス復元(HOME_RESTORE / targetSection="apps")を受けるため。
+    ticketManager: HomeFocusTicketManager,
     settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
@@ -145,9 +148,47 @@ fun AppsTabContent(
             .forEach { appFocusRequesters.remove(it) }
     }
 
-    LaunchedEffect(apps, hiddenApps, isHiddenCatalog) {
-        delay(250)
-        onUiReady()
+    // ★ 修正: 固定スリープによる準備完了通知をやめ、先頭アプリが実際に描画された
+    // (グリッドに項目が構築された)時点で即座に通知する描画駆動方式に変更。
+    // カタログが空の場合は描画される項目が無いため、タブ側のフォールバックに任せる。
+    val isFirstItemRendered =
+        remember { derivedStateOf { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() } }
+
+    LaunchedEffect(isFirstItemRendered.value) {
+        if (isFirstItemRendered.value) onUiReady()
+    }
+
+    // ★ 追加: アプリタブのフォーカス復元。ホーム画面のセクションと同じ
+    // HOME_RESTORE チケット(targetSection="apps")を受け、記憶したアプリの
+    // フォーカス要求者へスクロールしてフォーカスを戻す。
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime, catalogApps) {
+        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
+            ticketManager.targetSection == "apps"
+        ) {
+            val targetId = ticketManager.targetItemId
+            val index = targetId?.let { id -> catalogApps.indexOfFirst { it.stableId == id } } ?: -1
+            if (index != -1 && targetId != null) {
+                Log.i(
+                    "KomorebiFocus",
+                    "[$TAG] AppsRestore: 記憶したアプリ($targetId) インデックス $index へ復帰"
+                )
+                gridState.scrollToItem(index)
+                delay(100)
+                val requester = appFocusRequesters[targetId]
+                if (index == 0 || requester == null) {
+                    // 先頭項目は contentFirstItemRequester が添付されている。
+                    contentFirstItemRequester.safeRequestFocusWithRetry("AppsRestore_First")
+                } else {
+                    requester.safeRequestFocusWithRetry("AppsRestore")
+                }
+                ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
+                homeViewModel.clearFocusMemory()
+            } else {
+                // 対象が見つからない(アンインストール/非表示等)場合はスクロールせず
+                // チケットだけ消費して放置を防ぐ。
+                ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
+            }
+        }
     }
 
     LaunchedEffect(isHiddenCatalog) {

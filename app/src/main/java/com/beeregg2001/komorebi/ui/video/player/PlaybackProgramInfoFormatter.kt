@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.player.formatPlayerDurationSeconds
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -85,15 +86,8 @@ private fun parseDateTime(value: String, zoneId: ZoneId): java.time.temporal.Tem
 
 private fun formatDuration(seconds: Double): String? {
     if (!seconds.isFinite() || seconds <= 0.0) return null
-    val totalSeconds = seconds.toLong()
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val remainingSeconds = totalSeconds % 60
-    return if (hours > 0) {
-        "%d:%02d:%02d".format(Locale.ROOT, hours, minutes, remainingSeconds)
-    } else {
-        "%d:%02d".format(Locale.ROOT, minutes, remainingSeconds)
-    }
+    // 録画コントロールバーと同じ mm:ss / h:mm:ss 表記に統一 (分は0埋め)
+    return formatPlayerDurationSeconds(seconds.toLong())
 }
 
 private fun formatStatus(program: RecordedProgram): String? = buildList {

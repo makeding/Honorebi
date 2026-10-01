@@ -1,8 +1,6 @@
 package com.beeregg2001.komorebi.ui.video.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -39,6 +37,10 @@ import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusSeries
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -75,6 +77,8 @@ fun RecordSeriesGridContent(
     onFocusedSeriesChanged: (SeriesInfo) -> Unit = {}
 ) {
     val colors = KomorebiTheme.colors
+    // フォーカス演出 (スケール / 枠) は共通トークンに一元化
+    val focusSpec = tvCardFocus(TvCardFamily.GRID)
     val isListReady by remember { derivedStateOf { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() } }
     val backendType by settingViewModel.backendType.collectAsState()
     val isScrollInProgress = gridState.isScrollInProgress
@@ -156,18 +160,13 @@ fun RecordSeriesGridContent(
 
                     Surface(
                 onClick = { onSeriesClick(series) }, modifier = itemModifier,
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = colors.surface, focusedContainerColor = colors.surface
                 ),
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusSeries)),
                 border = ClickableSurfaceDefaults.border(
-                    focusedBorder = Border(
-                        BorderStroke(
-                            2.dp,
-                            colors.accent
-                        )
-                    )
+                    focusedBorder = focusSpec.focusedBorder
                 )
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -218,7 +217,7 @@ fun RecordSeriesGridContent(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(12.dp)
-                            .then(if (isFocused) Modifier.basicMarquee() else Modifier),
+                            .then(Modifier.tvCardMarquee(isFocused)),
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,

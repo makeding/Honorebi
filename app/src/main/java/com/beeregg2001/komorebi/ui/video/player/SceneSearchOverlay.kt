@@ -44,6 +44,7 @@ import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessUrlConnecti
 import com.beeregg2001.komorebi.util.PlaybackHttpEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.ui.player.formatPlayerDurationSeconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -307,7 +308,7 @@ fun SceneSearchOverlay(
                         if (intervalIndex > 0) intervalIndex--; true
                     }
 
-                    KeyEvent.KEYCODE_BACK -> {
+                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
                         onClose(); true
                     }
 
@@ -388,7 +389,7 @@ fun SceneSearchOverlay(
                     }
 
                     Text(
-                        text = formatSecondsToTime(durationMs / 1000),
+                        text = formatPlayerDurationSeconds(durationMs / 1000),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(0.7f)
                     )
@@ -481,7 +482,7 @@ fun TiledThumbnailItem(
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = formatSecondsToTime(time),
+                    text = formatPlayerDurationSeconds(time),
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
@@ -613,7 +614,7 @@ fun KeyframeGridOverlay(
                 )
                 Spacer(modifier = Modifier.width(24.dp))
                 Text(
-                    text = "${formatSecondsToTime(focusedTime)} / ${formatSecondsToTime(totalSec)}",
+                    text = "${formatPlayerDurationSeconds(focusedTime)} / ${formatPlayerDurationSeconds(totalSec)}",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White.copy(alpha = 0.9f),
                     fontWeight = FontWeight.Bold
@@ -672,14 +673,6 @@ fun KeyframeGridOverlay(
         }
     }
 }
-
-private fun formatSecondsToTime(sec: Long): String {
-    val h = sec / 3600
-    val m = (sec % 3600) / 60
-    val s = sec % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
-}
-
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -741,12 +734,8 @@ fun ChapterListOverlay(
             .onPreviewKeyEvent {
                 if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (it.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_UP -> {
+                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
                         onClose()
-                        true
-                    }
-
-                    KeyEvent.KEYCODE_DPAD_DOWN -> {
                         true
                     }
 
@@ -877,7 +866,7 @@ fun ChapterListOverlay(
                     }
 
                     Text(
-                        text = formatSecondsToTime(durationMs / 1000),
+                        text = formatPlayerDurationSeconds(durationMs / 1000),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(0.7f)
                     )

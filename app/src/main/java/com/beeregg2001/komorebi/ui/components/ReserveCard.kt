@@ -2,9 +2,7 @@ package com.beeregg2001.komorebi.ui.components
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -16,19 +14,22 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
-import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
+import com.beeregg2001.komorebi.ui.theme.StatusWarningColor
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -48,8 +49,10 @@ fun ReserveCard(
     getLogoUrl: suspend (String) -> String = { "" } // ★追加: ViewModel等の非同期取得用
 ) {
     val colors = KomorebiTheme.colors
-    val channelLogoImageLoader = rememberChannelLogoImageLoader()
     var isFocused by remember { mutableStateOf(false) }
+
+    // フォーカス演出 (スケール / 枠) は共通トークンに一元化
+    val focusSpec = tvCardFocus(TvCardFamily.LIST_ROW)
 
     val program = item.program
     val settings = item.recordSettings
@@ -67,9 +70,9 @@ fun ReserveCard(
         if (isFocused) (if (colors.isDark) Color.White else Color.Black) else colors.background
 
     // ステータスカラー定義
-    val recordingRed = Color(0xFFE53935)
+    val recordingRed = StatusRecordingColor
     val errorRed = Color(0xFFC62828)
-    val warningYellow = Color(0xFFFFCA28)
+    val warningYellow = StatusWarningColor
     val normalGreen = contentColor
 
     // --- ステータス表示ロジック ---
@@ -136,8 +139,8 @@ fun ReserveCard(
             .fillMaxWidth()
             .height(110.dp)
             .onFocusChanged { isFocused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface,
             focusedContainerColor = colors.textPrimary,
@@ -145,10 +148,7 @@ fun ReserveCard(
             focusedContentColor = if (colors.isDark) Color.Black else Color.White
         ),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(
-                border = BorderStroke(2.dp, colors.accent),
-                shape = RoundedCornerShape(8.dp)
-            )
+            focusedBorder = focusSpec.focusedBorder
         )
     ) {
         Row(
@@ -193,35 +193,18 @@ fun ReserveCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f, fill = false)
-                            .then(
-                                if (isFocused) Modifier.basicMarquee(
-                                    iterations = Int.MAX_VALUE,
-                                    velocity = 40.dp
-                                ) else Modifier
-                            )
+                            .tvCardMarquee(isFocused)
                     )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (logoUrl.isNotEmpty()) {
-                        AsyncImage(
-                            imageLoader = channelLogoImageLoader,
-                            model = logoUrl,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .width(48.dp)
-                                .aspectRatio(16f / 9f)
-                                .clipToBounds()
-                                .background(
-                                    if (isFocused) Color.Transparent else colors.textPrimary.copy(
-                                        0.1f
-                                    ),
-                                    RoundedCornerShape(2.dp)
-                                ),
-                            contentScale = ContentScale.Crop
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
+                    // ロゴバッジは共通の ChannelLogoBadge で描画 (未取得時は Tv アイコンにフォールバック)
+                    ChannelLogoBadge(
+                        logoUrl = logoUrl,
+                        width = 48.dp,
+                        height = 27.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "${item.channel.channelNumber} ${item.channel.name}",
                         style = MaterialTheme.typography.bodySmall,

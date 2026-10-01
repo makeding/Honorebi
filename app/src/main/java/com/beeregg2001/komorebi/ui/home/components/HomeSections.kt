@@ -379,7 +379,9 @@ fun UpcomingReserveSection(
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
     onReserveClick: (ReserveItem) -> Unit,
-    onNavigateToTab: (Int) -> Unit,
+    // ★ 修正: タブ索引ではなくタブタイトルを渡す。アプリタブの非表示有無で
+    // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
+    onNavigateToTab: (String) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
     ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
@@ -463,7 +465,7 @@ fun UpcomingReserveSection(
         NavigationLinkButton(
             "録画予約リストを表示",
             Icons.Default.List,
-            onClick = { onNavigateToTab(5) })
+            onClick = { onNavigateToTab("録画予約") })
     }
 }
 
@@ -478,7 +480,9 @@ fun GenrePickupSection(
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
     onProgramClick: (EpgProgram) -> Unit,
-    onNavigateToTab: (Int) -> Unit,
+    // ★ 修正: タブ索引ではなくタブタイトルを渡す。アプリタブの非表示有無で
+    // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
+    onNavigateToTab: (String) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
     ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
@@ -568,7 +572,7 @@ fun GenrePickupSection(
         NavigationLinkButton(
             "番組表を開く",
             Icons.Default.CalendarToday,
-            onClick = { onNavigateToTab(4) })
+            onClick = { onNavigateToTab("番組表") })
     }
 }
 

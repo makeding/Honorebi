@@ -60,9 +60,11 @@ import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
+import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingHorizontal
+import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingVertical
+import com.beeregg2001.komorebi.ui.player.formatPlayerDurationMillis
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
-import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.pow
 
@@ -218,7 +220,10 @@ fun PlayerControls(
                     }
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))))
                     .testTag("recorded-controls")
-                    .padding(horizontal = 48.dp, vertical = 40.dp)
+                    .padding(
+                        horizontal = PlayerOverlayEdgePaddingHorizontal,
+                        vertical = PlayerOverlayEdgePaddingVertical
+                    )
             ) {
                 val titleBounds = rememberCaptionTextBounds { recordTextBounds("title", it) }
                 Text(
@@ -425,7 +430,7 @@ private fun BoxScope.RecordedSeekingPreview(
                         modifier = Modifier.fillMaxSize(),
                     )
                     Text(
-                        text = formatMillisToTime(displayPositionMs),
+                        text = formatPlayerDurationMillis(displayPositionMs),
                         color = Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -439,7 +444,7 @@ private fun BoxScope.RecordedSeekingPreview(
                 }
             } else {
                 Text(
-                    text = formatMillisToTime(displayPositionMs),
+                    text = formatPlayerDurationMillis(displayPositionMs),
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
@@ -484,7 +489,7 @@ private fun RecordedControlsProgressRow(
     val durationBounds = rememberCaptionTextBounds(onDurationBoundsChanged)
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = formatMillisToTime(displayPositionMs),
+            text = formatPlayerDurationMillis(displayPositionMs),
             color = Color.White.copy(alpha = 0.9f),
             fontWeight = FontWeight.Medium,
             modifier = Modifier.width(64.dp).testTag("playback-time")
@@ -595,16 +600,27 @@ private fun RecordedControlsProgressRow(
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
-        if (playbackSpeed != 1.0f) {
-            Text(
-                text = "${playbackSpeed}x",
-                color = colors.accent,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.testTag("playback-speed"),
-            )
+        // 速度表示は固定幅スロットに入れて、挿入/削除で行サイズが変わらないようにする
+        Box(
+            modifier = Modifier.width(44.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            // RowScope 拡張を避けるためトップレベルの AnimatedVisibility を明示的に呼ぶ
+            androidx.compose.animation.AnimatedVisibility(
+                visible = playbackSpeed != 1.0f,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+            ) {
+                Text(
+                    text = "${playbackSpeed}x",
+                    color = colors.accent,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("playback-speed"),
+                )
+            }
         }
         Text(
-            text = formatMillisToTime(totalDurationMs),
+            text = formatPlayerDurationMillis(totalDurationMs),
             color = Color.White.copy(alpha = 0.9f),
             fontWeight = FontWeight.Medium,
             modifier = Modifier.width(64.dp).testTag("playback-duration")
@@ -667,21 +683,6 @@ fun OsdIconButton(
             Icon(icon, contentDescription = label, modifier = Modifier.size(iconSize))
         }
     }
-}
-
-private fun formatMillisToTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val seconds = totalSeconds % 60
-    val minutes = (totalSeconds / 60) % 60
-    val hours = totalSeconds / 3600
-    return if (hours > 0) String.format(
-        Locale.getDefault(),
-        "%d:%02d:%02d",
-        hours,
-        minutes,
-        seconds
-    )
-    else String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
 }
 
 @Composable

@@ -120,16 +120,25 @@ fun RecordListContent(
         onTopBarDownRequesterChanged(requester)
     }
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+    // 🌟 修正1: pagedRecordings.itemCount をキーに含めることで、非同期ロード後にも再評価されるようにする
+    LaunchedEffect(
+        ticketManager.currentTicket,
+        ticketManager.issueTime,
+        pagedRecordings.itemCount
+    ) {
         if (ticketManager.currentTicket == FocusTicket.TARGET_ID) {
             val targetId = ticketManager.targetProgramId
             val index = (0 until pagedRecordings.itemCount).firstOrNull {
                 pagedRecordings.peek(it)?.id == targetId
             }
             if (index != null) {
+                // 対象アイテムの1つ上から見えるようにスクロールする(フォーカス要求と同じ列挙順)。
                 listState.scrollToItem(maxOf(0, index - 1))
             } else {
-                listState.scrollToItem(0)
+                // 🌟 修正2: else ブロック( scrollToItem(0) )を削除。
+                // データがまだロードされていない時に強制的に一番上に戻されてしまうバグを防止します。
+                // RecordGridContent と同じ方針。チケットは放置せず消費しておく。
+                ticketManager.consume(FocusTicket.TARGET_ID)
             }
         } else if (ticketManager.currentTicket == FocusTicket.LIST_TOP) {
             listState.scrollToItem(0)
@@ -223,10 +232,12 @@ fun RecordListContent(
                     )
                 } else {
                     // ★ 追加: まだ読み込まれていない場所用のプレースホルダー（空箱）
+                    // ★ 修正: 実アイテムと同じ 56dp（RecordListItem の行高）に合わせる。
+                    // アイテム間の 6dp 余白は縦方向 spacing が担当するため含めない。
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(88.dp) // ※リストアイテムのおおよその高さに合わせて調整してください
+                            .height(56.dp)
                             .background(
                                 colors.textPrimary.copy(alpha = 0.05f),
                                 RoundedCornerShape(8.dp)

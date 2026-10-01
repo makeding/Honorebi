@@ -2,9 +2,7 @@ package com.beeregg2001.komorebi.ui.video.components
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,9 +26,17 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.ui.components.isPlayableForBrowse
+import com.beeregg2001.komorebi.ui.components.isRecordingInProgress
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.StatusAnalyzingColor
+import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -56,10 +62,12 @@ fun RecordListItem(
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
 
-    val isCurrentlyRecording = program.isRecording || program.recordedVideo.status == "Recording"
-    val isTempAnalyzed = program.recordedVideo.hasKeyFrames?: true
-    val isAnalyzed = isTempAnalyzed && !isCurrentlyRecording
+    val isCurrentlyRecording = program.isRecordingInProgress()
+    val isPlayable = program.isPlayableForBrowse()
     val isVisualFocused = isFocused || isPersistentFocused
+
+    // フォーカス演出 (スケール / 枠) は共通トークンに一元化
+    val focusSpec = tvCardFocus(TvCardFamily.LIST_ROW)
 
     // Repository側のURLを優先し、古い/検索直後のデータではIDから標準APIへフォールバックする。
     val fallbackUrl = program.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
@@ -90,6 +98,7 @@ fun RecordListItem(
             .data(program.recordedThumbnailModel(currentThumbnailUrl))
             .size(180, 100)
             .allowRgb565(true)
+            .crossfade(true)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
@@ -124,15 +133,15 @@ fun RecordListItem(
     val channelName = program.channel?.name ?: ""
 
     Surface(
-        onClick = { if (isAnalyzed) onClick() },
-        enabled = isAnalyzed,
+        onClick = { if (isPlayable) onClick() },
+        enabled = isPlayable,
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
             .onFocusChanged { isFocused = it.isFocused }
-            .alpha(if (isAnalyzed) 1f else 0.5f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+            .alpha(if (isPlayable) 1f else 0.5f),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isVisualFocused) colors.textPrimary else Color.Transparent,
             focusedContainerColor = colors.textPrimary,
@@ -140,16 +149,8 @@ fun RecordListItem(
             focusedContentColor = inverseColor
         ),
         border = ClickableSurfaceDefaults.border(
-            border = if (isPersistentFocused) {
-                Border(
-                    border = BorderStroke(width = 2.dp, color = colors.accent),
-                    shape = RoundedCornerShape(4.dp)
-                )
-            } else Border.None,
-            focusedBorder = Border(
-                border = BorderStroke(width = 2.dp, color = colors.accent),
-                shape = RoundedCornerShape(4.dp)
-            )
+            border = if (isPersistentFocused) focusSpec.focusedBorder else Border.None,
+            focusedBorder = focusSpec.focusedBorder
         )
     ) {
         Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
@@ -226,12 +227,7 @@ fun RecordListItem(
                     color = primaryTextColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.then(
-                        if (isVisualFocused) Modifier.basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            repeatDelayMillis = 1000
-                        ) else Modifier
-                    )
+                    modifier = Modifier.tvCardMarquee(isVisualFocused)
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -249,15 +245,15 @@ fun RecordListItem(
                     if (isCurrentlyRecording) {
                         Text(
                             text = "録画中",
-                            color = if (isVisualFocused) inverseColor else colors.accent,
+                            color = if (isVisualFocused) inverseColor else StatusRecordingColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 8.dp)
                         )
-                    } else if (!isAnalyzed) {
+                    } else if (!isPlayable) {
                         Text(
                             text = "メタデータ解析中",
-                            color = if (isVisualFocused) inverseColor else Color(0xFFFB8C00),
+                            color = if (isVisualFocused) inverseColor else StatusAnalyzingColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 8.dp)

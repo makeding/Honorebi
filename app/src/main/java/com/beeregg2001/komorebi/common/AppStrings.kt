@@ -136,7 +136,7 @@ object AppStrings {
     const val TOAST_SOURCE_SWITCHED = "ソース切替"
     const val TOAST_SUBTITLE_CHANGED = "字幕: %s"
     const val TOAST_COMMENT_CHANGED = "実況: %s"
-    const val TOAST_QUALITY_CHANGED = "画質: %s"
+    const val TOAST_QUALITY_CHANGED = "画質を %s に変更しました"
 
     // 各種状態・ラベル
     const val STATE_SHOW = "表示"
@@ -361,4 +361,8 @@ object AppStrings {
     const val DIALOG_LINK_TITLE = "プロジェクトページ"
     const val DIALOG_LINK_HINT = "スマートフォンで QR コードを読み取ると、このアプリのリポジトリを開けます。"
     const val PROJECT_GITHUB_URL = "https://github.com/makeding/Honorebi"
+
+    // --- プレイヤー共通 (ライブ/録画プレイヤー画面の統一用に追加分: ここ以外で追記しないこと) ---
+    // プレイヤー内の再試行ボタン共通ラベル (エラーダイアログ以外の retry ボタン)
+    const val BUTTON_RETRY_TV = "再試行"
 }

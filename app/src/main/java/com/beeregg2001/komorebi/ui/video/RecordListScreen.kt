@@ -198,12 +198,27 @@ fun RecordListScreen(
         remember { MutableTransitionState(false) }.apply { targetState = menuState.isPaneOpen }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    // ★ 修正: LifecycleEventObserver は状態変化で再起動しないため、ON_RESUME 内で
+    // 参照する値は rememberUpdatedState 経由で最新を読む。
+    val currentCategory by rememberUpdatedState(selectedCategory)
+    val currentIsReturningFromPlayer by rememberUpdatedState(isReturningFromPlayer)
+    val currentLastPlayedProgramId by rememberUpdatedState(lastPlayedProgramId)
+    val currentPagedRecordings by rememberUpdatedState(pagedRecordings)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                if (selectedCategory == RecordCategory.UNWATCHED) {
+            if (event == Lifecycle.Event.ON_RESUME && currentCategory == RecordCategory.UNWATCHED) {
+                if (currentIsReturningFromPlayer) {
+                    // ★ 修正: 再生からの復帰が保留中の場合は、refresh + LIST_TOP が
+                    // 復帰先のスクロール位置とフォーカスを破壊するため発行しない。
+                    // 代わりに最後に再生した番組へ TARGET_ID で復帰する
+                    // (ON_RESUME 直後の初回フォーカス要求パスと同じ方式)。
+                    if (currentLastPlayedProgramId != null) {
+                        ticketManager.issue(FocusTicket.TARGET_ID, currentLastPlayedProgramId)
+                        onReturnFocusConsumed()
+                    }
+                } else {
                     focuses.navPane.safeRequestFocus("RetreatToNav")
-                    pagedRecordings.refresh()
+                    currentPagedRecordings.refresh()
                     ticketManager.issue(FocusTicket.LIST_TOP)
                 }
             }

@@ -21,6 +21,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import androidx.tv.material3.MaterialTheme
 import com.beeregg2001.komorebi.data.api.interceptor.BackendApiException
+import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.PlayerChannelLogo
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
@@ -140,7 +141,7 @@ internal fun ProgramInfoOverlay(
             Box(Modifier.width(120.dp)) {
                 if (request.error != null && !request.loading) {
                     Button(onClick = presentation.retry, modifier = Modifier.width(120.dp)) {
-                        Text("再試行")
+                        Text(AppStrings.BUTTON_RETRY_TV)
                     }
                 }
             }

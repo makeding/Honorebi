@@ -26,6 +26,14 @@ internal val HOME_TAB_TITLES = listOf("ホーム", "ライブ", "アプリ", "�
 internal fun visibleHomeTabs(hideAppsTab: Boolean): List<String> =
     if (hideAppsTab) HOME_TAB_TITLES.filterNot { it == "アプリ" } else HOME_TAB_TITLES
 
+/**
+ * 先頭項目の描画完了を外部に通知しないタブコンテンツ(ライブ/ビデオ/番組表/録画予約)向けの
+ * 準備完了フォールバック。コンテンツ側から構築を検知できないため、短い一律の猶予で
+ * 準備完了とする。ホーム/アプリタブは各コンテンツが描画駆動で通知するため、
+ * 先に準備が整った場合はこの値は使われない。
+ */
+internal const val TAB_CONTENT_READY_FALLBACK_MS = 300L
+
 @Stable
 class HomeFocusTicketManager {
     var currentTicket by mutableStateOf(HomeFocusTicket.NONE)
