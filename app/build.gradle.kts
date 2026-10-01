@@ -40,7 +40,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 17 // 数値を1つ上げる
-        versionName = "1.1.0-huggy"
+        versionName = "1.1.1-beta1-huggy"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
