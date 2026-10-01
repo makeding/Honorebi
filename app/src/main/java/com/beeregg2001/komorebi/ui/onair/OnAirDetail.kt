@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.onair
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,11 +62,9 @@ internal fun OnAirDetail(
     val summaryFocus = remember(series.id) { FocusRequester() }
     val horizontal = rememberScrollState(state.matrixHorizontalScroll)
     val vertical = rememberScrollState(state.matrixVerticalScroll)
-    val summaryScroll = rememberScrollState(state.summaryScroll)
     val scope = rememberCoroutineScope()
     LaunchedEffect(horizontal) { snapshotFlow { horizontal.value }.collect(viewModel::saveMatrixHorizontalScroll) }
     LaunchedEffect(vertical) { snapshotFlow { vertical.value }.collect(viewModel::saveMatrixVerticalScroll) }
-    LaunchedEffect(summaryScroll) { snapshotFlow { summaryScroll.value }.collect(viewModel::saveSummaryScroll) }
 
     val playableKeysByRow = remember(matrix, series.id) {
         matrix.rows.map { row ->
@@ -116,18 +115,6 @@ internal fun OnAirDetail(
                 keys.isEmpty() || keys.any { it.key !in completeSlotKeys }
             }
         }.map { it.id }.toSet()
-    }
-    // 同じ話数の別局録画は数えず「どこまで録れているか」を出す（HonomiTV の seriesCountLabel）。
-    val countLabel = remember(matrix, missingSlotKeys, detail.programs) {
-        val episodeSlots = matrix.slots.filter { it.key.startsWith("episode:") }
-        if (episodeSlots.isEmpty()) {
-            "${detail.programs.size}件の録画"
-        } else {
-            val latest = episodeSlots.last().key.removePrefix("episode:")
-            val recorded = episodeSlots.size - missingSlotKeys.size
-            val missingLabel = if (missingSlotKeys.isNotEmpty()) "・${missingSlotKeys.size}話未録画" else ""
-            "第${latest}話まで・${recorded}話録画$missingLabel"
-        }
     }
 
     fun requesterAt(row: Int, column: Int): FocusRequester? =
@@ -210,26 +197,10 @@ internal fun OnAirDetail(
         shape = RoundedCornerShape(0.dp),
     ) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        detail.summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title,
-                        color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 21.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                    detail.summary?.bangumiSubjectNameCn?.takeIf(String::isNotBlank)?.let { cnTitle ->
-                        Text(cnTitle, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                Text(countLabel, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1)
-            }
-            Spacer(Modifier.height(8.dp))
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                // HonomiTV の bangumi ブロックに合わせた余裕ある hero。
-                val heroHeight = (maxHeight * 0.25f).coerceIn(132.dp, 176.dp)
+                // タイトル行は廃止（hero 内にのみ表示）。余った高さは録画マトリクスのカードに回す。
+                val heroHeight = (maxHeight * 0.28f).coerceIn(148.dp, 184.dp)
+                val heroExpandedMax = (maxHeight * 0.72f)
                 Column(Modifier.fillMaxSize()) {
                     DetailStatus(
                         detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.height(24.dp),
@@ -240,13 +211,18 @@ internal fun OnAirDetail(
                         series = series,
                         detail = detail,
                         expanded = state.summaryExpanded,
-                        scrollState = summaryScroll,
                         scope = scope,
                         focusRequester = summaryFocus,
                         upRequester = heroUp,
                         downRequester = heroDown,
                         onToggleExpanded = { viewModel.setSummaryExpanded(!state.summaryExpanded) },
-                        modifier = Modifier.fillMaxWidth().height(heroHeight),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (state.summaryExpanded) Modifier.heightIn(min = heroHeight, max = heroExpandedMax)
+                                else Modifier.height(heroHeight)
+                            )
+                            .animateContentSize(),
                     )
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.weight(1f).fillMaxWidth()) {
@@ -384,7 +360,7 @@ internal fun OnAirDetail(
     }
 }
 
-/** 局名セル: ロゴ + 局名 + その局の録画カバー表示（HonomiTV の channel-name セル）。 */
+/** 局名セル: ロゴ + 局名、右上にその局の録画カバー表示（HonomiTV の channel-name セル）。 */
 @Composable
 private fun ChannelCell(
     row: SeriesEpisodeChannelRow,
@@ -395,26 +371,27 @@ private fun ChannelCell(
     logos: ImageLoader,
 ) {
     val colors = KomorebiTheme.colors
-    Column(
-        modifier.padding(end = 8.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        row.channelId?.let { channel ->
-            AsyncImage(
-                UrlBuilder.getKonomiTvLogoUrl(ip, port, channel), null, imageLoader = logos,
-                modifier = Modifier.size(52.dp, 30.dp).background(Color.White, RoundedCornerShape(4.dp)),
-                contentScale = ContentScale.Fit,
-            )
-            Spacer(Modifier.height(4.dp))
+    Box(modifier.padding(end = 8.dp, bottom = 8.dp)) {
+        Column(verticalArrangement = Arrangement.Top) {
+            row.channelId?.let { channel ->
+                AsyncImage(
+                    UrlBuilder.getKonomiTvLogoUrl(ip, port, channel), null, imageLoader = logos,
+                    modifier = Modifier.size(52.dp, 30.dp).background(Color.White, RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Fit,
+                )
+                Spacer(Modifier.height(5.dp))
+            }
+            Text(row.channelName, color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
         }
-        Text(row.channelName, color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
         val coveredEpisodes = matrix.slots.countIndexed { index, slot ->
             slot.key.startsWith("episode:") && row.programs.getOrNull(index) != null
         }
         Text(
             if (coveredEpisodes > 0) "${coveredEpisodes}話録画" else "${row.programs.count { it != null }}件の録画",
             color = colors.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 1.dp),
         )
     }
 }
@@ -450,13 +427,13 @@ private fun EpisodePlaceholder(missing: Boolean, analyzing: Boolean, modifier: M
 /**
  * 作品情報パネル。HonomiTV の bangumi ブロックと同じく、
  * ポスター + 邦題 / 中文題 + あらすじ（日本語・中国語）を横並びで表示する。
+ * 操作は OK（展開 / 収納）のみ。全文表示中で長文のときだけ上下スクロールにフォールバックする。
  */
 @Composable
 private fun SeriesSummaryPanel(
     series: OnAirSeries,
     detail: OnAirExpandedSeries,
     expanded: Boolean,
-    scrollState: androidx.compose.foundation.ScrollState,
     scope: kotlinx.coroutines.CoroutineScope,
     focusRequester: FocusRequester,
     upRequester: FocusRequester,
@@ -465,6 +442,7 @@ private fun SeriesSummaryPanel(
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
+    val scrollState = rememberScrollState()
     val summary = detail.summary
     val summaryReady = detail.summaryStatus == OnAirLoadState.Ready
     val jpTitle = summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title
@@ -483,7 +461,8 @@ private fun SeriesSummaryPanel(
                 down = downRequester
             }
             .onPreviewKeyEvent { event ->
-                // 収納時は Down で直接マトリクス（局選択）へ。全文表示中だけ上下でスクロールする。
+                // 収納時は OK 展開のみで、Down はそのままマトリクス（局選択）へ進む。
+                // 全文表示中で内容があふれたときだけ上下でスクロールする。
                 if (!expanded || event.type != KeyEventType.KeyDown) false
                 else when {
                     event.key == Key.DirectionDown && scrollState.value < scrollState.maxValue -> {
@@ -503,43 +482,48 @@ private fun SeriesSummaryPanel(
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 12.dp, vertical = 10.dp)) {                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 108.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+        Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 108.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.width(77.dp).height(108.dp).clip(RoundedCornerShape(5.dp))
+                        .background(colors.textPrimary.copy(alpha = .06f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier.width(77.dp).height(108.dp).clip(RoundedCornerShape(5.dp))
-                            .background(colors.textPrimary.copy(alpha = .06f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (summaryReady && poster == null) {
-                            Text("ポスター\nなし", color = colors.textSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
-                        }
-                        poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                    if (summaryReady && poster == null) {
+                        Text("ポスター\nなし", color = colors.textSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                        Text(jpTitle, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (cnTitle != null) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(cnTitle, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
-                            Spacer(Modifier.height(5.dp))
-                            Text(
-                                summaryText,
-                                color = colors.textSecondary, fontSize = 13.sp, lineHeight = 18.sp,
-                                maxLines = if (expanded) Int.MAX_VALUE else 3,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                    poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    // HonomiTV と同じく収納時は 1 行で省略、展開時だけ 2 行まで見せる。
+                    Text(
+                        jpTitle, fontWeight = FontWeight.Bold, fontSize = 20.sp,
+                        maxLines = if (expanded) 2 else 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (cnTitle != null) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(cnTitle, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            summaryText,
+                            color = colors.textSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+                            maxLines = if (expanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    // 中文あらすじは展開時のみ（収納時は高さを確保して Down をマトリクスへ通す）。
+                    if (expanded) {
                         cnSummary(summary, jpSummary)?.let { cnText ->
                             Spacer(Modifier.height(3.dp))
                             Text(
                                 cnText,
                                 color = colors.textSecondary.copy(alpha = 0.82f), fontSize = 12.sp, lineHeight = 16.sp,
-                                maxLines = if (expanded) Int.MAX_VALUE else 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }

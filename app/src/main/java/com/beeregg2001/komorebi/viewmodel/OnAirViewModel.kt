@@ -55,7 +55,6 @@ data class OnAirUiState(
     val gridFirstVisibleOffset: Int = 0,
     val matrixHorizontalScroll: Int = 0,
     val matrixVerticalScroll: Int = 0,
-    val summaryScroll: Int = 0,
     val summaryExpanded: Boolean = false,
     val focusedSeriesId: Int? = null,
     /** channelId:episode-slot:recordingId; IDs keep restoration stable across reordering. */
@@ -165,7 +164,6 @@ class OnAirViewModel private constructor(
                         gridFirstVisibleOffset = 0,
                         matrixHorizontalScroll = 0,
                         matrixVerticalScroll = 0,
-                        summaryScroll = 0,
                         summaryExpanded = false,
                         focusedSeriesId = null,
                         focusedEpisodeCellKey = null,
@@ -178,7 +176,7 @@ class OnAirViewModel private constructor(
             _uiState.value = _uiState.value.copy(
                 backendSupported = true, series = emptyList(), expanded = null,
                 gridFirstVisibleIndex = 0, gridFirstVisibleOffset = 0, matrixHorizontalScroll = 0,
-                matrixVerticalScroll = 0, summaryScroll = 0, summaryExpanded = false,
+                matrixVerticalScroll = 0, summaryExpanded = false,
                 focusedSeriesId = null, focusedEpisodeCellKey = null,
             )
             loadList()
@@ -214,10 +212,6 @@ class OnAirViewModel private constructor(
 
     fun saveMatrixVerticalScroll(value: Int) {
         _uiState.value = _uiState.value.copy(matrixVerticalScroll = value.coerceAtLeast(0))
-    }
-
-    fun saveSummaryScroll(value: Int) {
-        _uiState.value = _uiState.value.copy(summaryScroll = value.coerceAtLeast(0))
     }
 
     fun setSummaryExpanded(expanded: Boolean) {
@@ -258,7 +252,6 @@ class OnAirViewModel private constructor(
             focusedSeriesId = seriesId,
             matrixHorizontalScroll = 0,
             matrixVerticalScroll = 0,
-            summaryScroll = 0,
             summaryExpanded = false,
             focusedEpisodeCellKey = null,
             expanded = OnAirExpandedSeries(
