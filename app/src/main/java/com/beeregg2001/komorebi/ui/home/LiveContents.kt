@@ -143,21 +143,28 @@ fun LiveContent(
 
     LaunchedEffect(liveRows) {
         if (liveRows.isNotEmpty()) {
+            val visibleChannels = liveRows.flatMap { it.channels }
             val currentId = pendingChannel?.channel?.id ?: focusedChannel?.channel?.id
 
             if (currentId == null) {
-                val firstChannel = liveRows.firstOrNull()?.channels?.firstOrNull()
+                val firstChannel = visibleChannels.firstOrNull()
                 if (firstChannel != null) {
                     pendingChannel = firstChannel
                 }
             } else {
-                val updatedChannel = liveRows
-                    .flatMap { it.channels }
-                    .find { it.channel.id == currentId }
+                val updatedChannel = visibleChannels.find { it.channel.id == currentId }
 
                 if (updatedChannel != null) {
                     pendingChannel = updatedChannel
                     focusedChannel = updatedChannel
+                } else {
+                    // N〇K除外モードの切替などで注視中のチャンネルが一覧から消えたときは、
+                    // バナー概要が古いチャンネルを表示し続けないよう、表示可能な先頭で作り直す。
+                    val fallbackChannel = visibleChannels.firstOrNull()
+                    if (fallbackChannel != null) {
+                        pendingChannel = fallbackChannel
+                        focusedChannel = fallbackChannel
+                    }
                 }
             }
         }

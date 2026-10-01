@@ -200,6 +200,12 @@ class HomeViewModel @Inject constructor(
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** N〇K除外モードの ON/OFF 切替を UI が検知できるようにする（常時配信はしない）。 */
+    val isNhkExclusionActive: StateFlow<Boolean> = nhkExclusionRepository.state
+        .map { it.isActive }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val lastWatchedChannelFlow: StateFlow<List<Channel>> = combine(
         watchHistoryRepository.getLastChannels(), nhkExclusionRepository.state,
     ) { entities, exclusion ->

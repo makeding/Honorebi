@@ -108,6 +108,17 @@ fun HomeContents(
     var isFirstHeroLoad by remember { mutableStateOf(true) }
     val colors = KomorebiTheme.colors
 
+    // N〇K除外モードの ON/OFF 切替では一覧が作り直され、注視していた N〇K 項目が消える。
+    // バナー概要に古い項目を残さないため、切替を検知したら Welcome ヒーローへ戻して再レンダリングする。
+    val isNhkExcluded by homeViewModel.isNhkExclusionActive.collectAsState()
+    var heroExclusionBaseline by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(isNhkExcluded) {
+        if (heroExclusionBaseline != null && heroExclusionBaseline != isNhkExcluded) {
+            pendingHeroInfo = welcomeHeroInfo
+        }
+        heroExclusionBaseline = isNhkExcluded
+    }
+
     LaunchedEffect(isTopNavFocused) { if (isTopNavFocused) pendingHeroInfo = welcomeHeroInfo }
 
     LaunchedEffect(pendingHeroInfo) {

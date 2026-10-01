@@ -131,6 +131,18 @@ fun VideoTabContent(
     var pendingHeroInfo by remember { mutableStateOf<HomeHeroInfo?>(initialHeroInfo) }
     var currentHeroInfo by remember { mutableStateOf<HomeHeroInfo?>(initialHeroInfo) }
 
+    // N〇K除外モードの ON/OFF 切替では一覧が作り直されるため、注視していた N〇K 録画が
+    // 消えてもバナー概要に残らないよう、ヒーローを初期状態へ戻して再レンダリングする。
+    val isNhkExcluded = settingViewModel.nhkExclusionState.collectAsState().value.isActive
+    var heroExclusionBaseline by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(isNhkExcluded) {
+        if (heroExclusionBaseline != null && heroExclusionBaseline != isNhkExcluded) {
+            focusedProgramId = null
+            pendingHeroInfo = initialHeroInfo
+        }
+        heroExclusionBaseline = isNhkExcluded
+    }
+
     LaunchedEffect(isTopNavFocused) {
         if (isTopNavFocused) {
             pendingHeroInfo = initialHeroInfo
