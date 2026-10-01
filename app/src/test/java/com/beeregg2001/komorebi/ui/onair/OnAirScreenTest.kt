@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.requestFocus
@@ -46,10 +47,43 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-series-1").requestFocus().assertIsFocused()
             .performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
         compose.onNodeWithTag("onair-series-2").assertIsFocused().confirm()
-        // 決定で全画面詳細へ。録画が無い作品は作品情報へ自動フォーカスする。
+        // 決定で全画面詳細へ。詳細はまず作品情報（hero）へフォーカスする。
         compose.onNodeWithTag("onair-details").assertIsDisplayed()
-        compose.onNodeWithTag("onair-summary").requestFocus().assertIsFocused().performKeyInput { keyDown(Key.Back); keyUp(Key.Back) }
+        compose.onNodeWithTag("onair-summary").assertIsFocused()
+        // Back は常に一覧へ戻り、確認前のカードへフォーカスを復元する。
+        compose.onNodeWithTag("onair-summary").performKeyInput { keyDown(Key.Back); keyUp(Key.Back) }
         compose.onNodeWithTag("onair-series-2").assertIsFocused()
+    }
+
+    @Test fun detailSummaryDownJumpsToNewestPlayableEpisodeCell() {
+        val vm = viewModel()
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-series-1").confirm()
+        compose.onNodeWithTag("onair-summary").assertIsFocused()
+            .performKeyInput { keyDown(Key.DirectionDown); keyUp(Key.DirectionDown) }
+        compose.onNodeWithTag("onair-episode-1:ch:episode:1:10").assertIsFocused()
+    }
+
+    @Test fun dayHeaderFocusSwitchesDayAndDownReturnsToColumn() {
+        val vm = viewModel()
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-day-header-1").requestFocus().assertIsFocused()
+            .performKeyInput { keyDown(Key.DirectionDown); keyUp(Key.DirectionDown) }
+        compose.onNodeWithTag("onair-series-2").assertIsFocused()
+            .performKeyInput { keyDown(Key.DirectionUp); keyUp(Key.DirectionUp) }
+        compose.onNodeWithTag("onair-day-header-1").assertIsFocused()
+    }
+
+    @Test fun summaryRetryChipIsReachableFromHeroWhenSummaryFails() {
+        val vm = OnAirViewModel(FakeProvider(failSummary = true), MutableStateFlow(OnAirBackendConfiguration("KONOMITV", "tv", "7000", ""))).also {
+            ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        }
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-series-1").confirm()
+        // 作品情報の取得に失敗しても詳細は開き、hero から Up で再試行チップへ到達できる。
+        compose.onNodeWithTag("onair-summary").assertIsFocused()
+            .performKeyInput { keyDown(Key.DirectionUp); keyUp(Key.DirectionUp) }
+        compose.onNodeWithText("再試行").assertIsFocused()
     }
 
     @Test fun unsupportedAndEmptyStatesAreVisible() {
@@ -88,12 +122,15 @@ class OnAirScreenTest {
     }
     @androidx.compose.runtime.Composable private fun screen(vm: OnAirViewModel) = KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), false, {}, vm) }
 
-    private class FakeProvider(private val empty: Boolean = false) : OnAirProvider {
+    private class FakeProvider(private val empty: Boolean = false, private val failSummary: Boolean = false) : OnAirProvider {
         override suspend fun getOnAirSeries() = OnAirSeriesApiResponse(listOf(
             OnAirSeries(1, "月曜作品", emptyList(), emptyList(), 0, 0, 0, 0, "23:30", "2026-09-13T23:30:00+09:00"),
             OnAirSeries(2, "火曜作品", emptyList(), emptyList(), 0, 0, 0, 1, "01:00", "2026-09-13T01:00:00+09:00"),
         ).takeUnless { empty } ?: emptyList())
-        override suspend fun getSeriesSummary(seriesId: Int) = SeriesProgram(seriesId, "概要")
+        override suspend fun getSeriesSummary(seriesId: Int): SeriesProgram {
+            if (failSummary) throw RuntimeException("summary unavailable")
+            return SeriesProgram(seriesId, "概要")
+        }
         override suspend fun getRecordedProgramsBySeries(seriesId: Int, page: Int, order: String) = if (seriesId == 1 && page == 1) RecordedApiResponse(1, listOf(program())) else RecordedApiResponse(0, emptyList())
         private fun program() = RecordedProgram(10, "第1話", seriesId = 1, episodeNumber = "1", description = "", startTime = "2026-09-13T00:00:00+09:00", endTime = "2026-09-13T00:30:00+09:00", duration = 1800.0, isPartiallyRecorded = false, channel = com.beeregg2001.komorebi.data.model.RecordedChannel("ch", displayChannelId = "ch", type = "GR", name = "局", channelNumber = "1"), recordedVideo = RecordedVideo(10, "Recorded", "/10.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC"))
     }

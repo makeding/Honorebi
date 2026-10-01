@@ -72,11 +72,27 @@ private fun getEpisodeSlots(program: RecordedProgram): List<SeriesEpisodeSlot> {
     return listOf(SeriesEpisodeSlot("date:$date", date, Double.MAX_VALUE))
 }
 
+/** 話数セルの判定（未録画・部分録画の強調）から参照するため公開する。 */
+internal fun episodeSlotsFor(program: RecordedProgram): List<SeriesEpisodeSlot> = getEpisodeSlots(program)
+
+private val integerEpisodeSlotKey = Regex("^episode:(\\d+)$")
+
 fun buildSeriesEpisodeMatrix(programs: List<RecordedProgram>): SeriesEpisodeMatrix {
-    val slots = programs
+    val observed = programs
         .flatMap(::getEpisodeSlots)
         .distinctBy(SeriesEpisodeSlot::key)
-        .sortedWith(compareBy<SeriesEpisodeSlot>({ it.sortOrder }, { it.key }))
+    // HonomiTV と同じく、連続する自然話数の間の欠番も列として並べて欠けていることを見せる。
+    val integerSlots = observed.filter { integerEpisodeSlotKey.matchEntire(it.key) != null }
+    val slots = if (integerSlots.isEmpty()) {
+        observed.sortedWith(compareBy({ it.sortOrder }, { it.key }))
+    } else {
+        val numbers = integerSlots.map { it.key.removePrefix("episode:").toInt() }
+        val filled = (numbers.min()..numbers.max()).map { number ->
+            SeriesEpisodeSlot("episode:$number", "第${number}話", number.toDouble())
+        }
+        (filled + observed.filter { integerEpisodeSlotKey.matchEntire(it.key) == null })
+            .sortedWith(compareBy({ it.sortOrder }, { it.key }))
+    }
     val rows = programs.groupBy { it.channel?.id ?: "unknown" }.values.map { channelPrograms ->
         val programsBySlot = mutableMapOf<String, RecordedProgram>()
         channelPrograms.forEach { program ->

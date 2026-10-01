@@ -33,6 +33,19 @@ class SeriesEpisodeMatrixContentTest {
     }
 
     @Test
+    fun matrix_fillsIntegerEpisodeGapsBetweenRecordedEpisodes() {
+        val matrix = buildSeriesEpisodeMatrix(
+            listOf(
+                program(1, "1", "channel-a", "放送局 A"),
+                program(2, "5", "channel-a", "放送局 A"),
+            ),
+        )
+
+        assertEquals(listOf("第1話", "第2話", "第3話", "第4話", "第5話"), matrix.slots.map { it.label })
+        assertEquals(listOf(1, null, null, null, 2), matrix.rows.single().programs.map { it?.id })
+    }
+
+    @Test
     fun matrix_prefersCompleteRecordingThenLongerPartialRecording() {
         val matrix = buildSeriesEpisodeMatrix(
             listOf(

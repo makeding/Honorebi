@@ -5,6 +5,7 @@ package com.beeregg2001.komorebi.ui.onair
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,27 +16,39 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.*
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.OnAirSeries
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.data.model.SeriesProgram
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.video.components.SeriesEpisodeChannelRow
+import com.beeregg2001.komorebi.ui.video.components.SeriesEpisodeMatrix
 import com.beeregg2001.komorebi.ui.video.components.buildSeriesEpisodeMatrix
+import com.beeregg2001.komorebi.ui.video.components.episodeSlotsFor
 import com.beeregg2001.komorebi.viewmodel.*
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+/** HonomiTV の SeriesEpisodeList と同じ 16:9 セル幅。行は 108dp（99dp 可視 + 8dp 下余白）。 */
+private val SLOT_WIDTH = 176.dp
+private val ROW_HEIGHT = 108.dp
+private val CHANNEL_LOGO_WIDTH = 60.dp
+private val CHANNEL_NAME_WIDTH = 96.dp
+private val CHANNEL_COL_WIDTH = CHANNEL_LOGO_WIDTH + CHANNEL_NAME_WIDTH
 
 @Composable
 internal fun OnAirDetail(
@@ -45,13 +58,11 @@ internal fun OnAirDetail(
 ) {
     val colors = KomorebiTheme.colors
     val matrix = remember(detail.programs) { buildSeriesEpisodeMatrix(detail.programs) }
-    val backFocus = remember(series.id) { FocusRequester() }
     val summaryFocus = remember(series.id) { FocusRequester() }
     val horizontal = rememberScrollState(state.matrixHorizontalScroll)
     val vertical = rememberScrollState(state.matrixVerticalScroll)
     val summaryScroll = rememberScrollState(state.summaryScroll)
     val scope = rememberCoroutineScope()
-    var summaryFocused by remember(series.id) { mutableStateOf(false) }
     LaunchedEffect(horizontal) { snapshotFlow { horizontal.value }.collect(viewModel::saveMatrixHorizontalScroll) }
     LaunchedEffect(vertical) { snapshotFlow { vertical.value }.collect(viewModel::saveMatrixVerticalScroll) }
     LaunchedEffect(summaryScroll) { snapshotFlow { summaryScroll.value }.collect(viewModel::saveSummaryScroll) }
@@ -76,6 +87,48 @@ internal fun OnAirDetail(
     }
     val latestCell = latestCellKey?.let { cellRequesters.getValue(it) }
     val defaultCell = latestCell ?: firstCell
+    // 再試行チップ（エラー時だけ表示）。hero・マトリクス最上段から D-pad で到達できるようにする。
+    val summaryRetryFocus = remember(series.id) { FocusRequester() }
+    val programsRetryFocus = remember(series.id) { FocusRequester() }
+    val upFromMatrixTop = if (detail.programsStatus is OnAirLoadState.Error) programsRetryFocus else summaryFocus
+    val heroDown = when {
+        detail.programsStatus is OnAirLoadState.Error -> programsRetryFocus
+        else -> defaultCell ?: FocusRequester.Cancel
+    }
+    val heroUp = if (detail.summaryStatus is OnAirLoadState.Error) summaryRetryFocus else FocusRequester.Cancel
+
+    // HonomiTV と同じ欠番/完全録画判定: 作品全体で未録画の話数は 1 行目にだけ「未録画」を出す。
+    val missingSlotKeys = remember(matrix) {
+        val recorded = matrix.rows.flatMapTo(mutableSetOf()) { row ->
+            row.programs.mapIndexedNotNull { index, program -> if (program != null) matrix.slots[index].key else null }
+        }
+        matrix.slots.filter { it.key.startsWith("episode:") && it.key !in recorded }.map { it.key }.toSet()
+    }
+    val completeSlotKeys = remember(matrix) {
+        matrix.slots.mapIndexed { index, slot ->
+            if (slot.key.startsWith("episode:") && matrix.rows.any { it.programs.getOrNull(index)?.isPartiallyRecorded == false }) slot.key else null
+        }.filterNotNull().toSet()
+    }
+    val partialWarningProgramIds = remember(detail.programs, completeSlotKeys) {
+        detail.programs.filter { program ->
+            program.isPartiallyRecorded && run {
+                val keys = episodeSlotsFor(program).filter { it.key.startsWith("episode:") }
+                keys.isEmpty() || keys.any { it.key !in completeSlotKeys }
+            }
+        }.map { it.id }.toSet()
+    }
+    // 同じ話数の別局録画は数えず「どこまで録れているか」を出す（HonomiTV の seriesCountLabel）。
+    val countLabel = remember(matrix, missingSlotKeys, detail.programs) {
+        val episodeSlots = matrix.slots.filter { it.key.startsWith("episode:") }
+        if (episodeSlots.isEmpty()) {
+            "${detail.programs.size}件の録画"
+        } else {
+            val latest = episodeSlots.last().key.removePrefix("episode:")
+            val recorded = episodeSlots.size - missingSlotKeys.size
+            val missingLabel = if (missingSlotKeys.isNotEmpty()) "・${missingSlotKeys.size}話未録画" else ""
+            "第${latest}話まで・${recorded}話録画$missingLabel"
+        }
+    }
 
     fun requesterAt(row: Int, column: Int): FocusRequester? =
         playableKeysByRow.getOrNull(row)?.getOrNull(column)?.let { cellRequesters[it] }
@@ -90,41 +143,42 @@ internal fun OnAirDetail(
         return null
     }
 
+    // 上下は同じ列を優先し、無ければ近い列へ。あまり離れた列へ横方向に飛ばないよう ±1 列を優先する。
     fun nearestInRow(row: Int, column: Int): FocusRequester? {
         val candidates = playableKeysByRow.getOrNull(row)?.indices?.filter { playableKeysByRow[row][it] != null } ?: return null
-        val nearest = candidates.minWithOrNull(compareBy({ abs(it - column) }, { it })) ?: return null
-        return requesterAt(row, nearest)
+        if (candidates.isEmpty()) return null
+        val chosen = candidates.filter { abs(it - column) <= 1 }.minByOrNull { abs(it - column) }
+            ?: candidates.minWithOrNull(compareBy({ abs(it - column) }, { it }))
+        return requesterAt(row, requireNotNull(chosen))
     }
 
     fun upOf(row: Int, column: Int): FocusRequester =
-        if (row == 0) summaryFocus else nearestInRow(row - 1, column) ?: summaryFocus
+        if (row == 0) upFromMatrixTop else nearestInRow(row - 1, column) ?: summaryFocus
 
     fun downOf(row: Int, column: Int): FocusRequester? =
         if (row >= playableKeysByRow.lastIndex) null else nearestInRow(row + 1, column)
 
     var autoFocused by remember(series.id) { mutableStateOf(false) }
     LaunchedEffect(series.id, detail.programsStatus, returnCell) {
-        if (detail.programsStatus == OnAirLoadState.Loading) return@LaunchedEffect
         if (returnCell != null) {
+            if (detail.programsStatus != OnAirLoadState.Ready) return@LaunchedEffect
             autoFocused = true
             (cellRequesters[returnCell] ?: defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")
             onRestored()
         } else if (!autoFocused) {
+            // 詳細は作品情報（hero）から始める。録画一覧へは Down、一覧へは Back。
             autoFocused = true
-            (defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirOpenDetail")
+            summaryFocus.safeRequestFocusWithRetry("OnAirOpenDetail")
         }
     }
 
-    fun handleBack() {
-        if (summaryFocused) onBack()
-        else scope.launch { summaryFocus.safeRequestFocusWithRetry("OnAirDetailSummaryBack") }
-    }
-    BackHandler(enabled = true) { handleBack() }
+    // Back は常に一覧へ戻り、確認前のカードへフォーカスを復元する（OnAirScreen の closeDetail）。
+    BackHandler(enabled = true) { onBack() }
 
     Surface(
         modifier.onPreviewKeyEvent { event ->
             if (event.type == KeyEventType.KeyDown && (event.key == Key.Back || event.key == Key.Escape)) {
-                handleBack()
+                onBack()
                 true
             } else false
         },
@@ -132,30 +186,32 @@ internal fun OnAirDetail(
         shape = RoundedCornerShape(0.dp),
     ) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                OnAirAction("戻る", ::handleBack,
-                    Modifier.focusRequester(backFocus)
-                        .focusProperties {
-                            up = FocusRequester.Cancel
-                            left = FocusRequester.Cancel
-                            right = FocusRequester.Cancel
-                            down = summaryFocus
-                        }
-                        .testTag("onair-detail-back"))
-                Spacer(Modifier.width(16.dp))
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text(detail.summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title,
-                        color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${displayBroadcastTime(series.broadcastTime, "24H")} · ${series.recordedEpisodesCount}話録画 · 決定で再生 / 戻るで作品情報・一覧",
-                        color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        detail.summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title,
+                        color = colors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 21.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    detail.summary?.bangumiSubjectNameCn?.takeIf(String::isNotBlank)?.let { cnTitle ->
+                        Text(cnTitle, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
+                Text(countLabel, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1)
             }
             Spacer(Modifier.height(8.dp))
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                // About 22% of the post-header height, clamped so four station rows fit on a 540dp TV.
-                val heroHeight = (maxHeight * 0.22f).coerceIn(104.dp, 136.dp)
+                // HonomiTV の bangumi ブロックに合わせた余裕ある hero。
+                val heroHeight = (maxHeight * 0.25f).coerceIn(132.dp, 176.dp)
                 Column(Modifier.fillMaxSize()) {
-                    DetailStatus(detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.height(24.dp))
+                    DetailStatus(
+                        detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.height(24.dp),
+                        chipFocusRequester = summaryRetryFocus,
+                        chipDown = summaryFocus,
+                    )
                     SeriesSummaryPanel(
                         series = series,
                         detail = detail,
@@ -163,15 +219,19 @@ internal fun OnAirDetail(
                         scrollState = summaryScroll,
                         scope = scope,
                         focusRequester = summaryFocus,
-                        upRequester = backFocus,
-                        downRequester = defaultCell ?: FocusRequester.Cancel,
+                        upRequester = heroUp,
+                        downRequester = heroDown,
                         onToggleExpanded = { viewModel.setSummaryExpanded(!state.summaryExpanded) },
-                        onFocused = { summaryFocused = it },
                         modifier = Modifier.fillMaxWidth().height(heroHeight),
                     )
                     Spacer(Modifier.height(8.dp))
                     Column(Modifier.weight(1f).fillMaxWidth()) {
-                        DetailStatus(detail.programsStatus, "録画", viewModel::retryPrograms, Modifier.height(24.dp))
+                        DetailStatus(
+                            detail.programsStatus, "録画", viewModel::retryPrograms, Modifier.height(24.dp),
+                            chipFocusRequester = programsRetryFocus,
+                            chipUp = if (detail.summaryStatus is OnAirLoadState.Error) summaryRetryFocus else summaryFocus,
+                            chipDown = defaultCell ?: FocusRequester.Cancel,
+                        )
                         if (matrix.rows.isEmpty()) {
                             when (detail.programsStatus) {
                                 OnAirLoadState.Loading, OnAirLoadState.Idle -> Spacer(Modifier.weight(1f).fillMaxWidth())
@@ -180,79 +240,71 @@ internal fun OnAirDetail(
                             }
                         } else {
                             val logos = rememberChannelLogoImageLoader()
+                            // 話数ヘッダーは縦スクロールの外に固定し、横スクロールだけに参加させる。
+                            Row(
+                                Modifier.fillMaxWidth().height(24.dp).horizontalScroll(horizontal),
+                                verticalAlignment = Alignment.Bottom,
+                            ) {
+                                Text("放送局", Modifier.width(CHANNEL_COL_WIDTH).padding(start = 2.dp),
+                                    color = colors.textSecondary, fontSize = 11.sp)
+                                matrix.slots.forEach { slot ->
+                                    Text(slot.label, Modifier.width(SLOT_WIDTH), color = colors.textSecondary,
+                                        fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
+                                }
+                            }
                             Row(Modifier.weight(1f).fillMaxWidth().verticalScroll(vertical)) {
-                                Column(Modifier.width(112.dp)) {
-                                    Text("放送局", Modifier.height(24.dp), color = colors.textSecondary, fontSize = 12.sp)
+                                Column(Modifier.width(CHANNEL_COL_WIDTH)) {
                                     matrix.rows.forEach { row ->
-                                        Column(Modifier.height(68.dp).padding(end = 8.dp, top = 4.dp)) {
-                                            row.channelId?.let { channel ->
-                                                AsyncImage(UrlBuilder.getKonomiTvLogoUrl(ip, port, channel), null, imageLoader = logos,
-                                                    modifier = Modifier.size(48.dp, 24.dp).background(Color.White), contentScale = ContentScale.Fit)
-                                            }
-                                            Text(row.channelName, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        }
+                                        ChannelCell(row, matrix, Modifier.height(ROW_HEIGHT), ip, port, logos)
                                     }
                                 }
                                 Column(Modifier.horizontalScroll(horizontal)) {
-                                    Row(Modifier.height(24.dp)) {
-                                        matrix.slots.forEach { slot -> Text(slot.label, Modifier.width(154.dp), color = colors.textSecondary, fontSize = 12.sp) }
-                                    }
                                     matrix.rows.forEachIndexed { rowIndex, row ->
-                                        Row(Modifier.height(68.dp)) {
+                                        Row(Modifier.height(ROW_HEIGHT)) {
                                             row.programs.forEachIndexed { index, program ->
+                                                val slotKey = matrix.slots[index].key
                                                 val cellKey = program?.takeIf(::canPlayOnAirRecording)
-                                                    ?.let { onAirCellKey(series.id, row.channelId, matrix.slots[index].key, it.id) }
-                                                key(row.channelId, matrix.slots[index].key, program?.id) {
-                                                    if (cellKey == null) {
-                                                        Box(Modifier.width(154.dp).fillMaxHeight().padding(end = 8.dp, bottom = 8.dp)
-                                                            .background(colors.textPrimary.copy(alpha = .05f), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                                                            Text(if (program == null) "未録画" else "解析中・再生準備中", color = colors.textSecondary, fontSize = 12.sp)
-                                                        }
-                                                    } else {
-                                                        val playableProgram = requireNotNull(program)
-                                                        Surface(
-                                                            onClick = {
-                                                                viewModel.saveFocusedEpisodeCell(cellKey)
-                                                                viewModel.saveFocusedSeries(series.id)
-                                                                onProgram(playableProgram)
-                                                            },
-                                                            modifier = Modifier.width(154.dp).fillMaxHeight().padding(end = 8.dp, bottom = 8.dp)
-                                                                .focusRequester(cellRequesters.getValue(cellKey))
-                                                                .testTag("onair-episode-$cellKey")
-                                                                .onFocusChanged { if (it.isFocused) viewModel.saveFocusedEpisodeCell(cellKey) }
-                                                                .focusProperties {
-                                                                    left = leftOf(rowIndex, index)
-                                                                    right = rightOf(rowIndex, index) ?: FocusRequester.Cancel
-                                                                    up = upOf(rowIndex, index)
-                                                                    down = downOf(rowIndex, index) ?: FocusRequester.Cancel
+                                                    ?.let { onAirCellKey(series.id, row.channelId, slotKey, it.id) }
+                                                key(row.channelId, slotKey, program?.id) {
+                                                    val cellModifier = Modifier.width(SLOT_WIDTH).fillMaxHeight()
+                                                        .padding(end = 8.dp, bottom = 8.dp)
+                                                    when {
+                                                        cellKey != null -> {
+                                                            val playableProgram = requireNotNull(program)
+                                                            Surface(
+                                                                onClick = {
+                                                                    viewModel.saveFocusedEpisodeCell(cellKey)
+                                                                    viewModel.saveFocusedSeries(series.id)
+                                                                    onProgram(playableProgram)
                                                                 },
-                                                            colors = ClickableSurfaceDefaults.colors(
-                                                                containerColor = colors.surface, contentColor = Color.White,
-                                                                focusedContainerColor = colors.surface, focusedContentColor = Color.White),
-                                                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
-                                                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
-                                                        ) {
-                                                            Box(Modifier.fillMaxSize().background(Color(0xFF191919))) {
-                                                                AsyncImage(
-                                                                    UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, playableProgram.id.toString()), null,
-                                                                    Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
+                                                                modifier = cellModifier
+                                                                    .focusRequester(cellRequesters.getValue(cellKey))
+                                                                    .testTag("onair-episode-$cellKey")
+                                                                    .onFocusChanged { if (it.isFocused) viewModel.saveFocusedEpisodeCell(cellKey) }
+                                                                    .focusProperties {
+                                                                        left = leftOf(rowIndex, index)
+                                                                        right = rightOf(rowIndex, index) ?: FocusRequester.Cancel
+                                                                        up = upOf(rowIndex, index)
+                                                                        down = downOf(rowIndex, index) ?: FocusRequester.Cancel
+                                                                    },
+                                                                colors = ClickableSurfaceDefaults.colors(
+                                                                    containerColor = colors.surface, contentColor = Color.White,
+                                                                    focusedContainerColor = colors.surface, focusedContentColor = Color.White),
+                                                                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
+                                                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+                                                            ) {
+                                                                EpisodeCellContent(
+                                                                    playableProgram, ip, port,
+                                                                    showPartialWarning = playableProgram.id in partialWarningProgramIds,
+                                                                    modifier = Modifier.fillMaxSize(),
                                                                 )
-                                                                Box(Modifier.matchParentSize().background(Brush.verticalGradient(
-                                                                    0f to Color.Transparent, 0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.86f),
-                                                                )))
-                                                                if (playableProgram.isPartiallyRecorded) {
-                                                                    Text("⚠ 一部のみ録画", color = Color(0xFFFFB4AB), fontSize = 9.sp, maxLines = 1,
-                                                                        modifier = Modifier.align(Alignment.TopStart).padding(5.dp)
-                                                                            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
-                                                                            .padding(horizontal = 4.dp, vertical = 1.dp))
-                                                                }
-                                                                Text(playableProgram.subtitle?.takeIf(String::isNotBlank) ?: playableProgram.title,
-                                                                    color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                                                    maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                                                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                                                                        .padding(horizontal = 7.dp, vertical = 6.dp))
                                                             }
                                                         }
+                                                        else -> EpisodePlaceholder(
+                                                            missing = rowIndex == 0 && slotKey in missingSlotKeys,
+                                                            analyzing = program != null,
+                                                            modifier = cellModifier,
+                                                        )
                                                     }
                                                 }
                                             }
@@ -264,6 +316,69 @@ internal fun OnAirDetail(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 局名セル: ロゴ + 局名 + その局の録画カバー表示（HonomiTV の channel-name セル）。 */
+@Composable
+private fun ChannelCell(
+    row: SeriesEpisodeChannelRow,
+    matrix: SeriesEpisodeMatrix,
+    modifier: Modifier,
+    ip: String,
+    port: String,
+    logos: ImageLoader,
+) {
+    val colors = KomorebiTheme.colors
+    Column(
+        modifier.padding(end = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        row.channelId?.let { channel ->
+            AsyncImage(
+                UrlBuilder.getKonomiTvLogoUrl(ip, port, channel), null, imageLoader = logos,
+                modifier = Modifier.size(52.dp, 30.dp).background(Color.White, RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Fit,
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+        Text(row.channelName, color = colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val coveredEpisodes = matrix.slots.countIndexed { index, slot ->
+            slot.key.startsWith("episode:") && row.programs.getOrNull(index) != null
+        }
+        Text(
+            if (coveredEpisodes > 0) "${coveredEpisodes}話録画" else "${row.programs.count { it != null }}件の録画",
+            color = colors.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private inline fun <T> List<T>.countIndexed(predicate: (Int, T) -> Boolean): Int {
+    var count = 0
+    forEachIndexed { index, item -> if (predicate(index, item)) count++ }
+    return count
+}
+
+/**
+ * 録画のないスロット。作品全体で未録画の話数（1 行目のみ）は注意色、
+ * ある局だけの欠けは低コントラスト、解析中はその旨を出す（HonomiTV の placeholder）。
+ */
+@Composable
+private fun EpisodePlaceholder(missing: Boolean, analyzing: Boolean, modifier: Modifier) {
+    val colors = KomorebiTheme.colors
+    val borderColor = if (missing) OnAirWarningColor.copy(alpha = 0.3f) else colors.textPrimary.copy(alpha = 0.18f)
+    Box(
+        modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (missing) OnAirWarningColor.copy(alpha = 0.07f) else colors.textPrimary.copy(alpha = 0.05f))
+            .border(1.dp, borderColor, RoundedCornerShape(6.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            missing -> Text("未録画", color = OnAirWarningColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            analyzing -> Text("解析中・再生準備中", color = colors.textSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
         }
     }
 }
@@ -283,7 +398,6 @@ private fun SeriesSummaryPanel(
     upRequester: FocusRequester,
     downRequester: FocusRequester,
     onToggleExpanded: () -> Unit,
-    onFocused: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
@@ -298,9 +412,9 @@ private fun SeriesSummaryPanel(
     Surface(
         onClick = onToggleExpanded,
         modifier = modifier.fillMaxWidth().focusRequester(focusRequester).testTag("onair-summary")
-            .onFocusChanged { onFocused(it.isFocused) }
             .focusProperties {
                 up = upRequester
+                left = FocusRequester.Cancel
                 right = downRequester
                 down = downRequester
             }
@@ -324,69 +438,109 @@ private fun SeriesSummaryPanel(
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(10.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.width(64.dp).height(84.dp).clip(RoundedCornerShape(6.dp))
-                        .background(colors.textPrimary.copy(alpha = .06f)),
-                    contentAlignment = Alignment.Center,
+        Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 108.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (summaryReady && poster == null) {
-                        Text("ポスターなし", color = colors.textSecondary, fontSize = 11.sp)
+                    Box(
+                        Modifier.width(77.dp).height(108.dp).clip(RoundedCornerShape(5.dp))
+                            .background(colors.textPrimary.copy(alpha = .06f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (summaryReady && poster == null) {
+                            Text("ポスター\nなし", color = colors.textSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
+                        }
+                        poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                     }
-                    poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                    Text(jpTitle, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (cnTitle != null) {
-                        Spacer(Modifier.height(2.dp))
-                        Text(cnTitle, color = colors.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Spacer(Modifier.height(2.dp))
-                    (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
-                        Text(
-                            summaryText,
-                            color = colors.textSecondary, fontSize = 11.sp, lineHeight = 15.sp,
-                            maxLines = if (expanded) Int.MAX_VALUE else 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                        Text(jpTitle, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (cnTitle != null) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(cnTitle, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                summaryText,
+                                color = colors.textSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+                                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        cnSummary(summary, jpSummary)?.let { cnText ->
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                cnText,
+                                color = colors.textSecondary.copy(alpha = 0.82f), fontSize = 12.sp, lineHeight = 16.sp,
+                                maxLines = if (expanded) Int.MAX_VALUE else 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
-            Text("決定で${if (expanded) "紹介を短く表示" else "紹介の全文を読む"} · 上下でスクロール",
-                color = colors.accent, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+            if (!expanded && jpSummary != null) {
+                Text(
+                    "決定で全文",
+                    color = colors.textSecondary, fontSize = 10.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
         }
     }
 }
 
+/** HonomiTV と同じ【簡介原文】分割: 中文パートだけを別段落で出す。 */
+private fun cnSummary(summary: SeriesProgram?, jpSummary: String?): String? {
+    val bangumiSummary = summary?.bangumiSubjectSummary?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+    val parts = bangumiSummary.split(Regex("""(?:【|\[)(?:简|簡)介原文(?:】|\])"""), limit = 2)
+    val chinese = parts.getOrNull(0)?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+    return if (chinese != jpSummary?.trim()) chinese else null
+}
+
 @Composable
-private fun DetailStatus(status: OnAirLoadState, label: String, retry: () -> Unit, modifier: Modifier) {
+private fun DetailStatus(
+    status: OnAirLoadState,
+    label: String,
+    retry: () -> Unit,
+    modifier: Modifier,
+    chipFocusRequester: FocusRequester? = null,
+    chipUp: FocusRequester = FocusRequester.Cancel,
+    chipDown: FocusRequester = FocusRequester.Cancel,
+) {
     val error = status as? OnAirLoadState.Error
-    if (status == OnAirLoadState.Loading || status == OnAirLoadState.Idle) {
+    if (error == null) {
+        // Ready / Loading は静かに保ち、予約済みジオメトリだけを確保する。
         Spacer(modifier)
         return
     }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(when (status) {
-            is OnAirLoadState.Error -> "$label: ${status.message} [${status.code}]"
-            else -> label
-        }, Modifier.weight(1f), color = KomorebiTheme.colors.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (error != null) {
-            Surface(
-                onClick = retry,
-                modifier = Modifier.height(24.dp),
-                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(5.dp)),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = KomorebiTheme.colors.surface,
-                    contentColor = KomorebiTheme.colors.textPrimary,
-                    focusedContainerColor = KomorebiTheme.colors.accent,
-                    focusedContentColor = Color.Black,
-                ),
-                border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.dp, KomorebiTheme.colors.textPrimary))),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-            ) {
-                Text("再試行", Modifier.padding(horizontal = 8.dp), fontSize = 10.sp)
-            }
+        Text("${label}: ${error.message} [${error.code}]",
+            Modifier.weight(1f), color = KomorebiTheme.colors.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Surface(
+            onClick = retry,
+            modifier = Modifier.height(24.dp)
+                .then(if (chipFocusRequester != null) Modifier.focusRequester(chipFocusRequester) else Modifier)
+                .focusProperties {
+                    up = chipUp
+                    down = chipDown
+                    left = FocusRequester.Cancel
+                    right = FocusRequester.Cancel
+                },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(5.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = KomorebiTheme.colors.surface,
+                contentColor = KomorebiTheme.colors.textPrimary,
+                focusedContainerColor = KomorebiTheme.colors.accent,
+                focusedContentColor = Color.Black,
+            ),
+            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.dp, KomorebiTheme.colors.textPrimary))),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        ) {
+            Text("再試行", Modifier.padding(horizontal = 8.dp), fontSize = 10.sp)
         }
     }
 }
