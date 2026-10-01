@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import kotlinx.coroutines.delay
@@ -48,6 +49,8 @@ import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 enum class LiveSubMenuCategory {
     QUICK_CHANNELS, AUDIO, QUALITY, SOURCE
 }
+
+private const val TAG = "LivePlayerSubMenu"
 
 @Composable
 fun LiveTopSubMenuUI(
@@ -135,22 +138,8 @@ fun LiveTopSubMenuUI(
 
     LaunchedEffect(isDualDisplayMode) {
         delay(50)
-        try {
-            if (isDualDisplayMode) {
-                quickChannelButtonRequester.requestFocus()
-            } else {
-                audioButtonRequester.requestFocus()
-            }
-        } catch (e: Exception) {
-            try {
-                quickChannelButtonRequester.requestFocus()
-            } catch (e: Exception) {
-                try {
-                    focusRequester.requestFocus()
-                } catch (e: Exception) {
-                }
-            }
-        }
+        val target = if (isDualDisplayMode) quickChannelButtonRequester else audioButtonRequester
+        target.safeRequestFocusWithRetry(TAG)
     }
 
     LaunchedEffect(selectedCategory) {
@@ -245,6 +234,7 @@ fun LiveTopSubMenuUI(
                     },
                     modifier = Modifier
                         .focusRequester(quickChannelButtonRequester)
+                        .focusRequester(focusRequester)
                         .focusProperties {
                             if (selectedCategory != LiveSubMenuCategory.QUICK_CHANNELS) down =
                                 FocusRequester.Cancel
@@ -340,15 +330,16 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
 
-                    LiveMenuTileItem(
-                        title = "音声切替", icon = Icons.Default.Audiotrack,
-                        subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
-                        onClick = onAudioToggle,
-                        modifier = Modifier
-                            .focusRequester(audioButtonRequester)
-                            .focusProperties { down = FocusRequester.Cancel },
-                        contentColor = colors.textPrimary
-                    )
+                LiveMenuTileItem(
+                    title = "音声切替", icon = Icons.Default.Audiotrack,
+                    subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
+                    onClick = onAudioToggle,
+                    modifier = Modifier
+                        .focusRequester(audioButtonRequester)
+                        .focusRequester(focusRequester)
+                        .focusProperties { down = FocusRequester.Cancel },
+                    contentColor = colors.textPrimary
+                )
 
                     LiveMenuTileItem(
                         title = "信号情報", icon = Icons.Default.Info,

@@ -750,7 +750,7 @@ internal fun handleRecordedPlayerKeyEvent(
     onSpeedUp: () -> Unit = {},
     onSpeedDown: () -> Unit = {},
 ): Boolean {
-    if (isPiPMode || isSubOverlayOpen || isProgramInfoOpen) state.resetMediaKeys()
+    if (isPiPMode || isSubOverlayOpen || isProgramInfoOpen || showNextEpisodeCountdown) state.resetMediaKeys()
     if (isPiPMode) return false
     if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
         dataBroadcastingInput.reset()
@@ -771,6 +771,11 @@ internal fun handleRecordedPlayerKeyEvent(
         return true
     }
     if (isSubOverlayOpen) return false
+
+    // 次エピソードのカウントダウン表示中は、オーバーレイ側の操作
+    // （今すぐ／キャンセルのフォーカス移動・決定・Back）にキーを譲る。
+    // ここで消費すると Back がプレイヤー終了になり、「今すぐ」が押せなくなる。
+    if (showNextEpisodeCountdown) return false
 
     if (
         isDataBroadcastingActive &&

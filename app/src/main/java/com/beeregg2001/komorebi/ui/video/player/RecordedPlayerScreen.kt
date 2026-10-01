@@ -1642,10 +1642,18 @@ internal fun RecordedPlayerScreen(
         nextEpisodeCountdownRemainingMs
     )
 
-    LaunchedEffect(showNextEpisodeCountdown, nextEpisodeCountdownRemainingMs, nextSeriesProgram?.id) {
+    // サブオーバーレイ（クイックメニュー・シーン検索等）を開いている間は自動再生しない。
+    // 閉じた時に再評価するため isSubOverlayOpen をキーに含める。
+    LaunchedEffect(
+        showNextEpisodeCountdown,
+        nextEpisodeCountdownRemainingMs,
+        nextSeriesProgram?.id,
+        isSubOverlayOpen
+    ) {
         val nextEpisode = nextSeriesProgram
         if (
             showNextEpisodeCountdown &&
+            !isSubOverlayOpen &&
             nextEpisodeCountdownRemainingMs <= 500L &&
             !hasAutoStartedNextEpisode &&
             !isNextEpisodeCountdownCancelled

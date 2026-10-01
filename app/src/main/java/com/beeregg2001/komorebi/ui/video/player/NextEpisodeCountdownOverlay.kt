@@ -37,7 +37,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import kotlinx.coroutines.delay
 
@@ -51,7 +51,9 @@ internal fun NextEpisodeCountdownOverlay(
     val playNowRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         delay(50)
-        playNowRequester.safeRequestFocus("VideoPlayerScreen")
+        // ここにフォーカスが載らないと、ルートのキーハンドラがカウントダウン中は
+        // すべてのキーを素通しさせるため、リモコンが完全に無反応になる。リトライで確実に載せる。
+        playNowRequester.safeRequestFocusWithRetry("RecordedPlayerCountdown")
     }
 
     Box(

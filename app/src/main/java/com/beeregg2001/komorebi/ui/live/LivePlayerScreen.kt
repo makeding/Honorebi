@@ -180,6 +180,7 @@ fun LivePlayerScreen(
     val currentIsManualOverlay by rememberUpdatedState(isManualOverlay)
     val currentIsPinnedOverlay by rememberUpdatedState(isPinnedOverlay)
     val currentIsSubMenuOpen by rememberUpdatedState(isSubMenuOpen)
+    val currentIsMiniListOpen by rememberUpdatedState(isMiniListOpen)
 
     var isHeavyUiReady by remember { mutableStateOf(false) }
     val isEmulator =
@@ -679,6 +680,15 @@ fun LivePlayerScreen(
     LaunchedEffect(isSubMenuOpen) {
         if (isSubMenuOpen && !isPiPMode) {
             delay(150); subMenuFocusRequester.safeRequestFocus(TAG)
+        } else if (
+            !isPiPMode &&
+            !ps.isDualDisplayMode &&
+            !currentIsMiniListOpen &&
+            !currentIsManualOverlay &&
+            !currentIsPinnedOverlay &&
+            ps.crop.mode == PlayerCropMode.HIDDEN
+        ) {
+            delay(200); mainFocusRequester.safeRequestFocus(TAG)
         }
     }
 
