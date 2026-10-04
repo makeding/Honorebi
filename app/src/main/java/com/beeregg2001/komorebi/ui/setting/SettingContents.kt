@@ -75,8 +75,6 @@ fun GeneralSettingsContent(
     startupChannelR: FocusRequester,
     onEditStartupTab: () -> Unit,
     onEditStartupChannel: () -> Unit,
-    capabilityR: FocusRequester,
-    onCapabilities: () -> Unit,
     exPaidR: FocusRequester,
     onToggleExcludePaid: () -> Unit,
     nhkExclusionLabel: String,
@@ -116,25 +114,9 @@ fun GeneralSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = startupTabR
-                        down = capabilityR
-                    },
-                onClick = { onClick(startupChannelR); onEditStartupChannel() }
-            )
-        }
-
-        SettingsSection("デバイス") {
-            SettingItem(
-                title = "テレビ再生能力",
-                value = "HEVC / 4K / 8K / HDR / 音声を確認",
-                icon = Icons.Default.Memory,
-                modifier = Modifier
-                    .focusRequester(capabilityR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = startupChannelR
                         down = exPaidR
                     },
-                onClick = { onClick(capabilityR); onCapabilities() }
+                onClick = { onClick(startupChannelR); onEditStartupChannel() }
             )
         }
 
@@ -147,7 +129,7 @@ fun GeneralSettingsContent(
                     .focusRequester(exPaidR)
                     .focusProperties {
                         left = sidebarR
-                        up = capabilityR
+                        up = startupChannelR
                         down = nhkExclusionR
                     },
                 onClick = { onClick(exPaidR); onToggleExcludePaid() })
@@ -619,6 +601,7 @@ fun PlaybackSettingsContent(
     uiMode: String,
     autoCmSkip: String,
     preferOriginalMpegTs: String,
+    mirakurunDual: String,
     availableQualities: List<StreamQuality>,
     liveR: FocusRequester,
     videoR: FocusRequester,
@@ -630,6 +613,7 @@ fun PlaybackSettingsContent(
     uiModeR: FocusRequester,
     autoCmSkipR: FocusRequester,
     preferOriginalR: FocusRequester,
+    mirakurunDualR: FocusRequester,
     sidebarR: FocusRequester,
     onL: () -> Unit,
     onV: () -> Unit,
@@ -641,6 +625,7 @@ fun PlaybackSettingsContent(
     onUiMode: () -> Unit,
     onAutoCmSkip: () -> Unit,
     onPreferOriginalMpegTs: () -> Unit,
+    onToggleMirakurunDual: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -787,9 +772,23 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = uiModeR
-                        down = FocusRequester.Cancel
+                        down = mirakurunDualR
                     },
                 onClick = { onClick(autoCmSkipR); onAutoCmSkip() }
+            )
+        }
+
+        SettingsSection("実験的な再生機能") {
+            SettingItem(
+                title = "Mirakurun ソースの2画面同時再生・PiPを許可",
+                value = if (mirakurunDual == "ON") "有効" else "無効",
+                icon = Icons.Default.VerticalSplit,
+                modifier = Modifier.focusRequester(mirakurunDualR).focusProperties {
+                    left = sidebarR
+                    up = autoCmSkipR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(mirakurunDualR); onToggleMirakurunDual() }
             )
         }
     }
@@ -1239,41 +1238,6 @@ fun CommentSettingsContent(
 }
 
 @Composable
-fun LabSettingsContent(
-    mirakurunDual: String,
-    dualR: FocusRequester,
-    sidebarR: FocusRequester,
-    onToggleMirakurunDual: () -> Unit,
-    onClick: (FocusRequester) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Text(
-            AppStrings.SETTINGS_CATEGORY_LAB,
-            style = MaterialTheme.typography.headlineMedium,
-            color = KomorebiTheme.colors.textPrimary,
-            fontWeight = FontWeight.Bold
-        )
-
-        SettingsSection("プレイヤー (実験的)") {
-            SettingItem(
-                title = "Mirakurunソースの2画面同時再生・PiPモードを許可",
-                value = mirakurunDual,
-                icon = Icons.Default.VerticalSplit,
-                modifier = Modifier
-                    .focusRequester(dualR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = FocusRequester.Cancel
-                        down = FocusRequester.Cancel
-                    },
-                onClick = { onClick(dualR); onToggleMirakurunDual() }
-            )
-        }
-
-    }
-}
-
-@Composable
 fun CacheManagementContent(
     onClearAll: () -> Unit,
     onClearChannelLogo: () -> Unit,
@@ -1409,6 +1373,8 @@ fun AppInfoContent(
     onInstallUpdate: (String) -> Unit,
     onShowProject: () -> Unit,
     onShowLicenses: () -> Unit,
+    onCapabilities: () -> Unit,
+    capabilityR: FocusRequester,
     versionR: FocusRequester,
     betaR: FocusRequester,
     checkR: FocusRequester,
@@ -1472,6 +1438,19 @@ fun AppInfoContent(
         Spacer(Modifier.height(20.dp))
 
         SettingItem(
+            title = "テレビ再生能力",
+            value = "",
+            icon = Icons.Default.Memory,
+            modifier = Modifier.width(420.dp).focusRequester(capabilityR).focusProperties {
+                left = sidebarR
+                up = FocusRequester.Cancel
+                down = versionR
+            },
+            onClick = { onClick(capabilityR); onCapabilities() }
+        )
+        Spacer(Modifier.height(12.dp))
+
+        SettingItem(
             title = "Version",
             value = BuildConfig.VERSION_NAME,
             icon = Icons.Default.Info,
@@ -1480,7 +1459,7 @@ fun AppInfoContent(
                 .focusRequester(versionR)
                 .focusProperties {
                     left = sidebarR
-                    up = FocusRequester.Cancel
+                    up = capabilityR
                     down = betaR
                 },
             onClick = {

@@ -122,8 +122,7 @@ fun SettingsScreen(
             SettingSidebarRow(7, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps, isChild = true),
             SettingSidebarRow(3, "録画設定", Icons.Default.VideoSettings, isChild = true),
             SettingSidebarRow(4, "番組表設定", Icons.Default.GridOn, isChild = true),
-            SettingSidebarRow(9, AppStrings.SETTINGS_CATEGORY_LAB, Icons.Default.Science),
-            SettingSidebarRow(10, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.Cached),
+            SettingSidebarRow(10, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.DeleteSweep),
             SettingSidebarRow(11, AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info),
         )
     }
@@ -146,7 +145,7 @@ fun SettingsScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: startupTab, startupChannel, capability, excludePaid, NHK exclusion
+    // [0] 基本設定: startupTab, startupChannel, excludePaid, NHK exclusion
     // [1] 接続設定
     // [2] 再生設定
     // [3] 録画設定: recordView, addBatch
@@ -155,23 +154,23 @@ fun SettingsScreen(
     // [6] ホーム設定: genre, time
     // [7] ランチャー設定
     // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
-    // [9] アドオン・ラボ
+    // [9] 削除済み: アドオン・ラボの再生項目は [2] に統合
     // [10] データ管理: cache(all/logo/thumb/epg/recording) + history(channel/watch)
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(6) { FocusRequester() },
+            List(5) { FocusRequester() },
             List(10) { FocusRequester() },
-            List(11) { FocusRequester() },
+            List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(5) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(1) { FocusRequester() },
+            emptyList(),
             List(7) { FocusRequester() },
-            List(6) { FocusRequester() }
+            List(7) { FocusRequester() }
         )
     }
 
@@ -226,8 +225,8 @@ fun SettingsScreen(
 
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
-            uiState.restoreFocusRequester = itemFocusRequesters[0][3]
-            uiState.restoreCategoryIndex = 0
+            uiState.restoreFocusRequester = itemFocusRequesters[11][6]
+            uiState.restoreCategoryIndex = 11
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
     }
@@ -404,10 +403,6 @@ fun SettingsScreen(
                             },
                             itemFocusRequesters[0][2],
                             {
-                                uiState.activeDialog = SettingDialogState.DeviceCapabilities
-                            },
-                            itemFocusRequesters[0][3],
-                            {
                                 scope.launch {
                                     repository.saveString(
                                         SettingsRepository.EXCLUDE_PAID_BROADCASTS,
@@ -416,7 +411,7 @@ fun SettingsScreen(
                                 }
                             },
                             viewModel.nhkExclusionState.collectAsState().value.mode.displayLabel,
-                            itemFocusRequesters[0][4],
+                            itemFocusRequesters[0][3],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "N〇K除外モード",
@@ -611,6 +606,7 @@ fun SettingsScreen(
                             playerUiMode,
                             autoCmSkip,
                             preferOriginalMpegTs,
+                            prefs.labAllowMirakurunDual,
                             availableQualities,
                             itemFocusRequesters[2][0],
                             itemFocusRequesters[2][1],
@@ -622,6 +618,7 @@ fun SettingsScreen(
                             itemFocusRequesters[2][6],
                             itemFocusRequesters[2][7],
                             itemFocusRequesters[2][8],
+                            itemFocusRequesters[2][11],
                             categoryFocusRequesters[2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -761,6 +758,22 @@ fun SettingsScreen(
                                         SettingsRepository.PREFER_ORIGINAL_MPEG_TS,
                                         if (preferOriginalMpegTs == "ON") "OFF" else "ON"
                                     )
+                                }
+                            },
+                            {
+                                if (prefs.labAllowMirakurunDual == "OFF") {
+                                    uiState.activeDialog = SettingDialogState.ConfirmClear(
+                                        "【警告】ハードウェア負荷について",
+                                        "Mirakurunソースでの2画面再生やPiPモードは、端末に極めて高い負荷をかけます。よろしいですか？"
+                                    ) {
+                                        scope.launch {
+                                            repository.saveString(SettingsRepository.LAB_ALLOW_MIRAKURUN_DUAL, "ON")
+                                        }
+                                    }
+                                } else {
+                                    scope.launch {
+                                        repository.saveString(SettingsRepository.LAB_ALLOW_MIRAKURUN_DUAL, "OFF")
+                                    }
                                 }
                             }
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 2 }
@@ -1055,35 +1068,6 @@ fun SettingsScreen(
                             categoryFocusRequesters[5]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
 
-                        9 -> LabSettingsContent(
-                            prefs.labAllowMirakurunDual,
-                            itemFocusRequesters[9][0],
-                            categoryFocusRequesters[9],
-                            {
-                                if (prefs.labAllowMirakurunDual == "OFF") {
-                                    uiState.activeDialog = SettingDialogState.ConfirmClear(
-                                        "【警告】ハードウェア負荷について",
-                                        "Mirakurunソースでの2画面再生やPiPモードは、端末に極めて高い負荷をかけます。よろしいですか？"
-                                    ) {
-                                        scope.launch {
-                                            repository.saveString(
-                                                SettingsRepository.LAB_ALLOW_MIRAKURUN_DUAL,
-                                                "ON"
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.LAB_ALLOW_MIRAKURUN_DUAL,
-                                            "OFF"
-                                        )
-                                    }
-                                }
-                            }) {
-                            uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9
-                        }
-
                         10 -> CacheManagementContent(
                             onClearAll = {
                                 uiState.activeDialog = SettingDialogState.ConfirmClear(
@@ -1170,6 +1154,8 @@ fun SettingsScreen(
                                 )
                             },
                             onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
+                            onCapabilities = { uiState.activeDialog = SettingDialogState.DeviceCapabilities },
+                            capabilityR = itemFocusRequesters[11][6],
                             versionR = itemFocusRequesters[11][0],
                             betaR = itemFocusRequesters[11][1],
                             checkR = itemFocusRequesters[11][2],

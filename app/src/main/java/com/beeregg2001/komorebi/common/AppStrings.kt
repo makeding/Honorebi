@@ -184,7 +184,6 @@ object AppStrings {
     const val SETTINGS_CATEGORY_LAUNCHER = "ランチャー設定"
     const val SETTINGS_CATEGORY_DISPLAY = "表示設定"
     const val SETTINGS_CATEGORY_COMMENT = "コメント設定"
-    const val SETTINGS_CATEGORY_LAB = "アドオン・ラボ"
     const val SETTINGS_CATEGORY_CACHE = "データ管理"
     const val SETTINGS_CATEGORY_UI = "UI設定"
     const val SETTINGS_CATEGORY_APP_INFO = "アプリ情報"
