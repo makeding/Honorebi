@@ -1,6 +1,10 @@
-# Komorebi / Honorebi fork
+<p align="center">
+  <img src="app/src/main/res/drawable/tv_banner.png" alt="Honorebi logo" width="640" />
+</p>
 
-**Komorebi** は、KonomiTV、 EDCB バックエンド、Mirakurun（オプション）に対応した、Android TV 向けの高機能視聴クライアントアプリです。
+# Honorebi
+
+**Homorebi** （Komorebi fork）は、KonomiTV、 EDCB バックエンド、Mirakurun（オプション）に対応した、Android TV 向けの高機能視聴クライアントアプリです。
 モダンな UI と直感的なリモコン操作、市販のハイエンドレコーダーを凌駕する高度なストリーミング制御を組み合わせ、これまでにない快適なテレビ視聴体験を提供します。
 
 ---
