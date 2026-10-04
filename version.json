@@ -1,13 +1,13 @@
 {
-  "versionCode": 10,
-  "versionName": "1.0.0",
-  "releaseNotes": "・アプリ内PiPモード対応\n・アプリアップデータのbetaチャンネルへの対応\n・細かいバグを修正\n",
-  "apkUrl": "https://github.com/BeerEgg2001/Komorebi/releases/download/1.0.0/Komorebi-1.0.0.apk",
+  "versionCode": 17,
+  "versionName": "1.1.0-huggy",
+  "releaseNotes": "Honorebi 1.1.0 stable",
+  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.0-huggy/app-universal-release.apk",
 
   "beta": {
-    "versionCode": 16,
-    "versionName": "1.1.0-beta6",
-    "releaseNotes": "・TvtPlayのチャプターファイル読み込み処理を改善\n・KonomiTV v0.14.0環境にて録画番組が再生できない問題に対応\n・Issue #90 録画一覧が正しく同期されない問題を修正\n詳細はGithubのリリースノートをご覧ください\n",
-    "apkUrl": "https://github.com/BeerEgg2001/Komorebi/releases/download/1.1.0-beta6/Komorebi-1.1.0-beta6.apk"
+    "versionCode": 18,
+    "versionName": "1.1.1-beta2-huggy",
+    "releaseNotes": "放送中画面の放送季選択、ライブコメント表示の改善、アプリ内OTAアップデートに対応しました。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta2-huggy/app-universal-release.apk"
   }
 }

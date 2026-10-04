@@ -45,9 +45,8 @@ class AppUpdater @Inject constructor(
 
     private val client = OkHttpClient()
 
-    // ★ご自身のGitHubのversion.jsonのRaw URLに書き換えてください
     private val versionJsonUrl =
-        "https://raw.githubusercontent.com/BeerEgg2001/Komorebi/main/version.json"
+        "https://raw.githubusercontent.com/makeding/Honorebi/main/version.json"
 
     // ★ 修正: 引数に receiveBetaUpdates フラグを追加し、デフォルトは false (Stable) とする
     suspend fun checkForUpdates(receiveBetaUpdates: Boolean = false) = withContext(Dispatchers.IO) {
