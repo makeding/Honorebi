@@ -26,9 +26,13 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
 
+// Formatter は不変。毎秒の更新では時刻だけを読み直す。
+private val wallClock12HourFormat = DateTimeFormatter.ofPattern("a h:mm", Locale.JAPANESE)
+private val wallClock24HourFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.JAPANESE)
+
 // Resolve the system zone on each read, including while playback is paused or seeking.
 internal fun formatRecordedWallClock(now: ZonedDateTime, timeFormat: String): String =
-    now.format(DateTimeFormatter.ofPattern(if (timeFormat == "12H") "a h:mm" else "HH:mm", Locale.JAPANESE))
+    now.format(if (timeFormat == "12H") wallClock12HourFormat else wallClock24HourFormat)
 
 internal fun recordedEndTimeLabel(
     now: ZonedDateTime, timeFormat: String, positionMs: Long, durationMs: Long,

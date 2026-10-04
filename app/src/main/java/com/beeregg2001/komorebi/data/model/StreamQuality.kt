@@ -46,8 +46,12 @@ data class StreamQuality(
             StreamQuality("240p", "240p")
         )
 
+        private val RAW_MMTS_QUALITIES = listOf(
+            StreamQuality("TLV パススルー（自動）", RAW_MMTS_PRIMARY_VALUE, isRawMmts = true)
+        )
+
         fun rawMmtsQualities(@Suppress("UNUSED_PARAMETER") channel: Channel): List<StreamQuality> =
-            listOf(StreamQuality("TLV パススルー（自動）", RAW_MMTS_PRIMARY_VALUE, isRawMmts = true))
+            RAW_MMTS_QUALITIES
 
         /**
          * 文字列から画質型を取得する（利用可能なリストから検索）

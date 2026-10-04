@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
+import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.BackendConfig
@@ -42,6 +43,36 @@ class LiveJikkyoManager @Inject constructor(
     private val okHttpClient: OkHttpClient
 ) {
     companion object {
+        // コメントごとに正規表現や固定テーブルを生成せず、安全な不変データを共有する。
+        private val COMMAND_COMMENT_PATTERN = Regex("^/[a-z][a-z0-9_-]*(?:\\s|$).*")
+        private val HEX_COLOR_PATTERN = Regex("^#[0-9A-Fa-f]{6}$")
+        private val COMMENT_POSITIONS = mapOf("ue" to "top", "naka" to "right", "shita" to "bottom")
+        private val COMMENT_SIZES = mapOf("big" to "big", "medium" to "medium", "small" to "small")
+        private val COMMENT_COLORS = mapOf(
+            "white" to "#FFEAEA", "red" to "#F02840", "pink" to "#FD7E80",
+            "orange" to "#FDA708", "yellow" to "#FFE133", "green" to "#64DD17",
+            "cyan" to "#00D4F5", "blue" to "#4763FF", "purple" to "#D500F9",
+            "black" to "#1E1310", "white2" to "#CCCC99", "niconicowhite" to "#CCCC99",
+            "red2" to "#CC0033", "truered" to "#CC0033", "pink2" to "#FF33CC",
+            "orange2" to "#FF6600", "passionorange" to "#FF6600", "yellow2" to "#999900",
+            "madyellow" to "#999900", "green2" to "#00CC66", "elementalgreen" to "#00CC66",
+            "cyan2" to "#00CCCC", "blue2" to "#3399FF", "marineblue" to "#3399FF",
+            "purple2" to "#6633CC", "nobleviolet" to "#6633CC", "black2" to "#666666"
+        )
+
+        internal fun getCommentColor(color: String): String? {
+            if (HEX_COLOR_PATTERN.matches(color)) return color
+            return COMMENT_COLORS[color]
+        }
+
+        internal fun getCommentPosition(pos: String): String? {
+            return COMMENT_POSITIONS[pos]
+        }
+
+        internal fun getCommentSize(size: String): String? {
+            return COMMENT_SIZES[size]
+        }
+
         private val JIKKYO_CHANNEL_ID_MAP = mapOf(
             "jk1" to "ch2646436", "jk2" to "ch2646437", "jk4" to "ch2646438",
             "jk5" to "ch2646439", "jk6" to "ch2646440", "jk7" to "ch2646441",
@@ -122,7 +153,7 @@ class LiveJikkyoManager @Inject constructor(
             val config = settingsRepository.getBackendConfig(source) as? BackendConfig.KonomiTv
             if (config == null) return null
             try {
-                val apiUrl = com.beeregg2001.komorebi.common.UrlBuilder.getKonomiTvJikkyoWatchSessionUrl(
+                val apiUrl = UrlBuilder.getKonomiTvJikkyoWatchSessionUrl(
                     config.ip,
                     config.port,
                     channel.displayChannelId,
@@ -210,7 +241,7 @@ class LiveJikkyoManager @Inject constructor(
             if (chat.optString("deleted") == "1") return
 
             // /から始まるコマンドは除外
-            if (content.startsWith("/") && content.matches(Regex("^/[a-z][a-z0-9_-]*(?:\\s|$).*"))) {
+            if (content.startsWith("/") && COMMAND_COMMENT_PATTERN.matches(content)) {
                 if (chat.optString("premium") == "3") return
             }
 
@@ -244,30 +275,4 @@ class LiveJikkyoManager @Inject constructor(
         token: LiveChannelSessionToken,
         isCurrent: (LiveChannelSessionToken) -> Boolean
     ): Boolean = synchronized(sessionLock) { currentToken == token } && isCurrent(token)
-
-    private fun getCommentColor(color: String): String? {
-        if (color.matches(Regex("^#[0-9A-Fa-f]{6}$"))) return color
-        val map = mapOf(
-            "white" to "#FFEAEA", "red" to "#F02840", "pink" to "#FD7E80",
-            "orange" to "#FDA708", "yellow" to "#FFE133", "green" to "#64DD17",
-            "cyan" to "#00D4F5", "blue" to "#4763FF", "purple" to "#D500F9",
-            "black" to "#1E1310", "white2" to "#CCCC99", "niconicowhite" to "#CCCC99",
-            "red2" to "#CC0033", "truered" to "#CC0033", "pink2" to "#FF33CC",
-            "orange2" to "#FF6600", "passionorange" to "#FF6600", "yellow2" to "#999900",
-            "madyellow" to "#999900", "green2" to "#00CC66", "elementalgreen" to "#00CC66",
-            "cyan2" to "#00CCCC", "blue2" to "#3399FF", "marineblue" to "#3399FF",
-            "purple2" to "#6633CC", "nobleviolet" to "#6633CC", "black2" to "#666666"
-        )
-        return map[color]
-    }
-
-    private fun getCommentPosition(pos: String): String? {
-        val map = mapOf("ue" to "top", "naka" to "right", "shita" to "bottom")
-        return map[pos]
-    }
-
-    private fun getCommentSize(size: String): String? {
-        val map = mapOf("big" to "big", "medium" to "medium", "small" to "small")
-        return map[size]
-    }
 }
