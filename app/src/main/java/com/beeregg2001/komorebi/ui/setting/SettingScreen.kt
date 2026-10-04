@@ -146,7 +146,7 @@ fun SettingsScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: beta, startupTab, startupChannel, capability, excludePaid
+    // [0] 基本設定: startupTab, startupChannel, capability, excludePaid, NHK exclusion
     // [1] 接続設定
     // [2] 再生設定
     // [3] 録画設定: recordView, addBatch
@@ -171,7 +171,7 @@ fun SettingsScreen(
             List(4) { FocusRequester() },
             List(1) { FocusRequester() },
             List(7) { FocusRequester() },
-            List(3) { FocusRequester() }
+            List(6) { FocusRequester() }
         )
     }
 
@@ -361,7 +361,6 @@ fun SettingsScreen(
                 ) {
                     when (uiState.selectedCategoryIndex) {
                         0 -> GeneralSettingsContent(
-                            receiveBetaUpdates,
                             prefs.startupTab,
                             when (prefs.startupChannel) {
                                 "OFF" -> AppStrings.SETTINGS_VALUE_STARTUP_OFF
@@ -370,17 +369,8 @@ fun SettingsScreen(
                                     ?: prefs.startupChannel
                             },
                             prefs.excludePaid,
-                            {
-                                scope.launch {
-                                    repository.saveBoolean(
-                                        SettingsRepository.RECEIVE_BETA_UPDATES,
-                                        it
-                                    )
-                                }
-                            },
                             itemFocusRequesters[0][0],
                             itemFocusRequesters[0][1],
-                            itemFocusRequesters[0][2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_STARTUP_TAB,
@@ -412,11 +402,11 @@ fun SettingsScreen(
                                     prefs.startupChannel
                                 ) { viewModel.updateStartupChannel(it) }
                             },
-                            itemFocusRequesters[0][3],
+                            itemFocusRequesters[0][2],
                             {
                                 uiState.activeDialog = SettingDialogState.DeviceCapabilities
                             },
-                            itemFocusRequesters[0][4],
+                            itemFocusRequesters[0][3],
                             {
                                 scope.launch {
                                     repository.saveString(
@@ -426,7 +416,7 @@ fun SettingsScreen(
                                 }
                             },
                             viewModel.nhkExclusionState.collectAsState().value.mode.displayLabel,
-                            itemFocusRequesters[0][5],
+                            itemFocusRequesters[0][4],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "N〇K除外モード",
@@ -1164,6 +1154,15 @@ fun SettingsScreen(
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 10 }
 
                         11 -> AppInfoContent(
+                            receiveBetaUpdates = receiveBetaUpdates,
+                            updateState = viewModel.updateState.collectAsState().value,
+                            onToggleBetaUpdates = { enabled ->
+                                scope.launch {
+                                    repository.saveBoolean(SettingsRepository.RECEIVE_BETA_UPDATES, enabled)
+                                }
+                            },
+                            onCheckUpdates = viewModel::checkForUpdates,
+                            onInstallUpdate = viewModel::installAvailableUpdate,
                             onShowProject = {
                                 uiState.activeDialog = SettingDialogState.LinkQr(
                                     AppStrings.DIALOG_LINK_TITLE,
@@ -1172,8 +1171,11 @@ fun SettingsScreen(
                             },
                             onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
                             versionR = itemFocusRequesters[11][0],
-                            projectR = itemFocusRequesters[11][1],
-                            licR = itemFocusRequesters[11][2],
+                            betaR = itemFocusRequesters[11][1],
+                            checkR = itemFocusRequesters[11][2],
+                            installR = itemFocusRequesters[11][3],
+                            projectR = itemFocusRequesters[11][4],
+                            licR = itemFocusRequesters[11][5],
                             sidebarR = categoryFocusRequesters[11]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 11 }
                     }

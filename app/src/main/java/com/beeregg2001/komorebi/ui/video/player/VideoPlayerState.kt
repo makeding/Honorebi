@@ -53,6 +53,18 @@ internal fun manualCmSkipTargetMs(
     }?.endTimeMs
 }
 
+internal fun manualCmSkipChapterTargetMs(
+    mode: CmSkipMode,
+    currentPositionMs: Long,
+    chapters: List<ChapterInfo>,
+    interactionBlocked: Boolean = false
+): Long? {
+    if (mode != CmSkipMode.MANUAL || interactionBlocked) return null
+    return chapters.firstOrNull {
+        it.isCm && currentPositionMs >= it.startTimeMs && currentPositionMs < it.endTimeMs
+    }?.endTimeMs
+}
+
 @Stable
 class VideoPlayerState {
     // 再生設定
@@ -72,6 +84,8 @@ class VideoPlayerState {
 
     var lastInteractionTime by mutableLongStateOf(0L)
     var isSeekBarFocused by mutableStateOf(false)
+    var manualCmSkipPromptSuppressed by mutableStateOf(false)
+    var manualCmSkipPromptRestartUntilMs by mutableLongStateOf(0L)
 
     var wasPlayingBeforeSceneSearch = false
     var downKeyDownTime = 0L

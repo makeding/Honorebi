@@ -173,9 +173,9 @@ class SettingsRepository @Inject constructor(
     val videoQuality: Flow<String> =
         context.dataStore.data.map { it[VIDEO_QUALITY] ?: "1080p-60fps" }
     val liveSubtitleDefault: Flow<String> =
-        context.dataStore.data.map { it[LIVE_SUBTITLE_DEFAULT] ?: "OFF" }
+        context.dataStore.data.map { it[LIVE_SUBTITLE_DEFAULT] ?: "ON" }
     val videoSubtitleDefault: Flow<String> =
-        context.dataStore.data.map { it[VIDEO_SUBTITLE_DEFAULT] ?: "OFF" }
+        context.dataStore.data.map { it[VIDEO_SUBTITLE_DEFAULT] ?: "ON" }
     val subtitleFont: Flow<String> =
         context.dataStore.data.map { it[SUBTITLE_FONT] ?: "default" }
     val subtitleCommentLayer: Flow<String> =

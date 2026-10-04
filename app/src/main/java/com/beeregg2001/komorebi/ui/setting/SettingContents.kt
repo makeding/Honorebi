@@ -68,12 +68,9 @@ private fun ValidationErrorText(message: String) {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GeneralSettingsContent(
-    receiveBetaUpdates: Boolean,
     startupTab: String,
     startupChannelName: String,
     excludePaid: String,
-    onToggleBetaUpdates: (Boolean) -> Unit,
-    betaUpdateR: FocusRequester,
     startupTabR: FocusRequester,
     startupChannelR: FocusRequester,
     onEditStartupTab: () -> Unit,
@@ -96,22 +93,6 @@ fun GeneralSettingsContent(
             fontWeight = FontWeight.Bold
         )
 
-        SettingsSection("アプリ設定") {
-            SettingItem(
-                title = "ベータ版のアップデートを受け取る",
-                value = if (receiveBetaUpdates) "ON" else "OFF",
-                icon = Icons.Default.SystemUpdate,
-                modifier = Modifier
-                    .focusRequester(betaUpdateR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = FocusRequester.Cancel
-                        down = startupTabR
-                    },
-                onClick = { onClick(betaUpdateR); onToggleBetaUpdates(!receiveBetaUpdates) }
-            )
-        }
-
         SettingsSection("起動時の動作") {
             SettingItem(
                 title = AppStrings.SETTINGS_ITEM_STARTUP_TAB,
@@ -121,7 +102,7 @@ fun GeneralSettingsContent(
                     .focusRequester(startupTabR)
                     .focusProperties {
                         left = sidebarR
-                        up = betaUpdateR
+                        up = FocusRequester.Cancel
                         down = startupChannelR
                     },
                 onClick = { onClick(startupTabR); onEditStartupTab() }
@@ -1419,9 +1400,17 @@ fun CacheManagementContent(
 
 @Composable
 fun AppInfoContent(
+    receiveBetaUpdates: Boolean,
+    updateState: com.beeregg2001.komorebi.util.UpdateState,
+    onToggleBetaUpdates: (Boolean) -> Unit,
+    onCheckUpdates: () -> Unit,
+    onInstallUpdate: (String) -> Unit,
     onShowProject: () -> Unit,
     onShowLicenses: () -> Unit,
     versionR: FocusRequester,
+    betaR: FocusRequester,
+    checkR: FocusRequester,
+    installR: FocusRequester,
     projectR: FocusRequester,
     licR: FocusRequester,
     sidebarR: FocusRequester,
@@ -1490,7 +1479,7 @@ fun AppInfoContent(
                 .focusProperties {
                     left = sidebarR
                     up = FocusRequester.Cancel
-                    down = projectR
+                    down = betaR
                 },
             onClick = {
                 onClick(versionR)
@@ -1504,6 +1493,72 @@ fun AppInfoContent(
             }
         )
 
+        Spacer(Modifier.height(12.dp))
+        SettingItem(
+            title = "ベータ版のアップデートを受け取る",
+            value = if (receiveBetaUpdates) "ON" else "OFF",
+            icon = Icons.Default.SystemUpdate,
+            modifier = Modifier.width(420.dp).focusRequester(betaR).focusProperties {
+                left = sidebarR
+                up = versionR
+                down = checkR
+            },
+            onClick = { onClick(betaR); onToggleBetaUpdates(!receiveBetaUpdates) }
+        )
+        Spacer(Modifier.height(12.dp))
+        val checkValue = when (updateState) {
+            is com.beeregg2001.komorebi.util.UpdateState.Checking -> "確認中…"
+            is com.beeregg2001.komorebi.util.UpdateState.UpToDate -> "最新です"
+            is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> "更新があります"
+            else -> ""
+        }
+        SettingItem(
+            title = "更新を確認",
+            value = checkValue,
+            icon = Icons.Default.Refresh,
+            enabled = updateState !is com.beeregg2001.komorebi.util.UpdateState.Checking &&
+                updateState !is com.beeregg2001.komorebi.util.UpdateState.Downloading,
+            modifier = Modifier.width(420.dp).focusRequester(checkR).focusProperties {
+                left = sidebarR
+                up = betaR
+                down = installR
+            },
+            onClick = { onClick(checkR); onCheckUpdates() }
+        )
+        Spacer(Modifier.height(12.dp))
+        val availableUpdate = updateState as? com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable
+        val installValue = when (updateState) {
+            is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> updateState.versionName
+            is com.beeregg2001.komorebi.util.UpdateState.Downloading -> "下载中 ${updateState.progressPercentage}%"
+            is com.beeregg2001.komorebi.util.UpdateState.ReadyToInstall -> "正在打开安装程序"
+            else -> ""
+        }
+        SettingItem(
+            title = "接受更新",
+            value = installValue,
+            icon = Icons.Default.SystemUpdateAlt,
+            enabled = availableUpdate != null,
+            modifier = Modifier.width(420.dp).focusRequester(installR).focusProperties {
+                left = sidebarR
+                up = checkR
+                down = projectR
+            },
+            onClick = { onClick(installR); availableUpdate?.let { onInstallUpdate(it.apkUrl) } }
+        )
+        val updateError = (updateState as? com.beeregg2001.komorebi.util.UpdateState.Error)?.message
+        Box(Modifier.width(420.dp).height(72.dp), contentAlignment = Alignment.CenterStart) {
+            if (updateError != null) {
+                Text(updateError, color = Color(0xFFE53935), style = MaterialTheme.typography.bodySmall)
+            } else if (availableUpdate != null) {
+                Text(
+                    availableUpdate.releaseNotes,
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2
+                )
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
 
         SettingItem(
@@ -1515,7 +1570,7 @@ fun AppInfoContent(
                 .focusRequester(projectR)
                 .focusProperties {
                     left = sidebarR
-                    up = versionR
+                    up = installR
                     down = licR
                 },
             onClick = { onClick(projectR); onShowProject() })

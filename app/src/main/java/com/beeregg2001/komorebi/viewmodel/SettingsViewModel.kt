@@ -14,6 +14,8 @@ import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.repository.CacheManager
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
+import com.beeregg2001.komorebi.util.AppUpdater
+import com.beeregg2001.komorebi.util.UpdateState
 import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
 import com.beeregg2001.komorebi.data.auth.HonomiSession
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
@@ -73,10 +75,22 @@ class SettingsViewModel @Inject constructor(
     private val watchHistoryRepository: WatchHistoryRepository,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val cacheManager: CacheManager,
+    private val appUpdater: AppUpdater,
     val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
 ) : ViewModel() {
 
     val nhkExclusionState = nhkExclusionRepository.state
+    val updateState: StateFlow<UpdateState> = appUpdater.updateState
+
+    fun checkForUpdates() {
+        viewModelScope.launch {
+            appUpdater.checkForUpdates(settingsRepository.receiveBetaUpdates.first())
+        }
+    }
+
+    fun installAvailableUpdate(apkUrl: String) {
+        viewModelScope.launch { appUpdater.downloadAndInstallUpdate(apkUrl) }
+    }
 
     fun setNHKExclusionMode(mode: com.beeregg2001.komorebi.data.model.NHKExclusionMode) {
         viewModelScope.launch { nhkExclusionRepository.setMode(mode) }
@@ -210,12 +224,12 @@ class SettingsViewModel @Inject constructor(
     val liveSubtitleDefault: StateFlow<String> = settingsRepository.liveSubtitleDefault.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        "OFF"
+        "ON"
     )
     val videoSubtitleDefault: StateFlow<String> = settingsRepository.videoSubtitleDefault.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        "OFF"
+        "ON"
     )
     val subtitleFont: StateFlow<String> = settingsRepository.subtitleFont.stateIn(
         viewModelScope,

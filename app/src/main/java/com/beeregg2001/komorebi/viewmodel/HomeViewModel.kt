@@ -384,13 +384,6 @@ class HomeViewModel @Inject constructor(
                 }
         }
 
-        // UI描画後に Honorebi の version.json を確認する。
-        viewModelScope.launch {
-            delay(3000)
-            val receiveBeta = settingsRepository.receiveBetaUpdates.first()
-            appUpdater.checkForUpdates(receiveBetaUpdates = receiveBeta)
-        }
-
         // ★ 修正: バックエンドのヘルスチェックも、UIが立ち上がってから（1.5秒後）実行
         viewModelScope.launch {
             delay(1500)

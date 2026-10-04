@@ -33,6 +33,7 @@ sealed class UpdateState {
 
     data class Downloading(val progressPercentage: Int) : UpdateState()
     object ReadyToInstall : UpdateState()
+    object UpToDate : UpdateState()
     data class Error(val message: String) : UpdateState()
 }
 
@@ -77,7 +78,7 @@ class AppUpdater @Inject constructor(
                     _updateState.value =
                         UpdateState.UpdateAvailable(latestVersionName, releaseNotes, apkUrl)
                 } else {
-                    _updateState.value = UpdateState.Idle
+                    _updateState.value = UpdateState.UpToDate
                 }
             } else {
                 _updateState.value = UpdateState.Error("アップデート情報の取得に失敗しました")

@@ -20,6 +20,13 @@ class ManualCmSkipPolicyTest {
     }
 
     @Test
+    fun restartedPromptCanRemainAvailableForTheRestOfTheCmChapter() {
+        assertEquals(25_000L, manualCmSkipChapterTargetMs(CmSkipMode.MANUAL, 20_000L, listOf(cm)))
+        assertNull(manualCmSkipChapterTargetMs(CmSkipMode.MANUAL, 25_000L, listOf(cm)))
+        assertNull(manualCmSkipChapterTargetMs(CmSkipMode.OFF, 20_000L, listOf(cm)))
+    }
+
+    @Test
     fun shortCmWindowNeverExtendsIntoMainProgram() {
         val shortCm = ChapterInfo(startTimeMs = 10_000L, endTimeMs = 12_000L, isCm = true)
 

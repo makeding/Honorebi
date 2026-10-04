@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
@@ -69,6 +70,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.normalizeQuickSeriesKey
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun BoxScope.RecordedMediaSurface(
@@ -259,16 +261,49 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     isKeyframeGridOpen: Boolean,
     onCloseKeyframeGrid: () -> Unit,
 ) {
-    val showManualCmSkipPrompt = manualCmSkipTargetMs(
-        mode = cmSkipMode,
-        currentPositionMs = currentPositionMs(),
-        chapters = chapters,
-        interactionBlocked = showControls ||
-            isSubOverlayOpen ||
-            isDataBroadcastingActive ||
-            showNextEpisodeCountdown ||
-            state.crop.mode != PlayerCropMode.HIDDEN
-    ) != null
+    val manualCmSkipPromptBlocked = showControls ||
+        isSubOverlayOpen ||
+        isDataBroadcastingActive ||
+        showNextEpisodeCountdown ||
+        state.crop.mode != PlayerCropMode.HIDDEN
+    val showManualCmSkipPrompt = !state.manualCmSkipPromptSuppressed && (
+        manualCmSkipTargetMs(
+            mode = cmSkipMode,
+            currentPositionMs = currentPositionMs(),
+            chapters = chapters,
+            interactionBlocked = manualCmSkipPromptBlocked
+        ) != null || (
+            state.manualCmSkipPromptRestartUntilMs > System.currentTimeMillis() &&
+                manualCmSkipChapterTargetMs(
+                mode = cmSkipMode,
+                    currentPositionMs = currentPositionMs(),
+                    chapters = chapters,
+                    interactionBlocked = manualCmSkipPromptBlocked
+                ) != null
+        )
+    )
+
+    LaunchedEffect(
+        state.manualCmSkipPromptSuppressed,
+        showControls,
+        isSubOverlayOpen,
+        isDataBroadcastingActive,
+        showNextEpisodeCountdown,
+        state.crop.mode
+    ) {
+        if (!state.manualCmSkipPromptSuppressed) return@LaunchedEffect
+        if (showControls || isSubOverlayOpen || isDataBroadcastingActive ||
+            showNextEpisodeCountdown || state.crop.mode != PlayerCropMode.HIDDEN
+        ) return@LaunchedEffect
+
+        val deadline = System.currentTimeMillis() + MANUAL_CM_SKIP_WINDOW_MS
+        state.manualCmSkipPromptRestartUntilMs = deadline
+        delay(MANUAL_CM_SKIP_WINDOW_MS)
+        if (state.manualCmSkipPromptRestartUntilMs == deadline) {
+            state.manualCmSkipPromptRestartUntilMs = 0L
+            state.manualCmSkipPromptSuppressed = false
+        }
+    }
     val commentLayer = @Composable {
         if (isHeavyUiReady && state.isCommentEnabled) {
             ArchivedCommentOverlay(
@@ -809,6 +844,14 @@ internal fun handleRecordedPlayerKeyEvent(
         android.view.KeyEvent.KEYCODE_DPAD_CENTER,
         android.view.KeyEvent.KEYCODE_ENTER
     )
+    if (
+        !isConfirmKey &&
+        keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+        manualSkipTargetMs != null
+    ) {
+        state.manualCmSkipPromptSuppressed = true
+        state.manualCmSkipPromptRestartUntilMs = 0L
+    }
     if (
         isConfirmKey &&
         keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&

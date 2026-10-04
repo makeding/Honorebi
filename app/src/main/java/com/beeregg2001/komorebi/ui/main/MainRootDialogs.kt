@@ -420,7 +420,7 @@ fun MainRootDialogs(
         )
     }
 
-    if (updateState is UpdateState.UpdateAvailable) {
+    if (!state.isSettingsOpen && updateState is UpdateState.UpdateAvailable) {
         val available = updateState as UpdateState.UpdateAvailable
         RobustUpdateDialog(
             versionName = available.versionName, releaseNotes = available.releaseNotes,
