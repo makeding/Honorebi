@@ -47,7 +47,7 @@ import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.OnAirSeries
 import com.beeregg2001.komorebi.data.model.RecordedProgram
-import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.components.ChannelLogoBadge
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.*
 import kotlinx.coroutines.delay
@@ -224,12 +224,14 @@ fun OnAirScreen(
                 else -> hScroll.value
             }.coerceIn(0, hScroll.maxValue)
 
-            val cardStart = index * (cardHeightPx + cardSpacingPx)
+            // The card content has an 8dp focus gutter at the start and end of the
+            // vertical scroll range, so include it when calculating the visible bounds.
+            val cardStart = focusGutterPx + index * (cardHeightPx + cardSpacingPx)
             val visibleHeight = vScroll.viewportSize.takeIf { it > 0 } ?: cardHeightPx
             val verticalTarget = when {
-                cardStart < vScroll.value -> cardStart
-                cardStart + cardHeightPx > vScroll.value + visibleHeight ->
-                    cardStart + cardHeightPx - visibleHeight
+                cardStart - focusInsetPx < vScroll.value -> (cardStart - focusInsetPx).coerceAtLeast(0)
+                cardStart + cardHeightPx + focusInsetPx > vScroll.value + visibleHeight ->
+                    cardStart + cardHeightPx + focusInsetPx - visibleHeight
                 else -> vScroll.value
             }.coerceIn(0, vScroll.maxValue)
 
@@ -376,7 +378,8 @@ fun OnAirScreen(
                 )
             } else {
                 Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = WEEK_FOCUS_GUTTER),
+                        verticalAlignment = Alignment.CenterVertically) {
                         Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
                         if (state.listStatus == OnAirLoadState.Loading && state.series.isNotEmpty()) {
@@ -469,9 +472,10 @@ fun OnAirScreen(
                                         }
                                     } else {
                                         // Only the card rows scroll vertically; weekday labels remain pinned above.
-                                        Column(Modifier.weight(1f).verticalScroll(vScroll)) {
+                                            Column(Modifier.weight(1f).verticalScroll(vScroll)) {
                                             Row(
-                                                Modifier.requiredWidth(weekContentWidth),
+                                                Modifier.requiredWidth(weekContentWidth)
+                                                    .padding(vertical = WEEK_FOCUS_GUTTER),
                                                 horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
                                             ) {
                                                 (0..6).forEach { day ->
@@ -634,7 +638,6 @@ private fun OnAirCard(
     onClick: () -> Unit,
 ) {
     val colors = KomorebiTheme.colors
-    val logos = rememberChannelLogoImageLoader()
     val thumbs = remember(series.id, series.thumbnailRecordedProgramIds) { series.thumbnailRecordedProgramIds.take(1) }
     val hasImage = thumbs.isNotEmpty()
 
@@ -725,12 +728,12 @@ private fun OnAirCard(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         series.channelIds.take(2).forEach { channel ->
-                            AsyncImage(
-                                UrlBuilder.getKonomiTvLogoUrl(ip, port, channel),
-                                channel,
-                                imageLoader = logos,
-                                modifier = Modifier.size(30.dp, 18.dp).background(Color.White, RoundedCornerShape(3.dp)),
-                                contentScale = ContentScale.Fit,
+                            ChannelLogoBadge(
+                                logoUrl = UrlBuilder.getKonomiTvLogoUrl(ip, port, channel),
+                                width = 30.dp,
+                                height = 18.dp,
+                                modifier = Modifier.clip(RoundedCornerShape(3.dp)),
+                                crop = true,
                             )
                         }
                     }

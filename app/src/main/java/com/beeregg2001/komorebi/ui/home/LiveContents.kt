@@ -223,6 +223,7 @@ fun LiveContent(
                 CompactLiveProgramInfo(
                     uiState = focusedChannel,
                     channelViewModel = channelViewModel,
+                    shouldCropLogo = backendType == "KONOMITV",
                     modifier = Modifier.padding(horizontal = 48.dp, vertical = 16.dp),
                     timeFormat = timeFormat
                 )
@@ -324,6 +325,7 @@ fun LiveContent(
 private fun CompactLiveProgramInfo(
     uiState: UiChannelState?,
     channelViewModel: ChannelViewModel,
+    shouldCropLogo: Boolean,
     modifier: Modifier = Modifier,
     timeFormat: String = "24H"
 ) {
@@ -375,7 +377,7 @@ private fun CompactLiveProgramInfo(
                             imageLoader = imageLoader,
                             model = logoUrl,
                             contentDescription = null,
-                            contentScale = ContentScale.Fit,
+                            contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

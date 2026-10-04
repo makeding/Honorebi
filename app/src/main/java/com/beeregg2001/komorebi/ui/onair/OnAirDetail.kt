@@ -27,14 +27,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
-import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.OnAirSeries
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.SeriesProgram
-import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.components.ChannelLogoBadge
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.components.SeriesEpisodeChannelRow
 import com.beeregg2001.komorebi.ui.video.components.SeriesEpisodeMatrix
@@ -240,15 +239,14 @@ internal fun OnAirDetail(
                                 else -> OnAirEmpty("録画番組がありません", modifier = Modifier.weight(1f))
                             }
                         } else {
-                            val logos = rememberChannelLogoImageLoader()
                             // 話数ヘッダーは縦スクロールの外に固定し、横スクロールだけに参加させる。
                             Row(
                                 Modifier.fillMaxWidth().height(24.dp),
-                                verticalAlignment = Alignment.Bottom,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("放送局", Modifier.width(CHANNEL_COL_WIDTH).testTag("onair-station-header").padding(start = 2.dp),
-                                    color = colors.textSecondary, fontSize = 11.sp)
-                                Row(Modifier.weight(1f).horizontalScroll(horizontal)) {
+                                Text("放送局", Modifier.width(CHANNEL_COL_WIDTH).testTag("onair-station-header").padding(end = 8.dp),
+                                    color = colors.textSecondary, fontSize = 11.sp, textAlign = TextAlign.Center)
+                                Row(Modifier.weight(1f).horizontalScroll(horizontal).padding(horizontal = 4.dp)) {
                                     matrix.slots.forEach { slot ->
                                         Text(slot.label, Modifier.width(SLOT_WIDTH), color = colors.textPrimary,
                                             fontSize = 11.sp, textAlign = TextAlign.Center, maxLines = 1)
@@ -284,12 +282,12 @@ internal fun OnAirDetail(
                                         }
                                     },
                             ) {
-                                Column(Modifier.width(CHANNEL_COL_WIDTH).background(colors.surface)) {
+                                Column(Modifier.width(CHANNEL_COL_WIDTH).padding(vertical = 4.dp)) {
                                     matrix.rows.forEach { row ->
-                                        ChannelCell(row, matrix, Modifier.height(ROW_HEIGHT).testTag("onair-station-${row.channelId}"), ip, port, logos)
+                                        ChannelCell(row, matrix, Modifier.height(ROW_HEIGHT).testTag("onair-station-${row.channelId}"), ip, port)
                                     }
                                 }
-                                Column(Modifier.horizontalScroll(horizontal)) {
+                                Column(Modifier.horizontalScroll(horizontal).padding(4.dp)) {
                                     matrix.rows.forEachIndexed { rowIndex, row ->
                                         Row(Modifier.height(ROW_HEIGHT)) {
                                             row.programs.forEachIndexed { index, program ->
@@ -372,21 +370,23 @@ private fun ChannelCell(
     modifier: Modifier,
     ip: String,
     port: String,
-    logos: ImageLoader,
 ) {
     val colors = KomorebiTheme.colors
     val coveredEpisodes = matrix.slots.countIndexed { index, slot ->
         slot.key.startsWith("episode:") && row.programs.getOrNull(index) != null
     }
-    Column(modifier.padding(end = 8.dp, bottom = 8.dp).background(colors.surface)
-        .padding(horizontal = 6.dp, vertical = 4.dp)) {
+    Column(modifier.padding(end = 8.dp, bottom = 8.dp)
+        .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.Center) {
         // ロゴ・カバー数・局名は独立したスロットに置き、長い局名とも重ねない。
         Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
             row.channelId?.let { channel ->
-                AsyncImage(
-                    UrlBuilder.getKonomiTvLogoUrl(ip, port, channel), null, imageLoader = logos,
-                    modifier = Modifier.size(42.dp, 26.dp).background(Color.White, RoundedCornerShape(4.dp)),
-                    contentScale = ContentScale.Fit,
+                ChannelLogoBadge(
+                    logoUrl = UrlBuilder.getKonomiTvLogoUrl(ip, port, channel),
+                    width = 42.dp,
+                    height = 26.dp,
+                    modifier = Modifier.clip(RoundedCornerShape(4.dp)),
+                    crop = true,
                 )
             }
             Text(if (coveredEpisodes > 0) "${coveredEpisodes}話録画" else "${row.programs.count { it != null }}件",
