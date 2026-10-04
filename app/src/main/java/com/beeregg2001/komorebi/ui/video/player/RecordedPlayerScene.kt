@@ -275,7 +275,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         ) != null || (
             state.manualCmSkipPromptRestartUntilMs > System.currentTimeMillis() &&
                 manualCmSkipChapterTargetMs(
-                mode = cmSkipMode,
+                    mode = cmSkipMode,
                     currentPositionMs = currentPositionMs(),
                     chapters = chapters,
                     interactionBlocked = manualCmSkipPromptBlocked
@@ -284,24 +284,28 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     )
 
     LaunchedEffect(
-        state.manualCmSkipPromptSuppressed,
+        state.manualCmSkipPromptInteractionSequence,
         showControls,
         isSubOverlayOpen,
         isDataBroadcastingActive,
         showNextEpisodeCountdown,
         state.crop.mode
     ) {
-        if (!state.manualCmSkipPromptSuppressed) return@LaunchedEffect
-        if (showControls || isSubOverlayOpen || isDataBroadcastingActive ||
-            showNextEpisodeCountdown || state.crop.mode != PlayerCropMode.HIDDEN
-        ) return@LaunchedEffect
+        val interactionSurfaceVisible = showControls || isSubOverlayOpen ||
+            isDataBroadcastingActive || showNextEpisodeCountdown ||
+            state.crop.mode != PlayerCropMode.HIDDEN
+        if (state.manualCmSkipPromptRestartUntilMs > 0L && interactionSurfaceVisible) {
+            state.manualCmSkipPromptSuppressed = true
+            state.manualCmSkipPromptRestartUntilMs = 0L
+        }
+        if (!state.manualCmSkipPromptSuppressed || interactionSurfaceVisible) return@LaunchedEffect
 
         val deadline = System.currentTimeMillis() + MANUAL_CM_SKIP_WINDOW_MS
         state.manualCmSkipPromptRestartUntilMs = deadline
+        state.manualCmSkipPromptSuppressed = false
         delay(MANUAL_CM_SKIP_WINDOW_MS)
         if (state.manualCmSkipPromptRestartUntilMs == deadline) {
             state.manualCmSkipPromptRestartUntilMs = 0L
-            state.manualCmSkipPromptSuppressed = false
         }
     }
     val commentLayer = @Composable {
@@ -787,6 +791,54 @@ internal fun handleRecordedPlayerKeyEvent(
 ): Boolean {
     if (isPiPMode || isSubOverlayOpen || isProgramInfoOpen || showNextEpisodeCountdown) state.resetMediaKeys()
     if (isPiPMode) return false
+
+    val keyCode = keyEvent.nativeKeyEvent.keyCode
+    val isConfirmKey = keyCode in listOf(
+        android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+        android.view.KeyEvent.KEYCODE_ENTER
+    )
+    val cmSkipInteractionBlocked = showControls ||
+        isSubOverlayOpen ||
+        isDataBroadcastingActive ||
+        showNextEpisodeCountdown ||
+        state.crop.mode != PlayerCropMode.HIDDEN
+    val initialManualSkipTargetMs = manualCmSkipTargetMs(
+        mode = cmSkipMode,
+        currentPositionMs = currentPositionMs(),
+        chapters = chapters,
+        interactionBlocked = cmSkipInteractionBlocked
+    )
+    val manualSkipRestartActive = !state.manualCmSkipPromptSuppressed &&
+        state.manualCmSkipPromptRestartUntilMs > System.currentTimeMillis()
+    val manualSkipTargetMs = initialManualSkipTargetMs ?: if (manualSkipRestartActive) {
+        manualCmSkipChapterTargetMs(
+            mode = cmSkipMode,
+            currentPositionMs = currentPositionMs(),
+            chapters = chapters,
+            interactionBlocked = cmSkipInteractionBlocked
+        )
+    } else {
+        null
+    }
+    val manualSkipPromptActive = !state.manualCmSkipPromptSuppressed &&
+        !cmSkipInteractionBlocked &&
+        manualSkipTargetMs != null
+    val isNonConfirmKeyDown = shouldDismissManualCmSkipPrompt(
+        keyCode = keyCode,
+        isActionDown = keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN,
+        promptActive = manualSkipPromptActive
+    )
+    if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN && !isConfirmKey) {
+        if (armedManualCmSkipTargetMs != null) {
+            onArmedManualCmSkipTargetChange(null)
+        }
+    }
+    if (isNonConfirmKeyDown) {
+        state.manualCmSkipPromptSuppressed = true
+        state.manualCmSkipPromptRestartUntilMs = 0L
+        state.manualCmSkipPromptInteractionSequence += 1
+    }
+
     if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
         dataBroadcastingInput.reset()
         when {
@@ -829,28 +881,6 @@ internal fun handleRecordedPlayerKeyEvent(
 
     if (keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
         state.lastInteractionTime = System.currentTimeMillis()
-    }
-    val manualSkipTargetMs = manualCmSkipTargetMs(
-        mode = cmSkipMode,
-        currentPositionMs = currentPositionMs(),
-        chapters = chapters,
-        interactionBlocked = showControls ||
-            isSubOverlayOpen ||
-            isDataBroadcastingActive ||
-            showNextEpisodeCountdown ||
-            state.crop.mode != PlayerCropMode.HIDDEN
-    )
-    val isConfirmKey = keyEvent.nativeKeyEvent.keyCode in listOf(
-        android.view.KeyEvent.KEYCODE_DPAD_CENTER,
-        android.view.KeyEvent.KEYCODE_ENTER
-    )
-    if (
-        !isConfirmKey &&
-        keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-        manualSkipTargetMs != null
-    ) {
-        state.manualCmSkipPromptSuppressed = true
-        state.manualCmSkipPromptRestartUntilMs = 0L
     }
     if (
         isConfirmKey &&

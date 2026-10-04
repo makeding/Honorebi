@@ -154,12 +154,14 @@ fun GeneralSettingsContent(
             SettingItem(
                 "N〇K除外モード",
                 nhkExclusionLabel,
-                Icons.Default.Lock,
+                Icons.Default.Block,
                 modifier = Modifier.focusRequester(nhkExclusionR).focusProperties {
                     left = sidebarR
                     up = exPaidR
                     down = FocusRequester.Cancel
                 },
+                focusedContainerColor = Color(0xFFFFE600),
+                focusedContentColor = Color(0xFF0067A8),
                 onClick = { onClick(nhkExclusionR); onEditNHKExclusion() },
             )
         }

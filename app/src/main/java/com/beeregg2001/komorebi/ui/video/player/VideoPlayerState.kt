@@ -29,6 +29,14 @@ data class ChapterInfo(
 
 internal const val MANUAL_CM_SKIP_WINDOW_MS = 5_000L
 
+internal fun shouldDismissManualCmSkipPrompt(
+    keyCode: Int,
+    isActionDown: Boolean,
+    promptActive: Boolean
+): Boolean = isActionDown && promptActive &&
+    keyCode != NativeKeyEvent.KEYCODE_DPAD_CENTER &&
+    keyCode != NativeKeyEvent.KEYCODE_ENTER
+
 internal val CmSkipMode.displayLabel: String
     get() = when (this) {
         CmSkipMode.OFF -> "オフ"
@@ -86,6 +94,7 @@ class VideoPlayerState {
     var isSeekBarFocused by mutableStateOf(false)
     var manualCmSkipPromptSuppressed by mutableStateOf(false)
     var manualCmSkipPromptRestartUntilMs by mutableLongStateOf(0L)
+    var manualCmSkipPromptInteractionSequence by mutableIntStateOf(0)
 
     var wasPlayingBeforeSceneSearch = false
     var downKeyDownTime = 0L

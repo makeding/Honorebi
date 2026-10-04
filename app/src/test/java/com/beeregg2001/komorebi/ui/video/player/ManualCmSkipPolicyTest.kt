@@ -27,6 +27,50 @@ class ManualCmSkipPolicyTest {
     }
 
     @Test
+    fun onlyNonConfirmKeyDownDismissesAnActivePrompt() {
+        assertEquals(
+            true,
+            shouldDismissManualCmSkipPrompt(
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                isActionDown = true,
+                promptActive = true
+            )
+        )
+        assertEquals(
+            true,
+            shouldDismissManualCmSkipPrompt(
+                android.view.KeyEvent.KEYCODE_BACK,
+                isActionDown = true,
+                promptActive = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldDismissManualCmSkipPrompt(
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                isActionDown = true,
+                promptActive = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldDismissManualCmSkipPrompt(
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                isActionDown = false,
+                promptActive = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldDismissManualCmSkipPrompt(
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                isActionDown = true,
+                promptActive = false
+            )
+        )
+    }
+
+    @Test
     fun shortCmWindowNeverExtendsIntoMainProgram() {
         val shortCm = ChapterInfo(startTimeMs = 10_000L, endTimeMs = 12_000L, isCm = true)
 

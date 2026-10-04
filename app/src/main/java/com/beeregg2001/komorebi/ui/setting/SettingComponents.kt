@@ -209,13 +209,15 @@ fun SettingItem(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    focusedContainerColor: Color? = null,
+    focusedContentColor: Color? = null,
     onClick: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedTextColor = MaterialTheme.colorScheme.onPrimary
-    val focusedBgColor = MaterialTheme.colorScheme.primary
+    val focusedTextColor = focusedContentColor ?: MaterialTheme.colorScheme.onPrimary
+    val focusedBgColor = focusedContainerColor ?: MaterialTheme.colorScheme.primary
 
     Surface(
         onClick = { if (enabled) onClick() },
