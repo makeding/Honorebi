@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.viewmodel
 
+import kotlinx.coroutines.flow.Flow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.beeregg2001.komorebi.data.SettingsRepository
@@ -77,7 +78,7 @@ data class OnAirReturnFocus(
 @HiltViewModel
 class OnAirViewModel private constructor(
     private val onAirProvider: OnAirProvider,
-    private val backendConfigurations: kotlinx.coroutines.flow.Flow<OnAirBackendConfiguration>,
+    private val backendConfigurations: Flow<OnAirBackendConfiguration>,
     private val nhkExclusionRepository: NHKExclusionRepository?,
 ) : ViewModel() {
     @Inject
@@ -98,7 +99,7 @@ class OnAirViewModel private constructor(
 
     internal constructor(
         onAirProvider: OnAirProvider,
-        backendConfigurations: kotlinx.coroutines.flow.Flow<OnAirBackendConfiguration>,
+        backendConfigurations: Flow<OnAirBackendConfiguration>,
         testOnly: Unit = Unit,
     ) : this(onAirProvider, backendConfigurations, null)
     private val _uiState = MutableStateFlow(OnAirUiState())
@@ -399,6 +400,7 @@ class OnAirViewModel private constructor(
 
     private suspend fun loadEveryProgramPage(seriesId: Int): List<RecordedProgram> {
         val programs = mutableListOf<RecordedProgram>()
+        val seenProgramIds = mutableSetOf<Int>()
         var page = 1
         var expectedTotal: Int? = null
         while (expectedTotal == null || programs.size < expectedTotal) {
@@ -408,10 +410,11 @@ class OnAirViewModel private constructor(
             if (response.recordedPrograms.isEmpty() && programs.size < expectedTotal) {
                 throw IllegalStateException("録画一覧を最後まで取得できませんでした。再試行してください。")
             }
-            programs += response.recordedPrograms
-            if (programs.mapTo(mutableSetOf()) { it.id }.size != programs.size) {
+            // 新しいページだけ検査し、取得済みの全ページを毎回走査し直さない。
+            if (response.recordedPrograms.any { !seenProgramIds.add(it.id) }) {
                 throw IllegalStateException("録画一覧に重複した録画 ID が含まれています。再試行してください。")
             }
+            programs += response.recordedPrograms
             if (programs.size > expectedTotal) {
                 throw IllegalStateException("録画一覧のページング結果が不正です。再試行してください。")
             }

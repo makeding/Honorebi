@@ -74,6 +74,9 @@ class OnAirViewModelTest {
     @Test
     fun duplicateOrIncompletePagesNeverPublishAPartialMatrix() {
         assertIncompletePages(
+            mapOf(1 to RecordedApiResponse(2, listOf(recording(10), recording(10)))),
+        )
+        assertIncompletePages(
             mapOf(1 to RecordedApiResponse(2, listOf(recording(10))), 2 to RecordedApiResponse(2, listOf(recording(10)))),
         )
         assertIncompletePages(

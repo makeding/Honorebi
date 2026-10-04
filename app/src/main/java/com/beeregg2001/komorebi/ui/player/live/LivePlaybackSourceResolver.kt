@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.player.live
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.C
@@ -21,6 +23,7 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.data.repository.LiveProvider
+import com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease
 import com.beeregg2001.komorebi.ui.player.PlayerRuntime
 import com.beeregg2001.komorebi.util.TsReadExDataSourceFactory
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingCallback
@@ -50,7 +53,7 @@ class LivePlaybackSourceResolver @Inject constructor(
         val isEdcbDirect: Boolean,
         val quality: StreamQuality,
         val config: BackendConfig,
-        val upstreamSession: com.beeregg2001.komorebi.data.repository.LiveStreamSessionLease? = null,
+        val upstreamSession: LiveStreamSessionLease? = null,
         val streamType: String? = null,
     ) {
         val apiQuality: String
@@ -87,7 +90,7 @@ class LivePlaybackSourceResolver @Inject constructor(
                     streamType = session.streamType.lowercase(),
                 )
             } catch (error: Exception) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                withContext(NonCancellable) {
                     kotlinx.coroutines.withTimeoutOrNull(5_000) {
                         runCatching { lease.close() }.onFailure {
                             android.util.Log.w("LivePlaybackSource", "Session cleanup failed: ${lease.id}", it)

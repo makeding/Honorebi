@@ -1,5 +1,10 @@
 package com.beeregg2001.komorebi.viewmodel
 
+import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
+import com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest
+import com.beeregg2001.komorebi.data.model.RecordedChannel
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import com.beeregg2001.komorebi.data.model.SeekPositionResponse
 
 import android.net.Uri
@@ -54,7 +59,7 @@ class VideoPlayerViewModel @Inject constructor(
     private val historyRepository: WatchHistoryRepository,
     private val settingsRepository: SettingsRepository,
     private val konomiRepository: KonomiRepository,
-    private val channelLogoCache: com.beeregg2001.komorebi.data.repository.ChannelLogoCache,
+    private val channelLogoCache: ChannelLogoCache,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val playbackSourceResolver: RecordedPlaybackSourceResolver,
     private val nhkExclusionRepository: NHKExclusionRepository,
@@ -70,10 +75,10 @@ class VideoPlayerViewModel @Inject constructor(
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
 
-    private val _programDetailRequest = MutableStateFlow(com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest())
+    private val _programDetailRequest = MutableStateFlow(ProgramDetailRequest())
     val programDetailRequest = _programDetailRequest.asStateFlow()
 
-    suspend fun recordedChannelLogo(channel: com.beeregg2001.komorebi.data.model.RecordedChannel): String {
+    suspend fun recordedChannelLogo(channel: RecordedChannel): String {
         val id = if (settingsRepository.backendType.first() == "MIRAKURUN_ONLY") channel.id
             else channel.displayChannelId.ifBlank { channel.id }
         return channelLogoCache.getChannelLogoUrl(id)
@@ -232,13 +237,13 @@ class VideoPlayerViewModel @Inject constructor(
         }
         detailFetchJob?.cancel()
         _programDetail.value = null
-        _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId, loading = true)
+        _programDetailRequest.value = ProgramDetailRequest(videoId, loading = true)
         detailFetchJob = viewModelScope.launch {
             val result = try {
-                kotlinx.coroutines.withTimeout(15_000) {
+                withTimeout(15_000) {
                     withContext(Dispatchers.IO) { recordProvider.getRecordedProgram(videoId) }
                 }
-            } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+            } catch (error: TimeoutCancellationException) {
                 Result.failure(error)
             } catch (error: CancellationException) {
                 throw error
@@ -248,17 +253,17 @@ class VideoPlayerViewModel @Inject constructor(
             if (!isActive) return@launch
             result.onSuccess { program ->
                 if (nhkExclusionRepository.isExcluded(program)) {
-                    _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId)
+                    _programDetailRequest.value = ProgramDetailRequest(videoId)
                     _programDetail.value = null
                     return@onSuccess
                 }
                 if (settingsRepository.backendType.first() == "KONOMITV" &&
                     program.recordedVideo.containerFormat.isBlank()) {
-                    _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(
+                    _programDetailRequest.value = ProgramDetailRequest(
                         videoId, error = "ファイル形式を確認できませんでした。再試行してください。（CONTAINER_FORMAT）")
                     return@onSuccess
                 }
-                _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(videoId)
+                _programDetailRequest.value = ProgramDetailRequest(videoId)
 
                 _programDetail.value = program
 
@@ -277,8 +282,8 @@ class VideoPlayerViewModel @Inject constructor(
                 _chapters.value = calculateChapters(durationMs, cmSections)
 
             }.onFailure {
-                if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it
-                _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest(
+                if (it is CancellationException && it !is TimeoutCancellationException) throw it
+                _programDetailRequest.value = ProgramDetailRequest(
                     videoId, error = com.beeregg2001.komorebi.ui.video.player.programDetailFailureMessage(it))
                 Log.e(TAG, "Failed to fetch program detail", it)
             }
@@ -287,7 +292,7 @@ class VideoPlayerViewModel @Inject constructor(
 
     fun clearProgramDetail() {
         detailFetchJob?.cancel()
-        _programDetailRequest.value = com.beeregg2001.komorebi.ui.video.player.ProgramDetailRequest()
+        _programDetailRequest.value = ProgramDetailRequest()
         _programDetail.value = null
         _tiledThumbnailUrl.value = null
         _chapters.value = emptyList()
@@ -571,7 +576,7 @@ class VideoPlayerViewModel @Inject constructor(
     suspend fun resolveSeekPosition(videoId: Int, timeSeconds: Double): SeekPositionResponse? {
         return try {
             withContext(Dispatchers.IO) { konomiRepository.getSeekPosition(videoId, timeSeconds) }
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Failed to resolve seek position. [video=$videoId, time=$timeSeconds]", e)

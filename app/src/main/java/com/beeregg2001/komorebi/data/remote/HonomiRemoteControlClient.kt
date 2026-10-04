@@ -1,5 +1,8 @@
 package com.beeregg2001.komorebi.data.remote
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.beeregg2001.komorebi.data.repository.NHKExclusionRepository
 import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
@@ -126,11 +129,11 @@ internal fun parseHonomiRemoteServerEvent(gson: Gson, text: String): HonomiRemot
 /** HonomiTV Server と接続し、選択されたこのテレビ宛ての操作だけを配信する。 */
 @Singleton
 class HonomiRemoteControlClient @Inject constructor(
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    @ApplicationContext private val context: Context,
     okHttpClient: OkHttpClient,
     private val gson: Gson,
     private val sessionStore: HonomiSessionStore,
-    private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
+    private val nhkExclusionRepository: NHKExclusionRepository,
 ) {
     private val webSocketClient = okHttpClient.newBuilder()
         .followRedirects(false)

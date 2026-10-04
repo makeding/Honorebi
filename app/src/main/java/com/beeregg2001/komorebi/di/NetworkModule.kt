@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.di
 
+import com.beeregg2001.komorebi.data.api.interceptor.BackendOriginInterceptor
+import com.beeregg2001.komorebi.data.api.interceptor.BackendApiResponseInterceptor
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.api.KonomiApi
@@ -41,7 +43,7 @@ object NetworkModule {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
-            .addInterceptor(com.beeregg2001.komorebi.data.api.interceptor.BackendOriginInterceptor {
+            .addInterceptor(BackendOriginInterceptor {
                 settingsRepository.cloudflareAccessConfiguration.value
             })
             .addInterceptor(Interceptor { chain ->
@@ -83,7 +85,7 @@ object NetworkModule {
             // ここはダミーの初期値（Interceptorで動的に書き換わるため何でもOK）
             .baseUrl("https://192-168-11-100.local.konomi.tv:7000")
             .client(okHttpClient.newBuilder()
-                .addInterceptor(com.beeregg2001.komorebi.data.api.interceptor.BackendApiResponseInterceptor())
+                .addInterceptor(BackendApiResponseInterceptor())
                 .build())
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()

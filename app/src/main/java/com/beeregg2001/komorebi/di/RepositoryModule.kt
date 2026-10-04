@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.di
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.beeregg2001.komorebi.data.SettingsRepository
 import dagger.Module
 import dagger.Provides
@@ -16,7 +18,7 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideSettingsRepository(
-        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context
+        @ApplicationContext context: Context
     ): SettingsRepository {
         return SettingsRepository(context)
     }

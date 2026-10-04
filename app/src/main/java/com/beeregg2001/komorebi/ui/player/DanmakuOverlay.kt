@@ -16,6 +16,7 @@ import master.flame.danmaku.danmaku.model.DanmakuTimer
 import master.flame.danmaku.danmaku.model.IDanmakus
 import master.flame.danmaku.danmaku.model.android.DanmakuContext
 import master.flame.danmaku.danmaku.model.android.Danmakus
+import master.flame.danmaku.danmaku.model.android.SimpleTextCacheStuffer
 import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.ui.widget.DanmakuSurfaceView
 import master.flame.danmaku.ui.widget.DanmakuView
@@ -42,7 +43,7 @@ fun DanmakuOverlay(
             setDuplicateMergingEnabled(false)
             setDanmakuSync(null)
             setCacheStuffer(
-                master.flame.danmaku.danmaku.model.android.SimpleTextCacheStuffer(),
+                SimpleTextCacheStuffer(),
                 null,
             )
             setMaximumVisibleSizeInScreen(MAX_VISIBLE_DANMAKU)

@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.media
 
+import androidx.compose.runtime.LaunchedEffect
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadata as PlatformMediaMetadata
@@ -59,7 +60,7 @@ fun SystemMediaSession(
     val artworkDataState = androidx.compose.runtime.remember(artworkUrl) {
         androidx.compose.runtime.mutableStateOf<ByteArray?>(null)
     }
-    androidx.compose.runtime.LaunchedEffect(artworkUrl) {
+    LaunchedEffect(artworkUrl) {
         artworkDataState.value = loadArtworkData(context, artworkUrl)
     }
     val artworkData = artworkDataState.value

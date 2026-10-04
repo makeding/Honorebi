@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.data.local.dao
 
+import kotlinx.coroutines.flow.Flow
 import androidx.paging.PagingSource
 import androidx.room.*
 import com.beeregg2001.komorebi.data.local.entity.RecordedProgramEntity
@@ -100,13 +101,13 @@ interface RecordedProgramDao {
     fun getPagingSourceUnwatched(): PagingSource<Int, RecordedProgramEntity>
 
     @Query("SELECT * FROM recorded_programs ORDER BY start_time DESC LIMIT 20")
-    fun getRecentRecordingsFlow(): kotlinx.coroutines.flow.Flow<List<RecordedProgramEntity>>
+    fun getRecentRecordingsFlow(): Flow<List<RecordedProgramEntity>>
 
     @Query("SELECT * FROM recorded_programs ORDER BY start_time DESC")
     suspend fun getAllPrograms(): List<RecordedProgramEntity>
 
     @Query("SELECT COUNT(id) FROM recorded_programs")
-    fun getTotalCountFlow(): kotlinx.coroutines.flow.Flow<Int>
+    fun getTotalCountFlow(): Flow<Int>
 
     @Query("SELECT DISTINCT channel_id as channelId, channel_type as channelType, channel_name as channelName FROM recorded_programs WHERE channel_id IS NOT NULL")
     suspend fun getDistinctChannels(): List<ChannelProjection>
@@ -149,7 +150,7 @@ interface SyncMetaDao {
     suspend fun getSyncMeta(): SyncMetaEntity?
 
     @Query("SELECT * FROM sync_meta WHERE id = 1")
-    fun getSyncMetaFlow(): kotlinx.coroutines.flow.Flow<SyncMetaEntity?>
+    fun getSyncMetaFlow(): Flow<SyncMetaEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(meta: SyncMetaEntity)

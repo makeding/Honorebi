@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.common
 
+import java.net.URI
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.util.Log
@@ -20,9 +21,9 @@ object UrlBuilder {
             if (it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true)) it else "$defaultProtocol://$it"
         }
         return runCatching {
-            val uri = java.net.URI(configured)
+            val uri = URI(configured)
             val effectivePort = if (uri.port >= 0) uri.port else port.toInt()
-            java.net.URI(uri.scheme.lowercase(), null, requireNotNull(uri.host), effectivePort,
+            URI(uri.scheme.lowercase(), null, requireNotNull(uri.host), effectivePort,
                 uri.path, null, null).toASCIIString().removeSuffix("/")
         }.getOrDefault(configured)
     }
