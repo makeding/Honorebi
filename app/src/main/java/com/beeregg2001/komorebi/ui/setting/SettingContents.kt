@@ -27,6 +27,11 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1459,6 +1464,7 @@ fun AppInfoContent(
     updateState: com.beeregg2001.komorebi.util.UpdateState,
     onToggleBetaUpdates: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit,
+    onScrollToTop: () -> Unit,
     onShowProject: () -> Unit,
     onShowLicenses: () -> Unit,
     onCapabilities: () -> Unit,
@@ -1531,6 +1537,14 @@ fun AppInfoContent(
             modifier = Modifier
                 .width(420.dp)
                 .focusRequester(versionR)
+                .onPreviewKeyEvent { event ->
+                    if (event.key == Key.DirectionUp) {
+                        if (event.type == KeyEventType.KeyDown) onScrollToTop()
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .focusProperties {
                     left = sidebarR
                     up = FocusRequester.Cancel
@@ -1571,35 +1585,49 @@ fun AppInfoContent(
             title = "更新を確認",
             value = checkValue,
             icon = Icons.Default.Refresh,
-            enabled = updateState !is com.beeregg2001.komorebi.util.UpdateState.Checking &&
-                updateState !is com.beeregg2001.komorebi.util.UpdateState.Downloading,
             modifier = Modifier.width(420.dp).focusRequester(checkR).focusProperties {
                 left = sidebarR
                 up = betaR
-                down = projectR
+                down = capabilityR
             },
-            onClick = { onClick(checkR); onCheckUpdates() }
-        )
-        Spacer(Modifier.height(12.dp))
-        val updateError = (updateState as? com.beeregg2001.komorebi.util.UpdateState.Error)?.message
-        Box(Modifier.width(420.dp).height(40.dp), contentAlignment = Alignment.CenterStart) {
-            if (updateError != null) {
-                Text(updateError, color = Color(0xFFE53935), style = MaterialTheme.typography.bodySmall)
+            onClick = {
+                if (updateState !is com.beeregg2001.komorebi.util.UpdateState.Checking &&
+                    updateState !is com.beeregg2001.komorebi.util.UpdateState.Downloading) {
+                    onClick(checkR)
+                    onCheckUpdates()
+                }
             }
+        )
+        val updateError = (updateState as? com.beeregg2001.komorebi.util.UpdateState.Error)?.message
+        if (updateError != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(updateError, modifier = Modifier.width(420.dp), color = Color(0xFFE53935), style = MaterialTheme.typography.bodySmall)
         }
 
+        Spacer(Modifier.height(24.dp))
+        SettingItem(
+            title = "テレビ再生能力",
+            value = "",
+            icon = Icons.Default.Memory,
+            modifier = Modifier.width(420.dp).focusRequester(capabilityR).focusProperties {
+                left = sidebarR
+                up = checkR
+                down = projectR
+            },
+            onClick = { onClick(capabilityR); onCapabilities() }
+        )
         Spacer(Modifier.height(24.dp))
 
         SettingItem(
             AppStrings.SETTINGS_ITEM_PROJECT_GITHUB,
-            "GitHub",
+            "",
             Icons.Default.Code,
             modifier = Modifier
                 .width(420.dp)
                 .focusRequester(projectR)
                 .focusProperties {
                     left = sidebarR
-                    up = checkR
+                    up = capabilityR
                     down = licR
                 },
             onClick = { onClick(projectR); onShowProject() })
@@ -1608,7 +1636,7 @@ fun AppInfoContent(
 
         SettingItem(
             AppStrings.SETTINGS_ITEM_OSS_LICENSES,
-            "ライセンス一覧を表示",
+            "",
             Icons.Default.Info,
             modifier = Modifier
                 .width(420.dp)
@@ -1616,20 +1644,8 @@ fun AppInfoContent(
                 .focusProperties {
                     left = sidebarR
                     up = projectR
-                    down = capabilityR
+                    down = FocusRequester.Cancel
                 },
             onClick = { onClick(licR); onShowLicenses() })
-        Spacer(Modifier.height(12.dp))
-        SettingItem(
-            title = "テレビ再生能力",
-            value = "",
-            icon = Icons.Default.Memory,
-            modifier = Modifier.width(420.dp).focusRequester(capabilityR).focusProperties {
-                left = sidebarR
-                up = licR
-                down = FocusRequester.Cancel
-            },
-            onClick = { onClick(capabilityR); onCapabilities() }
-        )
     }
 }

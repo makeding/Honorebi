@@ -8,6 +8,9 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -59,8 +62,18 @@ private data class SettingSidebarRow(
     val isChild: Boolean = false,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
+private object AppInfoBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        when {
+            offset < 0f -> offset
+            offset + size > containerSize -> offset + size - containerSize
+            else -> 0f
+        }
+}
+
 @RequiresApi(Build.VERSION_CODES.O)
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -372,6 +385,13 @@ fun SettingsScreen(
                     .fillMaxHeight()
                     .padding(vertical = 48.dp, horizontal = 64.dp)
             ) {
+                CompositionLocalProvider(
+                    LocalBringIntoViewSpec provides if (uiState.selectedCategoryIndex == 11) {
+                        AppInfoBringIntoViewSpec
+                    } else {
+                        LocalBringIntoViewSpec.current
+                    }
+                ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1190,6 +1210,7 @@ fun SettingsScreen(
                                 }
                             },
                             onCheckUpdates = viewModel::checkForUpdates,
+                            onScrollToTop = { scope.launch { mainScrollState.animateScrollTo(0) } },
                             onShowProject = {
                                 uiState.activeDialog = SettingDialogState.LinkQr(
                                     AppStrings.DIALOG_LINK_TITLE,
@@ -1208,6 +1229,7 @@ fun SettingsScreen(
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 11 }
                     }
                     Spacer(Modifier.height(32.dp))
+                }
                 }
             }
         }
