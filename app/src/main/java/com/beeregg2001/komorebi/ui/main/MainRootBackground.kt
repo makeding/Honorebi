@@ -148,7 +148,6 @@ fun MainRootBackground(
                         isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
                         onReturnFocusConsumed = { state.playbackState.isReturningFromPlayer = false },
                         topFocusRequester = FocusRequester.Cancel,
-                        showHeadline = true,
                     )
                 }
 

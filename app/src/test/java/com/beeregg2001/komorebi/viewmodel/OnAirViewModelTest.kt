@@ -119,6 +119,31 @@ class OnAirViewModelTest {
         assertEquals("summary", viewModel.uiState.value.expanded!!.summary!!.title)
     }
 
+    @Test
+    fun seasonSwitchAndRefreshKeepSelectedSeasonAndClearDetailIdentity() {
+        val response = com.beeregg2001.komorebi.data.model.OnAirSeriesApiResponse(
+            listOf(
+                com.beeregg2001.komorebi.data.model.OnAirSeason("fall", "秋", true, "2026-10-01", "2026-12-31", seriesResponse(42, "秋作品").seasons.single().seriesList),
+                com.beeregg2001.komorebi.data.model.OnAirSeason("summer", "夏", false, "2026-07-01", "2026-09-30", seriesResponse(5, "夏作品").seasons.single().seriesList),
+            ), "fall",
+        )
+        val provider = FakeOnAirProvider().apply { listResponse = response }
+        val vm = OnAirViewModel(provider, MutableStateFlow(konomiConfiguration()))
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        provider.resumeFirstList(response)
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        assertEquals("fall", vm.uiState.value.selectedSeasonId)
+        vm.expandSeries(42)
+        vm.selectSeason("summer")
+        assertEquals(listOf(5), vm.uiState.value.series.map { it.id })
+        assertEquals(null, vm.uiState.value.expanded)
+        assertEquals(null, vm.uiState.value.focusedSeriesId)
+        vm.refresh()
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        assertEquals("summer", vm.uiState.value.selectedSeasonId)
+        assertEquals(listOf(5), vm.uiState.value.series.map { it.id })
+    }
+
     private fun assertIncompletePages(pages: Map<Int, RecordedApiResponse>) {
         val provider = FakeOnAirProvider().apply { programPages = pages }
         val viewModel = OnAirViewModel(provider, MutableStateFlow(konomiConfiguration()))
@@ -133,7 +158,7 @@ class OnAirViewModelTest {
     private fun konomiConfiguration() = OnAirBackendConfiguration("KONOMITV", "tv.example", "7000", "auth")
 
     private fun seriesResponse(id: Int, title: String) = Gson().fromJson(
-        """{"series_list":[{"id":$id,"title":"$title","thumbnail_recorded_program_ids":[],"channel_ids":[],"recorded_episodes_count":0,"missing_episodes_count":0,"partially_recorded_episodes_count":0,"weekday":0,"broadcast_time":"23:30","latest_broadcast_at":"2026-09-13T23:30:00+09:00"}]}""",
+        """{"current_season_id":"fall","seasons":[{"season_id":"fall","season_label":"秋","is_current":true,"start_date":"2026-10-01","end_date":"2026-12-31","series_list":[{"id":$id,"title":"$title","thumbnail_recorded_program_ids":[],"channel_ids":[],"recorded_episodes_count":0,"missing_episodes_count":0,"partially_recorded_episodes_count":0,"weekday":0,"broadcast_time":"23:30","latest_broadcast_at":"2026-09-13T23:30:00+09:00"}]}]}""",
         OnAirSeriesApiResponse::class.java,
     )
 
@@ -146,6 +171,7 @@ class OnAirViewModelTest {
     private inner class FakeOnAirProvider : OnAirProvider {
         private var firstListContinuation: Continuation<OnAirSeriesApiResponse>? = null
         private var listCalls = 0
+        var listResponse: OnAirSeriesApiResponse? = null
         var programPages: Map<Int, RecordedApiResponse> = emptyMap()
         val requestedPages = mutableListOf<Int>()
         var summaryFailuresRemaining = 0
@@ -155,7 +181,7 @@ class OnAirViewModelTest {
         override suspend fun getOnAirSeries(): OnAirSeriesApiResponse {
             listCalls++
             if (listCalls == 1) return suspendCoroutine { firstListContinuation = it }
-            return seriesResponse(2, "新しい結果")
+            return listResponse ?: seriesResponse(2, "新しい結果")
         }
 
         fun resumeFirstList(response: OnAirSeriesApiResponse) {

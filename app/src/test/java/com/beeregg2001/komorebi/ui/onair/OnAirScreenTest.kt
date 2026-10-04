@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.requestFocus
 import com.beeregg2001.komorebi.data.model.OnAirSeries
+import com.beeregg2001.komorebi.data.model.OnAirSeason
 import com.beeregg2001.komorebi.data.model.OnAirSeriesApiResponse
 import com.beeregg2001.komorebi.data.model.RecordedApiResponse
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -23,6 +24,8 @@ import com.beeregg2001.komorebi.viewmodel.OnAirViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowLooper
@@ -128,6 +131,32 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-episode-$key").assertIsFocused()
     }
 
+    @Test fun seasonSelectorReturnsFocusWithoutOpeningOldDetails() {
+        val vm = viewModel()
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-season-selector").confirm()
+        compose.onNodeWithTag("onair-season-2026-fall").confirm()
+        compose.onNodeWithTag("onair-season-selector").assertIsFocused()
+        compose.onNodeWithTag("onair-details").assertDoesNotExist()
+    }
+
+    @Test fun stationHeaderAndColumnRemainAlignedWhenEpisodesScroll() {
+        val vm = OnAirViewModel(FakeProvider(longMatrix = true), MutableStateFlow(OnAirBackendConfiguration("KONOMITV", "tv", "7000", "")))
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-series-1").confirm()
+        val headerBefore = compose.onNodeWithTag("onair-station-header").fetchSemanticsNode().boundsInRoot
+        val stationBefore = compose.onNodeWithTag("onair-station-ch").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("onair-episode-1:ch:episode:10:30").requestFocus().assertIsFocused()
+        compose.waitForIdle()
+        assertTrue("Episode focus must actually scroll the timeline", vm.uiState.value.matrixHorizontalScroll > 0)
+        val headerAfter = compose.onNodeWithTag("onair-station-header").fetchSemanticsNode().boundsInRoot
+        val stationAfter = compose.onNodeWithTag("onair-station-ch").fetchSemanticsNode().boundsInRoot
+        assertEquals(headerBefore.left, headerAfter.left, .1f)
+        assertEquals(stationBefore.left, stationAfter.left, .1f)
+        assertEquals(headerAfter.left, stationAfter.left, .1f)
+    }
+
     private fun androidx.compose.ui.test.SemanticsNodeInteraction.confirm() =
         requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
 
@@ -136,24 +165,24 @@ class OnAirScreenTest {
     }
     @androidx.compose.runtime.Composable private fun screen(vm: OnAirViewModel) = KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), false, {}, vm) }
 
-    private class FakeProvider(private val empty: Boolean = false, private val failSummary: Boolean = false) : OnAirProvider {
-        override suspend fun getOnAirSeries() = OnAirSeriesApiResponse(listOf(
+    private class FakeProvider(private val empty: Boolean = false, private val failSummary: Boolean = false, private val longMatrix: Boolean = false) : OnAirProvider {
+        override suspend fun getOnAirSeries() = OnAirSeriesApiResponse(listOf(OnAirSeason("2026-fall", "2026年 秋", true, "2026-10-01", "2026-12-31", listOf(
             OnAirSeries(1, "月曜作品", emptyList(), emptyList(), 0, 0, 0, 0, "23:30", "2026-09-13T23:30:00+09:00"),
             OnAirSeries(2, "火曜作品", emptyList(), emptyList(), 0, 0, 0, 1, "01:00", "2026-09-13T01:00:00+09:00"),
-        ).takeUnless { empty } ?: emptyList())
+        ).takeUnless { empty } ?: emptyList())), "2026-fall")
         override suspend fun getSeriesSummary(seriesId: Int): SeriesProgram {
             if (failSummary) throw RuntimeException("summary unavailable")
             return SeriesProgram(seriesId, "概要")
         }
         override suspend fun getRecordedProgramsBySeries(seriesId: Int, page: Int, order: String) =
-            if (seriesId == 1 && page == 1) RecordedApiResponse(6, listOf(
+            if (seriesId == 1 && page == 1) RecordedApiResponse(if (longMatrix) 7 else 6, listOf(
                 program(10, "1", "ch", "A局"),
                 program(12, "2", "ch", "A局"),
                 program(14, "4", "ch", "A局"),
                 program(20, "1", "ch2", "B局"),
                 program(23, "3", "ch2", "B局"),
                 program(24, "4", "ch2", "B局"),
-            )) else RecordedApiResponse(0, emptyList())
+            ) + if (longMatrix) listOf(program(30, "10", "ch", "A局")) else emptyList()) else RecordedApiResponse(0, emptyList())
         private fun program(id: Int, episodeNumber: String, channelId: String, channelName: String) = RecordedProgram(id, "作品 第${episodeNumber}話", seriesId = 1, episodeNumber = episodeNumber, description = "", startTime = "2026-09-13T00:00:00+09:00", endTime = "2026-09-13T00:30:00+09:00", duration = 1800.0, isPartiallyRecorded = false, channel = com.beeregg2001.komorebi.data.model.RecordedChannel(channelId, displayChannelId = channelId, type = "GR", name = channelName, channelNumber = "1"), recordedVideo = RecordedVideo(id, "Recorded", "/${id}.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC"))
     }
 }

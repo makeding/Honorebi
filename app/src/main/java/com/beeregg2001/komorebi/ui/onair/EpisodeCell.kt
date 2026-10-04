@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +87,7 @@ internal fun EpisodeCellContent(
         }
         Text(
             episodeCaption(program),
+            style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .85f), Offset(0f, 1f), 3f)),
             color = Color.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,

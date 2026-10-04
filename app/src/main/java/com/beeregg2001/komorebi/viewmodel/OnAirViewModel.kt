@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.beeregg2001.komorebi.data.SettingsRepository
+import com.beeregg2001.komorebi.data.model.OnAirSeason
 import com.beeregg2001.komorebi.data.model.OnAirSeries
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.SeriesProgram
@@ -49,6 +50,9 @@ data class OnAirUiState(
     val selectedWeekday: Int = currentJapanWeekday(),
     /** All server results, in stable display order. */
     val series: List<OnAirSeries> = emptyList(),
+    val seasons: List<OnAirSeason> = emptyList(),
+    val selectedSeasonId: String? = null,
+    val currentSeasonId: String = "",
     val listStatus: OnAirLoadState = OnAirLoadState.Idle,
     val expanded: OnAirExpandedSeries? = null,
     val gridFirstVisibleIndex: Int = 0,
@@ -60,6 +64,7 @@ data class OnAirUiState(
     /** channelId:episode-slot:recordingId; IDs keep restoration stable across reordering. */
     val focusedEpisodeCellKey: String? = null,
 ) {
+    val selectedSeason: OnAirSeason? get() = seasons.find { it.seasonId == selectedSeasonId }
     val visibleSeries: List<OnAirSeries>
         get() = series.filter { it.weekday == selectedWeekday }
 }
@@ -158,6 +163,7 @@ class OnAirViewModel private constructor(
         if (configuration.backend != "KONOMITV") {
                     _uiState.value = _uiState.value.copy(
                         backendSupported = false,
+                        seasons = emptyList(), selectedSeasonId = null, currentSeasonId = "",
                         series = emptyList(),
                         expanded = null,
                         gridFirstVisibleIndex = 0,
@@ -175,6 +181,7 @@ class OnAirViewModel private constructor(
         } else {
             _uiState.value = _uiState.value.copy(
                 backendSupported = true, series = emptyList(), expanded = null,
+                seasons = emptyList(), selectedSeasonId = null, currentSeasonId = "",
                 gridFirstVisibleIndex = 0, gridFirstVisibleOffset = 0, matrixHorizontalScroll = 0,
                 matrixVerticalScroll = 0, summaryExpanded = false,
                 focusedSeriesId = null, focusedEpisodeCellKey = null,
@@ -192,6 +199,21 @@ class OnAirViewModel private constructor(
             if (expanded.summaryStatus == OnAirLoadState.Loading) loadSummary(expanded.seriesId)
             if (expanded.programsStatus == OnAirLoadState.Loading) loadPrograms(expanded.seriesId)
         }
+    }
+
+    fun selectSeason(seasonId: String) {
+        val season = _uiState.value.seasons.find { it.seasonId == seasonId } ?: return
+        if (seasonId == _uiState.value.selectedSeasonId) return
+        summaryJob?.cancel()
+        programsJob?.cancel()
+        detailSelectionGate.next()
+        _uiState.value = _uiState.value.copy(
+            selectedSeasonId = seasonId,
+            series = season.seriesList,
+            expanded = null, focusedSeriesId = null, focusedEpisodeCellKey = null,
+            gridFirstVisibleIndex = 0, gridFirstVisibleOffset = 0,
+            matrixHorizontalScroll = 0, matrixVerticalScroll = 0, summaryExpanded = false,
+        )
     }
 
     fun selectWeekday(weekday: Int) {
@@ -296,10 +318,19 @@ class OnAirViewModel private constructor(
         _uiState.value = _uiState.value.copy(listStatus = OnAirLoadState.Loading)
         listJob = viewModelScope.launch {
             try {
-                val series = visibleOnAirSeriesCards(onAirProvider.getOnAirSeries().seriesList)
-                    .sortedWith(onAirSeriesComparator)
+                val response = onAirProvider.getOnAirSeries()
+                val seasons = response.seasons.map { season ->
+                    season.copy(seriesListValue = visibleOnAirSeriesCards(season.seriesList).sortedWith(onAirSeriesComparator))
+                }
                 if (listRequestGate.isCurrent(generation) && isPageActive) {
+                    val selected = seasons.find { it.seasonId == _uiState.value.selectedSeasonId }
+                        ?: seasons.find { it.seasonId == response.currentSeasonId }
+                        ?: seasons.firstOrNull()
+                    val series = selected?.seriesList.orEmpty()
                     _uiState.value = _uiState.value.copy(
+                        seasons = seasons,
+                        currentSeasonId = response.currentSeasonId,
+                        selectedSeasonId = selected?.seasonId,
                         series = series,
                         expanded = _uiState.value.expanded?.takeIf { expanded -> series.any { it.id == expanded.seriesId } },
                         listStatus = OnAirLoadState.Ready,
