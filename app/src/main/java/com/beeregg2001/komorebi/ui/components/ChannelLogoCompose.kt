@@ -104,8 +104,7 @@ private fun rememberCachedChannelLogoUrl(
  * EPG 検索行 / キーワード条件カード / 予約カードの 3 か所の描き分けを 1 つにまとめる。
  *
  * - 背景: ハードコード白ではなくテーマ由来の薄色 (textPrimary の 10%)
- * - ContentScale: 16:9 スロットに正方形ロゴ (KonomiTV 系で生成) を収める場合は Crop。
- *   透過ロゴ (Mirakurun 系) を全体表示したい場合は呼び出し側から crop = false を渡す。
+ * - KonomiTV ロゴは Crop、Mirakurun 透過ロゴは Fit で描画する。
  * - フォールバック: URL 未取得のときは Tv アイコン
  *
  * サイズはスロットごとに呼び出し側が指定する (スタイルだけ統一)。

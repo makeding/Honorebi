@@ -35,6 +35,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -160,9 +161,7 @@ fun VideoRecentRecordCard(
                     .padding(16.dp)
             ) {
                 val startFormat = try {
-                    val pattern = if (timeFormat == "12H") "M/d(E) a h:mm" else "M/d(E) HH:mm"
-                    OffsetDateTime.parse(program.startTime).toDeviceTime()
-                        .format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+                    ProgramTimeFormatter.formatDateTime(OffsetDateTime.parse(program.startTime).toDeviceTime(), timeFormat, "M/d(E)")
                 } catch (e: Exception) {
                     program.startTime
                 }
@@ -233,6 +232,7 @@ fun VideoWatchHistoryCard(
     modifier: Modifier = Modifier,
     ticketManager: FocusTicketManager,
     onReturnFocusConsumed: () -> Unit,
+    timeFormat: String,
     allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
@@ -258,8 +258,7 @@ fun VideoWatchHistoryCard(
     val broadcastStart = matchedProgram?.startTime ?: historyItem.program.start_time
     val broadcastEnd = matchedProgram?.endTime ?: historyItem.program.end_time
     val broadcastTime = runCatching {
-        val formatter = DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.JAPANESE)
-        "${OffsetDateTime.parse(broadcastStart).toDeviceTime().format(formatter)} - ${OffsetDateTime.parse(broadcastEnd).toDeviceTime().format(DateTimeFormatter.ofPattern("HH:mm"))}"
+        ProgramTimeFormatter.formatRange(broadcastStart, broadcastEnd, timeFormat, "M/d(E)") ?: ""
     }.getOrDefault("")
     val watchedPosition = historyItem.playback_position.coerceAtLeast(0.0).toLong()
     val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)

@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
@@ -417,13 +418,11 @@ fun UpcomingReserveCard(
     val start = OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
 
     val startFormat = remember(start, timeFormat) {
-        val pattern = if (timeFormat == "12H") "MM/dd a h:mm" else "MM/dd HH:mm"
-        start.format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+        ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd")
     }
 
     val displayTime = remember(start, timeFormat) {
-        val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-        start.format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+        ProgramTimeFormatter.formatTime(start.toLocalTime(), timeFormat)
     }
 
     Surface(
@@ -511,8 +510,7 @@ fun GenrePickupCard(
     val start = OffsetDateTime.parse(program.start_time).toDeviceTime()
 
     val startFormat = remember(start, timeFormat) {
-        val pattern = if (timeFormat == "12H") "MM/dd a h:mm" else "MM/dd HH:mm"
-        start.format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+        ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd")
     }
 
     val baseAlpha = if (isFocused) 1f else 0.6f

@@ -244,7 +244,9 @@ private fun TimeLabelCell(hour: Int, height: Dp, timeFormat: String) {
             .padding(end = 8.dp),
         contentAlignment = Alignment.CenterEnd
     ) {
-        val label = if (timeFormat == "12H") {
+        val label = if (timeFormat == "28H" && hour < 4) {
+            "${hour + 24}:00"
+        } else if (timeFormat == "12H") {
             when {
                 hour == 0 -> "AM 0"
                 hour == 12 -> "PM 0"

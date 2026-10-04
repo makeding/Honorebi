@@ -3,6 +3,8 @@ package com.beeregg2001.komorebi
 import android.app.ActivityManager
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,6 +14,7 @@ import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.components.ExitDialog
 import com.beeregg2001.komorebi.ui.main.MainRootScreen
+import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
 import com.beeregg2001.komorebi.viewmodel.EpgViewModel
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
@@ -22,6 +25,30 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private var homeIntentVersion by mutableIntStateOf(0)
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && !event.isScreensaverMediaKey()) {
+            ScreensaverInteractionTracker.onUserInteraction()
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) ScreensaverInteractionTracker.onUserInteraction()
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun KeyEvent.isScreensaverMediaKey(): Boolean = keyCode in setOf(
+        KeyEvent.KEYCODE_MEDIA_PLAY,
+        KeyEvent.KEYCODE_MEDIA_PAUSE,
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+        KeyEvent.KEYCODE_MEDIA_STOP,
+        KeyEvent.KEYCODE_MEDIA_NEXT,
+        KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_REWIND,
+        KeyEvent.KEYCODE_MEDIA_RECORD,
+    )
 
     // Hiltが自動的にRepositoryを注入済みのViewModelを作成します
     // これらはlazyプロパティであり、アクセスされる（MainRootScreenに渡される）までインスタンス化されません。

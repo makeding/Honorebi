@@ -42,6 +42,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.OnAirSeries
@@ -366,6 +367,7 @@ fun OnAirScreen(
                     state = state,
                     viewModel = viewModel,
                     ip = konomiIp, port = konomiPort,
+                    timeFormat = timeFormat,
                     returnCell = returnCell,
                     onRestored = { returnCell = null; onReturnFocusConsumed() },
                     onProgram = onProgramClick,
@@ -742,5 +744,5 @@ private fun thumbnailUrl(ip: String, port: String, id: Int): String =
     UrlBuilder.getThumbnailUrl("KONOMITV", ip, port, id.toString())
 
 internal fun displayBroadcastTime(value: String, format: String): String = runCatching {
-    LocalTime.parse(value).format(DateTimeFormatter.ofPattern(if (format == "12H") "a h:mm" else "HH:mm", Locale.JAPANESE))
+    ProgramTimeFormatter.formatTime(LocalTime.parse(value), format)
 }.getOrDefault(value.ifBlank { "時刻未登録" })

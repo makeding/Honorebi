@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.ReservationCondition
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -133,7 +134,9 @@ fun ConditionEditDialog(
 
     // ★ 追加: 「時」のボタン用テキストを生成するラムダ
     val formatHour: (Int) -> String = { hour ->
-        if (timeFormat == "12H") {
+        if (timeFormat == "28H" && hour < 4) {
+            (hour + 24).toString().padStart(2, '0')
+        } else if (timeFormat == "12H") {
             val amPm = if (hour < 12) "午前" else "午後"
             val h12 = if (hour % 12 == 0) 12 else hour % 12
             "$amPm $h12"
@@ -617,15 +620,8 @@ fun ConditionEditDialog(
                                         OffsetDateTime.parse(reserve.program.endTime).toDeviceTime()
                                     }.getOrNull()
 
-                                    val startPattern =
-                                        if (timeFormat == "12H") "MM/dd(E) a h:mm" else "MM/dd(E) HH:mm"
-                                    val endPattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-                                    val formatter =
-                                        DateTimeFormatter.ofPattern(startPattern, Locale.JAPANESE)
-                                    val endFormatter =
-                                        DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE)
                                     val timeStr = if (start != null && end != null)
-                                        "${start.format(formatter)} ～ ${end.format(endFormatter)}"
+                                        ProgramTimeFormatter.formatRange(start, end, timeFormat, "MM/dd(E)", " ～ ")
                                     else "時間不明"
 
                                     Surface(

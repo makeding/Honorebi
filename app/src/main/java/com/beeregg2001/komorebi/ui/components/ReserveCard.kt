@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
@@ -98,19 +99,10 @@ fun ReserveCard(
 
     val timeInfo = remember(program.startTime, program.endTime, timeFormat) {
         try {
-            val start =
-                OffsetDateTime.parse(program.startTime).atZoneSameInstant(ZoneId.systemDefault())
-            val end =
-                OffsetDateTime.parse(program.endTime).atZoneSameInstant(ZoneId.systemDefault())
-
-            val datePattern =
-                if (timeFormat == "12H") "yyyy/MM/dd (E) a h:mm" else "yyyy/MM/dd (E) HH:mm"
-            val endPattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-
-            val dateFmt = DateTimeFormatter.ofPattern(datePattern, Locale.JAPANESE)
-            val endFmt = DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE)
+            val start = OffsetDateTime.parse(program.startTime).atZoneSameInstant(ZoneId.systemDefault())
+            val end = OffsetDateTime.parse(program.endTime).atZoneSameInstant(ZoneId.systemDefault())
             val durationMin = ChronoUnit.MINUTES.between(start, end)
-            "${start.format(dateFmt)} ~ ${end.format(endFmt)} (${durationMin}分)"
+            "${ProgramTimeFormatter.formatRange(start, end, timeFormat, "yyyy/MM/dd (E)", " ~ ")} (${durationMin}分)"
         } catch (e: Exception) {
             program.startTime
         }

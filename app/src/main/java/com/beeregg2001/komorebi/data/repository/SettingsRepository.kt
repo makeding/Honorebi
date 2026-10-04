@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.beeregg2001.komorebi.data.model.NHKExclusionMode
 import com.beeregg2001.komorebi.data.model.NHKExclusionState
 import androidx.datastore.preferences.preferencesDataStore
@@ -117,6 +118,12 @@ class SettingsRepository @Inject constructor(
 
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
+
+        val SCREENSAVER_ENABLED = booleanPreferencesKey("screensaver_enabled")
+        val SCREENSAVER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_timeout_minutes")
+        val SCREENSAVER_INTERVAL_SECONDS = intPreferencesKey("screensaver_interval_seconds")
+        val SCREENSAVER_TRANSITION = stringPreferencesKey("screensaver_transition")
+        val SCREENSAVER_IMAGE_URIS = stringPreferencesKey("screensaver_image_uris")
 
         val AVAILABLE_STREAM_QUALITIES = stringPreferencesKey("available_stream_qualities")
 
@@ -246,6 +253,16 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[RECEIVE_BETA_UPDATES] ?: false }
     val hideSubChannels: Flow<Boolean> =
         context.dataStore.data.map { it[HIDE_SUB_CHANNELS] ?: false }
+    val screensaverEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[SCREENSAVER_ENABLED] ?: false }
+    val screensaverTimeoutMinutes: Flow<Int> =
+        context.dataStore.data.map { it[SCREENSAVER_TIMEOUT_MINUTES] ?: 5 }
+    val screensaverIntervalSeconds: Flow<Int> =
+        context.dataStore.data.map { it[SCREENSAVER_INTERVAL_SECONDS] ?: 30 }
+    val screensaverTransition: Flow<String> =
+        context.dataStore.data.map { it[SCREENSAVER_TRANSITION] ?: "FADE" }
+    val screensaverImageUris: Flow<String> =
+        context.dataStore.data.map { it[SCREENSAVER_IMAGE_URIS] ?: "[]" }
     val availableStreamQualities: Flow<String> =
         context.dataStore.data.map { it[AVAILABLE_STREAM_QUALITIES] ?: "" }
 
@@ -271,6 +288,13 @@ class SettingsRepository @Inject constructor(
     suspend fun saveBoolean(
         key: androidx.datastore.preferences.core.Preferences.Key<Boolean>,
         value: Boolean
+    ) {
+        context.dataStore.edit { settings -> settings[key] = value }
+    }
+
+    suspend fun saveInt(
+        key: androidx.datastore.preferences.core.Preferences.Key<Int>,
+        value: Int
     ) {
         context.dataStore.edit { settings -> settings[key] = value }
     }

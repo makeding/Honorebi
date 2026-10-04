@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.EpgProgram
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -434,14 +435,8 @@ fun ProgramDetailScreen(
                     .verticalScroll(scrollState)
             ) {
                 // ★ 修正: timeFormat に応じた日付・時刻のフォーマット
-                val startPattern =
-                    if (timeFormat == "12H") "yyyy/MM/dd(E) a h:mm" else "yyyy/MM/dd(E) HH:mm"
-                val endPattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-                val formatter = DateTimeFormatter.ofPattern(startPattern, Locale.JAPANESE)
-                val endFormatter = DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE)
-
                 Text(
-                    text = "${startTime.toDeviceTime().format(formatter)} ～ ${endTime.toDeviceTime().format(endFormatter)}",
+                    text = ProgramTimeFormatter.formatRange(startTime.toDeviceTime(), endTime.toDeviceTime(), timeFormat, "yyyy/MM/dd(E)", " ～ "),
                     style = MaterialTheme.typography.labelLarge,
                     color = colors.textSecondary,
                     fontFamily = SystemFontFamily

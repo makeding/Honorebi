@@ -7,6 +7,7 @@ import com.beeregg2001.komorebi.ui.player.*
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ReportDrawnWhen
+import androidx.compose.foundation.clickable
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -438,6 +439,28 @@ fun MainRootScreen(
     val lastChannels by homeViewModel.lastWatchedChannelFlow.collectAsState(initial = emptyList())
     val conditions by reserveViewModel.conditions.collectAsState()
     val reserves by reserveViewModel.reserves.collectAsState()
+    val screensaverEnabled by settingsViewModel.screensaverEnabled.collectAsState()
+    val screensaverTimeout by settingsViewModel.screensaverTimeoutMinutes.collectAsState()
+    val screensaverInterval by settingsViewModel.screensaverIntervalSeconds.collectAsState()
+    val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
+    val screensaverImages by settingsViewModel.screensaverImageUris.collectAsState()
+    val lastInteraction by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.lastInteractionMillis.collectAsState()
+    val playbackActive by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.playbackActive.collectAsState()
+    var showScreensaver by remember { mutableStateOf(false) }
+    val nextRecording = remember(reserves) {
+        reserves.mapNotNull { item ->
+            val start = runCatching { java.time.OffsetDateTime.parse(item.program.startTime) }.getOrNull()
+            if (start != null && start.isAfter(java.time.OffsetDateTime.now())) start to item.program.title else null
+        }.minByOrNull { it.first }?.let { (start, title) -> "${start.toLocalTime().toString().take(5)}  $title" }
+    }
+    LaunchedEffect(screensaverEnabled, screensaverTimeout, screensaverImages, isAppInForeground, playbackActive, lastInteraction) {
+        showScreensaver = false
+        if (!screensaverEnabled || screensaverImages.isEmpty() || !isAppInForeground || playbackActive) return@LaunchedEffect
+        val deadline = lastInteraction + screensaverTimeout.coerceAtLeast(1) * 60_000L
+        val remaining = deadline - android.os.SystemClock.elapsedRealtime()
+        if (remaining > 0) delay(remaining)
+        if (android.os.SystemClock.elapsedRealtime() >= deadline) showScreensaver = true
+    }
     val defaultSystemChannel = remember(groupedChannels) {
         val channels = groupedChannels.values.flatten()
         channels.firstOrNull { it.type == "GR" } ?: channels.firstOrNull()
@@ -874,6 +897,32 @@ fun MainRootScreen(
                     state.isSettingsOpen = true
                 }
             )
+            if (showScreensaver && screensaverImages.isNotEmpty()) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { showScreensaver = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && !event.key.nativeKeyCode.let { code ->
+                                    code in setOf(android.view.KeyEvent.KEYCODE_MEDIA_PLAY, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+                                        android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, android.view.KeyEvent.KEYCODE_MEDIA_STOP,
+                                        android.view.KeyEvent.KEYCODE_MEDIA_NEXT, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                                        android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, android.view.KeyEvent.KEYCODE_MEDIA_REWIND,
+                                        android.view.KeyEvent.KEYCODE_MEDIA_RECORD)
+                                }) showScreensaver = false
+                            false
+                        }.clickable { showScreensaver = false }
+                    ) {
+                        com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
+                            imageUris = screensaverImages,
+                            intervalSeconds = screensaverInterval,
+                            transition = screensaverTransition,
+                            nextRecording = nextRecording
+                        )
+                    }
+                }
+            }
             }
         }
     }

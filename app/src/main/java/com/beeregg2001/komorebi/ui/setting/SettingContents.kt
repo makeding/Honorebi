@@ -1006,6 +1006,25 @@ fun DisplaySettingsContent(
     onColor: () -> Unit,
     onEditTimeFormat: () -> Unit,
     onToggleHideSubChannels: () -> Unit,
+    screensaverEnabled: Boolean,
+    screensaverTimeoutMinutes: Int,
+    screensaverIntervalSeconds: Int,
+    screensaverTransition: String,
+    screensaverImageCount: Int,
+    screensaverEnabledR: FocusRequester,
+    screensaverTimeoutR: FocusRequester,
+    screensaverIntervalR: FocusRequester,
+    screensaverTransitionR: FocusRequester,
+    screensaverImagesR: FocusRequester,
+    screensaverClearR: FocusRequester,
+    screensaverPreviewR: FocusRequester,
+    onToggleScreensaver: () -> Unit,
+    onCycleScreensaverTimeout: () -> Unit,
+    onCycleScreensaverInterval: () -> Unit,
+    onCycleScreensaverTransition: () -> Unit,
+    onPickScreensaverImages: () -> Unit,
+    onClearScreensaverImages: () -> Unit,
+    onPreviewScreensaver: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
     val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
@@ -1100,7 +1119,11 @@ fun DisplaySettingsContent(
         SettingsSection(AppStrings.SETTINGS_SECTION_UI_CUSTOM) {
             SettingItem(
                 "時刻の表示形式",
-                if (preferences.timeFormat == "12H") "12時間表記 (AM/PM)" else "24時間表記",
+                when (preferences.timeFormat) {
+                    "12H" -> "12時間表記 (AM/PM)"
+                    "28H" -> "28時間表記 (24:00–27:59)"
+                    else -> "24時間表記"
+                },
                 Icons.Default.Schedule,
                 modifier = Modifier
                     .focusRequester(timeFormatR)
@@ -1120,9 +1143,75 @@ fun DisplaySettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = timeFormatR
-                        down = FocusRequester.Cancel
+                        down = screensaverEnabledR
                     },
                 onClick = { onClick(hideSubChannelsR); onToggleHideSubChannels() }
+            )
+        }
+        SettingsSection("スクリーンセーバー") {
+            SettingItem(
+                "アプリ内スクリーンセーバー",
+                if (screensaverEnabled) "ON" else "OFF",
+                Icons.Default.PhotoLibrary,
+                modifier = Modifier.focusRequester(screensaverEnabledR).focusProperties {
+                    left = sidebarR; up = hideSubChannelsR; down = screensaverTimeoutR
+                },
+                onClick = { onClick(screensaverEnabledR); onToggleScreensaver() }
+            )
+            SettingItem(
+                "開始までの待ち時間",
+                "$screensaverTimeoutMinutes 分",
+                Icons.Default.Timer,
+                modifier = Modifier.focusRequester(screensaverTimeoutR).focusProperties {
+                    left = sidebarR; up = screensaverEnabledR; down = screensaverIntervalR
+                },
+                onClick = { onClick(screensaverTimeoutR); onCycleScreensaverTimeout() }
+            )
+            SettingItem(
+                "画像の切り替え間隔",
+                "$screensaverIntervalSeconds 秒",
+                Icons.Default.Slideshow,
+                modifier = Modifier.focusRequester(screensaverIntervalR).focusProperties {
+                    left = sidebarR; up = screensaverTimeoutR; down = screensaverTransitionR
+                },
+                onClick = { onClick(screensaverIntervalR); onCycleScreensaverInterval() }
+            )
+            SettingItem(
+                "切り替え効果",
+                when (screensaverTransition) { "FADE" -> "フェード"; "SLIDE" -> "スライド"; else -> "なし" },
+                Icons.Default.Transform,
+                modifier = Modifier.focusRequester(screensaverTransitionR).focusProperties {
+                    left = sidebarR; up = screensaverIntervalR; down = screensaverImagesR
+                },
+                onClick = { onClick(screensaverTransitionR); onCycleScreensaverTransition() }
+            )
+            SettingItem(
+                "スクリーンセーバー画像",
+                if (screensaverImageCount == 0) "未選択" else "${screensaverImageCount} 枚",
+                Icons.Default.AddPhotoAlternate,
+                modifier = Modifier.focusRequester(screensaverImagesR).focusProperties {
+                    left = sidebarR; up = screensaverTransitionR; down = screensaverClearR
+                },
+                onClick = { onClick(screensaverImagesR); onPickScreensaverImages() }
+            )
+            SettingItem(
+                "登録画像をすべて削除",
+                "${screensaverImageCount} 枚",
+                Icons.Default.DeleteOutline,
+                enabled = screensaverImageCount > 0,
+                modifier = Modifier.focusRequester(screensaverClearR).focusProperties {
+                    left = sidebarR; up = screensaverImagesR; down = screensaverPreviewR
+                },
+                onClick = { onClick(screensaverClearR); onClearScreensaverImages() }
+            )
+            SettingItem(
+                "プレビュー",
+                "5 秒ごとに切り替え",
+                Icons.Default.Preview,
+                modifier = Modifier.focusRequester(screensaverPreviewR).focusProperties {
+                    left = sidebarR; up = screensaverClearR; down = FocusRequester.Cancel
+                },
+                onClick = { onClick(screensaverPreviewR); onPreviewScreensaver() }
             )
         }
     }
@@ -1491,7 +1580,7 @@ fun AppInfoContent(
             is com.beeregg2001.komorebi.util.UpdateState.Checking -> "確認中…"
             is com.beeregg2001.komorebi.util.UpdateState.UpToDate -> "最新です"
             is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> "更新があります"
-            else -> ""
+            else -> "状態を確認"
         }
         SettingItem(
             title = "更新を確認",
@@ -1510,12 +1599,14 @@ fun AppInfoContent(
         val availableUpdate = updateState as? com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable
         val installValue = when (updateState) {
             is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> updateState.versionName
-            is com.beeregg2001.komorebi.util.UpdateState.Downloading -> "下载中 ${updateState.progressPercentage}%"
-            is com.beeregg2001.komorebi.util.UpdateState.ReadyToInstall -> "正在打开安装程序"
-            else -> ""
+            is com.beeregg2001.komorebi.util.UpdateState.Downloading -> "ダウンロード中 ${updateState.progressPercentage}%"
+            is com.beeregg2001.komorebi.util.UpdateState.ReadyToInstall -> "インストーラーを開いています"
+            is com.beeregg2001.komorebi.util.UpdateState.UpToDate -> "新しい更新はありません"
+            is com.beeregg2001.komorebi.util.UpdateState.Checking -> "確認が終わると有効になります"
+            else -> "先に「更新を確認」を実行してください"
         }
         SettingItem(
-            title = "接受更新",
+            title = "アップデートをインストール",
             value = installValue,
             icon = Icons.Default.SystemUpdateAlt,
             enabled = availableUpdate != null,
@@ -1533,6 +1624,13 @@ fun AppInfoContent(
             } else if (availableUpdate != null) {
                 Text(
                     availableUpdate.releaseNotes,
+                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2
+                )
+            } else {
+                Text(
+                    "更新内容は、新しい更新が見つかった場合に表示されます",
                     color = colors.textSecondary,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2
@@ -1560,7 +1658,7 @@ fun AppInfoContent(
 
         SettingItem(
             AppStrings.SETTINGS_ITEM_OSS_LICENSES,
-            "",
+            "ライセンス一覧を表示",
             Icons.Default.Info,
             modifier = Modifier
                 .width(420.dp)

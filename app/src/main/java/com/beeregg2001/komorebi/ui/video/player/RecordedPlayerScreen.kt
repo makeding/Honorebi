@@ -41,6 +41,7 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
 import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
+import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.B60MediaPlane
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
@@ -70,6 +71,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
@@ -785,6 +787,20 @@ internal fun RecordedPlayerScreen(
             }
         }
     )
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                ScreensaverInteractionTracker.setPlaybackActive(exoPlayer, isPlaying)
+            }
+        }
+        exoPlayer.addListener(listener)
+        ScreensaverInteractionTracker.setPlaybackActive(exoPlayer, exoPlayer.isPlaying)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            ScreensaverInteractionTracker.setPlaybackActive(exoPlayer, false)
+        }
+    }
 
     LaunchedEffect(exoPlayer, videoPlaybackSpeedStr) {
         val saved = videoPlaybackSpeedStr.toFloatOrNull()?.takeIf { it in PLAYBACK_SPEEDS } ?: 1.0f

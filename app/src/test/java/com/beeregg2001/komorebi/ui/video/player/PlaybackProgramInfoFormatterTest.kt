@@ -23,7 +23,7 @@ class PlaybackProgramInfoFormatterTest {
         assertEquals(
             listOf(
                 PlaybackProgramInfoRow("チャンネル", "NHK総合 ・ GR011"),
-                PlaybackProgramInfoRow("放送日時", "2026/08/10(月) 23:55 - 2026/08/11(火) 00:25"),
+                PlaybackProgramInfoRow("放送日時", "2026/08/10(月) 23:55 - 00:25"),
                 PlaybackProgramInfoRow("実際の録画日時", "2026/08/10(月) 23:53 - 2026/08/11(火) 00:27"),
                 PlaybackProgramInfoRow("長さ", "30:00"),
                 PlaybackProgramInfoRow("状態", "録画中 ・ 部分録画")
@@ -44,8 +44,23 @@ class PlaybackProgramInfoFormatterTest {
             "12H"
         )
 
-        assertEquals("2026/08/10(月) 午後 11:55 - 2026/08/11(火) 午前 12:25", rows.valueFor("放送日時"))
+        assertEquals("2026/08/10(月) 午後 11:55 - 午前 12:25", rows.valueFor("放送日時"))
         assertEquals("2026/08/10(月) 午後 11:53 - 2026/08/11(火) 午前 12:27", rows.valueFor("実際の録画日時"))
+    }
+
+    @Test
+    fun format_playerScheduleOmitsRepeatedDateOnCrossDayRange_butActualRecordingKeepsDates() {
+        val rows = PlaybackProgramInfoFormatter.format(
+            program(
+                startTime = "2026-08-10T23:30:00+09:00",
+                endTime = "2026-08-11T00:30:00+09:00",
+                recordingStartTime = "2026-08-10T23:29:00+09:00",
+                recordingEndTime = "2026-08-11T00:31:00+09:00"
+            ),
+            "24H"
+        )
+        assertEquals("2026/08/10(月) 23:30 - 00:30", rows.valueFor("放送日時"))
+        assertEquals("2026/08/10(月) 23:29 - 2026/08/11(火) 00:31", rows.valueFor("実際の録画日時"))
     }
 
     @Test

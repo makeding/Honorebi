@@ -250,7 +250,9 @@ fun NumberSelectionDialog(
                         val isInitial = num == initialValue
 
                         // ★ 修正: isHour と timeFormat に応じて表示テキストを生成
-                        val displayText = if (isHour && timeFormat == "12H") {
+                        val displayText = if (isHour && timeFormat == "28H" && num < 4) {
+                            (num + 24).toString().padStart(2, '0')
+                        } else if (isHour && timeFormat == "12H") {
                             val amPm = if (num < 12) "午前" else "午後"
                             val h12 = if (num % 12 == 0) 12 else num % 12
                             "$amPm $h12"

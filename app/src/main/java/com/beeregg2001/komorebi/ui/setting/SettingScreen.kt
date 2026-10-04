@@ -7,6 +7,7 @@ import android.view.KeyEvent as NativeKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +23,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
@@ -89,6 +91,23 @@ fun SettingsScreen(
     val availableQualities by viewModel.availableQualities.collectAsState()
     val honomiSession by viewModel.honomiSession.collectAsState()
     val honomiLoginInProgress by viewModel.honomiLoginInProgress.collectAsState()
+    val screensaverEnabled by viewModel.screensaverEnabled.collectAsState()
+    val screensaverTimeout by viewModel.screensaverTimeoutMinutes.collectAsState()
+    val screensaverInterval by viewModel.screensaverIntervalSeconds.collectAsState()
+    val screensaverTransition by viewModel.screensaverTransition.collectAsState()
+    val screensaverImages by viewModel.screensaverImageUris.collectAsState()
+    var screensaverPreview by remember { mutableStateOf(false) }
+    val screensaverImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        val accepted = uris.filter { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                true
+            }.getOrDefault(false)
+        }.map { it.toString() }
+        if (accepted.isNotEmpty()) viewModel.setScreensaverImageUris(screensaverImages + accepted)
+    }
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val flatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
@@ -167,7 +186,7 @@ fun SettingsScreen(
             List(5) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(4) { FocusRequester() },
+            List(11) { FocusRequester() },
             emptyList(),
             List(7) { FocusRequester() },
             List(7) { FocusRequester() }
@@ -981,11 +1000,36 @@ fun SettingsScreen(
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "時刻の表示形式",
-                                    listOf("24時間表記" to "24H", "12時間表記 (AM/PM)" to "12H"),
+                                    listOf(
+                                        "24時間表記" to "24H",
+                                        "12時間表記 (AM/PM)" to "12H",
+                                        "28時間表記 (24:00–27:59)" to "28H"
+                                    ),
                                     prefs.timeFormat
                                 ) { viewModel.updateTimeFormat(it) }
                             },
-                            { viewModel.toggleHideSubChannels() }
+                            { viewModel.toggleHideSubChannels() },
+                            screensaverEnabled,
+                            screensaverTimeout,
+                            screensaverInterval,
+                            screensaverTransition,
+                            screensaverImages.size,
+                            itemFocusRequesters[8][4], itemFocusRequesters[8][5], itemFocusRequesters[8][6],
+                            itemFocusRequesters[8][7], itemFocusRequesters[8][8], itemFocusRequesters[8][9], itemFocusRequesters[8][10],
+                            { viewModel.setScreensaverEnabled(!screensaverEnabled) },
+                            { viewModel.setScreensaverTimeoutMinutes(when (screensaverTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
+                            { viewModel.setScreensaverIntervalSeconds(when (screensaverInterval) { 5 -> 15; 15 -> 30; 30 -> 60; else -> 5 }) },
+                            { viewModel.setScreensaverTransition(when (screensaverTransition) { "FADE" -> "SLIDE"; "SLIDE" -> "NONE"; else -> "FADE" }) },
+                            { screensaverImagePicker.launch(arrayOf("image/*")) },
+                            {
+                                screensaverImages.forEach { raw -> runCatching {
+                                    context.contentResolver.releasePersistableUriPermission(
+                                        android.net.Uri.parse(raw), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                } }
+                                viewModel.setScreensaverImageUris(emptyList())
+                            },
+                            { screensaverPreview = true }
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 }
 
                         4 -> EpgSettingsContent(
@@ -1339,6 +1383,26 @@ fun SettingsScreen(
             }
 
             else -> {}
+        }
+        if (screensaverPreview) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { screensaverPreview = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.fillMaxSize().onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == androidx.compose.ui.input.key.Key.Back) {
+                            screensaverPreview = false
+                            true
+                        } else false
+                    }.clickable { screensaverPreview = false }
+                ) {
+                    com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
+                        imageUris = screensaverImages, intervalSeconds = 5,
+                        transition = screensaverTransition, nextRecording = null
+                    )
+                }
+            }
         }
         GlobalToast(message = toastMessage)
     }

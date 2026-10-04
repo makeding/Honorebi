@@ -34,8 +34,6 @@ fun ChannelLogo(
         logoUrl = getLogoUrl(channel.id)
     }
 
-    // KonomiTVモード（元画像が正方形）の場合はCropして16:9枠に合わせる
-    // Mirakurunモード（元画像が透過PNG等）の場合はFitで全体を収める
     val contentScale = if (isKonomiMode) ContentScale.Crop else ContentScale.Fit
 
     Box(

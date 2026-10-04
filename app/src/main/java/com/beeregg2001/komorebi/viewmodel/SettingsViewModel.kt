@@ -322,6 +322,41 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         true
     )
+    val screensaverEnabled: StateFlow<Boolean> = settingsRepository.screensaverEnabled.stateIn(
+        viewModelScope, SharingStarted.Eagerly, false
+    )
+    val screensaverTimeoutMinutes: StateFlow<Int> = settingsRepository.screensaverTimeoutMinutes.stateIn(
+        viewModelScope, SharingStarted.Eagerly, 5
+    )
+    val screensaverIntervalSeconds: StateFlow<Int> = settingsRepository.screensaverIntervalSeconds.stateIn(
+        viewModelScope, SharingStarted.Eagerly, 30
+    )
+    val screensaverTransition: StateFlow<String> = settingsRepository.screensaverTransition.stateIn(
+        viewModelScope, SharingStarted.Eagerly, "FADE"
+    )
+    val screensaverImageUris: StateFlow<List<String>> = settingsRepository.screensaverImageUris
+        .map { json -> runCatching { Gson().fromJson(json, Array<String>::class.java)?.toList().orEmpty() }.getOrDefault(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun setScreensaverEnabled(enabled: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveBoolean(SettingsRepository.SCREENSAVER_ENABLED, enabled)
+    }
+
+    fun setScreensaverTimeoutMinutes(minutes: Int) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveInt(SettingsRepository.SCREENSAVER_TIMEOUT_MINUTES, minutes)
+    }
+
+    fun setScreensaverIntervalSeconds(seconds: Int) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveInt(SettingsRepository.SCREENSAVER_INTERVAL_SECONDS, seconds)
+    }
+
+    fun setScreensaverTransition(transition: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.SCREENSAVER_TRANSITION, transition)
+    }
+
+    fun setScreensaverImageUris(uris: List<String>) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, Gson().toJson(uris.distinct()))
+    }
     val hideSubChannels: StateFlow<Boolean> = settingsRepository.hideSubChannels.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

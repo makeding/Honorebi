@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -354,6 +355,7 @@ fun VideoTabContent(
                                         konomiIp = konomiIp, konomiPort = konomiPort,
                                         ticketManager = ticketManager,
                                         onReturnFocusConsumed = onReturnFocusConsumed,
+                                        timeFormat = timeFormat,
                                         onClick = {
                                             onProgramClick(program)
                                         },
@@ -364,14 +366,7 @@ fun VideoTabContent(
                                             }
 
                                             val startFormat = try {
-                                                val pattern =
-                                                    if (timeFormat == "12H") "yyyy/M/d(E) a h:mm" else "yyyy/M/d(E) HH:mm"
-                                                OffsetDateTime.parse(program.startTime).toDeviceTime().format(
-                                                    DateTimeFormatter.ofPattern(
-                                                        pattern,
-                                                        Locale.JAPANESE
-                                                    )
-                                                )
+                                                ProgramTimeFormatter.formatDateTime(OffsetDateTime.parse(program.startTime).toDeviceTime(), timeFormat, "yyyy/M/d(E)")
                                             } catch (e: Exception) {
                                                 program.startTime
                                             }
@@ -411,7 +406,6 @@ fun VideoTabContent(
                                                 if (index == recentItems.lastIndex) right =
                                                     FocusRequester.Cancel
                                             },
-                                        timeFormat = timeFormat,
                                         backendType = backendType
                                     )
                                 }
@@ -443,6 +437,7 @@ fun VideoTabContent(
                                         konomiIp = konomiIp, konomiPort = konomiPort,
                                         ticketManager = ticketManager,
                                         onReturnFocusConsumed = onReturnFocusConsumed,
+                                        timeFormat = timeFormat,
                                         onClick = {
                                             val programToPlay =
                                                 matchedProgram?.copy(playbackPosition = historyItem.playback_position)

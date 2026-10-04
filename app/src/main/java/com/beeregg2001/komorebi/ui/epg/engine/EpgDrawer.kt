@@ -559,8 +559,9 @@ class EpgDrawer(
                             )
                         )
                     } else {
-                        // 24時間表記 (AM/PM なしで数字だけを中央に大きく表示)
-                        val hourText = hour.toString()
+                        // 24/28時間表記 (28H は午前0〜3時を前日の24〜27時として表示)
+                        val displayHour = if (timeFormat == "28H" && hour < 4) hour + 24 else hour
+                        val hourText = displayHour.toString()
                         val hourLayout = state.textLayoutCache.getOrPut("axis:$timeFormat:hour:$hourText") {
                             textMeasurer.measure(hourText, config.styleTime)
                         }

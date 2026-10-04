@@ -28,6 +28,7 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
@@ -71,9 +72,7 @@ fun RecordDetailPanel(
     val displayDate = remember(program.startTime, timeFormat) {
         try {
             val zdt = ZonedDateTime.parse(program.startTime).withZoneSameInstant(java.time.ZoneId.systemDefault())
-            val pattern = if (timeFormat == "12H") "yyyy/MM/dd(E) a h:mm" else "yyyy/MM/dd(E) HH:mm"
-            val formatter = DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE)
-            zdt.format(formatter)
+            ProgramTimeFormatter.formatDateTime(zdt, timeFormat, "yyyy/MM/dd(E)")
         } catch (e: Exception) {
             program.startTime.take(16).replace("-", "/")
         }

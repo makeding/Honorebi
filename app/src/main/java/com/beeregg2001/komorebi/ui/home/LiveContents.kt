@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
@@ -344,9 +345,7 @@ private fun CompactLiveProgramInfo(
 
     val formatTime = { timeStr: String? ->
         if (timeStr.isNullOrEmpty()) "" else runCatching {
-            val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-            OffsetDateTime.parse(timeStr).toDeviceTime()
-                .format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+            ProgramTimeFormatter.formatTime(OffsetDateTime.parse(timeStr).toDeviceTime().toLocalTime(), timeFormat)
         }.getOrDefault("")
     }
 
@@ -493,9 +492,7 @@ fun HeroDashboard(
     val formatTime = { timeStr: String? ->
         if (timeStr.isNullOrEmpty()) ""
         else try {
-            val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-            OffsetDateTime.parse(timeStr).toDeviceTime()
-                .format(DateTimeFormatter.ofPattern(pattern, java.util.Locale.JAPANESE))
+            ProgramTimeFormatter.formatTime(OffsetDateTime.parse(timeStr).toDeviceTime().toLocalTime(), timeFormat)
         } catch (e: Exception) {
             ""
         }

@@ -31,7 +31,7 @@
 - コメントが字幕を消す問題を修正 (SurfaceView の hole punch 対策で描画順を固定)。
 - シーン検索のタイル画像を縮小デコードし、シーク時の Canvas 描画上限クラッシュを修正。
 - 録画直接再生のシーク再開を高速化 (HonomiTV の `seek-position` API でキーフレーム解決)。
-- 起動時の自動アップデート確認を無効化 (参照先が本家 `version.json` のため)。
+- アップデート確認は「設定」→「アプリ情報」から手動で実行し、更新内容を確認してから適用できます。ベータ版を受け取る設定も同じ画面にあります。
 - 上流の EDCB バックエンド修正を cherry-pick で取り込み (本 fork では追加検証なし)。
 - `libaribcaption` サブモジュールを自前フォーク (`makeding/libaribcaption`, `b62`) へ変更。
 - ビルド補助: `scripts/build-media3-local.sh` の作業ディレクトリ上限を 4GiB に緩和。

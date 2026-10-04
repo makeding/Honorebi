@@ -237,9 +237,9 @@ fun HomeHeroDashboard(
                     if (targetState.tag != "Welcome" && !targetState.isThumbnail && resolvedImageUrl != null) {
                         Box(
                             modifier = Modifier
-                                .size(64.dp, 36.dp)
+                                .size(72.dp, 40.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(colors.textPrimary.copy(alpha = 0.1f)),
+                                .background(colors.surface),
                             contentAlignment = Alignment.Center
                         ) {
                             AsyncImage(

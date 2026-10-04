@@ -55,6 +55,7 @@ private val CHANNEL_COL_WIDTH = CHANNEL_LOGO_WIDTH + CHANNEL_NAME_WIDTH
 internal fun OnAirDetail(
     series: OnAirSeries, detail: OnAirExpandedSeries, state: OnAirUiState, viewModel: OnAirViewModel,
     ip: String, port: String,
+    timeFormat: String,
     returnCell: String?, onRestored: () -> Unit, onProgram: (RecordedProgram) -> Unit, onBack: () -> Unit, modifier: Modifier,
 ) {
     val colors = KomorebiTheme.colors
@@ -338,6 +339,7 @@ internal fun OnAirDetail(
                                                                 EpisodeCellContent(
                                                                     playableProgram, ip, port,
                                                                     showPartialWarning = playableProgram.id in partialWarningProgramIds,
+                                                                    timeFormat = timeFormat,
                                                                     modifier = Modifier.fillMaxSize(),
                                                                 )
                                                             }

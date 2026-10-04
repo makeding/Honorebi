@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,6 +42,7 @@ import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPresentation
+import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.UpdateRecordedCaptionState
@@ -107,6 +109,19 @@ internal fun SmbPlayerScreen(
         onStopOrDispose = {},
         settingsViewModel = settingsViewModel,
     )
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                ScreensaverInteractionTracker.setPlaybackActive(player, isPlaying)
+            }
+        }
+        player.addListener(listener)
+        ScreensaverInteractionTracker.setPlaybackActive(player, player.isPlaying)
+        onDispose {
+            player.removeListener(listener)
+            ScreensaverInteractionTracker.setPlaybackActive(player, false)
+        }
+    }
     LaunchedEffect(player, metadata.stableId, initialPositionMs) {
         player.setMediaItem(
             MediaItem.Builder()

@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import com.beeregg2001.komorebi.data.model.RecordedProgram
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.ui.player.formatPlayerDurationSeconds
 import java.time.Instant
 import java.time.LocalDateTime
@@ -34,16 +35,16 @@ private fun formatPlaybackProgramMetaRows(
     zoneId: ZoneId
 ): List<PlaybackProgramInfoRow> = buildList {
     formatChannel(program)?.let { add(PlaybackProgramInfoRow("チャンネル", it)) }
-    formatBroadcastTime(program.startTime, program.endTime, timeFormat, zoneId)
+    formatBroadcastTime(program.startTime, program.endTime, timeFormat, zoneId, includeEndDateOnCrossDate = false)
         ?.let { add(PlaybackProgramInfoRow("放送日時", it)) }
     val actualStart = program.recordedVideo.recordingStartTime.orEmpty()
     val actualEnd = program.recordedVideo.recordingEndTime.orEmpty()
     val startKnown = parseDateTime(actualStart, zoneId) != null
     val endKnown = parseDateTime(actualEnd, zoneId) != null
     val actual = when {
-        startKnown && endKnown -> formatBroadcastTime(actualStart, actualEnd, timeFormat, zoneId)!!
-        startKnown -> "${formatBroadcastTime(actualStart, "", timeFormat, zoneId)} - 終了時刻未記録"
-        endKnown -> "開始時刻未記録 - ${formatBroadcastTime(actualEnd, "", timeFormat, zoneId)}"
+        startKnown && endKnown -> formatBroadcastTime(actualStart, actualEnd, timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId)!!
+        startKnown -> "${formatBroadcastTime(actualStart, "", timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId)} - 終了時刻未記録"
+        endKnown -> "開始時刻未記録 - ${formatBroadcastTime(actualEnd, "", timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId)}"
         else -> "記録されていません"
     }
     add(PlaybackProgramInfoRow("実際の録画日時", actual))
@@ -66,14 +67,18 @@ internal fun formatBroadcastTime(
     startTime: String,
     endTime: String,
     timeFormat: String,
-    zoneId: ZoneId = ZoneId.systemDefault()
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    includeEndDateOnCrossDate: Boolean = true,
 ): String? {
+    if (timeFormat == "28H") {
+        return ProgramTimeFormatter.formatRange(startTime, endTime, timeFormat, "yyyy/MM/dd(E)", zoneId, includeEndDateOnCrossDate = includeEndDateOnCrossDate)
+    }
     val start = parseDateTime(startTime, zoneId) ?: return null
     val startPattern = if (timeFormat == "12H") "yyyy/MM/dd(E) a h:mm" else "yyyy/MM/dd(E) HH:mm"
     val formattedStart = DateTimeFormatter.ofPattern(startPattern, Locale.JAPANESE).format(start)
     val end = parseDateTime(endTime, zoneId) ?: return formattedStart
     val crossesDate = java.time.LocalDate.from(start) != java.time.LocalDate.from(end)
-    val endPattern = (if (crossesDate) "yyyy/MM/dd(E) " else "") +
+    val endPattern = (if (includeEndDateOnCrossDate && crossesDate) "yyyy/MM/dd(E) " else "") +
         (if (timeFormat == "12H") "a h:mm" else "HH:mm")
     return "$formattedStart - ${DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE).format(end)}"
 }

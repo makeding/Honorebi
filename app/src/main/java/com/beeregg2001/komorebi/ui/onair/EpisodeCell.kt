@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import java.time.OffsetDateTime
@@ -50,6 +51,7 @@ internal fun EpisodeCellContent(
     ip: String,
     port: String,
     showPartialWarning: Boolean,
+    timeFormat: String = "24H",
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
@@ -86,7 +88,7 @@ internal fun EpisodeCellContent(
             )
         }
         Text(
-            episodeCaption(program),
+            episodeCaption(program, timeFormat),
             style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = .85f), Offset(0f, 1f), 3f)),
             color = Color.White,
             fontSize = 12.sp,
@@ -102,8 +104,8 @@ internal fun EpisodeCellContent(
 }
 
 /** HonomiTV と同じくサブタイトルを優先し、無ければ開始日時を表記する。 */
-internal fun episodeCaption(program: RecordedProgram): String =
+internal fun episodeCaption(program: RecordedProgram, timeFormat: String = "24H"): String =
     program.subtitle?.takeIf(String::isNotBlank) ?: runCatching {
-        OffsetDateTime.parse(program.startTime)
-            .format(DateTimeFormatter.ofPattern("yyyy/M/d (E) HH:mm", Locale.JAPANESE))
+        val start = OffsetDateTime.parse(program.startTime).toZonedDateTime()
+        ProgramTimeFormatter.formatDateTime(start, timeFormat, "yyyy/M/d (E)")
     }.getOrDefault(program.title)
