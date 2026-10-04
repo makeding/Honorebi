@@ -1459,7 +1459,6 @@ fun AppInfoContent(
     updateState: com.beeregg2001.komorebi.util.UpdateState,
     onToggleBetaUpdates: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit,
-    onInstallUpdate: (String) -> Unit,
     onShowProject: () -> Unit,
     onShowLicenses: () -> Unit,
     onCapabilities: () -> Unit,
@@ -1467,7 +1466,6 @@ fun AppInfoContent(
     versionR: FocusRequester,
     betaR: FocusRequester,
     checkR: FocusRequester,
-    installR: FocusRequester,
     projectR: FocusRequester,
     licR: FocusRequester,
     sidebarR: FocusRequester,
@@ -1527,19 +1525,6 @@ fun AppInfoContent(
         Spacer(Modifier.height(20.dp))
 
         SettingItem(
-            title = "テレビ再生能力",
-            value = "",
-            icon = Icons.Default.Memory,
-            modifier = Modifier.width(420.dp).focusRequester(capabilityR).focusProperties {
-                left = sidebarR
-                up = FocusRequester.Cancel
-                down = versionR
-            },
-            onClick = { onClick(capabilityR); onCapabilities() }
-        )
-        Spacer(Modifier.height(12.dp))
-
-        SettingItem(
             title = "Version",
             value = BuildConfig.VERSION_NAME,
             icon = Icons.Default.Info,
@@ -1548,7 +1533,7 @@ fun AppInfoContent(
                 .focusRequester(versionR)
                 .focusProperties {
                     left = sidebarR
-                    up = capabilityR
+                    up = FocusRequester.Cancel
                     down = betaR
                 },
             onClick = {
@@ -1565,7 +1550,7 @@ fun AppInfoContent(
 
         Spacer(Modifier.height(12.dp))
         SettingItem(
-            title = "ベータ版のアップデートを受け取る",
+            title = "ベータ版を受け取る",
             value = if (receiveBetaUpdates) "ON" else "OFF",
             icon = Icons.Default.SystemUpdate,
             modifier = Modifier.width(420.dp).focusRequester(betaR).focusProperties {
@@ -1580,7 +1565,7 @@ fun AppInfoContent(
             is com.beeregg2001.komorebi.util.UpdateState.Checking -> "確認中…"
             is com.beeregg2001.komorebi.util.UpdateState.UpToDate -> "最新です"
             is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> "更新があります"
-            else -> "状態を確認"
+            else -> "未確認"
         }
         SettingItem(
             title = "更新を確認",
@@ -1591,50 +1576,15 @@ fun AppInfoContent(
             modifier = Modifier.width(420.dp).focusRequester(checkR).focusProperties {
                 left = sidebarR
                 up = betaR
-                down = installR
+                down = projectR
             },
             onClick = { onClick(checkR); onCheckUpdates() }
         )
         Spacer(Modifier.height(12.dp))
-        val availableUpdate = updateState as? com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable
-        val installValue = when (updateState) {
-            is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> updateState.versionName
-            is com.beeregg2001.komorebi.util.UpdateState.Downloading -> "ダウンロード中 ${updateState.progressPercentage}%"
-            is com.beeregg2001.komorebi.util.UpdateState.ReadyToInstall -> "インストーラーを開いています"
-            is com.beeregg2001.komorebi.util.UpdateState.UpToDate -> "新しい更新はありません"
-            is com.beeregg2001.komorebi.util.UpdateState.Checking -> "確認が終わると有効になります"
-            else -> "先に「更新を確認」を実行してください"
-        }
-        SettingItem(
-            title = "アップデートをインストール",
-            value = installValue,
-            icon = Icons.Default.SystemUpdateAlt,
-            enabled = availableUpdate != null,
-            modifier = Modifier.width(420.dp).focusRequester(installR).focusProperties {
-                left = sidebarR
-                up = checkR
-                down = projectR
-            },
-            onClick = { onClick(installR); availableUpdate?.let { onInstallUpdate(it.apkUrl) } }
-        )
         val updateError = (updateState as? com.beeregg2001.komorebi.util.UpdateState.Error)?.message
-        Box(Modifier.width(420.dp).height(72.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.width(420.dp).height(40.dp), contentAlignment = Alignment.CenterStart) {
             if (updateError != null) {
                 Text(updateError, color = Color(0xFFE53935), style = MaterialTheme.typography.bodySmall)
-            } else if (availableUpdate != null) {
-                Text(
-                    availableUpdate.releaseNotes,
-                    color = colors.textSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2
-                )
-            } else {
-                Text(
-                    "更新内容は、新しい更新が見つかった場合に表示されます",
-                    color = colors.textSecondary,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2
-                )
             }
         }
 
@@ -1649,7 +1599,7 @@ fun AppInfoContent(
                 .focusRequester(projectR)
                 .focusProperties {
                     left = sidebarR
-                    up = installR
+                    up = checkR
                     down = licR
                 },
             onClick = { onClick(projectR); onShowProject() })
@@ -1666,8 +1616,20 @@ fun AppInfoContent(
                 .focusProperties {
                     left = sidebarR
                     up = projectR
-                    down = FocusRequester.Cancel
+                    down = capabilityR
                 },
             onClick = { onClick(licR); onShowLicenses() })
+        Spacer(Modifier.height(12.dp))
+        SettingItem(
+            title = "テレビ再生能力",
+            value = "",
+            icon = Icons.Default.Memory,
+            modifier = Modifier.width(420.dp).focusRequester(capabilityR).focusProperties {
+                left = sidebarR
+                up = licR
+                down = FocusRequester.Cancel
+            },
+            onClick = { onClick(capabilityR); onCapabilities() }
+        )
     }
 }

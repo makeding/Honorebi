@@ -189,7 +189,7 @@ fun SettingsScreen(
             List(11) { FocusRequester() },
             emptyList(),
             List(7) { FocusRequester() },
-            List(7) { FocusRequester() }
+            List(6) { FocusRequester() }
         )
     }
 
@@ -244,7 +244,7 @@ fun SettingsScreen(
 
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
-            uiState.restoreFocusRequester = itemFocusRequesters[11][6]
+            uiState.restoreFocusRequester = itemFocusRequesters[11][5]
             uiState.restoreCategoryIndex = 11
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
@@ -1190,7 +1190,6 @@ fun SettingsScreen(
                                 }
                             },
                             onCheckUpdates = viewModel::checkForUpdates,
-                            onInstallUpdate = viewModel::installAvailableUpdate,
                             onShowProject = {
                                 uiState.activeDialog = SettingDialogState.LinkQr(
                                     AppStrings.DIALOG_LINK_TITLE,
@@ -1199,13 +1198,12 @@ fun SettingsScreen(
                             },
                             onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
                             onCapabilities = { uiState.activeDialog = SettingDialogState.DeviceCapabilities },
-                            capabilityR = itemFocusRequesters[11][6],
+                            capabilityR = itemFocusRequesters[11][5],
                             versionR = itemFocusRequesters[11][0],
                             betaR = itemFocusRequesters[11][1],
                             checkR = itemFocusRequesters[11][2],
-                            installR = itemFocusRequesters[11][3],
-                            projectR = itemFocusRequesters[11][4],
-                            licR = itemFocusRequesters[11][5],
+                            projectR = itemFocusRequesters[11][3],
+                            licR = itemFocusRequesters[11][4],
                             sidebarR = categoryFocusRequesters[11]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 11 }
                     }

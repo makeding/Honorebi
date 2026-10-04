@@ -88,10 +88,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun installAvailableUpdate(apkUrl: String) {
-        viewModelScope.launch { appUpdater.downloadAndInstallUpdate(apkUrl) }
-    }
-
     fun setNHKExclusionMode(mode: com.beeregg2001.komorebi.data.model.NHKExclusionMode) {
         viewModelScope.launch { nhkExclusionRepository.setMode(mode) }
     }
