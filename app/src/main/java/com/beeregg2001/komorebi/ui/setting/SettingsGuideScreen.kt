@@ -130,7 +130,8 @@ internal fun SettingsGuideScreen(
                         val focused by interactionSource.collectIsFocusedAsState()
                         val hovered by interactionSource.collectIsHoveredAsState()
                         val highlighted = focused || hovered
-                        val highlightContent = MaterialTheme.colorScheme.onPrimary
+                        val highlightContent = if (colors.isDark) Color.White
+                        else MaterialTheme.colorScheme.onPrimary
                         Surface(
                             onClick = { onSelectCategory(card) },
                             interactionSource = interactionSource,
@@ -145,7 +146,7 @@ internal fun SettingsGuideScreen(
                                 else colors.surface.copy(alpha = 0.82f),
                                 focusedContainerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = colors.textPrimary,
-                                focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+                                focusedContentColor = highlightContent,
                             ),
                             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
                         ) {

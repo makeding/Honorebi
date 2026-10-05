@@ -151,6 +151,11 @@ private fun SettingsMenuScreen(
     val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
 
     val prefs = rememberSettingPreferences(repository)
+    val themeSeason = when (prefs.currentThemeName) {
+                                "SPRING", "SPRING_LIGHT" -> "SPRING"; "SUMMER", "SUMMER_LIGHT" -> "SUMMER"; "AUTUMN", "AUTUMN_LIGHT" -> "AUTUMN"; "WINTER_DARK", "WINTER_LIGHT" -> "WINTER"; "EPG_BLUE", "EPG_BLUE_LIGHT" -> "BLUE"; "KOMOREBI", "KOMOREBI_DAY", "KOMOREBI_NIGHT" -> "KOMOREBI"; "KYLE", "KYLE_DAY", "KYLE_NIGHT" -> "KYLE"; else -> "DEFAULT"
+                            }
+    val isLightTheme = prefs.currentThemeName.contains("LIGHT") || prefs.currentThemeName == "HIGHTONE"
+
     val uiState = rememberSettingUiState(initialCategoryIndex)
 
     val receiveBetaUpdates by viewModel.receiveBetaUpdates.collectAsState()
@@ -1004,9 +1009,7 @@ private fun SettingsMenuScreen(
 
                         8 -> DisplaySettingsContent(
                             prefs.currentThemeName.contains("LIGHT") || prefs.currentThemeName == "HIGHTONE" || prefs.currentThemeName == "KOMOREBI_DAY" || prefs.currentThemeName == "KYLE_DAY",
-                            when (prefs.currentThemeName) {
-                                "SPRING", "SPRING_LIGHT" -> "SPRING"; "SUMMER", "SUMMER_LIGHT" -> "SUMMER"; "AUTUMN", "AUTUMN_LIGHT" -> "AUTUMN"; "WINTER_DARK", "WINTER_LIGHT" -> "WINTER"; "EPG_BLUE", "EPG_BLUE_LIGHT" -> "BLUE"; "KOMOREBI", "KOMOREBI_DAY", "KOMOREBI_NIGHT" -> "KOMOREBI"; "KYLE", "KYLE_DAY", "KYLE_NIGHT" -> "KYLE"; else -> "DEFAULT"
-                            },
+                            themeSeason,
                             prefs,
                             itemFocusRequesters[8][0],
                             itemFocusRequesters[8][1],
@@ -1060,13 +1063,13 @@ private fun SettingsMenuScreen(
                                         AppStrings.SETTINGS_VALUE_SEASON_WINTER to "WINTER",
                                         AppStrings.SETTINGS_VALUE_SEASON_BLUE to "BLUE"
                                     ),
-                                    "DEFAULT"
+                                    themeSeason
                                 ) {
                                     scope.launch {
                                         repository.saveString(
                                             SettingsRepository.APP_THEME,
                                             if (it == "KOMOREBI" || it == "KYLE") it else getThemeFromModeAndSeason(
-                                                true,
+                                                !isLightTheme,
                                                 it
                                             )
                                         )
