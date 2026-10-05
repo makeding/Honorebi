@@ -85,6 +85,48 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
+    var selectedCategory by remember(initialCategoryIndex) { mutableIntStateOf(initialCategoryIndex) }
+    var showGuide by remember(initialCategoryIndex, initialFocusItemIndex, initialOpenDeviceCapabilities) {
+        mutableStateOf(
+            initialCategoryIndex == 0 && initialFocusItemIndex == null && !initialOpenDeviceCapabilities
+        )
+    }
+
+    if (showGuide) {
+        SettingsGuideScreen(
+            onSelectCategory = { categoryIndex ->
+                selectedCategory = categoryIndex
+                showGuide = false
+            },
+            onBack = onBack,
+        )
+    } else {
+        SettingsMenuScreen(
+            onBack = onBack,
+            onClearLastChannel = onClearLastChannel,
+            onClearWatchHistory = onClearWatchHistory,
+            initialCategoryIndex = selectedCategory,
+            initialFocusItemIndex = initialFocusItemIndex,
+            initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
+            viewModel = viewModel,
+            channelViewModel = channelViewModel,
+        )
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun SettingsMenuScreen(
+    onBack: () -> Unit,
+    onClearLastChannel: () -> Unit = {},
+    onClearWatchHistory: () -> Unit = {},
+    initialCategoryIndex: Int = 0,
+    initialFocusItemIndex: Int? = null,
+    initialOpenDeviceCapabilities: Boolean = false,
+    viewModel: SettingsViewModel,
+    channelViewModel: ChannelViewModel,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { SettingsRepository(context) }

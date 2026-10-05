@@ -512,12 +512,13 @@ fun MainRootScreen(
     LaunchedEffect(
         groupedChannels,
         state.hasAppliedStartupTab,
+        homeIntentVersion,
         isSettingsInitialized,
         isChannelLoading,
         isHomeLoading,
         lastChannels
     ) {
-        if (isSettingsInitialized && state.hasAppliedStartupTab && !state.hasAppliedStartupChannel && !isChannelLoading && !isHomeLoading && groupedChannels.isNotEmpty()) {
+        if (homeIntentVersion == 0 && isSettingsInitialized && state.hasAppliedStartupTab && !state.hasAppliedStartupChannel && !isChannelLoading && !isHomeLoading && groupedChannels.isNotEmpty()) {
             state.hasAppliedStartupChannel = true
             val flatChannels = groupedChannels.values.flatten()
             if (flatChannels.isNotEmpty() && startupChannelSetting != "OFF") {
