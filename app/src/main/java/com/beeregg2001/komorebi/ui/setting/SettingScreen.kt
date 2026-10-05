@@ -86,27 +86,41 @@ fun SettingsScreen(
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
     var selectedCategory by remember(initialCategoryIndex) { mutableIntStateOf(initialCategoryIndex) }
+    var selectedFocusItem by remember(initialCategoryIndex, initialFocusItemIndex) {
+        mutableStateOf(initialFocusItemIndex)
+    }
     var showGuide by remember(initialCategoryIndex, initialFocusItemIndex, initialOpenDeviceCapabilities) {
         mutableStateOf(
             initialCategoryIndex == 0 && initialFocusItemIndex == null && !initialOpenDeviceCapabilities
         )
     }
 
-    if (showGuide) {
+    var guideCardIndex by remember { mutableIntStateOf(0) }
+    var enteredFromGuide by remember { mutableStateOf(false) }
+    var showDecoderCheck by remember { mutableStateOf(false) }
+
+    if (showDecoderCheck) {
+        DeviceCapabilitiesScreen(onBack = { showDecoderCheck = false; showGuide = true })
+    } else if (showGuide) {
         SettingsGuideScreen(
-            onSelectCategory = { categoryIndex ->
-                selectedCategory = categoryIndex
+            initialCardIndex = guideCardIndex,
+            onSelectCategory = { card ->
+                guideCardIndex = settingsGuideCards.indexOf(card)
+                enteredFromGuide = true
+                showDecoderCheck = card.openDecoderCheck
+                selectedCategory = card.categoryIndex
+                selectedFocusItem = 0
                 showGuide = false
             },
             onBack = onBack,
         )
     } else {
         SettingsMenuScreen(
-            onBack = onBack,
+            onBack = { if (enteredFromGuide) showGuide = true else onBack() },
             onClearLastChannel = onClearLastChannel,
             onClearWatchHistory = onClearWatchHistory,
             initialCategoryIndex = selectedCategory,
-            initialFocusItemIndex = initialFocusItemIndex,
+            initialFocusItemIndex = selectedFocusItem,
             initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
             viewModel = viewModel,
             channelViewModel = channelViewModel,
