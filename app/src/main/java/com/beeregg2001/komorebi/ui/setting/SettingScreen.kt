@@ -207,9 +207,9 @@ private fun SettingsMenuScreen(
     val sidebarRows = remember {
         listOf(
             SettingSidebarRow(0, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications),
-            SettingSidebarRow(1, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.CastConnected),
+            SettingSidebarRow(1, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link),
             SettingSidebarRow(2, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
-            SettingSidebarRow(5, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Tv),
+            SettingSidebarRow(5, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment),
             SettingSidebarRow(8, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard, isChild = true),
             SettingSidebarRow(6, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home, isChild = true),
             SettingSidebarRow(7, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps, isChild = true),
@@ -257,7 +257,7 @@ private fun SettingsMenuScreen(
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(5) { FocusRequester() },
+            List(6) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(11) { FocusRequester() },
@@ -322,6 +322,24 @@ private fun SettingsMenuScreen(
             uiState.restoreCategoryIndex = 11
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
+    }
+
+    val openCommentLayerDialog = {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.DIALOG_LAYER_ORDER_TITLE,
+                                    listOf(
+                                        AppStrings.DIALOG_LAYER_COMMENT_TOP to "CommentOnTop",
+                                        AppStrings.DIALOG_LAYER_SUBTITLE_TOP to "SubtitleOnTop"
+                                    ),
+                                    prefs.subtitleCommentLayer
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.SUBTITLE_COMMENT_LAYER,
+                                            it
+                                        )
+                                    }
+                                }
     }
 
     val isDialogOpen = uiState.activeDialog !is SettingDialogState.None
@@ -801,21 +819,7 @@ private fun SettingsMenuScreen(
                                 }
                             },
                             {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    AppStrings.DIALOG_LAYER_ORDER_TITLE,
-                                    listOf(
-                                        AppStrings.DIALOG_LAYER_COMMENT_TOP to "CommentOnTop",
-                                        AppStrings.DIALOG_LAYER_SUBTITLE_TOP to "SubtitleOnTop"
-                                    ),
-                                    prefs.subtitleCommentLayer
-                                ) {
-                                    scope.launch {
-                                        repository.saveString(
-                                            SettingsRepository.SUBTITLE_COMMENT_LAYER,
-                                            it
-                                        )
-                                    }
-                                }
+                                openCommentLayerDialog()
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1165,6 +1169,8 @@ private fun SettingsMenuScreen(
                             prefs.commentFontSize,
                             prefs.commentOpacity,
                             prefs.commentMaxLines,
+                            prefs.subtitleCommentLayer,
+                            openCommentLayerDialog,
                             { t, v ->
                                 uiState.activeDialog = SettingDialogState.Input(t, v) {
                                     scope.launch {
@@ -1188,6 +1194,7 @@ private fun SettingsMenuScreen(
                             itemFocusRequesters[5][2],
                             itemFocusRequesters[5][3],
                             itemFocusRequesters[5][4],
+                            itemFocusRequesters[5][5],
                             categoryFocusRequesters[5]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
 

@@ -45,7 +45,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Info
@@ -64,11 +64,11 @@ internal data class SettingsGuideCard(
 )
 
 internal val settingsGuideCards = listOf(
-    SettingsGuideCard("一般設定", 0, Icons.Default.Settings),
-    SettingsGuideCard("再生設定", 2, Icons.Default.PlayCircle),
-    SettingsGuideCard("画面設定", 8, Icons.Default.Dashboard),
-    SettingsGuideCard("コメント設定", 5, Icons.Default.Tv),
-    SettingsGuideCard("接続設定", 1, Icons.Default.Link),
+    SettingsGuideCard("一般", 0, Icons.Default.Settings),
+    SettingsGuideCard("再生", 2, Icons.Default.PlayCircle),
+    SettingsGuideCard("画面", 8, Icons.Default.Dashboard),
+    SettingsGuideCard("コメント", 5, Icons.Default.Comment),
+    SettingsGuideCard("接続", 1, Icons.Default.Link),
     SettingsGuideCard("データ管理", 10, Icons.Default.DeleteSweep),
     SettingsGuideCard("デコード能力チェック", 11, Icons.Default.Memory, openDecoderCheck = true),
     SettingsGuideCard("アプリ情報", 11, Icons.Default.Info),

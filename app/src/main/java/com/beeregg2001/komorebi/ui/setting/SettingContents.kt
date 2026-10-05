@@ -1229,6 +1229,8 @@ fun CommentSettingsContent(
     size: String,
     opacity: String,
     max: String,
+    layerOrder: String,
+    onLayer: () -> Unit,
     onEdit: (String, String) -> Unit,
     onT: () -> Unit,
     defR: FocusRequester,
@@ -1236,6 +1238,7 @@ fun CommentSettingsContent(
     szR: FocusRequester,
     opR: FocusRequester,
     mxR: FocusRequester,
+    layerR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -1319,7 +1322,7 @@ fun CommentSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = opR
-                        down = FocusRequester.Cancel
+                        down = layerR
                     },
                 onClick = {
                     onClick(mxR); onEdit(
@@ -1327,6 +1330,19 @@ fun CommentSettingsContent(
                     max
                 )
                 })
+        }
+        SettingsSection(AppStrings.SETTINGS_SECTION_COMMENT_LAYER) {
+            SettingItem(
+                AppStrings.SETTINGS_ITEM_SUBTITLE_COMMENT_LAYER,
+                if (layerOrder == "CommentOnTop") AppStrings.DIALOG_LAYER_COMMENT_TOP else AppStrings.DIALOG_LAYER_SUBTITLE_TOP,
+                Icons.Default.Layers,
+                modifier = Modifier.focusRequester(layerR).focusProperties {
+                    left = sidebarR
+                    up = mxR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(layerR); onLayer() },
+            )
         }
     }
 }
