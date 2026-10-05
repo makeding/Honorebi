@@ -40,6 +40,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.TvCardFamily
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusSeries
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvFocusAnimation
 import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
@@ -159,7 +160,9 @@ fun RecordSeriesGridContent(
                         }
 
                     Surface(
-                onClick = { onSeriesClick(series) }, modifier = itemModifier,
+                onClick = { onSeriesClick(series) },
+                modifier = itemModifier
+                    .tvFocusAnimation(isFocused, focusSpec.focusedScale),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = colors.surface, focusedContainerColor = colors.surface

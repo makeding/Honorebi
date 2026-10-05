@@ -83,7 +83,6 @@ fun VideoTabContent(
 ) {
     val colors = KomorebiTheme.colors
 
-    val ticketManager = rememberFocusTicketManager()
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
@@ -173,11 +172,7 @@ fun VideoTabContent(
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {
             delay(150)
-            if (focusedProgramId != null) ticketManager.issue(
-                FocusTicket.TARGET_ID,
-                focusedProgramId!!
-            )
-            else contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabFallbackAiReturn")
+            contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabFallbackAiReturn")
             onAiReturnConsumed()
         }
     }
@@ -185,43 +180,7 @@ fun VideoTabContent(
     LaunchedEffect(isReturningFromPlayer) {
         if (isReturningFromPlayer) {
             delay(200)
-            val targetId = lastPlayedProgramId?.toIntOrNull()
-            if (targetId != null) ticketManager.issue(FocusTicket.TARGET_ID, targetId)
-            else {
-                contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabFallback")
-                onReturnFocusConsumed()
-            }
-        }
-    }
-
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == FocusTicket.TARGET_ID) {
-            val targetId = ticketManager.targetProgramId?.toString() ?: return@LaunchedEffect
-
-            var currentIndex = 1
-            var recentColIndex = -1
-            var historyColIndex = -1
-
-            if (recentItems.isNotEmpty()) recentColIndex = currentIndex++
-            if (historyItems.isNotEmpty()) historyColIndex = currentIndex++
-
-            val rIndex = recentItems.indexOfFirst { it.id.toString() == targetId }
-            if (rIndex != -1 && recentColIndex != -1) {
-                listState.scrollToItem(recentColIndex)
-                recentRowState.scrollToItem(maxOf(0, rIndex - 1))
-                return@LaunchedEffect
-            }
-
-            val hIndex = historyItems.indexOfFirst { it.program.id.toString() == targetId }
-            if (hIndex != -1 && historyColIndex != -1) {
-                listState.scrollToItem(historyColIndex)
-                historyRowState.scrollToItem(maxOf(0, hIndex - 1))
-                return@LaunchedEffect
-            }
-
-            delay(300)
-            ticketManager.consume(FocusTicket.TARGET_ID)
-            contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabNotFoundFallback")
+            contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabFallback")
             onReturnFocusConsumed()
         }
     }
@@ -353,7 +312,6 @@ fun VideoTabContent(
                                         program = program,
                                         history = historyByProgramId[program.id.toString()],
                                         konomiIp = konomiIp, konomiPort = konomiPort,
-                                        ticketManager = ticketManager,
                                         onReturnFocusConsumed = onReturnFocusConsumed,
                                         timeFormat = timeFormat,
                                         onClick = {
@@ -435,7 +393,6 @@ fun VideoTabContent(
                                     VideoWatchHistoryCard(
                                         historyItem = historyItem, matchedProgram = matchedProgram,
                                         konomiIp = konomiIp, konomiPort = konomiPort,
-                                        ticketManager = ticketManager,
                                         onReturnFocusConsumed = onReturnFocusConsumed,
                                         timeFormat = timeFormat,
                                         onClick = {

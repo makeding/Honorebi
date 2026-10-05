@@ -64,7 +64,6 @@ fun VideoRecentRecordCard(
     onFocus: () -> Unit,
     modifier: Modifier = Modifier,
     isCurrentlyRecording: Boolean = false,
-    ticketManager: FocusTicketManager,
     onReturnFocusConsumed: () -> Unit,
     timeFormat: String,
     allowNetworkImages: Boolean = true
@@ -87,14 +86,6 @@ fun VideoRecentRecordCard(
     } else null
 
     val specificRequester = remember { FocusRequester() }
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == FocusTicket.TARGET_ID && program.id == ticketManager.targetProgramId) {
-            delay(100)
-            specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_VideoTab")
-            ticketManager.consume(FocusTicket.TARGET_ID)
-            onReturnFocusConsumed()
-        }
-    }
 
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
@@ -230,7 +221,6 @@ fun VideoWatchHistoryCard(
     onClick: () -> Unit,
     onFocus: () -> Unit,
     modifier: Modifier = Modifier,
-    ticketManager: FocusTicketManager,
     onReturnFocusConsumed: () -> Unit,
     timeFormat: String,
     allowNetworkImages: Boolean = true
@@ -264,14 +254,6 @@ fun VideoWatchHistoryCard(
     val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)
 
     val specificRequester = remember { FocusRequester() }
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == FocusTicket.TARGET_ID && videoId == ticketManager.targetProgramId) {
-            delay(100)
-            specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_History")
-            ticketManager.consume(FocusTicket.TARGET_ID)
-            onReturnFocusConsumed()
-        }
-    }
 
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {

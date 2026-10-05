@@ -37,6 +37,7 @@ import com.beeregg2001.komorebi.ui.theme.TvCardFamily
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.ui.theme.tvFocusAnimation
 import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import com.beeregg2001.komorebi.ui.video.FocusTicket
 import com.beeregg2001.komorebi.ui.video.FocusTicketManager
@@ -155,7 +156,8 @@ fun SmbListContent(
                             }
                         }
                         false
-                    },
+                    }
+                    .tvFocusAnimation(isFocused, focusSpec.focusedScale),
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
                 colors = ClickableSurfaceDefaults.colors(

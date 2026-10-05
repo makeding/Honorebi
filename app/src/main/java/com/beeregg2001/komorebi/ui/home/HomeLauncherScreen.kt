@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.ui.platform.LocalFocusManager
 
 private const val TAG = "HomeLauncher"
 internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
@@ -255,7 +256,8 @@ fun HomeLauncherScreen(
     )
     val colors = KomorebiTheme.colors
 
-    val ticketManager = rememberHomeFocusTicketManager()
+    val focusManager = LocalFocusManager.current
+    val focusMemory = rememberFocusMemory()
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -307,8 +309,6 @@ fun HomeLauncherScreen(
                         scope.launch {
                             delay(250)
                             if (shouldRestoreTopNavOnResume.value) {
-                                // ★ 修正: アプリタブにフォーカス記憶(lastClickedSection="apps")が
-                                // ある場合はタブバーではなく、記憶したアプリ項目へ復帰する。
                                 val currentTabName =
                                     visibleTabsState.value.getOrNull(safeTabIndexState.value)
                                 val itemId = homeViewModel.lastClickedItemId
@@ -316,9 +316,9 @@ fun HomeLauncherScreen(
                                     homeViewModel.lastClickedSection == "apps" &&
                                     itemId != null
                                 ) {
-                                    ticketManager.issueForHomeRestore("apps", itemId)
+                                    focusMemory.remember(safeTabIndex, "apps", itemId)
                                 } else {
-                                    ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                                    focusMemory.remember(safeTabIndex)
                                 }
                             }
                         }
@@ -444,18 +444,17 @@ fun HomeLauncherScreen(
                     val section = homeViewModel.lastClickedSection
                     val itemId = homeViewModel.lastClickedItemId
                     if (section != null && itemId != null) {
-                        ticketManager.issueForHomeRestore(section, itemId)
+                        focusMemory.remember(safeTabIndex, section, itemId)
                     } else {
-                        ticketManager.issue(HomeFocusTicket.CONTENT_TOP)
+                        focusMemory.remember(safeTabIndex)
                     }
                     onAiReturnConsumed()
                 }
 
                 "アプリ" -> {
-                    // ★ 追加: アプリタブのフォーカス記憶から復帰する。
                     val itemId = homeViewModel.lastClickedItemId
                     if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
-                        ticketManager.issueForHomeRestore("apps", itemId)
+                        focusMemory.remember(safeTabIndex, "apps", itemId)
                     } else {
                         ui.tabFocusRequesters.getOrNull(safeTabIndex)
                             ?.safeRequestFocusWithRetry("FallbackAiReturn")
@@ -483,12 +482,11 @@ fun HomeLauncherScreen(
                 val itemId = homeViewModel.lastClickedItemId
                 when {
                     currentTabName == "ホーム" && section != null && itemId != null -> {
-                        ticketManager.issueForHomeRestore(section, itemId)
+                        focusMemory.remember(safeTabIndex, section, itemId)
                     }
 
                     currentTabName == "アプリ" && section == "apps" && itemId != null -> {
-                        // ★ 追加: アプリタブのフォーカス記憶から復帰する。
-                        ticketManager.issueForHomeRestore("apps", itemId)
+                        focusMemory.remember(safeTabIndex, "apps", itemId)
                     }
 
                     currentTabName == "番組表" || currentTabName == "録画予約" -> {
@@ -498,7 +496,7 @@ fun HomeLauncherScreen(
                     }
 
                     else -> {
-                        ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                        focusMemory.remember(safeTabIndex)
                     }
                 }
             }
@@ -522,7 +520,7 @@ fun HomeLauncherScreen(
         if (previous != null && previous != current && !current &&
             !isReturningFromPlayer && !isFullScreenMode
         ) {
-            ticketManager.issue(HomeFocusTicket.TAB_BAR)
+            focusMemory.remember(safeTabIndex)
         }
     }
 
@@ -537,24 +535,23 @@ fun HomeLauncherScreen(
                     val section = homeViewModel.lastClickedSection
                     val itemId = homeViewModel.lastClickedItemId
                     if (section != null && itemId != null) {
-                        ticketManager.issueForHomeRestore(section, itemId)
+                        focusMemory.remember(safeTabIndex, section, itemId)
                     } else {
-                        ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                        focusMemory.remember(safeTabIndex)
                     }
                 }
 
                 currentTabName == "アプリ" -> {
-                    // ★ 追加: アプリタブのフォーカス記憶から復帰する。
                     val itemId = homeViewModel.lastClickedItemId
                     if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
-                        ticketManager.issueForHomeRestore("apps", itemId)
+                        focusMemory.remember(safeTabIndex, "apps", itemId)
                     } else {
-                        ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                        focusMemory.remember(safeTabIndex)
                     }
                 }
 
                 currentTabName != "番組表" -> {
-                    ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                    focusMemory.remember(safeTabIndex)
                 }
             }
         }
@@ -567,7 +564,7 @@ fun HomeLauncherScreen(
                 onFinalBack = onFinalBack,
                 onBackTriggered = onBackTriggered,
                 requestTopNavFocus = {
-                    ticketManager.issue(HomeFocusTicket.TAB_BAR)
+                    focusMemory.remember(safeTabIndex)
                 },
                 escapeToSafeHouse = {
                     scope.launch {
@@ -578,34 +575,18 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        when (ticketManager.currentTicket) {
-            HomeFocusTicket.TAB_BAR -> {
-                delay(200)
-                ui.tabFocusRequesters.getOrNull(safeTabIndex)
-                    ?.safeRequestFocusWithRetry("HomeTicket_TAB_BAR")
-                ticketManager.consume(HomeFocusTicket.TAB_BAR)
-
-                val currentTabName = tabs.getOrNull(safeTabIndex)
-                if (isReturningFromPlayer && currentTabName != "ライブ" && currentTabName != "ビデオ") {
-                    onReturnFocusConsumed()
-                }
-            }
-
-            HomeFocusTicket.CONTENT_TOP -> {
+    LaunchedEffect(focusMemory.lastFocusedTab, focusMemory.lastFocusedSection) {
+        val section = focusMemory.lastFocusedSection
+        if (section != null) {
+            val currentTabName = tabs.getOrNull(safeTabIndex)
+            if (currentTabName == "ホーム" || currentTabName == "アプリ") {
                 delay(150)
                 firstContentRequesterFor(safeTabIndex)
-                    .safeRequestFocusWithRetry("HomeTicket_CONTENT_TOP")
-                ticketManager.consume(HomeFocusTicket.CONTENT_TOP)
-            }
-
-            HomeFocusTicket.HOME_RESTORE -> {
+                    .safeRequestFocusWithRetry("FocusMemory_Restore")
                 if (isReturningFromPlayer) {
                     onReturnFocusConsumed()
                 }
             }
-
-            else -> {}
         }
     }
 
@@ -632,7 +613,9 @@ fun HomeLauncherScreen(
                                     onTabChange = onTabChange,
                                     onFinalBack = onFinalBack,
                                     onBackTriggered = onBackTriggered,
-                                    requestTopNavFocus = { ticketManager.issue(HomeFocusTicket.TAB_BAR) },
+                                    requestTopNavFocus = {
+                                        focusMemory.remember(safeTabIndex)
+                                    },
                                     escapeToSafeHouse = {
                                         scope.launch {
                                             ui.safeHouseRequester.safeRequestFocusWithRetry(
@@ -887,9 +870,9 @@ fun HomeLauncherScreen(
                             lastFocusedProgramId = lastPlayerProgramId,
                             isTopNavFocused = ui.topNavHasFocus,
                             onUiReady = handleUiReady,
-                            ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
-                            timeFormat = timeFormat
+                            timeFormat = timeFormat,
+                            focusMemory = focusMemory
                         )
 
                         "ライブ" -> {
@@ -920,8 +903,7 @@ fun HomeLauncherScreen(
                                 homeViewModel = homeViewModel,
                                 tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                onUiReady = handleUiReady,
-                                ticketManager = ticketManager
+                                onUiReady = handleUiReady
                             )
                         }
 

@@ -32,8 +32,7 @@ import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.*
-import com.beeregg2001.komorebi.ui.home.HomeFocusTicket
-import com.beeregg2001.komorebi.ui.home.HomeFocusTicketManager
+import com.beeregg2001.komorebi.ui.home.FocusMemory
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalIcon
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
@@ -92,27 +91,25 @@ fun LastWatchedSection(
     contentFirstItemRequester: FocusRequester? = null,
     onChannelClick: (Channel) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
-    sectionId: String
+    sectionId: String,
+    focusMemory: FocusMemory? = null
 ) {
-    // ★ 変更: rememberTvLazyListState -> rememberLazyListState
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
-            val index = channels.indexOfFirst { it.id == ticketManager.targetItemId }
+    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+        if (focusMemory?.lastFocusedSection == sectionId) {
+            val index = channels.indexOfFirst { it.id == focusMemory.lastFocusedItemId }
             if (index != -1) rowState.scrollToItem(index)
         }
     }
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
-            "前回視聴したチャンネル",
+            "前回視前回視聴したチャンネル",
             Icons.Default.History,
             Modifier.padding(horizontal = 48.dp)
         )
-        // ★ 変更: TvLazyRow -> LazyRow
         LazyRow(
             state = rowState,
             modifier = modifier,
@@ -125,14 +122,12 @@ fun LastWatchedSection(
                 }
 
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-                        ticketManager.targetSection == sectionId &&
-                        ticketManager.targetItemId == channel.id
+                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+                    if (focusMemory?.lastFocusedSection == sectionId &&
+                        focusMemory.lastFocusedItemId == channel.id
                     ) {
                         delay(150)
                         specificRequester.safeRequestFocusWithRetry("HomeRestore_LastWatched")
-                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                         homeViewModel.clearFocusMemory()
                     }
                 }
@@ -189,16 +184,15 @@ fun HotChannelSection(
     contentFirstItemRequester: FocusRequester? = null,
     onChannelClick: (Channel) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
-    sectionId: String
+    sectionId: String,
+    focusMemory: FocusMemory? = null
 ) {
-    // ★ 変更: rememberTvLazyListState -> rememberLazyListState
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
-            val index = hotChannels.indexOfFirst { it.channel.id == ticketManager.targetItemId }
+    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+        if (focusMemory?.lastFocusedSection == sectionId) {
+            val index = hotChannels.indexOfFirst { it.channel.id == focusMemory.lastFocusedItemId }
             if (index != -1) rowState.scrollToItem(index)
         }
     }
@@ -209,7 +203,6 @@ fun HotChannelSection(
             Icons.Default.TrendingUp,
             Modifier.padding(horizontal = 48.dp)
         )
-        // ★ 変更: TvLazyRow -> LazyRow
         LazyRow(
             state = rowState,
             modifier = modifier,
@@ -218,14 +211,12 @@ fun HotChannelSection(
         ) {
             itemsIndexed(hotChannels, key = { _, it -> "hot_${it.channel.id}" }) { index, uiState ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-                        ticketManager.targetSection == sectionId &&
-                        ticketManager.targetItemId == uiState.channel.id
+                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+                    if (focusMemory?.lastFocusedSection == sectionId &&
+                        focusMemory.lastFocusedItemId == uiState.channel.id
                     ) {
                         delay(150)
                         specificRequester.safeRequestFocusWithRetry("HomeRestore_Hot")
-                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                         homeViewModel.clearFocusMemory()
                     }
                 }
@@ -274,23 +265,22 @@ fun HotChannelSection(
 @Composable
 fun WatchHistorySection(
     watchHistory: List<KonomiHistoryProgram>,
-    recentRecordings: List<RecordedProgram>, // ★ 追加: DBのメタデータを持つ録画リスト
+    recentRecordings: List<RecordedProgram>,
     konomiIp: String, konomiPort: String,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
     onHistoryClick: (KonomiHistoryProgram) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
-    sectionId: String
+    sectionId: String,
+    focusMemory: FocusMemory? = null
 ) {
-    // ★ 変更: rememberTvLazyListState -> rememberLazyListState
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
+    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+        if (focusMemory?.lastFocusedSection == sectionId) {
             val index =
-                watchHistory.indexOfFirst { it.program.id.toString() == ticketManager.targetItemId }
+                watchHistory.indexOfFirst { it.program.id.toString() == focusMemory.lastFocusedItemId }
             if (index != -1) rowState.scrollToItem(index)
         }
     }
@@ -301,7 +291,6 @@ fun WatchHistorySection(
             Icons.Default.PlayCircle,
             Modifier.padding(start = 48.dp, bottom = 12.dp)
         )
-        // ★ 変更: TvLazyRow -> LazyRow
         LazyRow(
             state = rowState,
             modifier = modifier,
@@ -312,14 +301,12 @@ fun WatchHistorySection(
                 watchHistory,
                 key = { _, it -> "hist_${it.program.id}" }) { index, history ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-                        ticketManager.targetSection == sectionId &&
-                        ticketManager.targetItemId == history.program.id.toString()
+                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+                    if (focusMemory?.lastFocusedSection == sectionId &&
+                        focusMemory.lastFocusedItemId == history.program.id.toString()
                     ) {
                         delay(150)
                         specificRequester.safeRequestFocusWithRetry("HomeRestore_History")
-                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                         homeViewModel.clearFocusMemory()
                     }
                 }
@@ -383,18 +370,17 @@ fun UpcomingReserveSection(
     // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
     onNavigateToTab: (String) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
     sectionId: String,
-    timeFormat: String
+    timeFormat: String,
+    focusMemory: FocusMemory? = null
 ) {
-    // ★ 変更: rememberTvLazyListState -> rememberLazyListState
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
+    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+        if (focusMemory?.lastFocusedSection == sectionId) {
             val index =
-                upcomingReserves.indexOfFirst { it.id.toString() == ticketManager.targetItemId }
+                upcomingReserves.indexOfFirst { it.id.toString() == focusMemory.lastFocusedItemId }
             if (index != -1) rowState.scrollToItem(index)
         }
     }
@@ -405,7 +391,6 @@ fun UpcomingReserveSection(
             Icons.Default.RadioButtonChecked,
             Modifier.padding(horizontal = 48.dp)
         )
-        // ★ 変更: TvLazyRow -> LazyRow
         LazyRow(
             state = rowState,
             modifier = modifier,
@@ -414,14 +399,12 @@ fun UpcomingReserveSection(
         ) {
             itemsIndexed(upcomingReserves, key = { _, it -> "res_${it.id}" }) { index, reserve ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-                        ticketManager.targetSection == sectionId &&
-                        ticketManager.targetItemId == reserve.id.toString()
+                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+                    if (focusMemory?.lastFocusedSection == sectionId &&
+                        focusMemory.lastFocusedItemId == reserve.id.toString()
                     ) {
                         delay(150)
                         specificRequester.safeRequestFocusWithRetry("HomeRestore_Reserve")
-                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                         homeViewModel.clearFocusMemory()
                     }
                 }
@@ -484,17 +467,16 @@ fun GenrePickupSection(
     // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
     onNavigateToTab: (String) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
     sectionId: String,
-    timeFormat: String
+    timeFormat: String,
+    focusMemory: FocusMemory? = null
 ) {
-    // ★ 変更: rememberTvLazyListState -> rememberLazyListState
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
-            val index = genrePickup.indexOfFirst { it.first.id == ticketManager.targetItemId }
+    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+        if (focusMemory?.lastFocusedSection == sectionId) {
+            val index = genrePickup.indexOfFirst { it.first.id == focusMemory.lastFocusedItemId }
             if (index != -1) rowState.scrollToItem(index)
         }
     }
@@ -508,7 +490,6 @@ fun GenrePickupSection(
             Icons.Default.Star,
             Modifier.padding(horizontal = 48.dp)
         )
-        // ★ 変更: TvLazyRow -> LazyRow
         LazyRow(
             state = rowState,
             modifier = modifier,
@@ -519,14 +500,12 @@ fun GenrePickupSection(
                 genrePickup,
                 key = { _, it -> "pick_${it.first.id}" }) { index, (program, channelName) ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-                        ticketManager.targetSection == sectionId &&
-                        ticketManager.targetItemId == program.id
+                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+                    if (focusMemory?.lastFocusedSection == sectionId &&
+                        focusMemory.lastFocusedItemId == program.id
                     ) {
                         delay(150)
                         specificRequester.safeRequestFocusWithRetry("HomeRestore_Pickup")
-                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                         homeViewModel.clearFocusMemory()
                     }
                 }
@@ -584,15 +563,15 @@ fun LauncherAppSection(
     onAppClick: (LauncherApp) -> Unit,
     onAppManage: (LauncherApp) -> Unit,
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
-    sectionId: String
+    sectionId: String,
+    focusMemory: FocusMemory? = null
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE && ticketManager.targetSection == sectionId) {
-            val index = apps.indexOfFirst { it.stableId == ticketManager.targetItemId }
+    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+        if (focusMemory?.lastFocusedSection == sectionId) {
+            val index = apps.indexOfFirst { it.stableId == focusMemory.lastFocusedItemId }
             if (index != -1) rowState.scrollToItem(index)
         }
     }
@@ -611,14 +590,12 @@ fun LauncherAppSection(
         ) {
             itemsIndexed(apps, key = { _, it -> "app_${it.stableId}" }) { index, app ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-                    if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-                        ticketManager.targetSection == sectionId &&
-                        ticketManager.targetItemId == app.stableId
+                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
+                    if (focusMemory?.lastFocusedSection == sectionId &&
+                        focusMemory.lastFocusedItemId == app.stableId
                     ) {
                         delay(150)
                         specificRequester.safeRequestFocusWithRetry("HomeRestore_App")
-                        ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                         homeViewModel.clearFocusMemory()
                     }
                 }

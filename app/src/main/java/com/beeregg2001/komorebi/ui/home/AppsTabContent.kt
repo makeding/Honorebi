@@ -85,8 +85,6 @@ fun AppsTabContent(
     tabFocusRequester: FocusRequester,
     contentFirstItemRequester: FocusRequester,
     onUiReady: () -> Unit,
-    // ★ 追加: アプリタブのフォーカス復元(HOME_RESTORE / targetSection="apps")を受けるため。
-    ticketManager: HomeFocusTicketManager,
     settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
@@ -158,16 +156,11 @@ fun AppsTabContent(
         if (isFirstItemRendered.value) onUiReady()
     }
 
-    // ★ 追加: アプリタブのフォーカス復元。ホーム画面のセクションと同じ
-    // HOME_RESTORE チケット(targetSection="apps")を受け、記憶したアプリの
-    // フォーカス要求者へスクロールしてフォーカスを戻す。
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime, catalogApps) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE &&
-            ticketManager.targetSection == "apps"
-        ) {
-            val targetId = ticketManager.targetItemId
-            val index = targetId?.let { id -> catalogApps.indexOfFirst { it.stableId == id } } ?: -1
-            if (index != -1 && targetId != null) {
+    LaunchedEffect(pendingFocusAppId, catalogApps) {
+        val targetId = pendingFocusAppId
+        if (targetId != null) {
+            val index = catalogApps.indexOfFirst { it.stableId == targetId }
+            if (index != -1) {
                 Log.i(
                     "KomorebiFocus",
                     "[$TAG] AppsRestore: 記憶したアプリ($targetId) インデックス $index へ復帰"
@@ -176,18 +169,13 @@ fun AppsTabContent(
                 delay(100)
                 val requester = appFocusRequesters[targetId]
                 if (index == 0 || requester == null) {
-                    // 先頭項目は contentFirstItemRequester が添付されている。
                     contentFirstItemRequester.safeRequestFocusWithRetry("AppsRestore_First")
                 } else {
                     requester.safeRequestFocusWithRetry("AppsRestore")
                 }
-                ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
                 homeViewModel.clearFocusMemory()
-            } else {
-                // 対象が見つからない(アンインストール/非表示等)場合はスクロールせず
-                // チケットだけ消費して放置を防ぐ。
-                ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
             }
+            pendingFocusAppId = null
         }
     }
 

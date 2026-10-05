@@ -11,8 +11,6 @@ import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.viewmodel.*
 
-enum class HomeFocusTicket { NONE, TAB_BAR, CONTENT_TOP, HOME_RESTORE }
-
 /**
  * ランチャー上部のタブ定義。タブ数とフォーカス要求リストのサイズを
  * 一致させるため、画面側と StateHolder 側でこの 1 箇所を共有する。
@@ -33,48 +31,6 @@ internal fun visibleHomeTabs(hideAppsTab: Boolean): List<String> =
  * 先に準備が整った場合はこの値は使われない。
  */
 internal const val TAB_CONTENT_READY_FALLBACK_MS = 300L
-
-@Stable
-class HomeFocusTicketManager {
-    var currentTicket by mutableStateOf(HomeFocusTicket.NONE)
-        private set
-    var issueTime by mutableLongStateOf(0L)
-        private set
-
-    var targetSection by mutableStateOf<String?>(null)
-        private set
-    var targetItemId by mutableStateOf<String?>(null)
-        private set
-
-    fun issue(ticket: HomeFocusTicket) {
-        currentTicket = ticket
-        issueTime = System.currentTimeMillis()
-        Log.i("KomorebiFocus", "🎟️ HomeTicket ISSUED: $ticket")
-    }
-
-    fun issueForHomeRestore(section: String, itemId: String) {
-        targetSection = section
-        targetItemId = itemId
-        currentTicket = HomeFocusTicket.HOME_RESTORE
-        issueTime = System.currentTimeMillis()
-        Log.i(
-            "KomorebiFocus",
-            "🎟️ HomeTicket ISSUED: HOME_RESTORE (Section: $section, ItemID: $itemId)"
-        )
-    }
-
-    fun consume(ticket: HomeFocusTicket) {
-        if (currentTicket == ticket) {
-            Log.i("KomorebiFocus", "🗑️ HomeTicket CONSUMED: $ticket")
-            currentTicket = HomeFocusTicket.NONE
-            targetSection = null
-            targetItemId = null
-        }
-    }
-}
-
-@Composable
-fun rememberHomeFocusTicketManager() = remember { HomeFocusTicketManager() }
 
 /**
  * HomeLauncherScreen の UI状態とビジネスロジックを管理する State Holder

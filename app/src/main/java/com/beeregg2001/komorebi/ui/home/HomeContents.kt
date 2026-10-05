@@ -66,10 +66,10 @@ fun HomeContents(
     lastFocusedChannelId: String? = null,
     lastFocusedProgramId: String? = null,
     isTopNavFocused: Boolean = false,
-    ticketManager: HomeFocusTicketManager,
     homeViewModel: HomeViewModel,
     recordViewModel: RecordViewModel = hiltViewModel(),
     timeFormat: String,
+    focusMemory: FocusMemory,
 ) {
     val lazyListState = rememberLazyListState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
@@ -144,22 +144,19 @@ fun HomeContents(
             list
         }
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
-        if (ticketManager.currentTicket == HomeFocusTicket.HOME_RESTORE) {
-            val targetSection = ticketManager.targetSection
-            if (targetSection != null) {
-                val index = availableSections.indexOf(targetSection)
-                if (index != -1) {
-                    Log.i(
-                        "KomorebiFocus",
-                        "[$TAG] 第1段階: 対象セクション($targetSection) インデックス $index へ縦スクロール"
-                    )
-                    delay(50)
-                    lazyListState.scrollToItem(index)
-                    delay(200)
-                }
+    LaunchedEffect(focusMemory.lastFocusedSection) {
+        val targetSection = focusMemory.lastFocusedSection
+        if (targetSection != null) {
+            val index = availableSections.indexOf(targetSection)
+            if (index != -1) {
+                Log.i(
+                    "KomorebiFocus",
+                    "[$TAG] 第1段階: 対象セクション($targetSection) インデックス $index へ縦スクロール"
+                )
+                delay(50)
+                lazyListState.scrollToItem(index)
+                delay(200)
             }
-            ticketManager.consume(HomeFocusTicket.HOME_RESTORE)
         }
     }
 
@@ -224,9 +221,9 @@ fun HomeContents(
                             contentFirstItemRequester = if (availableSections.firstOrNull() == "lastWatched") externalFocusRequester else null,
                             onChannelClick = onChannelClick,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
-                            ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
-                            sectionId = "lastWatched"
+                            sectionId = "lastWatched",
+                            focusMemory = focusMemory
                         )
                     }
                 }
@@ -240,9 +237,9 @@ fun HomeContents(
                             contentFirstItemRequester = if (availableSections.firstOrNull() == "hot") externalFocusRequester else null,
                             onChannelClick = onChannelClick,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
-                            ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
-                            sectionId = "hot"
+                            sectionId = "hot",
+                            focusMemory = focusMemory
                         )
                     }
                 }
@@ -259,10 +256,10 @@ fun HomeContents(
                             onProgramClick = onProgramClick,
                             onNavigateToTab = onNavigateToTab,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
-                            ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
                             sectionId = "pickup",
-                            timeFormat = timeFormat
+                            timeFormat = timeFormat,
+                            focusMemory = focusMemory
                         )
                     }
                 }
@@ -270,16 +267,16 @@ fun HomeContents(
                     item(key = "section_history") {
                         WatchHistorySection(
                             watchHistory = watchHistory,
-                            recentRecordings = recentRecordings, // ★ 追加: サムネイル用データを渡す
+                            recentRecordings = recentRecordings,
                             konomiIp = konomiIp,
                             konomiPort = konomiPort,
                             modifier = if (topSection == "history") upToTabModifier else Modifier,
                             contentFirstItemRequester = if (availableSections.firstOrNull() == "history") externalFocusRequester else null,
                             onHistoryClick = onHistoryClick,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
-                            ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
-                            sectionId = "history"
+                            sectionId = "history",
+                            focusMemory = focusMemory
                         )
                     }
                 }
@@ -294,10 +291,10 @@ fun HomeContents(
                             onReserveClick = onReserveClick,
                             onNavigateToTab = onNavigateToTab,
                             onUpdateHeroInfo = { pendingHeroInfo = it },
-                            ticketManager = ticketManager,
                             homeViewModel = homeViewModel,
                             sectionId = "upcoming",
-                            timeFormat = timeFormat
+                            timeFormat = timeFormat,
+                            focusMemory = focusMemory
                         )
                     }
                 }
