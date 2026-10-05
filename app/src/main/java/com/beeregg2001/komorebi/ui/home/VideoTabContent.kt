@@ -84,6 +84,8 @@ fun VideoTabContent(
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
+    val genreRowState = rememberLazyListState()
+    val seriesRowState = rememberLazyListState()
     val recordingsRequester = remember { FocusRequester() }
     val onAirRequester = contentFirstItemRequester
     val smbRequester = remember { FocusRequester() }
@@ -123,6 +125,11 @@ fun VideoTabContent(
     }
     val recentProgramIds = remember(recentItems) { recentItems.map { it.id.toString() } }
     val historyProgramIds = remember(historyItems) { historyItems.map { it.program.id.toString() } }
+    val recentFocus = rememberVideoRowFocus(recentProgramIds, recentRowState)
+    val historyFocus = rememberVideoRowFocus(historyProgramIds, historyRowState)
+    val genreFocus = rememberVideoRowFocus(genreList.map { it ?: "All" }, genreRowState)
+    val seriesFocus = rememberVideoRowFocus(seriesPreviewItems.map { it.displayTitle }, seriesRowState)
+
 
     val initialHeroInfo = remember {
         HomeHeroInfo(
@@ -354,6 +361,7 @@ fun VideoTabContent(
                             )
                             LazyRow(
                                 state = recentRowState,
+                                modifier = recentFocus.groupModifier(),
                                 contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
@@ -420,7 +428,9 @@ fun VideoTabContent(
                                         },
                                         isCurrentlyRecording = isCurrentlyRecording,
                                         allowNetworkImages = isNetworkAvailable,
-                                        modifier = Modifier.focusProperties {
+                                        modifier = Modifier
+                                            .then(recentFocus.itemModifier(program.id.toString()))
+                                            .focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
                                                 if (index == recentItems.lastIndex) right =
                                                     FocusRequester.Cancel
@@ -443,6 +453,7 @@ fun VideoTabContent(
                             )
                             LazyRow(
                                 state = historyRowState,
+                                modifier = historyFocus.groupModifier(),
                                 contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
@@ -510,7 +521,9 @@ fun VideoTabContent(
                                                     .coerceIn(0f, 1f) else null
                                             )
                                         },
-                                        modifier = Modifier.focusProperties {
+                                        modifier = Modifier
+                                            .then(historyFocus.itemModifier(historyProgramId))
+                                            .focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
                                                 if (index == historyItems.lastIndex) right =
                                                     FocusRequester.Cancel
@@ -533,6 +546,8 @@ fun VideoTabContent(
                                 modifier = Modifier.padding(horizontal = 48.dp)
                             )
                             LazyRow(
+                                state = genreRowState,
+                                modifier = genreFocus.groupModifier(),
                                 contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
@@ -544,6 +559,7 @@ fun VideoTabContent(
                                     Surface(
                                         onClick = { recordViewModel.updateSeriesGenre(genre) },
                                         modifier = Modifier
+                                            .then(genreFocus.itemModifier(genre ?: "All"))
                                             .height(40.dp)
                                             .focusProperties {
                                                 if (index == 0) left = FocusRequester.Cancel
@@ -593,6 +609,8 @@ fun VideoTabContent(
                             }
                             Spacer(Modifier.height(16.dp))
                             LazyRow(
+                                state = seriesRowState,
+                                modifier = seriesFocus.groupModifier(),
                                 contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
@@ -627,7 +645,9 @@ fun VideoTabContent(
                                                 tag = "シリーズ"
                                             )
                                         },
-                                        modifier = Modifier.focusProperties {
+                                        modifier = Modifier
+                                            .then(seriesFocus.itemModifier(series.displayTitle))
+                                            .focusProperties {
                                             if (index == 0) left = FocusRequester.Cancel
                                             if (index == seriesPreviewItems.lastIndex) right =
                                                 FocusRequester.Cancel
