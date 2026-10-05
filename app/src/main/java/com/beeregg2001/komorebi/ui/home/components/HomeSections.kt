@@ -14,9 +14,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.foundation.lazy.LazyListState
+import com.beeregg2001.komorebi.ui.home.HomeFocusRequest
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -37,6 +37,29 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalIcon
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
+
+/** Scroll only for an explicit command, then let its attached card request focus. */
+@Composable
+internal fun restoredRowRequest(
+    ids: List<String>,
+    rowState: LazyListState,
+    memory: FocusMemory,
+    sectionId: String,
+): HomeFocusRequest? {
+    var ready by remember { mutableStateOf<HomeFocusRequest?>(null) }
+    val request = memory.request
+    LaunchedEffect(request?.id, memory.preparedId, ids) {
+        ready = null
+        if (request?.section != sectionId || memory.preparedId != request.id || ids.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val index = ids.indexOf(request.itemId).takeIf { it >= 0 } ?: 0
+        rowState.scrollToItem(index)
+        withFrameNanos { }
+        if (memory.request?.id == request.id) ready = request.copy(itemId = ids[index])
+    }
+    return ready?.takeIf { it.id == request?.id }
+}
 
 @Composable
 fun SectionHeader(title: String, icon: ImageVector, modifier: Modifier = Modifier) {
@@ -93,16 +116,11 @@ fun LastWatchedSection(
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
     homeViewModel: HomeViewModel,
     sectionId: String,
-    focusMemory: FocusMemory? = null
+    focusMemory: FocusMemory
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-        if (focusMemory?.lastFocusedSection == sectionId) {
-            val index = channels.indexOfFirst { it.id == focusMemory.lastFocusedItemId }
-            if (index != -1) rowState.scrollToItem(index)
-        }
-    }
+    val restoreRequest = restoredRowRequest(channels.map { it.id }, rowState, focusMemory, sectionId)
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
@@ -122,13 +140,13 @@ fun LastWatchedSection(
                 }
 
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-                    if (focusMemory?.lastFocusedSection == sectionId &&
-                        focusMemory.lastFocusedItemId == channel.id
+                LaunchedEffect(restoreRequest?.id) {
+                    if (restoreRequest?.section == sectionId &&
+                        restoreRequest.itemId == channel.id
                     ) {
-                        delay(150)
-                        specificRequester.safeRequestFocusWithRetry("HomeRestore_LastWatched")
-                        homeViewModel.clearFocusMemory()
+                        if (specificRequester.safeRequestFocusWithRetry("HomeRestore_LastWatched")) {
+                            focusMemory.consume(restoreRequest.id)
+                        }
                     }
                 }
 
@@ -186,16 +204,11 @@ fun HotChannelSection(
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
     homeViewModel: HomeViewModel,
     sectionId: String,
-    focusMemory: FocusMemory? = null
+    focusMemory: FocusMemory
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-        if (focusMemory?.lastFocusedSection == sectionId) {
-            val index = hotChannels.indexOfFirst { it.channel.id == focusMemory.lastFocusedItemId }
-            if (index != -1) rowState.scrollToItem(index)
-        }
-    }
+    val restoreRequest = restoredRowRequest(hotChannels.map { it.channel.id }, rowState, focusMemory, sectionId)
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
@@ -211,13 +224,13 @@ fun HotChannelSection(
         ) {
             itemsIndexed(hotChannels, key = { _, it -> "hot_${it.channel.id}" }) { index, uiState ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-                    if (focusMemory?.lastFocusedSection == sectionId &&
-                        focusMemory.lastFocusedItemId == uiState.channel.id
+                LaunchedEffect(restoreRequest?.id) {
+                    if (restoreRequest?.section == sectionId &&
+                        restoreRequest.itemId == uiState.channel.id
                     ) {
-                        delay(150)
-                        specificRequester.safeRequestFocusWithRetry("HomeRestore_Hot")
-                        homeViewModel.clearFocusMemory()
+                        if (specificRequester.safeRequestFocusWithRetry("HomeRestore_Hot")) {
+                            focusMemory.consume(restoreRequest.id)
+                        }
                     }
                 }
 
@@ -273,17 +286,11 @@ fun WatchHistorySection(
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
     homeViewModel: HomeViewModel,
     sectionId: String,
-    focusMemory: FocusMemory? = null
+    focusMemory: FocusMemory
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-        if (focusMemory?.lastFocusedSection == sectionId) {
-            val index =
-                watchHistory.indexOfFirst { it.program.id.toString() == focusMemory.lastFocusedItemId }
-            if (index != -1) rowState.scrollToItem(index)
-        }
-    }
+    val restoreRequest = restoredRowRequest(watchHistory.map { it.program.id.toString() }, rowState, focusMemory, sectionId)
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
@@ -301,13 +308,13 @@ fun WatchHistorySection(
                 watchHistory,
                 key = { _, it -> "hist_${it.program.id}" }) { index, history ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-                    if (focusMemory?.lastFocusedSection == sectionId &&
-                        focusMemory.lastFocusedItemId == history.program.id.toString()
+                LaunchedEffect(restoreRequest?.id) {
+                    if (restoreRequest?.section == sectionId &&
+                        restoreRequest.itemId == history.program.id.toString()
                     ) {
-                        delay(150)
-                        specificRequester.safeRequestFocusWithRetry("HomeRestore_History")
-                        homeViewModel.clearFocusMemory()
+                        if (specificRequester.safeRequestFocusWithRetry("HomeRestore_History")) {
+                            focusMemory.consume(restoreRequest.id)
+                        }
                     }
                 }
 
@@ -373,17 +380,11 @@ fun UpcomingReserveSection(
     homeViewModel: HomeViewModel,
     sectionId: String,
     timeFormat: String,
-    focusMemory: FocusMemory? = null
+    focusMemory: FocusMemory
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-        if (focusMemory?.lastFocusedSection == sectionId) {
-            val index =
-                upcomingReserves.indexOfFirst { it.id.toString() == focusMemory.lastFocusedItemId }
-            if (index != -1) rowState.scrollToItem(index)
-        }
-    }
+    val restoreRequest = restoredRowRequest(upcomingReserves.map { it.id.toString() }, rowState, focusMemory, sectionId)
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
@@ -399,13 +400,13 @@ fun UpcomingReserveSection(
         ) {
             itemsIndexed(upcomingReserves, key = { _, it -> "res_${it.id}" }) { index, reserve ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-                    if (focusMemory?.lastFocusedSection == sectionId &&
-                        focusMemory.lastFocusedItemId == reserve.id.toString()
+                LaunchedEffect(restoreRequest?.id) {
+                    if (restoreRequest?.section == sectionId &&
+                        restoreRequest.itemId == reserve.id.toString()
                     ) {
-                        delay(150)
-                        specificRequester.safeRequestFocusWithRetry("HomeRestore_Reserve")
-                        homeViewModel.clearFocusMemory()
+                        if (specificRequester.safeRequestFocusWithRetry("HomeRestore_Reserve")) {
+                            focusMemory.consume(restoreRequest.id)
+                        }
                     }
                 }
 
@@ -470,16 +471,11 @@ fun GenrePickupSection(
     homeViewModel: HomeViewModel,
     sectionId: String,
     timeFormat: String,
-    focusMemory: FocusMemory? = null
+    focusMemory: FocusMemory
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-        if (focusMemory?.lastFocusedSection == sectionId) {
-            val index = genrePickup.indexOfFirst { it.first.id == focusMemory.lastFocusedItemId }
-            if (index != -1) rowState.scrollToItem(index)
-        }
-    }
+    val restoreRequest = restoredRowRequest(genrePickup.map { it.first.id }, rowState, focusMemory, sectionId)
 
     Column(modifier = Modifier.animateContentSize()) {
         val timePrefix = when (pickupTimeSlot) {
@@ -500,13 +496,13 @@ fun GenrePickupSection(
                 genrePickup,
                 key = { _, it -> "pick_${it.first.id}" }) { index, (program, channelName) ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-                    if (focusMemory?.lastFocusedSection == sectionId &&
-                        focusMemory.lastFocusedItemId == program.id
+                LaunchedEffect(restoreRequest?.id) {
+                    if (restoreRequest?.section == sectionId &&
+                        restoreRequest.itemId == program.id
                     ) {
-                        delay(150)
-                        specificRequester.safeRequestFocusWithRetry("HomeRestore_Pickup")
-                        homeViewModel.clearFocusMemory()
+                        if (specificRequester.safeRequestFocusWithRetry("HomeRestore_Pickup")) {
+                            focusMemory.consume(restoreRequest.id)
+                        }
                     }
                 }
 
@@ -565,16 +561,11 @@ fun LauncherAppSection(
     onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
     homeViewModel: HomeViewModel,
     sectionId: String,
-    focusMemory: FocusMemory? = null
+    focusMemory: FocusMemory
 ) {
     val rowState = rememberLazyListState()
 
-    LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-        if (focusMemory?.lastFocusedSection == sectionId) {
-            val index = apps.indexOfFirst { it.stableId == focusMemory.lastFocusedItemId }
-            if (index != -1) rowState.scrollToItem(index)
-        }
-    }
+    val restoreRequest = restoredRowRequest(apps.map { it.stableId }, rowState, focusMemory, sectionId)
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
@@ -590,13 +581,13 @@ fun LauncherAppSection(
         ) {
             itemsIndexed(apps, key = { _, it -> "app_${it.stableId}" }) { index, app ->
                 val specificRequester = remember { FocusRequester() }
-                LaunchedEffect(focusMemory?.lastFocusedSection, focusMemory?.lastFocusedItemId) {
-                    if (focusMemory?.lastFocusedSection == sectionId &&
-                        focusMemory.lastFocusedItemId == app.stableId
+                LaunchedEffect(restoreRequest?.id) {
+                    if (restoreRequest?.section == sectionId &&
+                        restoreRequest.itemId == app.stableId
                     ) {
-                        delay(150)
-                        specificRequester.safeRequestFocusWithRetry("HomeRestore_App")
-                        homeViewModel.clearFocusMemory()
+                        if (specificRequester.safeRequestFocusWithRetry("HomeRestore_App")) {
+                            focusMemory.consume(restoreRequest.id)
+                        }
                     }
                 }
 

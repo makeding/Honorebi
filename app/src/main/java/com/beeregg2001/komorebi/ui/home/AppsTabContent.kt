@@ -85,6 +85,7 @@ fun AppsTabContent(
     tabFocusRequester: FocusRequester,
     contentFirstItemRequester: FocusRequester,
     onUiReady: () -> Unit,
+    focusMemory: FocusMemory,
     settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
@@ -102,6 +103,7 @@ fun AppsTabContent(
     var isHiddenCatalog by remember { mutableStateOf(false) }
     var hasEnteredCatalog by remember { mutableStateOf(false) }
     var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
+    var pendingFocusAppIndex by remember { mutableStateOf<Int?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val gridState = rememberLazyGridState()
     val context = LocalContext.current.applicationContext
@@ -156,26 +158,23 @@ fun AppsTabContent(
         if (isFirstItemRendered.value) onUiReady()
     }
 
-    LaunchedEffect(pendingFocusAppId, catalogApps) {
-        val targetId = pendingFocusAppId
-        if (targetId != null) {
-            val index = catalogApps.indexOfFirst { it.stableId == targetId }
-            if (index != -1) {
-                Log.i(
-                    "KomorebiFocus",
-                    "[$TAG] AppsRestore: 記憶したアプリ($targetId) インデックス $index へ復帰"
-                )
-                gridState.scrollToItem(index)
-                delay(100)
-                val requester = appFocusRequesters[targetId]
-                if (index == 0 || requester == null) {
-                    contentFirstItemRequester.safeRequestFocusWithRetry("AppsRestore_First")
-                } else {
-                    requester.safeRequestFocusWithRetry("AppsRestore")
-                }
-                homeViewModel.clearFocusMemory()
+    LaunchedEffect(focusMemory.requestId, catalogApps) {
+        val request = focusMemory.request ?: return@LaunchedEffect
+        if (request.section != "apps") return@LaunchedEffect
+        val index = catalogApps.indexOfFirst { it.stableId == request.itemId }
+            .takeIf { it >= 0 } ?: 0
+        if (catalogApps.isEmpty()) {
+            if (tabFocusRequester.safeRequestFocusWithRetry("AppsRestore_Empty")) {
+                focusMemory.consume(request.id)
             }
-            pendingFocusAppId = null
+        } else {
+            gridState.scrollToItem(index)
+            androidx.compose.runtime.withFrameNanos { }
+            val requester = if (index == 0) contentFirstItemRequester
+                else appFocusRequesters.getOrPut(catalogApps[index].stableId) { FocusRequester() }
+            if (requester.safeRequestFocusWithRetry("AppsRestore")) {
+                focusMemory.consume(request.id)
+            }
         }
     }
 
@@ -195,26 +194,30 @@ fun AppsTabContent(
         )
     }
 
-    LaunchedEffect(pendingFocusAppId, catalogApps) {
+    LaunchedEffect(pendingFocusAppId, pendingFocusAppIndex, catalogApps) {
         val targetId = pendingFocusAppId ?: return@LaunchedEffect
-        delay(60)
-        val targetIndex = catalogApps.indexOfFirst { it.stableId == targetId }
-        if (targetIndex == 0) {
-            appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMovedFirst")
-                ?: contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFirst")
-        } else if (targetIndex > 0) {
-            gridState.animateScrollToItem(targetIndex)
-            delay(60)
-            appFocusRequesters[targetId]?.safeRequestFocusWithRetry("AppsEditMoved")
-                ?: contentFirstItemRequester.safeRequestFocusWithRetry("AppsEditMovedFallback")
+        val index = catalogApps.indexOfFirst { it.stableId == targetId }
+        if (index < 0) {
+            pendingFocusAppId = null
+            pendingFocusAppIndex = null
+            return@LaunchedEffect
         }
-        pendingFocusAppId = null
+        if (index != pendingFocusAppIndex) return@LaunchedEffect
+        gridState.scrollToItem(index)
+        androidx.compose.runtime.withFrameNanos { }
+        val requester = if (index == 0) contentFirstItemRequester
+            else appFocusRequesters.getOrPut(targetId) { FocusRequester() }
+        if (requester.safeRequestFocusWithRetry("AppsEditMoved")) {
+            pendingFocusAppId = null
+            pendingFocusAppIndex = null
+        }
     }
 
     fun moveVisibleApp(appIndex: Int, delta: Int) {
         val app = apps.getOrNull(appIndex) ?: return
         val targetIndex = (appIndex + delta).coerceIn(0, apps.lastIndex)
         if (targetIndex == appIndex) return
+        pendingFocusAppIndex = targetIndex
         pendingFocusAppId = app.stableId
         homeViewModel.moveLauncherApp(app, targetIndex - appIndex)
     }

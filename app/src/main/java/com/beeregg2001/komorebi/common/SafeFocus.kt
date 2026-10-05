@@ -28,12 +28,12 @@ suspend fun FocusRequester.safeRequestFocusWithRetry(
     tag: String = "KomorebiFocus",
     maxRetries: Int = 5,
     delayMillis: Long = 100
-) {
+): Boolean {
     for (i in 0 until maxRetries) {
         try {
             if (this.requestFocus()) {
                 if (i > 0) Log.i(tag, "Focus successfully attached after ${i + 1} attempts.")
-                return
+                return true
             }
             if (i == maxRetries - 1) {
                 Log.e(tag, "Final attempt failed: focus request was rejected after $maxRetries attempts.")
@@ -50,4 +50,5 @@ suspend fun FocusRequester.safeRequestFocusWithRetry(
             }
         }
     }
+    return false
 }

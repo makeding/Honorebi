@@ -29,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.home.components.*
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
@@ -144,19 +145,19 @@ fun HomeContents(
             list
         }
 
-    LaunchedEffect(focusMemory.lastFocusedSection) {
-        val targetSection = focusMemory.lastFocusedSection
-        if (targetSection != null) {
-            val index = availableSections.indexOf(targetSection)
-            if (index != -1) {
-                Log.i(
-                    "KomorebiFocus",
-                    "[$TAG] 第1段階: 対象セクション($targetSection) インデックス $index へ縦スクロール"
-                )
-                delay(50)
-                lazyListState.scrollToItem(index)
-                delay(200)
+    LaunchedEffect(focusMemory.requestId, availableSections) {
+        val request = focusMemory.request ?: return@LaunchedEffect
+        val section = request.section ?: return@LaunchedEffect
+        val index = availableSections.indexOf(section)
+        if (index < 0) {
+            val fallback = if (availableSections.isEmpty()) tabFocusRequester else externalFocusRequester
+            if (fallback.safeRequestFocusWithRetry("HomeRestore_MissingSection")) {
+                focusMemory.consume(request.id)
             }
+        } else {
+            lazyListState.scrollToItem(index)
+            androidx.compose.runtime.withFrameNanos { }
+            focusMemory.prepare(request.id)
         }
     }
 

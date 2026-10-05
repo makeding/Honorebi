@@ -30,7 +30,6 @@ import com.beeregg2001.komorebi.ui.theme.StatusWarningColor
 import com.beeregg2001.komorebi.ui.theme.TvCardFamily
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
-import com.beeregg2001.komorebi.ui.theme.tvFocusAnimation
 import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -131,8 +130,7 @@ fun ReserveCard(
         modifier = modifier
             .fillMaxWidth()
             .height(110.dp)
-            .onFocusChanged { isFocused = it.isFocused }
-            .tvFocusAnimation(isFocused, focusSpec.focusedScale),
+            .onFocusChanged { isFocused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(

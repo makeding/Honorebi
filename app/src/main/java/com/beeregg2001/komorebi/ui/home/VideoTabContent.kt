@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.*
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -40,18 +41,15 @@ import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.home.components.*
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import com.beeregg2001.komorebi.ui.video.FocusTicket
-import com.beeregg2001.komorebi.ui.video.FocusTicketManager
-import com.beeregg2001.komorebi.ui.video.rememberFocusTicketManager
 import com.beeregg2001.komorebi.viewmodel.RecordViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
 import java.time.OffsetDateTime
 import com.beeregg2001.komorebi.data.util.toDeviceTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private const val TAG = "VideoTabContent"
+
+private enum class VideoBannerFocus { RECORDINGS, ON_AIR, SMB }
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -86,6 +84,12 @@ fun VideoTabContent(
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
+    val recordingsRequester = remember { FocusRequester() }
+    val onAirRequester = contentFirstItemRequester
+    val smbRequester = remember { FocusRequester() }
+    val cardFocusRequesters = remember { mutableStateMapOf<VideoCardFocus, FocusRequester>() }
+    var lastFocusedCard by remember { mutableStateOf<VideoCardFocus?>(null) }
+    var lastFocusedBanner by remember { mutableStateOf(VideoBannerFocus.ON_AIR) }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val groupedSeries by recordViewModel.groupedSeries.collectAsState()
@@ -117,6 +121,8 @@ fun VideoTabContent(
             else groupedSeries[selectedGenre].orEmpty().asSequence()
         source.take(20).toList()
     }
+    val recentProgramIds = remember(recentItems) { recentItems.map { it.id.toString() } }
+    val historyProgramIds = remember(historyItems) { historyItems.map { it.program.id.toString() } }
 
     val initialHeroInfo = remember {
         HomeHeroInfo(
@@ -145,6 +151,9 @@ fun VideoTabContent(
 
     LaunchedEffect(isTopNavFocused) {
         if (isTopNavFocused) {
+            // The tab bar can regain focus while this lazy list is showing a lower
+            // row.  Returning to the first row keeps the next Down on On Air.
+            listState.scrollToItem(0)
             pendingHeroInfo = initialHeroInfo
             focusedProgramId = null
         }
@@ -169,19 +178,60 @@ fun VideoTabContent(
         }
     }
 
-    LaunchedEffect(aiFocusReturnTick) {
-        if (aiFocusReturnTick > 0) {
-            delay(150)
-            contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabFallbackAiReturn")
-            onAiReturnConsumed()
+    suspend fun restoreVideoFocus(requestedProgramId: String?, fallbackToLastBanner: Boolean): Boolean {
+        val target = VideoFocusPolicy.restoreTarget(
+            requestedProgramId = requestedProgramId,
+            priorTarget = lastFocusedCard,
+            recentProgramIds = recentProgramIds,
+            historyProgramIds = historyProgramIds,
+        )
+        if (target != null) {
+            val rowIndex = VideoFocusPolicy.rowItemIndex(target, recentProgramIds, historyProgramIds)
+            if (rowIndex >= 0) {
+                // Create the stable requester before scrolling.  The lazily composed
+                // card below reads this same instance once its row becomes visible.
+                val requester = cardFocusRequesters.getOrPut(target) { FocusRequester() }
+                listState.scrollToItem(VideoFocusPolicy.columnItemIndex(target, recentItems.isNotEmpty()))
+                when (target.row) {
+                    VideoFocusRow.RECENT -> recentRowState.scrollToItem(maxOf(0, rowIndex - 1))
+                    VideoFocusRow.HISTORY -> historyRowState.scrollToItem(maxOf(0, rowIndex - 1))
+                }
+                withFrameNanos { } // Let the row attach the keyed card before asking it for focus.
+                if (requester.safeRequestFocusWithRetry("VideoTabRestore_${target.row}_${target.programId}")) {
+                    return true
+                }
+            }
         }
+
+        val fallback = if (fallbackToLastBanner) {
+            when (lastFocusedBanner) {
+                VideoBannerFocus.RECORDINGS -> recordingsRequester
+                VideoBannerFocus.ON_AIR -> onAirRequester
+                VideoBannerFocus.SMB -> smbRequester
+            }
+        } else {
+            onAirRequester
+        }
+        listState.scrollToItem(0)
+        withFrameNanos { }
+        return fallback.safeRequestFocusWithRetry("VideoTabRestoreFallback")
     }
 
-    LaunchedEffect(isReturningFromPlayer) {
-        if (isReturningFromPlayer) {
-            delay(200)
-            contentFirstItemRequester.safeRequestFocusWithRetry("VideoTabFallback")
-            onReturnFocusConsumed()
+    // Player and AI returns are deliberately serialized here: scroll the target row,
+    // then request the attached keyed card.  Neither card composition nor a second
+    // effect is allowed to race this restore.
+    LaunchedEffect(aiFocusReturnTick, isReturningFromPlayer, recentProgramIds, historyProgramIds) {
+        when {
+            isReturningFromPlayer -> {
+                if (restoreVideoFocus(lastPlayedProgramId, fallbackToLastBanner = false)) {
+                    onReturnFocusConsumed()
+                }
+            }
+            aiFocusReturnTick > 0 -> {
+                if (restoreVideoFocus(requestedProgramId = null, fallbackToLastBanner = true)) {
+                    onAiReturnConsumed()
+                }
+            }
         }
     }
 
@@ -211,8 +261,6 @@ fun VideoTabContent(
         ) {
                 // ★ 変更点: 録画リスト・放送中・SMBのボタンを並べて表示する
                 item {
-                    val onAirRequester = remember { FocusRequester() }
-                    val smbRequester = remember { FocusRequester() }
                     Row(
                         modifier = Modifier
                             .padding(start = 48.dp, top = 12.dp, end = 48.dp)
@@ -222,7 +270,7 @@ fun VideoTabContent(
                         RecordListBannerButton(
                             modifier = Modifier
                                 .weight(1f)
-                                .focusRequester(contentFirstItemRequester)
+                                .focusRequester(recordingsRequester)
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = FocusRequester.Cancel
@@ -232,6 +280,8 @@ fun VideoTabContent(
                             onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
                             onFocus = {
                                 focusedProgramId = null
+                                lastFocusedCard = null
+                                lastFocusedBanner = VideoBannerFocus.RECORDINGS
                                 pendingHeroInfo = HomeHeroInfo(
                                     title = "録画リスト",
                                     subtitle = "すべての録画番組",
@@ -248,13 +298,15 @@ fun VideoTabContent(
                                 .focusRequester(onAirRequester)
                                 .then(upToTabModifier)
                                 .focusProperties {
-                                    left = contentFirstItemRequester
+                                    left = recordingsRequester
                                     right = smbRequester
                                     up = tabFocusRequester
                                 },
                             onClick = onShowOnAir,
                             onFocus = {
                                 focusedProgramId = null
+                                lastFocusedCard = null
+                                lastFocusedBanner = VideoBannerFocus.ON_AIR
                                 pendingHeroInfo = HomeHeroInfo(
                                     title = "放送中",
                                     subtitle = "現在放送中の番組から探す",
@@ -278,6 +330,8 @@ fun VideoTabContent(
                             onClick = { onShowSmbLibrary() },
                             onFocus = {
                                 focusedProgramId = null
+                                lastFocusedCard = null
+                                lastFocusedBanner = VideoBannerFocus.SMB
                                 pendingHeroInfo = HomeHeroInfo(
                                     title = "ファイルライブラリ",
                                     subtitle = "ネットワーク(SMB)上の動画を再生",
@@ -306,18 +360,25 @@ fun VideoTabContent(
                                 itemsIndexed(
                                     recentItems,
                                     key = { _, it -> "rec_${it.id}" }) { index, program ->
+                                    val focusTarget = remember(program.id) {
+                                        VideoCardFocus(VideoFocusRow.RECENT, program.id.toString())
+                                    }
+                                    val focusRequester = remember(focusTarget) {
+                                        cardFocusRequesters.getOrPut(focusTarget) { FocusRequester() }
+                                    }
                                     val isCurrentlyRecording =
                                         program.isRecording || program.recordedVideo.status == "Recording"
                                     VideoRecentRecordCard(
                                         program = program,
                                         history = historyByProgramId[program.id.toString()],
                                         konomiIp = konomiIp, konomiPort = konomiPort,
-                                        onReturnFocusConsumed = onReturnFocusConsumed,
+                                        focusRequester = focusRequester,
                                         timeFormat = timeFormat,
                                         onClick = {
                                             onProgramClick(program)
                                         },
                                         onFocus = {
+                                            lastFocusedCard = focusTarget
                                             focusedProgramId = program.id
                                             if (isNetworkAvailable) {
                                                 recordViewModel.fetchProgramDetail(program.id)
@@ -388,12 +449,19 @@ fun VideoTabContent(
                                 itemsIndexed(
                                     historyItems,
                                     key = { _, it -> "hist_${it.program.id}" }) { index, historyItem ->
+                                    val historyProgramId = historyItem.program.id.toString()
+                                    val focusTarget = remember(historyProgramId) {
+                                        VideoCardFocus(VideoFocusRow.HISTORY, historyProgramId)
+                                    }
+                                    val focusRequester = remember(focusTarget) {
+                                        cardFocusRequesters.getOrPut(focusTarget) { FocusRequester() }
+                                    }
                                     val matchedProgram =
                                         recentByProgramId[historyItem.program.id.toString()]
                                     VideoWatchHistoryCard(
                                         historyItem = historyItem, matchedProgram = matchedProgram,
                                         konomiIp = konomiIp, konomiPort = konomiPort,
-                                        onReturnFocusConsumed = onReturnFocusConsumed,
+                                        focusRequester = focusRequester,
                                         timeFormat = timeFormat,
                                         onClick = {
                                             val programToPlay =
@@ -402,6 +470,7 @@ fun VideoTabContent(
                                             onProgramClick(programToPlay)
                                         },
                                         onFocus = {
+                                            lastFocusedCard = focusTarget
                                             val videoId = matchedProgram?.id ?: try {
                                                 historyItem.program.id.toString().toInt()
                                             } catch (e: Exception) {

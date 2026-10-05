@@ -36,21 +36,15 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
-import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import com.beeregg2001.komorebi.ui.video.FocusTicket
-import com.beeregg2001.komorebi.ui.video.FocusTicketManager
 import com.beeregg2001.komorebi.viewmodel.SeriesInfo
 import com.beeregg2001.komorebi.ui.video.components.SeriesThumbnailCollage
-import kotlinx.coroutines.delay
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -64,7 +58,7 @@ fun VideoRecentRecordCard(
     onFocus: () -> Unit,
     modifier: Modifier = Modifier,
     isCurrentlyRecording: Boolean = false,
-    onReturnFocusConsumed: () -> Unit,
+    focusRequester: FocusRequester,
     timeFormat: String,
     allowNetworkImages: Boolean = true
 ) {
@@ -84,8 +78,6 @@ fun VideoRecentRecordCard(
     val progress = if (history != null && duration > 0 && history.playback_position > 5.0) {
         (history.playback_position / duration).toFloat().coerceIn(0f, 1f)
     } else null
-
-    val specificRequester = remember { FocusRequester() }
 
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
@@ -107,7 +99,7 @@ fun VideoRecentRecordCard(
         modifier = modifier
             .width(280.dp)
             .height(160.dp)
-            .focusRequester(specificRequester)
+            .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
         colors = ClickableSurfaceDefaults.colors(
@@ -221,7 +213,7 @@ fun VideoWatchHistoryCard(
     onClick: () -> Unit,
     onFocus: () -> Unit,
     modifier: Modifier = Modifier,
-    onReturnFocusConsumed: () -> Unit,
+    focusRequester: FocusRequester,
     timeFormat: String,
     allowNetworkImages: Boolean = true
 ) {
@@ -253,8 +245,6 @@ fun VideoWatchHistoryCard(
     val watchedPosition = historyItem.playback_position.coerceAtLeast(0.0).toLong()
     val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)
 
-    val specificRequester = remember { FocusRequester() }
-
     val context = LocalContext.current
     val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
         val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
@@ -275,7 +265,7 @@ fun VideoWatchHistoryCard(
         modifier = modifier
             .width(280.dp)
             .height(160.dp)
-            .focusRequester(specificRequester)
+            .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
         colors = ClickableSurfaceDefaults.colors(

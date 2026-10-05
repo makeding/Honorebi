@@ -30,7 +30,6 @@ import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
 import com.beeregg2001.komorebi.ui.theme.TvCardFamily
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
-import com.beeregg2001.komorebi.ui.theme.tvFocusAnimation
 import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 
 private fun formatTime(seconds: Long): String {
@@ -107,8 +106,7 @@ fun RecordedCard(
             .width(185.dp)
             .height(104.dp)
             .onFocusChanged { isFocused = it.isFocused }
-            .alpha(if (isPlayable) 1f else 0.5f)
-            .tvFocusAnimation(isFocused, focusSpec.focusedScale),
+            .alpha(if (isPlayable) 1f else 0.5f),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = if (isPlayable) focusSpec.focusedScale else 1.0f),
         colors = ClickableSurfaceDefaults.colors(

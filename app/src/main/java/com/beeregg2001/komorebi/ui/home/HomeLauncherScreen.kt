@@ -56,7 +56,6 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import androidx.compose.ui.platform.LocalFocusManager
 
 private const val TAG = "HomeLauncher"
 internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
@@ -256,7 +255,6 @@ fun HomeLauncherScreen(
     )
     val colors = KomorebiTheme.colors
 
-    val focusManager = LocalFocusManager.current
     val focusMemory = rememberFocusMemory()
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -446,7 +444,7 @@ fun HomeLauncherScreen(
                     if (section != null && itemId != null) {
                         focusMemory.remember(safeTabIndex, section, itemId)
                     } else {
-                        focusMemory.remember(safeTabIndex)
+                        focusMemory.requestContent(safeTabIndex)
                     }
                     onAiReturnConsumed()
                 }
@@ -575,18 +573,16 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(focusMemory.lastFocusedTab, focusMemory.lastFocusedSection) {
-        val section = focusMemory.lastFocusedSection
-        if (section != null) {
-            val currentTabName = tabs.getOrNull(safeTabIndex)
-            if (currentTabName == "ホーム" || currentTabName == "アプリ") {
-                delay(150)
-                firstContentRequesterFor(safeTabIndex)
-                    .safeRequestFocusWithRetry("FocusMemory_Restore")
-                if (isReturningFromPlayer) {
-                    onReturnFocusConsumed()
-                }
-            }
+    HomeEntryFocusEffect(
+        focusMemory,
+        tabRequester = { ui.tabFocusRequesters.getOrNull(it) },
+        contentRequester = ::firstContentRequesterFor,
+    )
+
+    LaunchedEffect(focusMemory.completedId) {
+        if (focusMemory.completedId > 0 && isReturningFromPlayer &&
+            tabs.getOrNull(safeTabIndex) !in listOf("ライブ", "ビデオ")) {
+            onReturnFocusConsumed()
         }
     }
 
@@ -903,7 +899,8 @@ fun HomeLauncherScreen(
                                 homeViewModel = homeViewModel,
                                 tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
-                                onUiReady = handleUiReady
+                                onUiReady = handleUiReady,
+                                focusMemory = focusMemory
                             )
                         }
 

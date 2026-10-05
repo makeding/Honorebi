@@ -31,7 +31,6 @@ import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
 import com.beeregg2001.komorebi.ui.theme.TvCardFamily
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
-import com.beeregg2001.komorebi.ui.theme.tvFocusAnimation
 import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -101,8 +100,7 @@ fun EpgSearchListItem(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
-            .onFocusChanged { isFocused = it.isFocused }
-            .tvFocusAnimation(isFocused, focusSpec.focusedScale),
+            .onFocusChanged { isFocused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(

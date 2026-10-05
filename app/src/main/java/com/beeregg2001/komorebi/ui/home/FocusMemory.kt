@@ -1,42 +1,69 @@
 package com.beeregg2001.komorebi.ui.home
 
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+
+/** A one-shot focus command; click identities remain in HomeViewModel. */
+data class HomeFocusRequest(
+    val id: Long,
+    val tab: Int,
+    val section: String? = null,
+    val itemId: String? = null,
+    val contentTop: Boolean = false,
+)
 
 @Stable
 class FocusMemory {
-    var lastFocusedTab by mutableIntStateOf(0)
-    var lastFocusedSection by mutableStateOf<String?>(null)
-    var lastFocusedItemId by mutableStateOf<String?>(null)
+    var request by mutableStateOf<HomeFocusRequest?>(null)
+        private set
+    var completedId by mutableStateOf(0L)
+        private set
+    var preparedId by mutableStateOf<Long?>(null)
+        private set
+    fun prepare(id: Long) {
+        if (request?.id == id) preparedId = id
+    }
+    private var nextId = 0L
+    val requestId get() = request?.id
 
     fun remember(tab: Int, section: String? = null, itemId: String? = null) {
-        lastFocusedTab = tab
-        lastFocusedSection = section
-        lastFocusedItemId = itemId
+        request = HomeFocusRequest(++nextId, tab, section, itemId)
     }
 
-    fun clear() {
-        lastFocusedSection = null
-        lastFocusedItemId = null
+    fun requestContent(tab: Int) {
+        request = HomeFocusRequest(++nextId, tab, contentTop = true)
+    }
+
+    fun consume(id: Long) {
+        if (request?.id == id) {
+            request = null
+            completedId = id
+        }
     }
 }
 
-val FocusMemorySaver = Saver<FocusMemory, List<Any?>>(
-    save = { listOf(it.lastFocusedTab, it.lastFocusedSection, it.lastFocusedItemId) },
-    restore = {
-        FocusMemory().apply {
-            lastFocusedTab = it[0] as Int
-            lastFocusedSection = it[1] as String?
-            lastFocusedItemId = it[2] as String?
-        }
-    }
-)
+@Composable
+fun rememberFocusMemory() = remember { FocusMemory() }
 
 @Composable
-fun rememberFocusMemory() = rememberSaveable(saver = FocusMemorySaver) { FocusMemory() }
+internal fun HomeEntryFocusEffect(
+    memory: FocusMemory,
+    tabRequester: (Int) -> FocusRequester?,
+    contentRequester: (Int) -> FocusRequester,
+) {
+    LaunchedEffect(memory.requestId) {
+        val request = memory.request ?: return@LaunchedEffect
+        if (request.section != null) return@LaunchedEffect
+        val requester = if (request.contentTop) contentRequester(request.tab) else tabRequester(request.tab)
+        if (requester?.safeRequestFocusWithRetry("HomeFocus_Entry") == true) {
+            memory.consume(request.id)
+        }
+    }
+}

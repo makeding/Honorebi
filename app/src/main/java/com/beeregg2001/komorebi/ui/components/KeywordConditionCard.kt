@@ -28,7 +28,6 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.TvCardFamily
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
-import com.beeregg2001.komorebi.ui.theme.tvFocusAnimation
 import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -120,8 +119,7 @@ fun KeywordConditionCard(
         modifier = modifier
             .fillMaxWidth()
             .height(68.dp)
-            .onFocusChanged { isFocused = it.isFocused }
-            .tvFocusAnimation(isFocused, focusSpec.focusedScale),
+            .onFocusChanged { isFocused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusListRow)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
