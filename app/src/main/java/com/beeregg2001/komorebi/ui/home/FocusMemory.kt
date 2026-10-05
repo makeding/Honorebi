@@ -9,6 +9,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.delay
 
 /** A one-shot focus command; click identities remain in HomeViewModel. */
 data class HomeFocusRequest(
@@ -51,6 +53,28 @@ class FocusMemory {
 
 @Composable
 fun rememberFocusMemory() = remember { FocusMemory() }
+
+/** Player/AI restoration owns screen entry; later overlay dismissal still restores focus. */
+@Composable
+internal fun HomeOverlayReturnFocusEffect(
+    isFullScreen: Boolean,
+    returnInProgress: Boolean,
+    onRestore: () -> Unit,
+) {
+    val enteredWithReturn = remember { returnInProgress }
+    var previousFullScreen by remember { mutableStateOf<Boolean?>(null) }
+    val currentReturning by rememberUpdatedState(returnInProgress)
+    val restore by rememberUpdatedState(onRestore)
+    LaunchedEffect(isFullScreen) {
+        val previous = previousFullScreen
+        previousFullScreen = isFullScreen
+        if (isFullScreen || currentReturning || (previous == null && enteredWithReturn)) {
+            return@LaunchedEffect
+        }
+        delay(300)
+        if (!currentReturning) restore()
+    }
+}
 
 @Composable
 internal fun HomeEntryFocusEffect(

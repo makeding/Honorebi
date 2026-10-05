@@ -63,12 +63,11 @@ fun RecordListOverlay(
 
     LaunchedEffect(
         ticketManager.currentTicket,
-        ticketManager.issueTime,
+        ticketManager.requestGeneration,
         menuState.isPaneListReady
     ) {
         if (ticketManager.currentTicket == FocusTicket.PANE && menuState.isPaneListReady) {
-            focuses.paneFirstItem.safeRequestFocus("Ticket_PANE")
-            ticketManager.consume(FocusTicket.PANE)
+            ticketManager.restore(FocusTicket.PANE, ticketManager.requestGeneration, focuses.paneFirstItem, "Ticket_PANE")
         }
     }
 

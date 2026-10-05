@@ -81,26 +81,27 @@ fun SmbListContent(
         onTopBarDownRequesterChanged(requester)
     }
 
-    LaunchedEffect(focusPath, items) {
+    LaunchedEffect(focusPath, items, ticketManager.requestGeneration) {
+        val generation = ticketManager.requestGeneration
         if (focusPath != null && items.isNotEmpty()) {
             val index = items.indexOfFirst { it.path == focusPath }
             if (index != -1) {
                 listState.scrollToItem(maxOf(0, index - 2))
                 delay(200)
-                itemFocusRequesters[focusPath]?.safeRequestFocusWithRetry("SMB_List_Focus")
-                onTargetFocusConsumed()
-                ticketManager.consume(FocusTicket.TARGET_ID)
+                if (ticketManager.restore(FocusTicket.TARGET_ID, generation, itemFocusRequesters[focusPath], "SMB_List_Focus")) {
+                    onTargetFocusConsumed()
+                }
             }
         }
     }
 
-    LaunchedEffect(ticketManager.currentTicket, items) {
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration, items) {
+        val generation = ticketManager.requestGeneration
         if (ticketManager.currentTicket == FocusTicket.LIST_TOP) {
             if (items.isNotEmpty()) {
                 listState.scrollToItem(0)
                 delay(150)
-                focuses.firstItem.safeRequestFocusWithRetry("SmbList_Top")
-                ticketManager.consume(FocusTicket.LIST_TOP)
+                ticketManager.restore(FocusTicket.LIST_TOP, generation, focuses.firstItem, "SmbList_Top")
             }
         }
     }
@@ -251,27 +252,28 @@ fun SmbGridContent(
         onTopBarDownRequesterChanged(requester)
     }
 
-    LaunchedEffect(focusPath, items) {
+    LaunchedEffect(focusPath, items, ticketManager.requestGeneration) {
+        val generation = ticketManager.requestGeneration
         if (focusPath != null && items.isNotEmpty()) {
             val index = items.indexOfFirst { it.path == focusPath }
             if (index != -1) {
                 val targetRowFirstIndex = index - (index % 4)
                 gridState.scrollToItem(maxOf(0, targetRowFirstIndex - 4))
                 delay(200)
-                itemFocusRequesters[focusPath]?.safeRequestFocusWithRetry("SMB_List_Focus")
-                onTargetFocusConsumed()
-                ticketManager.consume(FocusTicket.TARGET_ID)
+                if (ticketManager.restore(FocusTicket.TARGET_ID, generation, itemFocusRequesters[focusPath], "SMB_List_Focus")) {
+                    onTargetFocusConsumed()
+                }
             }
         }
     }
 
-    LaunchedEffect(ticketManager.currentTicket, items) {
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration, items) {
+        val generation = ticketManager.requestGeneration
         if (ticketManager.currentTicket == FocusTicket.LIST_TOP) {
             if (items.isNotEmpty()) {
                 gridState.scrollToItem(0)
                 delay(150)
-                focuses.firstItem.safeRequestFocusWithRetry("SmbGrid_Top")
-                ticketManager.consume(FocusTicket.LIST_TOP)
+                ticketManager.restore(FocusTicket.LIST_TOP, generation, focuses.firstItem, "SmbGrid_Top")
             }
         }
     }

@@ -56,6 +56,7 @@ internal fun OnAirDetail(
     ip: String, port: String,
     timeFormat: String,
     returnCell: String?, onRestored: () -> Unit, onProgram: (RecordedProgram) -> Unit, onBack: () -> Unit, modifier: Modifier,
+    waitingForPlayerReturn: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val matrix = remember(detail.programs) { buildSeriesEpisodeMatrix(detail.programs) }
@@ -170,13 +171,12 @@ internal fun OnAirDetail(
     }
 
     var autoFocused by remember(series.id) { mutableStateOf(false) }
-    LaunchedEffect(series.id, detail.programsStatus, returnCell) {
+    LaunchedEffect(series.id, detail.programsStatus, returnCell, waitingForPlayerReturn) {
         if (returnCell != null) {
             if (detail.programsStatus != OnAirLoadState.Ready) return@LaunchedEffect
             autoFocused = true
-            (cellRequesters[returnCell] ?: defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")
-            onRestored()
-        } else if (!autoFocused) {
+            if ((cellRequesters[returnCell] ?: defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")) onRestored()
+        } else if (!autoFocused && !waitingForPlayerReturn) {
             // 詳細は作品情報（hero）から始める。録画一覧へは Down、一覧へは Back。
             autoFocused = true
             summaryFocus.safeRequestFocusWithRetry("OnAirOpenDetail")

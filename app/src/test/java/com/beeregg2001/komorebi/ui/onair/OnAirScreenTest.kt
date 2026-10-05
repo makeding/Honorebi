@@ -131,6 +131,27 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-episode-$key").assertIsFocused()
     }
 
+    @Test fun playbackReturnAfterScreenRecreationKeepsEpisodeFocus() {
+        val vm = viewModel()
+        val visible = androidx.compose.runtime.mutableStateOf(true)
+        val returning = androidx.compose.runtime.mutableStateOf(false)
+        compose.setContent {
+            if (visible.value) KomorebiTheme {
+                OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), returning.value,
+                    { returning.value = false }, vm)
+            }
+        }
+        compose.onNodeWithTag("onair-series-1").confirm()
+        val key = "1:ch:episode:1:10"
+        compose.onNodeWithTag("onair-episode-$key").requestFocus().confirm()
+        compose.runOnIdle { visible.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { returning.value = true; visible.value = true }
+        compose.onNodeWithTag("onair-episode-$key").assertIsFocused()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.onNodeWithTag("onair-episode-$key").assertIsFocused()
+    }
+
     @Test fun seasonSelectorReturnsFocusWithoutOpeningOldDetails() {
         val vm = viewModel()
         compose.setContent { screen(vm) }

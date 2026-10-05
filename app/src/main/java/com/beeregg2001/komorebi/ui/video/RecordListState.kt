@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
 import com.beeregg2001.komorebi.ui.video.components.RecordCategory
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 
 enum class FocusTicket { NONE, LIST_TOP, NAV_PANE, PANE, TARGET_ID }
 
@@ -11,7 +12,7 @@ enum class FocusTicket { NONE, LIST_TOP, NAV_PANE, PANE, TARGET_ID }
 class FocusTicketManager {
     var currentTicket by mutableStateOf(FocusTicket.NONE)
         private set
-    var issueTime by mutableLongStateOf(0L)
+    var requestGeneration by mutableLongStateOf(0L)
         private set
     var targetProgramId by mutableStateOf<Int?>(null)
         private set
@@ -25,20 +26,28 @@ class FocusTicketManager {
         targetProgramId = programId
         targetPath = path
         currentTicket = ticket
-        issueTime = System.currentTimeMillis()
+        requestGeneration++
         Log.i(
             "KomorebiFocus",
             "🎟️ Ticket ISSUED: $ticket (TargetID: $programId, TargetPath: $path)"
         )
     }
 
-    fun consume(ticket: FocusTicket) {
-        if (currentTicket == ticket) {
+    fun consume(ticket: FocusTicket, generation: Long) {
+        if (currentTicket == ticket && requestGeneration == generation) {
             Log.i("KomorebiFocus", "🗑️ Ticket CONSUMED: $currentTicket")
             currentTicket = FocusTicket.NONE
             targetProgramId = null
             targetPath = null
         }
+    }
+
+    suspend fun restore(ticket: FocusTicket, generation: Long, requester: FocusRequester?, tag: String): Boolean {
+        val succeeded = requester?.safeRequestFocusWithRetry(tag, isCurrent = {
+            currentTicket == ticket && requestGeneration == generation
+        }) == true
+        if (succeeded) consume(ticket, generation)
+        return succeeded
     }
 
     fun triggerHardReset() {

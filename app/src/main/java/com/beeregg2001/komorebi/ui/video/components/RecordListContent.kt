@@ -123,7 +123,7 @@ fun RecordListContent(
     // 🌟 修正1: pagedRecordings.itemCount をキーに含めることで、非同期ロード後にも再評価されるようにする
     LaunchedEffect(
         ticketManager.currentTicket,
-        ticketManager.issueTime,
+        ticketManager.requestGeneration,
         pagedRecordings.itemCount
     ) {
         if (ticketManager.currentTicket == FocusTicket.TARGET_ID) {
@@ -134,11 +134,6 @@ fun RecordListContent(
             if (index != null) {
                 // 対象アイテムの1つ上から見えるようにスクロールする(フォーカス要求と同じ列挙順)。
                 listState.scrollToItem(maxOf(0, index - 1))
-            } else {
-                // 🌟 修正2: else ブロック( scrollToItem(0) )を削除。
-                // データがまだロードされていない時に強制的に一番上に戻されてしまうバグを防止します。
-                // RecordGridContent と同じ方針。チケットは放置せず消費しておく。
-                ticketManager.consume(FocusTicket.TARGET_ID)
             }
         } else if (ticketManager.currentTicket == FocusTicket.LIST_TOP) {
             listState.scrollToItem(0)
@@ -185,11 +180,11 @@ fun RecordListContent(
                     val specificRequester =
                         itemFocusRequesters.getOrPut(program.id) { FocusRequester() }
 
-                    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+                    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
                         val ticket = ticketManager.currentTicket
+                        val generation = ticketManager.requestGeneration
                         if (ticket == FocusTicket.TARGET_ID && program.id == ticketManager.targetProgramId) {
-                            specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID")
-                            ticketManager.consume(FocusTicket.TARGET_ID)
+                            ticketManager.restore(FocusTicket.TARGET_ID, generation, specificRequester, "Ticket_TARGET_ID")
                         }
                     }
 

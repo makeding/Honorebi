@@ -89,7 +89,7 @@ fun RecordSeriesGridContent(
         onFirstItemBound(isListReady && seriesList.isNotEmpty())
     }
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
         if (ticketManager.currentTicket == FocusTicket.TARGET_ID) {
             val targetId = ticketManager.targetProgramId
             val index = seriesList.indexOfFirst { it.representativeVideoId == targetId }
@@ -124,11 +124,11 @@ fun RecordSeriesGridContent(
                     val specificRequester = remember { FocusRequester() }
                     val isExpanded = expandedSeries.seriesId == series.seriesId
 
-                    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+                    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
                         val ticket = ticketManager.currentTicket
+                        val generation = ticketManager.requestGeneration
                         if (ticket == FocusTicket.TARGET_ID && series.representativeVideoId == ticketManager.targetProgramId) {
-                            specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_SeriesGrid")
-                            ticketManager.consume(FocusTicket.TARGET_ID)
+                            ticketManager.restore(FocusTicket.TARGET_ID, generation, specificRequester, "Ticket_TARGET_ID_SeriesGrid")
                         }
                     }
 

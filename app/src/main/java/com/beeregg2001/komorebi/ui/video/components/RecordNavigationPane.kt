@@ -35,10 +35,9 @@ fun RecordNavigationPane(
     val colors = KomorebiTheme.colors
     val categoryRequesters = remember { RecordCategory.values().associateWith { FocusRequester() } }
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
         if (ticketManager.currentTicket == FocusTicket.NAV_PANE) {
-            categoryRequesters[selectedCategory]?.safeRequestFocus("Ticket_NAV_PANE")
-            ticketManager.consume(FocusTicket.NAV_PANE)
+            ticketManager.restore(FocusTicket.NAV_PANE, ticketManager.requestGeneration, categoryRequesters[selectedCategory], "Ticket_NAV_PANE")
         }
     }
 

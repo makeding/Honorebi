@@ -313,7 +313,7 @@ fun RecordListScreen(
     val isNavOverlayVisible = !isListView && menuState.isNavPaneOpen
 
     val currentTicket = ticketManager.currentTicket
-    val issueTime = ticketManager.issueTime
+    val requestGeneration = ticketManager.requestGeneration
 
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {
@@ -328,30 +328,16 @@ fun RecordListScreen(
         }
     }
 
-    LaunchedEffect(currentTicket, issueTime, isListFirstItemReady, hasContent, isLoadingAny) {
+    LaunchedEffect(currentTicket, requestGeneration, isListFirstItemReady, hasContent, isLoadingAny) {
         when (currentTicket) {
             FocusTicket.LIST_TOP -> {
                 if (hasContent && isListFirstItemReady && !isLoadingAny) {
                     delay(150)
-                    focuses.firstItem.safeRequestFocusWithRetry("Ticket_LIST_TOP")
-                    ticketManager.consume(FocusTicket.LIST_TOP)
+                    ticketManager.restore(FocusTicket.LIST_TOP, requestGeneration, focuses.firstItem, "Ticket_LIST_TOP")
                 } else if (!hasContent && !isLoadingAny) {
                     delay(150)
-                    if (isListView) focuses.navPane.safeRequestFocusWithRetry("Ticket_EmptyNav")
-                    else focuses.searchOpenButton.safeRequestFocusWithRetry("Ticket_EmptySearch")
-                    ticketManager.consume(FocusTicket.LIST_TOP)
-                }
-            }
-
-            FocusTicket.NAV_PANE -> {
-                focuses.navPane.safeRequestFocusWithRetry("Ticket_NAV_PANE")
-                ticketManager.consume(FocusTicket.NAV_PANE)
-            }
-
-            FocusTicket.PANE -> {
-                if (menuState.isPaneListReady) {
-                    focuses.paneFirstItem.safeRequestFocusWithRetry("Ticket_PANE")
-                    ticketManager.consume(FocusTicket.PANE)
+                    ticketManager.restore(FocusTicket.LIST_TOP, requestGeneration,
+                        if (isListView) focuses.navPane else focuses.searchOpenButton, "Ticket_Empty")
                 }
             }
 
@@ -361,8 +347,11 @@ fun RecordListScreen(
 
     LaunchedEffect(Unit) {
         if (menuState.isInitialFocusRequested) {
+            val initialTicketGeneration = ticketManager.requestGeneration
             delay(200)
-            if (isReturningFromPlayer && lastPlayedProgramId != null) {
+            if (initialTicketGeneration > 0L || ticketManager.requestGeneration != initialTicketGeneration) {
+                // ON_RESUME or a user action already selected the destination.
+            } else if (isReturningFromPlayer && lastPlayedProgramId != null) {
                 ticketManager.issue(FocusTicket.TARGET_ID, lastPlayedProgramId)
                 onReturnFocusConsumed()
             } else {

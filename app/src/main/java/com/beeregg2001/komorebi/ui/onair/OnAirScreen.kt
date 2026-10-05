@@ -152,7 +152,7 @@ fun OnAirScreen(
     (0..6).forEach { headerFocus.getOrPut(it) { FocusRequester() } }
     val seasonFocus = remember { FocusRequester() }
     var choosingSeason by remember { mutableStateOf(false) }
-    var initialFocusPlaced by remember(konomiIp, konomiPort) { mutableStateOf(false) }
+    var initialFocusPlaced by remember(konomiIp, konomiPort) { mutableStateOf(isReturningFromPlayer) }
     val nowJst = rememberJapanNow()
     val currentSeason = state.selectedSeasonId == state.currentSeasonId
     var pageFocused by remember { mutableStateOf(false) }
@@ -267,7 +267,7 @@ fun OnAirScreen(
     }
 
     LaunchedEffect(initialSeriesId, isReturningFromPlayer) {
-        if (isReturningFromPlayer || initialFocusPlaced || pageFocused) return@LaunchedEffect
+        if (isReturningFromPlayer || expanded != null || initialFocusPlaced || pageFocused) return@LaunchedEffect
         val day = initialDay
         if (day in 0..6 && initialSeriesId != null) {
             initialFocusPlaced = true
@@ -286,11 +286,12 @@ fun OnAirScreen(
             val index = byWeekday[day].indexOfFirst { it.id == id }
             viewModel.selectWeekday(day)
             scrollToCard(day, index)
-            cardFocus[id]?.safeRequestFocusWithRetry("OnAirCardRestore")
+            if (cardFocus[id]?.safeRequestFocusWithRetry("OnAirCardRestore") != true) return@LaunchedEffect
         } else {
-            topFocusRequester.safeRequestFocusWithRetry("OnAirCardRestoreFallback")
+            if (!topFocusRequester.safeRequestFocusWithRetry("OnAirCardRestoreFallback")) return@LaunchedEffect
         }
         restoreSeries = null
+        if (isReturningFromPlayer) onReturnFocusConsumed()
     }
 
     LaunchedEffect(isReturningFromPlayer) {
@@ -304,11 +305,9 @@ fun OnAirScreen(
             }
             target.seriesId != null -> {
                 restoreSeries = target.seriesId
-                onReturnFocusConsumed()
             }
             else -> {
-                initialFocusRequester.safeRequestFocusWithRetry("OnAirReturnFocus")
-                onReturnFocusConsumed()
+                if (initialFocusRequester.safeRequestFocusWithRetry("OnAirReturnFocus")) onReturnFocusConsumed()
             }
         }
     }
@@ -371,6 +370,7 @@ fun OnAirScreen(
                     ip = konomiIp, port = konomiPort,
                     timeFormat = timeFormat,
                     returnCell = returnCell,
+                    waitingForPlayerReturn = isReturningFromPlayer,
                     onRestored = { returnCell = null; onReturnFocusConsumed() },
                     onProgram = onProgramClick,
                     onBack = ::closeDetail,

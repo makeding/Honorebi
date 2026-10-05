@@ -100,41 +100,6 @@ fun LiveContent(
         channelViewModel.prefetchChannelLogoUrls(liveRows.flatMap { it.channels }.map { it.channel })
     }
 
-    LaunchedEffect(aiFocusReturnTick) {
-        if (aiFocusReturnTick > 0) {
-            delay(150)
-            val targetId = lastFocusedChannelId
-            if (targetId != null && liveRows.isNotEmpty()) {
-                var rowIndex = -1
-                var colIndex = -1
-                var genreId = ""
-
-                for (i in liveRows.indices) {
-                    val idx = liveRows[i].channels.indexOfFirst { it.channel.id == targetId }
-                    if (idx != -1) {
-                        rowIndex = i
-                        colIndex = idx
-                        genreId = liveRows[i].genreId
-                        break
-                    }
-                }
-
-                if (rowIndex != -1 && colIndex != -1) {
-                    listState.scrollToItem(maxOf(0, rowIndex))
-                    val rState = rowStates.getOrPut(genreId) { LazyListState() }
-                    rState.scrollToItem(maxOf(0, colIndex - 1))
-                    delay(200)
-                    targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelAiReturn")
-                } else {
-                    contentFirstItemRequester.safeRequestFocusWithRetry("LiveFirstItemAiReturn")
-                }
-            } else {
-                contentFirstItemRequester.safeRequestFocusWithRetry("LiveFirstItemAiReturn")
-            }
-            onAiReturnConsumed()
-        }
-    }
-
     LaunchedEffect(pendingChannel) {
         if (pendingChannel != null) {
             delay(300)
@@ -172,8 +137,12 @@ fun LiveContent(
     }
 
 
-    LaunchedEffect(isReturningFromPlayer, liveRows.isNotEmpty()) {
-        if (isReturningFromPlayer && liveRows.isNotEmpty()) {
+    LaunchedEffect(isReturningFromPlayer, aiFocusReturnTick, liveRows) {
+        if ((isReturningFromPlayer || aiFocusReturnTick > 0) && liveRows.isNotEmpty()) {
+            val fallback = if (isReturningFromPlayer) topNavFocusRequester else contentFirstItemRequester
+            fun consumeReturn() {
+                if (isReturningFromPlayer) onReturnFocusConsumed() else onAiReturnConsumed()
+            }
             val targetId = lastFocusedChannelId
             if (targetId != null) {
                 var rowIndex = -1
@@ -195,17 +164,14 @@ fun LiveContent(
                     val rState = rowStates.getOrPut(genreId) { LazyListState() }
                     rState.scrollToItem(maxOf(0, colIndex - 1))
                     delay(200)
-                    targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")
-                    onReturnFocusConsumed()
+                    if (targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")) consumeReturn()
                 } else {
                     delay(200)
-                    topNavFocusRequester.safeRequestFocusWithRetry("LiveNavFallback")
-                    onReturnFocusConsumed()
+                    if (fallback.safeRequestFocusWithRetry("LiveNavFallback")) consumeReturn()
                 }
             } else {
                 delay(200)
-                topNavFocusRequester.safeRequestFocusWithRetry("LiveNavFallback")
-                onReturnFocusConsumed()
+                if (fallback.safeRequestFocusWithRetry("LiveNavFallback")) consumeReturn()
             }
         }
     }

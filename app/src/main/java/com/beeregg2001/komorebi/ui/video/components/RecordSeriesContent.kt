@@ -101,7 +101,7 @@ fun RecordSeriesContent(
         onTopBarDownRequesterChanged(requester)
     }
 
-    LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
         if (ticketManager.currentTicket == FocusTicket.TARGET_ID) {
             val targetId = ticketManager.targetProgramId
             val index = seriesList.indexOfFirst { it.representativeVideoId == targetId }
@@ -135,11 +135,11 @@ fun RecordSeriesContent(
                 val specificRequester =
                     itemFocusRequesters.getOrPut(series.representativeVideoId) { FocusRequester() }
 
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+                LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
                     val ticket = ticketManager.currentTicket
+                    val generation = ticketManager.requestGeneration
                     if (ticket == FocusTicket.TARGET_ID && series.representativeVideoId == ticketManager.targetProgramId) {
-                        specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_Series")
-                        ticketManager.consume(FocusTicket.TARGET_ID)
+                        ticketManager.restore(FocusTicket.TARGET_ID, generation, specificRequester, "Ticket_TARGET_ID_Series")
                     }
                 }
 

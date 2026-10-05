@@ -66,7 +66,7 @@ fun RecordGridContent(
     // 🌟 修正1: pagedRecordings.itemCount をキーに含めることで、非同期ロード後にも再評価されるようにする
     LaunchedEffect(
         ticketManager.currentTicket,
-        ticketManager.issueTime,
+        ticketManager.requestGeneration,
         pagedRecordings.itemCount
     ) {
         if (ticketManager.currentTicket == FocusTicket.TARGET_ID) {
@@ -130,13 +130,13 @@ fun RecordGridContent(
                 if (index == 0) itemModifier = itemModifier.focusRequester(firstItemFocusRequester)
                 itemModifier = itemModifier.focusRequester(specificRequester)
 
-                LaunchedEffect(ticketManager.currentTicket, ticketManager.issueTime) {
+                LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration) {
                     val ticket = ticketManager.currentTicket
+                    val generation = ticketManager.requestGeneration
                     if (ticket == FocusTicket.TARGET_ID && program.id == ticketManager.targetProgramId) {
                         // 🌟 修正4: スクロールやレイアウトが完了するのを少し待ってから確実にフォーカスを要求する
                         delay(100)
-                        specificRequester.safeRequestFocusWithRetry("Ticket_TARGET_ID_Grid")
-                        ticketManager.consume(FocusTicket.TARGET_ID)
+                        ticketManager.restore(FocusTicket.TARGET_ID, generation, specificRequester, "Ticket_TARGET_ID_Grid")
                     }
                 }
 

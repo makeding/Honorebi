@@ -460,6 +460,10 @@ fun HomeLauncherScreen(
                     onAiReturnConsumed()
                 }
 
+                "ライブ", "ビデオ" -> {
+                    // Their content owns restoration and consumes the AI return.
+                }
+
                 else -> {
                     ui.tabFocusRequesters.getOrNull(safeTabIndex)
                         ?.safeRequestFocusWithRetry("FallbackAiReturn")
@@ -471,11 +475,10 @@ fun HomeLauncherScreen(
 
     LaunchedEffect(isReturningFromPlayer) {
         if (isReturningFromPlayer && !isFullScreenMode) {
-            ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
-            delay(150)
-
             val currentTabName = tabs.getOrNull(safeTabIndex)
             if (currentTabName != "ライブ" && currentTabName != "ビデオ") {
+                ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
+                delay(150)
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
                 when {
@@ -522,35 +525,32 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(isFullScreenMode) {
-        if (!isFullScreenMode && !isReturningFromPlayer) {
-            delay(300)
-            val currentTabName = tabs.getOrNull(safeTabIndex)
-            when {
-                currentTabName == "録画予約" -> {}
+    HomeOverlayReturnFocusEffect(isFullScreenMode, isReturningFromPlayer || aiFocusReturnTick > 0) {
+        val currentTabName = tabs.getOrNull(safeTabIndex)
+        when {
+            currentTabName == "録画予約" -> {}
 
-                currentTabName == "ホーム" -> {
-                    val section = homeViewModel.lastClickedSection
-                    val itemId = homeViewModel.lastClickedItemId
-                    if (section != null && itemId != null) {
-                        focusMemory.remember(safeTabIndex, section, itemId)
-                    } else {
-                        focusMemory.remember(safeTabIndex)
-                    }
-                }
-
-                currentTabName == "アプリ" -> {
-                    val itemId = homeViewModel.lastClickedItemId
-                    if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
-                        focusMemory.remember(safeTabIndex, "apps", itemId)
-                    } else {
-                        focusMemory.remember(safeTabIndex)
-                    }
-                }
-
-                currentTabName != "番組表" -> {
+            currentTabName == "ホーム" -> {
+                val section = homeViewModel.lastClickedSection
+                val itemId = homeViewModel.lastClickedItemId
+                if (section != null && itemId != null) {
+                    focusMemory.remember(safeTabIndex, section, itemId)
+                } else {
                     focusMemory.remember(safeTabIndex)
                 }
+            }
+
+            currentTabName == "アプリ" -> {
+                val itemId = homeViewModel.lastClickedItemId
+                if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
+                    focusMemory.remember(safeTabIndex, "apps", itemId)
+                } else {
+                    focusMemory.remember(safeTabIndex)
+                }
+            }
+
+            currentTabName != "番組表" -> {
+                focusMemory.remember(safeTabIndex)
             }
         }
     }

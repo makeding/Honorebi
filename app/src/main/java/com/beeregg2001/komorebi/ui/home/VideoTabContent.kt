@@ -66,6 +66,7 @@ fun VideoTabContent(
     openedSeriesTitle: String?,
     onOpenedSeriesTitleChange: (String?) -> Unit,
     recordViewModel: RecordViewModel = hiltViewModel(),
+    homeViewModel: com.beeregg2001.komorebi.viewmodel.HomeViewModel = hiltViewModel(),
     settingViewModel: SettingsViewModel = hiltViewModel(),
     watchHistory: List<KonomiHistoryProgram> = emptyList(),
     isTopNavFocused: Boolean = false,
@@ -90,7 +91,7 @@ fun VideoTabContent(
     val onAirRequester = contentFirstItemRequester
     val smbRequester = remember { FocusRequester() }
     val cardFocusRequesters = remember { mutableStateMapOf<VideoCardFocus, FocusRequester>() }
-    var lastFocusedCard by remember { mutableStateOf<VideoCardFocus?>(null) }
+    var lastFocusedCard by remember { mutableStateOf(homeViewModel.lastVideoCardFocus) }
     var lastFocusedBanner by remember { mutableStateOf(VideoBannerFocus.ON_AIR) }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
@@ -383,6 +384,7 @@ fun VideoTabContent(
                                         focusRequester = focusRequester,
                                         timeFormat = timeFormat,
                                         onClick = {
+                                            homeViewModel.lastVideoCardFocus = focusTarget
                                             onProgramClick(program)
                                         },
                                         onFocus = {
@@ -475,6 +477,7 @@ fun VideoTabContent(
                                         focusRequester = focusRequester,
                                         timeFormat = timeFormat,
                                         onClick = {
+                                            homeViewModel.lastVideoCardFocus = focusTarget
                                             val programToPlay =
                                                 matchedProgram?.copy(playbackPosition = historyItem.playback_position)
                                                     ?: KonomiDataMapper.toDomainModel(historyItem)
