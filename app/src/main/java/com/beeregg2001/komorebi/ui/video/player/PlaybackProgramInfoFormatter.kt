@@ -42,9 +42,9 @@ private fun formatPlaybackProgramMetaRows(
     val startKnown = parseDateTime(actualStart, zoneId) != null
     val endKnown = parseDateTime(actualEnd, zoneId) != null
     val actual = when {
-        startKnown && endKnown -> formatBroadcastTime(actualStart, actualEnd, timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId)!!
-        startKnown -> "${formatBroadcastTime(actualStart, "", timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId)} - 終了時刻未記録"
-        endKnown -> "開始時刻未記録 - ${formatBroadcastTime(actualEnd, "", timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId)}"
+        startKnown && endKnown -> formatBroadcastTime(actualStart, actualEnd, timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId, includeEndDateOnCrossDate = true)!!
+        startKnown -> "${formatBroadcastTime(actualStart, "", timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId, includeEndDateOnCrossDate = true)} - 終了時刻未記録"
+        endKnown -> "開始時刻未記録 - ${formatBroadcastTime(actualEnd, "", timeFormat.takeUnless { it == "28H" } ?: "24H", zoneId, includeEndDateOnCrossDate = true)}"
         else -> "記録されていません"
     }
     add(PlaybackProgramInfoRow("実際の録画日時", actual))
@@ -68,7 +68,7 @@ internal fun formatBroadcastTime(
     endTime: String,
     timeFormat: String,
     zoneId: ZoneId = ZoneId.systemDefault(),
-    includeEndDateOnCrossDate: Boolean = true,
+    includeEndDateOnCrossDate: Boolean = false,
 ): String? {
     if (timeFormat == "28H") {
         return ProgramTimeFormatter.formatRange(startTime, endTime, timeFormat, "yyyy/MM/dd(E)", zoneId, includeEndDateOnCrossDate = includeEndDateOnCrossDate)

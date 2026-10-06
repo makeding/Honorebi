@@ -110,6 +110,21 @@ class PlaybackProgramInfoFormatterTest {
         )
     }
 
+    @Test
+    fun upperRightScheduleOmitsEndDateForEveryTimeFormat() {
+        val zone = java.time.ZoneId.of("Asia/Tokyo")
+        val start = "2026-08-11T02:00:00+09:00"
+        val end = "2026-08-11T04:30:00+09:00"
+        assertEquals("2026/08/10(月) 26:00 - 04:30",
+            formatBroadcastTime(start, end, "28H", zone))
+        assertEquals("2026/08/10(月) 23:30 - 00:30",
+            formatBroadcastTime("2026-08-10T23:30:00+09:00", "2026-08-11T00:30:00+09:00", "24H", zone))
+        assertEquals("2026/08/10(月) 午後 11:30 - 午前 12:30",
+            formatBroadcastTime("2026-08-10T23:30:00+09:00", "2026-08-11T00:30:00+09:00", "12H", zone))
+        assertEquals("2026/08/10(月) 26:00 - 26:30",
+            formatBroadcastTime(start, "2026-08-11T02:30:00+09:00", "28H", zone))
+    }
+
     private fun List<PlaybackProgramInfoRow>.valueFor(label: String): String =
         single { it.label == label }.value
 
