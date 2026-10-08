@@ -20,7 +20,8 @@
           android = pkgs.androidenv.composeAndroidPackages {
             cmdLineToolsVersion = "latest";
             platformToolsVersion = "37.0.1";
-            buildToolsVersions = [ "37.0.0" ];
+            # AGP also requires 36.0.0 for release desugaring; the SDK is read-only.
+            buildToolsVersions = [ "36.0.0" "37.0.0" ];
             platformVersions = [ "37" ];
             includeCmake = true;
             cmakeVersions = [ "3.22.1" ];
