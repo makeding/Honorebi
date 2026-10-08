@@ -70,7 +70,14 @@ class AppUpdater @Inject constructor(
                 val latestVersionCode = targetJson.getInt("versionCode")
                 val latestVersionName = targetJson.getString("versionName")
                 val releaseNotes = targetJson.getString("releaseNotes")
-                val apkUrl = targetJson.getString("apkUrl")
+                val abiUrls = targetJson.optJSONObject("apkUrls")
+                val apkUrl = UpdateApkSelector.select(
+                    supportedAbis = Build.SUPPORTED_ABIS.toList(),
+                    abiUrls = abiUrls?.let { urls ->
+                        urls.keys().asSequence().associateWith { urls.optString(it) }
+                    }.orEmpty(),
+                    universalUrl = targetJson.getString("apkUrl")
+                )
 
                 val currentVersionCode = getCurrentVersionCode()
 
