@@ -24,7 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +39,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import java.util.Locale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +58,11 @@ import com.beeregg2001.komorebi.ui.main.rememberNetworkConnectionStatus
 import kotlinx.coroutines.delay
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+internal fun screensaverDate(now: LocalDateTime): String =
+    now.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.JAPANESE))
+
+private val screensaverTextShadow = Shadow(Color.Black.copy(alpha = 0.8f), Offset(0f, 2f), 6f)
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -108,8 +121,6 @@ fun ScreensaverContent(
                 )
             }
         }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
-
         Column(
             modifier = Modifier.align(Alignment.BottomStart).widthIn(max = 460.dp).padding(64.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -119,24 +130,34 @@ fun ScreensaverContent(
                 color = Color.White,
                 fontSize = 72.sp,
                 fontWeight = FontWeight.Light,
-                style = MaterialTheme.typography.displayLarge,
+                style = MaterialTheme.typography.displayLarge.copy(shadow = screensaverTextShadow),
             )
             Text(
-                now.format(DateTimeFormatter.ofPattern("EEEE, yyyy-MM-dd")),
+                screensaverDate(now),
                 color = Color.White.copy(alpha = 0.9f),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleLarge.copy(shadow = screensaverTextShadow),
             )
-            Spacer(Modifier.height(12.dp))
-            StatusLine(Icons.Default.NetworkCheck, when (network.transport) {
-                NetworkTransport.WIFI -> "Wi-Fi"
-                NetworkTransport.ETHERNET -> "Ethernet"
-                NetworkTransport.OTHER -> "ネットワーク接続中"
-                NetworkTransport.DISCONNECTED -> "ネットワーク未接続"
-            })
-            StatusLine(Icons.Default.Dns, deviceName)
             if (imageUris.isEmpty()) {
                 Text("設定からスクリーンセーバー画像を追加してください", color = Color.White.copy(alpha = 0.85f))
             }
+        }
+        Row(
+            modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).testTag("screensaver-status"),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatusLine(when (network.transport) {
+                NetworkTransport.WIFI -> Icons.Default.Wifi
+                NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet
+                NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff
+                NetworkTransport.OTHER -> Icons.Default.NetworkCheck
+            }, when (network.transport) {
+                NetworkTransport.WIFI -> "Wi-Fi"
+                NetworkTransport.ETHERNET -> "有線LAN"
+                NetworkTransport.OTHER -> "ネットワーク接続中"
+                NetworkTransport.DISCONNECTED -> "ネットワーク未接続"
+            })
+            StatusLine(Icons.Default.Cast, deviceName)
         }
         if (upcomingRecordings != null) {
             UpcomingRecordingsPanel(
@@ -152,6 +173,6 @@ private fun StatusLine(icon: androidx.compose.ui.graphics.vector.ImageVector, te
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.85f))
         Spacer(Modifier.width(12.dp))
-        Text(text, color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+        Text(text, color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.titleMedium.copy(shadow = screensaverTextShadow), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp))
     }
 }

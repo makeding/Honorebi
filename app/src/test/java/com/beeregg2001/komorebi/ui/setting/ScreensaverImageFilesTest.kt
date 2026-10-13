@@ -30,6 +30,7 @@ class ScreensaverImageFilesTest {
     }
 
     private fun image(name: String): File = File(fixtures, name).also { file ->
+        file.parentFile?.mkdirs()
         val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
@@ -91,5 +92,46 @@ class ScreensaverImageFilesTest {
         assertEquals(listOf("folder", "a.jpg", "B.png"), entries.map { it.name })
         assertNotNull(entries.first().directory)
         assertNotNull(entries.last().uri)
+    }
+
+    @Test fun folderImagesCollectsNestedReadableImagesInStableOrder() = runBlocking {
+        val nested = File(fixtures, "nested").apply { mkdirs() }
+        image("z.png")
+        image("nested/a.jpg")
+        File(nested, "note.txt").writeText("not an image")
+        File(nested, ".hidden.png").writeText("hidden")
+        File(fixtures, ".hidden-folder").mkdirs()
+        image(".hidden-folder/hidden.jpg")
+
+        val images = ScreensaverImageFiles.folderImages(fixtures)
+
+        assertEquals(
+            listOf("nested/a.jpg", "z.png"),
+            images.map { File(it.path!!).relativeTo(fixtures).invariantSeparatorsPath },
+        )
+    }
+
+    @Test fun folderImagesDeduplicatesCanonicalTargetsAndSkipsSymlinkEscapesWhenAvailable() = runBlocking {
+        val actual = image("actual.png")
+        val duplicate = File(fixtures, "duplicate.png")
+        val outside = File(context.filesDir, "screensaver-outside.png").apply { writeText("outside") }
+        try {
+            try {
+                java.nio.file.Files.createSymbolicLink(duplicate.toPath(), actual.toPath())
+                java.nio.file.Files.createSymbolicLink(File(fixtures, "escape.png").toPath(), outside.toPath())
+            } catch (_: UnsupportedOperationException) {
+                return@runBlocking
+            } catch (_: java.io.IOException) {
+                return@runBlocking
+            } catch (_: SecurityException) {
+                return@runBlocking
+            }
+
+            val images = ScreensaverImageFiles.folderImages(fixtures)
+
+            assertEquals(listOf(actual.canonicalPath), images.map { File(it.path!!).canonicalPath })
+        } finally {
+            outside.delete()
+        }
     }
 }

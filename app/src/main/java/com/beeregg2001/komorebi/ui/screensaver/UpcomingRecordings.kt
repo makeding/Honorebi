@@ -210,7 +210,7 @@ internal fun UpcomingRecordingsPanel(
             is UpcomingRecordingsState.Content -> {
                 renderedState.recordings.forEach { recording ->
                     val local = recording.startsAt.atZone(ZoneId.systemDefault())
-                    val start = local.format(DateTimeFormatter.ofPattern("M/d (EEE) HH:mm"))
+                    val start = local.format(DateTimeFormatter.ofPattern("M/d (EEE) HH:mm", java.util.Locale.JAPANESE))
                     Column(Modifier.height(54.dp)) {
                         Text(
                             "$start  ${recording.channelName}",

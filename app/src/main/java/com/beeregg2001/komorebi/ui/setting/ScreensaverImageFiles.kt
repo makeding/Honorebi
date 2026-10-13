@@ -80,6 +80,65 @@ internal object ScreensaverImageFiles {
             .map { if (it.isDirectory) ScreensaverFileEntry(it.name, directory = it) else ScreensaverFileEntry(it.name, uri = Uri.fromFile(it)) }
     }
 
+    /**
+     * Enumerates image files below one user-selected folder without importing anything.
+     * Symlinks are allowed only when their canonical target remains inside [directory].
+     */
+    suspend fun folderImages(directory: File): List<Uri> = withContext(Dispatchers.IO) {
+        val collectionContext = coroutineContext
+        collectionContext.ensureActive()
+        val root = try {
+            directory.canonicalFile
+        } catch (failure: IOException) {
+            throw IOException("選択したフォルダーを読み取れません。アクセスを確認して再試行してください。", failure)
+        }
+        if (!root.isDirectory || !root.canRead()) {
+            throw IOException("選択したフォルダーを読み取れません。アクセスを確認して再試行してください。")
+        }
+
+        val rootPath = root.path
+        fun isInsideRoot(file: File): Boolean = file.path == rootPath || file.path.startsWith("$rootPath${File.separator}")
+        val visitedDirectories = mutableSetOf<String>()
+        val imagePaths = linkedSetOf<String>()
+
+        fun collect(folder: File) {
+            collectionContext.ensureActive()
+            val canonicalFolder = try {
+                folder.canonicalFile
+            } catch (failure: IOException) {
+                throw IOException("フォルダーを読み取れません。アクセスを確認して再試行してください。", failure)
+            }
+            if (!isInsideRoot(canonicalFolder)) return
+            if (!visitedDirectories.add(canonicalFolder.path)) return
+            if (!canonicalFolder.canRead()) {
+                throw IOException("フォルダーを読み取れません。アクセスを確認して再試行してください。")
+            }
+            val children = canonicalFolder.listFiles()
+                ?: throw IOException("フォルダーを読み取れません。アクセスを確認して再試行してください。")
+            children.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }.thenBy { it.name }).forEach { child ->
+                collectionContext.ensureActive()
+                if (child.name.startsWith(".")) return@forEach
+                val canonicalChild = try {
+                    child.canonicalFile
+                } catch (failure: IOException) {
+                    throw IOException("ファイルを読み取れません。アクセスを確認して再試行してください。", failure)
+                }
+                if (!isInsideRoot(canonicalChild)) return@forEach
+                if (canonicalChild.isDirectory) {
+                    collect(canonicalChild)
+                } else if (
+                    canonicalChild.isFile && canonicalChild.canRead() &&
+                    canonicalChild.extension.lowercase() in extensions
+                ) {
+                    imagePaths += canonicalChild.path
+                }
+            }
+        }
+
+        collect(root)
+        imagePaths.sortedWith(String.CASE_INSENSITIVE_ORDER).map(Uri::fromFile)
+    }
+
     fun images(context: Context): List<ScreensaverFileEntry> {
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         return buildList {

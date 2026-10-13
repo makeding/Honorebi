@@ -28,6 +28,7 @@ class ScreensaverImagePickerTest {
         compose.setContent {
             KomorebiTheme {
                 ScreensaverImageBrowser(
+                    requireReadPermission = false,
                     loadEntries = { directory, _ -> if (directory == null) listOf(
                         ScreensaverFileEntry("folder", directory = File("/storage/test")),
                         ScreensaverFileEntry("first", uri = first),
@@ -39,8 +40,8 @@ class ScreensaverImagePickerTest {
         }
         compose.onNodeWithText("戻る").assertIsFocused()
         compose.onNodeWithText("first").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
-        compose.onNodeWithText("✓  first").assertIsFocused()
-        compose.onNodeWithText("▸  folder").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.onNodeWithText("first").assertIsFocused()
+        compose.onNodeWithText("folder").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("second").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
         assertNull(imported)
@@ -58,6 +59,7 @@ class ScreensaverImagePickerTest {
         compose.setContent {
             KomorebiTheme {
                 ScreensaverImageBrowser(
+                    requireReadPermission = false,
                     loadEntries = { _, _ -> if (fail) throw java.io.IOException("USBを読み取れません。再試行してください。") else emptyList() },
                     onDismiss = { dismissed = true }, onImport = { imported = true },
                 )
@@ -79,6 +81,7 @@ class ScreensaverImagePickerTest {
         compose.setContent {
             KomorebiTheme {
                 ScreensaverImageBrowser(
+                    requireReadPermission = false,
                     loadEntries = { _, _ -> listOf(ScreensaverFileEntry("photo", uri = Uri.parse("content://images/3"))) },
                     onDismiss = { dismissed = true },
                     onImport = { attempts++; if (attempts == 1) throw java.io.IOException("画像を読み取れません。別の画像を選んでください。") },
@@ -93,6 +96,66 @@ class ScreensaverImagePickerTest {
         assertFalse(dismissed)
         compose.onNodeWithText("追加 (1)").performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
         compose.runOnIdle { assertTrue(dismissed); assertEquals(2, attempts) }
+    }
+
+    @Test fun folderSelectionAddsAllImagesWithoutDuplicatesAndCanDeselectOne() {
+        val first = Uri.parse("content://images/1")
+        val second = Uri.parse("content://images/2")
+        var imported: List<Uri>? = null
+        compose.setContent {
+            KomorebiTheme {
+                ScreensaverImageBrowser(
+                    requireReadPermission = false,
+                    loadEntries = { directory, _ -> if (directory == null) listOf(ScreensaverFileEntry("photos", directory = File("/storage/photos")))
+                        else listOf(ScreensaverFileEntry("first", uri = first), ScreensaverFileEntry("second", uri = second)) },
+                    loadFolderImages = { listOf(first, second, first) },
+                    onDismiss = {}, onImport = { imported = it },
+                )
+            }
+        }
+        compose.onNodeWithText("photos").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("このフォルダーを選択").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("追加 (2)").assertIsEnabled()
+        compose.onNodeWithText("first").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.onNodeWithText("追加 (1)").requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
+        compose.runOnIdle { assertEquals(listOf(second), imported) }
+    }
+
+    @Test fun folderIconAndFocusBoundsStayInsideBrowser() {
+        compose.setContent {
+            KomorebiTheme {
+                ScreensaverImageBrowser(
+                    requireReadPermission = false,
+                    loadEntries = { _, _ -> listOf(ScreensaverFileEntry("folder", directory = File("/storage/folder"))) },
+                    onDismiss = {}, onImport = {},
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("フォルダー").assertExists()
+        val before = compose.onNodeWithText("folder").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("folder").requestFocus()
+        compose.mainClock.advanceTimeBy(500)
+        val after = compose.onNodeWithText("folder").fetchSemanticsNode().boundsInRoot
+        assertEquals(before, after)
+        val browser = compose.onNodeWithTag("screensaver-image-browser").fetchSemanticsNode().boundsInRoot
+        assertTrue(after.left > browser.left)
+        assertTrue(after.right < browser.right)
+    }
+
+    @Test fun missingPermissionNeverLoadsDirectoryBeforeGrant() {
+        var loads = 0
+        compose.setContent {
+            KomorebiTheme {
+                ScreensaverImageBrowser(
+                    loadEntries = { _, _ -> loads++; emptyList() },
+                    onDismiss = {}, onImport = {},
+                )
+            }
+        }
+        compose.runOnIdle { assertEquals(0, loads) }
+        compose.onNodeWithText("追加 (0)").assertIsNotEnabled()
     }
 
 }
