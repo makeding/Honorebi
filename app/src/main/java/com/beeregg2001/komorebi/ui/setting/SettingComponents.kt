@@ -170,7 +170,9 @@ fun CategoryItem(
             focusedContainerColor = focusedBgColor,
             contentColor = if (enabled) colors.textSecondary else colors.textSecondary.copy(alpha = 0.3f),
             selectedContentColor = colors.textPrimary,
-            focusedContentColor = focusedTextColor
+            focusedContentColor = focusedTextColor,
+            focusedSelectedContainerColor = focusedBgColor,
+            focusedSelectedContentColor = focusedTextColor,
         ),
         shape = SelectableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
         scale = SelectableSurfaceDefaults.scale(focusedScale = if (enabled) 1.05f else 1.0f)

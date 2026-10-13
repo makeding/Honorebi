@@ -30,6 +30,8 @@ import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingHorizontal
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingVertical
 import com.beeregg2001.komorebi.ui.player.PlayerChannelStatus
@@ -404,6 +406,7 @@ fun LiveErrorDialog(
     onBack: () -> Unit,
     onCheckCapabilities: (() -> Unit)? = null
 ) {
+    val colors = KomorebiTheme.colors
     val retryButtonFocusRequester = remember { FocusRequester() }
     val capabilityButtonFocusRequester = remember { FocusRequester() }
     LaunchedEffect(onCheckCapabilities) {
@@ -419,7 +422,7 @@ fun LiveErrorDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(16.dp),
-            colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = Color(0xFF2B1B1B)),
+            colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = colors.surface),
             modifier = Modifier.width(450.dp)
         ) {
             Column(
@@ -444,17 +447,14 @@ fun LiveErrorDialog(
                 Text(
                     text = errorMessage,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White,
+                    color = colors.textPrimary,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 if (onCheckCapabilities != null) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = onCheckCapabilities,
-                        colors = ButtonDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(capabilityButtonFocusRequester)
@@ -469,22 +469,16 @@ fun LiveErrorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onBack,
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color.White.copy(alpha = 0.1f),
-                            contentColor = Color.White
-                        ),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(AppStrings.BUTTON_BACK)
                     }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = onRetry,
-                        colors = ButtonDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(retryButtonFocusRequester)

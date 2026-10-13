@@ -40,6 +40,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.ui.components.dialogForeground
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
@@ -130,8 +131,7 @@ internal fun SettingsGuideScreen(
                         val focused by interactionSource.collectIsFocusedAsState()
                         val hovered by interactionSource.collectIsHoveredAsState()
                         val highlighted = focused || hovered
-                        val highlightContent = if (colors.isDark) Color.White
-                        else MaterialTheme.colorScheme.onPrimary
+                        val highlightContent = dialogForeground(MaterialTheme.colorScheme.primary)
                         Surface(
                             onClick = { onSelectCategory(card) },
                             interactionSource = interactionSource,
@@ -159,7 +159,6 @@ internal fun SettingsGuideScreen(
                                         .padding(top = 20.dp, end = 20.dp)
                                         .size(64.dp),
                                     tint = when {
-                                        highlighted && colors.isDark -> Color.White
                                         highlighted -> highlightContent
                                         colors.isDark -> Color.White.copy(alpha = 0.20f)
                                         else -> colors.textPrimary.copy(alpha = 0.18f)

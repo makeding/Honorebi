@@ -27,7 +27,7 @@ data class ChapterInfo(
     val label: String = ""             // UIに表示するチャプター名（例: "Aパート", "oxA" など）
 )
 
-internal const val MANUAL_CM_SKIP_WINDOW_MS = 5_000L
+internal const val MANUAL_CM_SKIP_WINDOW_MS = 10_000L
 
 internal fun shouldDismissManualCmSkipPrompt(
     keyCode: Int,

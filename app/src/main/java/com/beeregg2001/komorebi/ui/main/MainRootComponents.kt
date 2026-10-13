@@ -35,6 +35,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.util.UpdateState
 import com.beeregg2001.komorebi.viewmodel.RecordViewModel
@@ -102,21 +104,15 @@ fun AiTextInputDialog(
 
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Button(
+                        DialogActionButton(
+                            role = DialogActionRole.Secondary,
                             onClick = onDismiss,
                             modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.colors(
-                                containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                                contentColor = colors.textPrimary
-                            )
                         ) { Text("キャンセル") }
-                        Button(
+                        DialogActionButton(
+                            role = DialogActionRole.Primary,
                             onClick = { onSubmit(text) },
                             modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.colors(
-                                containerColor = colors.accent,
-                                contentColor = if (colors.isDark) Color.Black else Color.White
-                            )
                         ) { Text("送信") }
                     }
                 }
@@ -203,29 +199,17 @@ fun RobustUpdateDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                        )
                     ) { Text("後で", fontWeight = FontWeight.Bold) }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = onConfirm,
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(confirmRequester),
-                        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.accent,
-                            contentColor = if (colors.isDark) Color.Black else Color.White,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                        )
                     ) { Text("ダウンロード", fontWeight = FontWeight.Bold) }
                 }
             }
@@ -320,20 +304,14 @@ fun SyncErrorDialog(errorMessage: String, onRetry: () -> Unit, onDismiss: () -> 
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onDismiss,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier.weight(1f)
                     ) { Text("閉じる") }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = onRetry,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.accent,
-                            contentColor = if (colors.isDark) Color.Black else Color.White
-                        ),
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester)
@@ -398,20 +376,14 @@ fun UpdateDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onDismiss,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier.weight(1f)
                     ) { Text("後で") }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = onConfirm,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.accent,
-                            contentColor = if (colors.isDark) Color.Black else Color.White
-                        ),
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester)

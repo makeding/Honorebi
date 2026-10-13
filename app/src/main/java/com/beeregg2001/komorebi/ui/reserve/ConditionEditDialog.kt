@@ -42,6 +42,8 @@ import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
@@ -501,31 +503,20 @@ fun ConditionEditDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Button(
+                            DialogActionButton(
+                                role = DialogActionRole.Destructive,
                                 onClick = { openDeleteConfirm() },
                                 modifier = Modifier.focusRequester(deleteBtnRequester),
-                                scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                                colors = ButtonDefaults.colors(
-                                    containerColor = Color(0xFFC62828),
-                                    contentColor = Color.White,
-                                    focusedContainerColor = Color(0xFFFF5252),
-                                    focusedContentColor = Color.White
-                                )
                             ) { Text("削除", fontWeight = FontWeight.Bold) }
 
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
+                                DialogActionButton(
+                                    role = DialogActionRole.Secondary,
                                     onClick = onDismiss,
-                                    scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                                        contentColor = colors.textPrimary,
-                                        focusedContainerColor = colors.textPrimary,
-                                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                                    )
                                 ) { Text("キャンセル", fontWeight = FontWeight.Bold) }
 
-                                Button(
+                                DialogActionButton(
+                                    role = DialogActionRole.Primary,
                                     onClick = {
                                         onConfirmUpdate(
                                             isEnabled,
@@ -537,13 +528,6 @@ fun ConditionEditDialog(
                                         )
                                     },
                                     modifier = Modifier.focusRequester(saveBtnRequester),
-                                    scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                                    colors = ButtonDefaults.colors(
-                                        containerColor = colors.accent,
-                                        contentColor = if (colors.isDark) Color.Black else Color.White,
-                                        focusedContainerColor = colors.textPrimary,
-                                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                                    )
                                 ) { Text("保存", fontWeight = FontWeight.Bold) }
                             }
                         }
@@ -757,32 +741,20 @@ fun ConditionEditDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Button(
+                            DialogActionButton(
+                                role = DialogActionRole.Secondary,
                                 onClick = {
                                     showDeleteConfirm = false
                                     scope.launch { delay(100); runCatching { keywordBtnRequester.requestFocus() } }
                                 },
                                 modifier = Modifier.weight(1f),
-                                scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                                colors = ButtonDefaults.colors(
-                                    containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                                    contentColor = colors.textPrimary,
-                                    focusedContainerColor = colors.textPrimary,
-                                    focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                                )
                             ) { Text("キャンセル", fontWeight = FontWeight.Bold) }
-                            Button(
+                            DialogActionButton(
+                                role = DialogActionRole.Destructive,
                                 onClick = { onConfirmDelete(deleteRelatedReserves) },
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .focusRequester(deleteConfirmRequester),
-                                scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                                colors = ButtonDefaults.colors(
-                                    containerColor = Color(0xFFC62828),
-                                    contentColor = Color.White,
-                                    focusedContainerColor = Color(0xFFFF5252),
-                                    focusedContentColor = Color.White
-                                )
+                                .weight(1f)
+                                .focusRequester(deleteConfirmRequester),
                             ) { Text("完全に削除する", fontWeight = FontWeight.Bold) }
                         }
                     }

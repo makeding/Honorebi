@@ -32,6 +32,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -393,6 +394,8 @@ private fun SettingsMenuScreen(
                     Text(
                         AppStrings.SETTINGS_TITLE,
                         style = MaterialTheme.typography.headlineMedium,
+                        fontSize = 28.sp,
+                        lineHeight = 36.sp,
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
@@ -843,7 +846,7 @@ private fun SettingsMenuScreen(
                                     "CMスキップ",
                                     listOf(
                                         "オフ" to "OFF",
-                                        "手動（CM開始から5秒間、決定ボタンでスキップ）" to "MANUAL",
+                                        "手動（CM開始から10秒間、決定ボタンでスキップ）" to "MANUAL",
                                         "自動" to "AUTO"
                                     ),
                                     autoCmSkip

@@ -2,6 +2,13 @@
 
 package com.beeregg2001.komorebi.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.tv.material3.Border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
@@ -69,23 +76,23 @@ fun DialogActionButton(
         DialogActionRole.Primary -> dialogForeground(background)
         DialogActionRole.Destructive -> dialogForeground(background)
     }
-    val focusedBackground = when (role) {
-        DialogActionRole.Secondary -> colors.accent
-        else -> background
-    }
-    val focusedForeground = when (role) {
-        DialogActionRole.Secondary -> dialogForeground(focusedBackground)
-        else -> foreground
-    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val focusBorder = Border(BorderStroke(2.dp, colors.textPrimary), inset = 4.dp)
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.hoverable(interactionSource, enabled),
+        interactionSource = interactionSource,
         enabled = enabled,
         colors = ButtonDefaults.colors(
             containerColor = background,
             contentColor = foreground,
-            focusedContainerColor = focusedBackground,
-            focusedContentColor = focusedForeground,
+            focusedContainerColor = background,
+            focusedContentColor = foreground,
+        ),
+        border = ButtonDefaults.border(
+            border = if (hovered && enabled) focusBorder else Border.None,
+            focusedBorder = focusBorder,
         ),
     ) { content() }
 }

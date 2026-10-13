@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -85,8 +87,6 @@ fun AdvancedSettingsDialog(
     val firstItemRequester = remember { FocusRequester() }
     val excludeFieldRequester = remember { FocusRequester() }
     val safeFocusRequester = remember { FocusRequester() }
-    val inverseColor = if (colors.isDark) Color.Black else Color.White
-
     var isFirstEnter by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -344,18 +344,13 @@ fun AdvancedSettingsDialog(
                         .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onDismiss,
-                        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color.Transparent,
-                            contentColor = colors.textSecondary,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = inverseColor
-                        )
                     ) { Text("キャンセル", fontWeight = FontWeight.Bold) }
 
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = {
                             onConfirm(
                                 excludeKeyword,
@@ -368,13 +363,6 @@ fun AdvancedSettingsDialog(
                                 isExactRecord
                             )
                         },
-                        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.15f),
-                            contentColor = colors.textPrimary,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = inverseColor
-                        )
                     ) { Text("設定を適用", fontWeight = FontWeight.Bold) }
                 }
             }

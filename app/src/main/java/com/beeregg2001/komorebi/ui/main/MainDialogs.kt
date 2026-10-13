@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 
@@ -64,20 +66,14 @@ fun DeleteConfirmationDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onCancel,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
                     ) { Text(AppStrings.BUTTON_CANCEL) }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Destructive,
                         onClick = onConfirm,
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color(0xFFD32F2F),
-                            contentColor = Color.White
-                        ),
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester)
@@ -121,12 +117,9 @@ fun InitialSetupDialog(onConfirm: () -> Unit) {
                     color = colors.textSecondary
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
+                DialogActionButton(
+                    role = DialogActionRole.Primary,
                     onClick = onConfirm,
-                    colors = ButtonDefaults.colors(
-                        containerColor = colors.accent,
-                        contentColor = if (colors.isDark) Color.Black else Color.White
-                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
@@ -177,30 +170,21 @@ fun ConnectionErrorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Primary,
                         onClick = onGoToSettings,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.accent,
-                            contentColor = if (colors.isDark) Color.Black else Color.White
-                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(focusRequester)
                     ) { Text("接続設定を開く") }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onRetry,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(AppStrings.BUTTON_RETRY) }
-                    Button(
+                    DialogActionButton(
+                        role = DialogActionRole.Secondary,
                         onClick = onExit,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(AppStrings.EXIT_APP) }
                 }
@@ -243,12 +227,9 @@ fun IncompatibleOsDialog(onExit: () -> Unit) {
                     ), style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary
                 )
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
+                DialogActionButton(
+                    role = DialogActionRole.Secondary,
                     onClick = onExit,
-                    colors = ButtonDefaults.colors(
-                        containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                        contentColor = colors.textPrimary
-                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)

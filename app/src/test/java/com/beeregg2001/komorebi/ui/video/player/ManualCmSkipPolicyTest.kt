@@ -11,12 +11,12 @@ class ManualCmSkipPolicyTest {
     @Test
     fun manualWindowIncludesStartAndLastMillisecond() {
         assertEquals(25_000L, manualCmSkipTargetMs(CmSkipMode.MANUAL, 10_000L, listOf(cm)))
-        assertEquals(25_000L, manualCmSkipTargetMs(CmSkipMode.MANUAL, 14_999L, listOf(cm)))
+        assertEquals(25_000L, manualCmSkipTargetMs(CmSkipMode.MANUAL, 19_999L, listOf(cm)))
     }
 
     @Test
-    fun manualWindowEndsAtFiveSeconds() {
-        assertNull(manualCmSkipTargetMs(CmSkipMode.MANUAL, 15_000L, listOf(cm)))
+    fun manualWindowEndsAtTenSeconds() {
+        assertNull(manualCmSkipTargetMs(CmSkipMode.MANUAL, 20_000L, listOf(cm)))
     }
 
     @Test
