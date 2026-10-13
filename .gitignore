@@ -25,3 +25,15 @@ local.properties
 /local_repo/
 
 /.direnv/
+
+# Embedded connection setup frontend. Source and pnpm-lock.yaml stay tracked.
+/setup-web/node_modules/
+/setup-web/dist/
+/setup-web/coverage/
+/setup-web/test-results/
+/setup-web/playwright-report/
+/setup-web/.env
+/setup-web/.env.*
+!/setup-web/.env.example
+/setup-web/*.log
+/setup-web/*.tsbuildinfo

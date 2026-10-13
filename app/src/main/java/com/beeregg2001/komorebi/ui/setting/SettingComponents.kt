@@ -103,8 +103,10 @@ sealed class SettingDialogState {
     object Licenses : SettingDialogState()
     data class LinkQr(val title: String, val url: String) : SettingDialogState()
     object GeminiSetup : SettingDialogState()
+    data class ConnectionSetup(val source: String) : SettingDialogState()
     object DeviceCapabilities : SettingDialogState()
     object HonomiLogin : SettingDialogState()
+    object HonomiLogout : SettingDialogState()
     object DefaultHomeGuide : SettingDialogState()
 
     data class SmbAction(val target: SmbServer) : SettingDialogState()
@@ -230,6 +232,7 @@ fun SettingItem(
     val focusedTextColor = focusedContentColor ?: dialogForeground(focusedBgColor)
 
     Surface(
+        enabled = enabled,
         onClick = { if (enabled) onClick() },
         modifier = modifier
             .fillMaxWidth()

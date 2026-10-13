@@ -36,6 +36,8 @@
               cacert
               git
               jdk21
+              nodejs
+              pnpm
               pkg-config
             ];
 

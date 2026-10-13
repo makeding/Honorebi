@@ -44,6 +44,8 @@ import io.ktor.server.application.call
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import com.beeregg2001.komorebi.setup.connectionSetupRoutes
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -145,7 +147,7 @@ class SettingsViewModel @Inject constructor(
     val edcbPort: StateFlow<String> = settingsRepository.edcbPort.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        "5510"
+        "4510"
     )
     val edcbRecordPlayMethod: StateFlow<String> = settingsRepository.edcbRecordPlayMethod.stateIn(
         viewModelScope,
@@ -519,69 +521,40 @@ class SettingsViewModel @Inject constructor(
         )
     }
 
-    fun updateBackendType(newType: String) = viewModelScope.launch(Dispatchers.IO) {
-        val oldType = settingsRepository.backendType.first()
-        if (oldType == newType) return@launch
-
-        settingsRepository.saveString(SettingsRepository.BACKEND_TYPE, newType)
+    private suspend fun connectionConfigurationChanged(
+        before: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot,
+        saved: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot,
+    ) {
         try {
-            db.clearAllTables()
-            context.imageLoader.memoryCache?.clear()
-            context.imageLoader.diskCache?.clear()
-        } catch (e: Exception) {
-        }
-        forceSyncStreamQualities()
+            if (before.mainSystem != saved.mainSystem) {
+                withContext(Dispatchers.IO) { db.clearAllTables() }
+                context.imageLoader.memoryCache?.clear()
+                context.imageLoader.diskCache?.clear()
+            } else if (before.sources.firstOrNull { it.id == before.mainSystem } != saved.sources.firstOrNull { it.id == saved.mainSystem }) {
+                syncEngine.clearDatabase()
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) { Log.e("SettingsViewModel", "Connection cache refresh failed", error) }
+        viewModelScope.launch { forceSyncStreamQualities() }
     }
 
-    fun updateEdcbIp(ip: String) = viewModelScope.launch(Dispatchers.IO) {
-        settingsRepository.saveString(
-            SettingsRepository.EDCB_IP,
-            ip
-        ); forceSyncStreamQualities()
-    }
-
-    fun updateEdcbPort(port: String) =
+    fun updateConnectionField(key: androidx.datastore.preferences.core.Preferences.Key<String>, value: String) =
         viewModelScope.launch(Dispatchers.IO) {
-            settingsRepository.saveString(
-                SettingsRepository.EDCB_PORT,
-                port
-            )
+            val before = settingsRepository.connectionSettings()
+            settingsRepository.saveString(key, value)
+            connectionConfigurationChanged(before, settingsRepository.connectionSettings())
         }
+
+    fun updateBackendType(newType: String) = updateConnectionField(SettingsRepository.BACKEND_TYPE, newType)
+    fun updateEdcbIp(ip: String) = updateConnectionField(SettingsRepository.EDCB_IP, ip)
+    fun updateEdcbPort(port: String) = updateConnectionField(SettingsRepository.EDCB_PORT, port)
+    fun updateMirakurunIp(ip: String) = updateConnectionField(SettingsRepository.MIRAKURUN_IP, ip)
+    fun updateKonomiIp(ip: String) = updateConnectionField(SettingsRepository.KONOMI_IP, ip)
+    fun updateKonomiPort(port: String) = updateConnectionField(SettingsRepository.KONOMI_PORT, port)
 
     fun updateEdcbRecordPlayMethod(method: String) = viewModelScope.launch(Dispatchers.IO) {
-        settingsRepository.saveString(
-            SettingsRepository.EDCB_RECORD_PLAY_METHOD,
-            method
-        ); forceSyncStreamQualities()
-    }
-
-    fun updateMirakurunIp(ip: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsRepository.saveString(
-                SettingsRepository.MIRAKURUN_IP,
-                ip
-            )
-        }
-    }
-
-    fun updateKonomiIp(ip: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val oldIp = settingsRepository.konomiIp.first()
-            settingsRepository.saveString(SettingsRepository.KONOMI_IP, ip)
-            if (oldIp != ip && (oldIp != "" && oldIp != "https://192-168-xxx-xxx.local.konomi.tv")) {
-                syncEngine.clearDatabase()
-            }
-        }
-    }
-
-    fun updateKonomiPort(port: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val oldPort = settingsRepository.konomiPort.first()
-            settingsRepository.saveString(SettingsRepository.KONOMI_PORT, port)
-            if (oldPort != port && (oldPort != "" && oldPort != "7000")) {
-                syncEngine.clearDatabase()
-            }
-        }
+        settingsRepository.saveString(SettingsRepository.EDCB_RECORD_PLAY_METHOD, method)
+        forceSyncStreamQualities()
     }
 
     fun triggerFullSync() {
@@ -746,12 +719,45 @@ class SettingsViewModel @Inject constructor(
     private val _localIpAddress = MutableStateFlow(getLocalIpAddress())
     val localIpAddress: StateFlow<String> = _localIpAddress
 
+    private val _connectionSetupState = MutableStateFlow(com.beeregg2001.komorebi.setup.ConnectionSetupUiState())
+    val connectionSetupState = _connectionSetupState.asStateFlow()
+    private val _connectionSettingsSaved = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val connectionSettingsSaved = _connectionSettingsSaved.asSharedFlow()
+
+    fun startConnectionSetup(source: String? = null) {
+        try {
+            startGeminiLocalServer()
+            _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
+                com.beeregg2001.komorebi.setup.ConnectionSetupSession(java.util.UUID.randomUUID().toString(), source),
+            )
+        } catch (error: Exception) {
+            _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
+                error = "設定ページを開けませんでした。ネットワーク接続を確認して再試行してください。",
+            )
+            Log.e("SettingsViewModel", "Connection setup server failed", error)
+        }
+    }
+
+    private suspend fun saveWebConnectionSettings(snapshot: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot): com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot {
+        val before = settingsRepository.connectionSettings()
+        val saved = settingsRepository.saveConnectionSettings(snapshot)
+        connectionConfigurationChanged(before, saved)
+        _connectionSettingsSaved.emit(Unit)
+        return saved
+    }
+
     fun startGeminiLocalServer() {
         if (ktorServer != null) return
         _localIpAddress.value = getLocalIpAddress()
 
         ktorServer = embeddedServer(CIO, port = 8081) {
             routing {
+                connectionSetupRoutes(
+                    session = { _connectionSetupState.value.session },
+                    read = { settingsRepository.connectionSettings() },
+                    save = { saveWebConnectionSettings(it) },
+                    readAsset = { path -> context.assets.open(path).use { it.readBytes() } },
+                )
                 get("/") { call.respondText(getSetupHtml(), ContentType.Text.Html) }
                 post("/submit") {
                     val formParams = call.receiveParameters()
@@ -841,11 +847,20 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun stopGeminiLocalServer() {
+        _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState()
+        val stopping = ktorServer
+        ktorServer = null
         viewModelScope.launch(Dispatchers.IO) {
-            ktorServer?.stop(gracePeriodMillis = 500, timeoutMillis = 1000)
-            ktorServer = null
+            stopping?.stop(gracePeriodMillis = 500, timeoutMillis = 1000)
             Log.i("SettingsViewModel", "Stopped Local Server")
         }
+    }
+
+    override fun onCleared() {
+        _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState()
+        ktorServer?.stop(gracePeriodMillis = 0, timeoutMillis = 1000)
+        ktorServer = null
+        super.onCleared()
     }
 
     private fun getLocalIpAddress(): String {

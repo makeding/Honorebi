@@ -400,7 +400,20 @@ fun MainRootDialogs(
     }
 
     if (!isSettingsInitialized && !state.isSettingsOpen && state.isSplashFinished) {
-        InitialSetupDialog(onConfirm = { state.isSettingsOpen = true })
+        val setupViewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+        val setupState by setupViewModel.connectionSetupState.collectAsState()
+        val setupIp by setupViewModel.localIpAddress.collectAsState()
+        com.beeregg2001.komorebi.ui.setting.ConnectionSetupDialog(
+            title = "接続先の初期設定", serverIp = setupIp, state = setupState,
+            onStart = { setupViewModel.startConnectionSetup() },
+            onStop = { setupViewModel.stopGeminiLocalServer() },
+            onDismiss = {}, initialSetup = true,
+            onManualInput = {
+                state.settingsInitialCategoryIndex = 1
+                state.settingsInitialFocusItemIndex = 0
+                state.isSettingsOpen = true
+            },
+        )
     }
 
     if (state.isSettingsOpen) {

@@ -79,7 +79,7 @@ class ScreensaverPresentationTest {
         compose.onNodeWithTag("screensaver-upcoming-panel").assertDoesNotExist()
     }
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    @Test fun readabilityFeathersAcrossBothCornersWithoutTextSizedEdges() {
+    @Test fun readabilityFadesFromCornersWithoutInteriorHotspots() {
         val bitmap = androidx.compose.ui.graphics.ImageBitmap(960, 540)
         androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(
             androidx.compose.ui.unit.Density(1f),
@@ -92,14 +92,15 @@ class ScreensaverPresentationTest {
         }
         val pixels = bitmap.toPixelMap()
         fun brightness(x: Float, y: Float) = pixels[(pixels.width * x).toInt(), (pixels.height * y).toInt()].red
-        assertTrue(brightness(0.14f, 0.85f) < 0.5f)
-        // The shade reaches far beyond both text groups, then fades into untouched artwork.
-        assertTrue(brightness(0.02f, 0.75f) < 0.7f)
-        assertTrue(brightness(0.4f, 0.75f) < 0.85f)
-        assertTrue(brightness(0.86f, 0.12f) < 0.5f)
-        assertTrue(brightness(0.7f, 0.23f) < 0.8f)
-        assertTrue(brightness(0.86f, 0.36f) < 0.9f)
-        assertTrue(brightness(0.5f, 0.5f) > 0.97f)
+        assertTrue(brightness(0.02f, 0.98f) < 0.55f)
+        assertTrue(brightness(0.98f, 0.02f) < 0.6f)
+        // Contrast comes from the corner; it decreases toward the artwork without an interior blob.
+        assertTrue(brightness(0.02f, 0.98f) < brightness(0.14f, 0.85f))
+        assertTrue(brightness(0.14f, 0.85f) < brightness(0.3f, 0.7f))
+        assertTrue(brightness(0.98f, 0.02f) < brightness(0.86f, 0.12f))
+        assertTrue(brightness(0.86f, 0.12f) < brightness(0.7f, 0.3f))
+        assertTrue(brightness(0.5f, 0.5f) > 0.99f)
+
     }
 
 }

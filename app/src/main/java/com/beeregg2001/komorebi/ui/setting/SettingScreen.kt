@@ -245,7 +245,6 @@ private fun SettingsMenuScreen(
 
     val batchItemRs =
         remember(prefs.postRecordingBatchList) { List(prefs.postRecordingBatchList.size) { FocusRequester() } }
-    val edcbPlayMethodR = remember { FocusRequester() }
     val smbItemRs =
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
@@ -265,7 +264,7 @@ private fun SettingsMenuScreen(
     val itemFocusRequesters = remember {
         listOf(
             List(5) { FocusRequester() },
-            List(10) { FocusRequester() },
+            List(7) { FocusRequester() },
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
@@ -555,177 +554,74 @@ private fun SettingsMenuScreen(
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
 
                         1 -> ConnectionSettingsContent(
-                            prefs.backendType,
-                            prefs.edcbIp,
-                            prefs.edcbPort,
-                            prefs.edcbHttpPort,
-                            prefs.epgStationIp,
-                            prefs.epgStationPort,
-                            prefs.konomiIp,
-                            prefs.konomiPort,
-                            prefs.mirakurunIp,
-                            prefs.mirakurunPort,
-                            prefs.preferredSource,
-                            prefs.cfAccessClientId,
-                            prefs.cfAccessClientSecret,
-                            prefs.edcbRecordPlayMethod,
-                            prefs.smbServerList,
-                            honomiSession?.userName,
-                            {
+                            prefs = prefs,
+                            honomiUserName = honomiSession?.userName,
+                            onHonomiAccountClick = {
                                 if (honomiSession == null) {
                                     honomiLoginError = null
                                     honomiPairing = null
                                     uiState.activeDialog = SettingDialogState.HonomiLogin
-                                } else {
-                                    viewModel.logoutHonomi()
-                                    toastMessage = "HonomiTV からログアウトしました"
-                                }
+                                } else uiState.activeDialog = SettingDialogState.HonomiLogout
                             },
-                            { uiState.activeDialog = SettingDialogState.SmbSetup(null) },
-                            { uiState.activeDialog = SettingDialogState.SmbAction(it) },
-                            itemFocusRequesters[1][7],
-                            smbItemRs,
-                            {
+                            onAddSmbServer = { uiState.activeDialog = SettingDialogState.SmbSetup(null) },
+                            onSmbServerClick = { uiState.activeDialog = SettingDialogState.SmbAction(it) },
+                            smbItemRs = smbItemRs,
+                            onSelectEdcbPlayMethod = {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "録画ファイルの再生方式",
-                                    listOf(
-                                        "API経由 (api/xcode)" to "API",
-                                        "直接アクセス (高速シーク可)" to "DIRECT"
-                                    ),
-                                    if (listOf(
-                                            "API",
-                                            "DIRECT"
-                                        ).any { it == prefs.edcbRecordPlayMethod }
-                                    ) prefs.edcbRecordPlayMethod else "API"
-                                ) {
-                                    scope.launch(Dispatchers.IO) {
-                                        repository.saveString(
-                                            SettingsRepository.EDCB_RECORD_PLAY_METHOD,
-                                            it
-                                        )
-                                    }
-                                    viewModel.updateEdcbRecordPlayMethod(it)
-                                }
+                                    listOf("API経由 (api/xcode)" to "API", "直接アクセス (高速シーク可)" to "DIRECT"),
+                                    prefs.edcbRecordPlayMethod,
+                                ) { viewModel.updateEdcbRecordPlayMethod(it) }
                             },
-                            edcbPlayMethodR,
-                            { t, v ->
-                                uiState.activeDialog = SettingDialogState.Input(t, v) { input ->
-                                    scope.launch(Dispatchers.IO) {
-                                        when (t) {
-                                            "KonomiTV (IPアドレス)" -> repository.saveString(
-                                                SettingsRepository.KONOMI_IP,
-                                                input
-                                            )
-
-                                            "KonomiTV (ポート)" -> repository.saveString(
-                                                SettingsRepository.KONOMI_PORT,
-                                                input
-                                            )
-
-                                            "EDCB (IPアドレス)" -> repository.saveString(
-                                                SettingsRepository.EDCB_IP,
-                                                input
-                                            )
-
-                                            "EDCB (TCPポート)" -> repository.saveString(
-                                                SettingsRepository.EDCB_PORT,
-                                                input
-                                            )
-
-                                            "EDCB (HTTP/HTTPSポート)" -> repository.saveString(
-                                                SettingsRepository.EDCB_HTTP_PORT,
-                                                input
-                                            )
-
-                                            "Mirakurun (IPアドレス)" -> repository.saveString(
-                                                SettingsRepository.MIRAKURUN_IP,
-                                                input
-                                            )
-
-                                            "Mirakurun (ポート)" -> repository.saveString(
-                                                SettingsRepository.MIRAKURUN_PORT,
-                                                input
-                                            )
-                                        }
-                                    }
-                                    when (t) {
+                            onWebSetup = { uiState.activeDialog = SettingDialogState.ConnectionSetup(it.backend) },
+                            onEdit = { title, value ->
+                                uiState.activeDialog = SettingDialogState.Input(title, value) { input ->
+                                    when (title) {
                                         "KonomiTV (IPアドレス)" -> viewModel.updateKonomiIp(input)
                                         "KonomiTV (ポート)" -> viewModel.updateKonomiPort(input)
                                         "EDCB (IPアドレス)" -> viewModel.updateEdcbIp(input)
                                         "EDCB (TCPポート)" -> viewModel.updateEdcbPort(input)
-                                        "Mirakurun (IPアドレス)" -> viewModel.updateMirakurunIp(
-                                            input
-                                        )
+                                        "Mirakurun (IPアドレス)" -> viewModel.updateMirakurunIp(input)
+                                        else -> {
+                                            val key = when (title) {
+                                                "EDCB (HTTP/HTTPSポート)" -> SettingsRepository.EDCB_HTTP_PORT
+                                                "Mirakurun (ポート)" -> SettingsRepository.MIRAKURUN_PORT
+                                                else -> error("Unknown connection field: $title")
+                                            }
+                                            viewModel.updateConnectionField(key, input)
+                                        }
                                     }
                                 }
                             },
-                            {
+                            onSelectBackend = { sources ->
                                 uiState.activeDialog = SettingDialogState.Selection(
-                                    "バックエンドシステムの選択",
-                                    listOf(
-                                        "KonomiTV" to "KONOMITV",
-                                        "EDCB (EpgTimerSrv)" to "EDCB",
-                                        "Mirakurun (録画なし)" to "MIRAKURUN_ONLY"
-                                    ),
-                                    if (listOf(
-                                            "KONOMITV",
-                                            "EDCB",
-                                            "MIRAKURUN_ONLY"
-                                        ).any { it == prefs.backendType }
-                                    ) prefs.backendType else "KONOMITV"
-                                ) {
-                                    scope.launch(Dispatchers.IO) {
-                                        repository.saveString(
-                                            SettingsRepository.BACKEND_TYPE,
-                                            it
-                                        )
-                                    }
-                                    viewModel.updateBackendType(it)
-                                }
+                                    "メインシステム",
+                                    sources.map { it.label to it.backend },
+                                    prefs.backendType,
+                                ) { viewModel.updateBackendType(it) }
                             },
-                            {
+                            onSelectSrc = {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_PREFERRED_SOURCE,
-                                    mutableListOf(
-                                        "メインシステムに従う\n（トランスコード）" to "KONOMITV",
-                                        "Mirakurun を優先" to "MIRAKURUN"
-                                    ).apply {
-                                        if (prefs.backendType != "EDCB") add("EDCB (TCP) を優先" to "EDCB") else add(
-                                            "EDCB (ダイレクトストリーミング)" to "EDCB"
-                                        )
-                                    },
-                                    if (listOf(
-                                            "KONOMITV",
-                                            "MIRAKURUN",
-                                            "EDCB"
-                                        ).any { it == prefs.preferredSource }
-                                    ) prefs.preferredSource else "KONOMITV"
-                                ) {
-                                    scope.launch(Dispatchers.IO) {
-                                        repository.saveString(
-                                            SettingsRepository.PREFERRED_STREAM_SOURCE,
-                                            it
-                                        )
-                                    }
-                                }
+                                    listOf(
+                                        "メインシステムに従う（トランスコード）" to "KONOMITV",
+                                        "Mirakurun を優先" to "MIRAKURUN",
+                                        "EDCB (ダイレクトストリーミング)" to "EDCB",
+                                    ),
+                                    prefs.preferredSource,
+                                ) { value -> scope.launch { repository.saveString(SettingsRepository.PREFERRED_STREAM_SOURCE, value) } }
                             },
-                            {
+                            onEditCloudflareAccess = {
                                 uiState.activeDialog = SettingDialogState.CloudflareAccess(
-                                    prefs.cfAccessClientId,
-                                    prefs.cfAccessClientSecret,
-                                ) { clientId, clientSecret -> repository.saveCloudflareAccessCredentials(clientId, clientSecret) }
+                                    prefs.cfAccessClientId, prefs.cfAccessClientSecret,
+                                ) { id, secret -> repository.saveCloudflareAccessCredentials(id, secret) }
                             },
-                            itemFocusRequesters[1][0],
-                            itemFocusRequesters[1][1],
-                            itemFocusRequesters[1][2],
-                            itemFocusRequesters[1][3],
-                            itemFocusRequesters[1][4],
-                            itemFocusRequesters[1][5],
-                            itemFocusRequesters[1][6],
-                            itemFocusRequesters[1][8],
-                            itemFocusRequesters[1][9],
-                            categoryFocusRequesters[1]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 1 }
+                            itemRs = itemFocusRequesters[1],
+                            sidebarR = categoryFocusRequesters[1],
+                            scrollState = mainScrollState,
+                            isDialogOpen = isDialogOpen,
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 1 },
+                        )
 
                         2 -> PlaybackSettingsContent(
                             prefs.liveQuality,
@@ -1339,6 +1235,15 @@ private fun SettingsMenuScreen(
         }
 
         when (val state = uiState.activeDialog) {
+            is SettingDialogState.HonomiLogout -> HonomiLogoutDialog(
+                onConfirm = {
+                    viewModel.logoutHonomi()
+                    toastMessage = "HonomiTV からログアウトしました"
+                    closeDialog()
+                },
+                onDismiss = { closeDialog() },
+            )
+
             is SettingDialogState.Input -> InputDialog(
                 state.title,
                 state.initialValue,
@@ -1408,6 +1313,17 @@ private fun SettingsMenuScreen(
                 honomiPairing,
                 honomiPairing?.verificationUrl,
             )
+            is SettingDialogState.ConnectionSetup -> {
+                val localIp by viewModel.localIpAddress.collectAsState()
+                val setupState by viewModel.connectionSetupState.collectAsState()
+                LaunchedEffect(Unit) { viewModel.connectionSettingsSaved.collect { closeDialog() } }
+                ConnectionSetupDialog(
+                    title = "接続先の設定", serverIp = localIp, state = setupState,
+                    onStart = { viewModel.startConnectionSetup(state.source) },
+                    onStop = { viewModel.stopGeminiLocalServer() },
+                    onDismiss = { closeDialog() }, onManualInput = { closeDialog() },
+                )
+            }
             is SettingDialogState.GeminiSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
                 GeminiSetupDialog(

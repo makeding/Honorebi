@@ -90,7 +90,7 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
     return SettingPreferences(
         backendType = repository.backendType.collectAsState(initial = "KONOMITV").value,
         edcbIp = repository.edcbIp.collectAsState(initial = "").value,
-        edcbPort = repository.edcbPort.collectAsState(initial = "5510").value,
+        edcbPort = repository.edcbPort.collectAsState(initial = "4510").value,
         edcbHttpPort = repository.edcbHttpPort.collectAsState(initial = "5510").value,
         epgStationIp = repository.epgStationIp.collectAsState(initial = "").value,
         epgStationPort = repository.epgStationPort.collectAsState(initial = "8888").value,

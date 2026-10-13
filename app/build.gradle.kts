@@ -10,6 +10,39 @@ plugins {
     alias(libs.plugins.baselineprofile)
 }
 
+val connectionSetupWebDirectory = rootProject.layout.projectDirectory.dir("setup-web")
+val installConnectionSetupWeb by tasks.registering(Exec::class) {
+    workingDir(connectionSetupWebDirectory)
+    commandLine("pnpm", "install", "--frozen-lockfile")
+    inputs.files(connectionSetupWebDirectory.file("package.json"), connectionSetupWebDirectory.file("pnpm-lock.yaml"))
+    outputs.dir(connectionSetupWebDirectory.dir("node_modules"))
+}
+val buildConnectionSetupWeb by tasks.registering(Exec::class) {
+    dependsOn(installConnectionSetupWeb)
+    workingDir(connectionSetupWebDirectory)
+    commandLine("pnpm", "build")
+    inputs.files(fileTree(connectionSetupWebDirectory) {
+        exclude("node_modules/**", "dist/**", "coverage/**", "test-results/**", "playwright-report/**", ".env*", "*.log")
+    })
+    inputs.file(layout.projectDirectory.file("src/main/res/drawable/honorebi_mark.png"))
+    outputs.dir(connectionSetupWebDirectory.dir("dist"))
+}
+abstract class PackageConnectionSetupWeb : Sync() {
+    @get:OutputDirectory abstract val assetOutputDirectory: DirectoryProperty
+}
+val packageConnectionSetupWeb by tasks.registering(PackageConnectionSetupWeb::class) {
+    dependsOn(buildConnectionSetupWeb)
+    from(connectionSetupWebDirectory.dir("dist")) { into("connection-setup") }
+    assetOutputDirectory.set(layout.buildDirectory.dir("generated/connectionSetupAssets"))
+    into(assetOutputDirectory)
+}
+tasks.named("preBuild") { dependsOn(packageConnectionSetupWeb) }
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(packageConnectionSetupWeb) { it.assetOutputDirectory }
+    }
+}
+
 val releaseKeystorePropertiesFile =
     file("${System.getProperty("user.home")}/honorebi-release-keystore.properties")
 val releaseKeystoreProperties = Properties().apply {

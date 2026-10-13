@@ -42,9 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,8 +65,6 @@ import java.time.format.DateTimeFormatter
 internal fun screensaverDate(now: LocalDateTime): String =
     now.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.JAPANESE))
 
-private val screensaverTextShadow = Shadow(Color.Black.copy(alpha = 0.9f), Offset(0f, 3f), 10f)
-
 // Draw in the full surface so the feather cannot be clipped to text or row bounds.
 @Composable
 internal fun ScreensaverReadabilityOverlay(modifier: Modifier = Modifier) {
@@ -76,24 +72,20 @@ internal fun ScreensaverReadabilityOverlay(modifier: Modifier = Modifier) {
 }
 
 internal fun DrawScope.drawScreensaverReadability() {
-        fun feather(center: Offset, radiusX: Float, radiusY: Float, opacity: Float) {
-            withTransform({ scale(radiusX / radiusY, 1f, pivot = center) }) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        0f to Color.Black.copy(alpha = opacity),
-                        0.35f to Color.Black.copy(alpha = opacity * 0.8f),
-                        0.7f to Color.Black.copy(alpha = opacity * 0.3f),
-                        1f to Color.Transparent,
-                        center = center,
-                        radius = radiusY,
-                    ),
-                    radius = radiusY,
-                    center = center,
-                )
-            }
-        }
-        feather(Offset(size.width * 0.14f, size.height * 0.85f), size.width * 0.57f, size.height * 0.48f, 0.62f)
-        feather(Offset(size.width * 0.86f, size.height * 0.12f), size.width * 0.5f, size.height * 0.43f, 0.56f)
+    fun corner(start: Offset, opacity: Float) {
+        drawRect(
+            brush = Brush.linearGradient(
+                0f to Color.Black.copy(alpha = opacity),
+                0.35f to Color.Black.copy(alpha = opacity * 0.5f),
+                0.7f to Color.Black.copy(alpha = opacity * 0.12f),
+                1f to Color.Transparent,
+                start = start,
+                end = center,
+            ),
+        )
+    }
+    corner(Offset(0f, size.height), 0.52f)
+    corner(Offset(size.width, 0f), 0.46f)
 }
 
 @OptIn(ExperimentalAnimationApi::class)
@@ -163,15 +155,15 @@ fun ScreensaverContent(
                 color = Color.White,
                 fontSize = 72.sp,
                 fontWeight = FontWeight.Light,
-                style = MaterialTheme.typography.displayLarge.copy(shadow = screensaverTextShadow),
+                style = MaterialTheme.typography.displayLarge.copy(shadow = null),
             )
             Text(
                 screensaverDate(now),
                 color = Color.White.copy(alpha = 0.9f),
-                style = MaterialTheme.typography.titleLarge.copy(shadow = screensaverTextShadow),
+                style = MaterialTheme.typography.titleLarge.copy(shadow = null),
             )
             if (imageUris.isEmpty()) {
-                Text("設定からスクリーンセーバー画像を追加してください", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium.copy(shadow = screensaverTextShadow))
+                Text("設定からスクリーンセーバー画像を追加してください", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium.copy(shadow = null))
             }
         }
         Row(
@@ -212,6 +204,6 @@ private fun StatusLine(icon: androidx.compose.ui.graphics.vector.ImageVector, te
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.85f))
         Spacer(Modifier.width(12.dp))
-        Text(text, color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.titleMedium.copy(shadow = screensaverTextShadow), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp))
+        Text(text, color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.titleMedium.copy(shadow = null), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp))
     }
 }

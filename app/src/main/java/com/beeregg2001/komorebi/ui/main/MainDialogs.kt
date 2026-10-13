@@ -85,51 +85,6 @@ fun DeleteConfirmationDialog(
 }
 
 @Composable
-fun InitialSetupDialog(onConfirm: () -> Unit) {
-    val colors = KomorebiTheme.colors
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(300); focusRequester.safeRequestFocus("InitialSetup") }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(400.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = AppStrings.SETUP_REQUIRED_TITLE,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = colors.textPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = AppStrings.SETUP_REQUIRED_MESSAGE,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary
-                )
-                Spacer(modifier = Modifier.height(32.dp))
-                DialogActionButton(
-                    role = DialogActionRole.Primary,
-                    onClick = onConfirm,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                ) { Text(AppStrings.GO_TO_SETTINGS) }
-            }
-        }
-    }
-}
-
-@Composable
 fun ConnectionErrorDialog(
     onRetry: () -> Unit,
     onGoToSettings: () -> Unit,

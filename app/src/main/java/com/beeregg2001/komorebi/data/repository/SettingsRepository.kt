@@ -141,21 +141,12 @@ class SettingsRepository @Inject constructor(
 
     val isInitialized: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
-            val backend = preferences[BACKEND_TYPE] ?: "KONOMITV"
-            when (backend) {
-                "KONOMITV" -> {
-                    val ip = preferences[KONOMI_IP]
-                    !ip.isNullOrBlank() && ip != "https://192-168-xxx-xxx.local.konomi.tv"
-                }
-
-                "EDCB" -> !preferences[EDCB_IP].isNullOrBlank()
-                "EPGSTATION" -> !preferences[EPGSTATION_IP].isNullOrBlank()
-                "MIRAKURUN_ONLY" -> !preferences[MIRAKURUN_IP].isNullOrBlank()
-                else -> false
-            }
+            val backend = preferences.resolvedBackendType()
+            if (backend == "EPGSTATION") !preferences[EPGSTATION_IP].isNullOrBlank()
+            else preferences.configuredConnectionSources().any { it.backend == backend }
         }
 
-    val backendType: Flow<String> = context.dataStore.data.map { it[BACKEND_TYPE] ?: "KONOMITV" }
+    val backendType: Flow<String> = context.dataStore.data.map { it.resolvedBackendType() }
     val edcbIp: Flow<String> = context.dataStore.data.map { it[EDCB_IP] ?: "" }
     val edcbPort: Flow<String> = context.dataStore.data.map { it[EDCB_PORT] ?: "4510" }
     val edcbHttpPort: Flow<String> = context.dataStore.data.map { it[EDCB_HTTP_PORT] ?: "5510" }
@@ -283,7 +274,12 @@ class SettingsRepository @Inject constructor(
         key: androidx.datastore.preferences.core.Preferences.Key<String>,
         value: String
     ) = networkSettingsMutex.withLock {
-        val saved = context.dataStore.edit { settings -> settings[key] = value }
+        val saved = context.dataStore.edit { settings ->
+            settings[key] = value
+            if (key in setOf(BACKEND_TYPE, KONOMI_IP, KONOMI_PORT, EDCB_IP, EDCB_PORT, MIRAKURUN_IP, MIRAKURUN_PORT)) {
+                settings[BACKEND_TYPE] = settings.resolvedBackendType()
+            }
+        }
             .toCloudflareAccessConfiguration()
         cloudflareAccessConfiguration.first { it == saved }
     }
@@ -293,6 +289,47 @@ class SettingsRepository @Inject constructor(
         value: Boolean
     ) {
         context.dataStore.edit { settings -> settings[key] = value }
+    }
+
+    suspend fun connectionSettings(): ConnectionSettingsSnapshot =
+        context.dataStore.data.first().connectionSettingsSnapshot()
+
+    /** All source fields and the main system become visible in one DataStore transaction. */
+    suspend fun saveConnectionSettings(snapshot: ConnectionSettingsSnapshot): ConnectionSettingsSnapshot = networkSettingsMutex.withLock {
+        val sources = requireNotNull(snapshot.sources) { "接続先を入力してください。" }
+        require(sources.size == ConnectionSource.entries.size &&
+            sources.map { it.id }.toSet() == ConnectionSource.entries.map { it.backend }.toSet()) {
+            "接続先の種類が不正です。ページを開き直してください。"
+        }
+        fun port(value: String?, http: Boolean = false): String {
+            val numeric = if (http) value?.trim()?.removeSuffix("s") else value?.trim()
+            require(numeric?.toIntOrNull() in 1..65535) { "ポート番号は 1〜65535 で入力してください。" }
+            return value!!.trim()
+        }
+        val normalized = sources.associate { source ->
+            val host = requireNotNull(source.host) { "IPアドレスを確認してください。" }.trim()
+            require(host.none(Char::isWhitespace) && host != ConnectionSourcePolicy.KONOMI_PLACEHOLDER) {
+                "IPアドレスまたはURLを確認してください。"
+            }
+            source.id to source.copy(host = host, port = port(source.port),
+                httpPort = if (source.id == "EDCB") port(source.httpPort, http = true) else null)
+        }
+        val k = normalized.getValue("KONOMITV")
+        val e = normalized.getValue("EDCB")
+        val m = normalized.getValue("MIRAKURUN_ONLY")
+        val configured = ConnectionSourcePolicy.configured(k.host, k.port, e.host, e.port, m.host, m.port)
+        require(configured.isNotEmpty()) { "少なくとも1つの接続先を入力してください。" }
+        require(configured.size == 1 || configured.any { it.backend == snapshot.mainSystem }) {
+            "設定済みの接続先からメインシステムを選んでください。"
+        }
+        val saved = context.dataStore.edit {
+            it[KONOMI_IP] = k.host; it[KONOMI_PORT] = k.port
+            it[EDCB_IP] = e.host; it[EDCB_PORT] = e.port; it[EDCB_HTTP_PORT] = e.httpPort!!
+            it[MIRAKURUN_IP] = m.host; it[MIRAKURUN_PORT] = m.port
+            it[BACKEND_TYPE] = ConnectionSourcePolicy.resolve(snapshot.mainSystem, configured)
+        }
+        cloudflareAccessConfiguration.first { it == saved.toCloudflareAccessConfiguration() }
+        saved.connectionSettingsSnapshot()
     }
 
     suspend fun saveInt(
