@@ -115,7 +115,7 @@ internal object ScreensaverImageFiles {
             }
             val children = canonicalFolder.listFiles()
                 ?: throw IOException("フォルダーを読み取れません。アクセスを確認して再試行してください。")
-            children.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }.thenBy { it.name }).forEach { child ->
+            children.sortedWith(compareBy<File, String>(String.CASE_INSENSITIVE_ORDER) { it.name }.thenBy { it.name }).forEach { child ->
                 collectionContext.ensureActive()
                 if (child.name.startsWith(".")) return@forEach
                 val canonicalChild = try {
@@ -136,7 +136,7 @@ internal object ScreensaverImageFiles {
         }
 
         collect(root)
-        imagePaths.sortedWith(String.CASE_INSENSITIVE_ORDER).map(Uri::fromFile)
+        imagePaths.sortedWith(String.CASE_INSENSITIVE_ORDER).map { Uri.fromFile(File(it)) }
     }
 
     fun images(context: Context): List<ScreensaverFileEntry> {
