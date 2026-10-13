@@ -87,6 +87,10 @@ class ChannelViewModel @Inject constructor(
         appContentStore.refreshChannels(afterNetworkRecovery)
     }
 
+    fun refreshAfterRecovery() {
+        appContentStore.refreshAfterRecovery()
+    }
+
     fun fetchRecentRecordings() {
         appContentStore.refreshRecentRecordings()
     }

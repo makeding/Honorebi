@@ -15,9 +15,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ChannelRefreshRunnerTest {
+class ContentRefreshRunnerTest {
     @Test fun reconnectDuringOldRequestRunsAgainAndCoalescesDuplicates() = runBlocking {
-        val runner = ChannelRefreshRunner()
+        val runner = ContentRefreshRunner()
         val oldRequest = CompletableDeferred<Unit>()
         val freshRequest = CompletableDeferred<Unit>()
         var requests = 0
@@ -39,7 +39,7 @@ class ChannelRefreshRunnerTest {
     }
 
     @Test fun ordinaryRefreshDoesNotQueueAndCancellationReleasesFlight() = runBlocking {
-        val runner = ChannelRefreshRunner()
+        val runner = ContentRefreshRunner()
         val flight = launch(start = CoroutineStart.UNDISPATCHED) {
             runner.run { CompletableDeferred<Unit>().await() }
         }
@@ -58,7 +58,7 @@ class ChannelRefreshRunnerTest {
         server.enqueue(MockResponse().setBody("{\"terrestrial\":[]}"))
         server.start()
         val client = OkHttpClient()
-        val runner = ChannelRefreshRunner()
+        val runner = ContentRefreshRunner()
         val oldResponseReceived = CompletableDeferred<Unit>()
         val finishOldRequest = CompletableDeferred<Unit>()
         var offline = true

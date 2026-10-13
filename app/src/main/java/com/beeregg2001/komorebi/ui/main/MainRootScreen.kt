@@ -189,8 +189,10 @@ fun MainRootScreen(
     var isAppInForeground by remember { mutableStateOf(true) }
 
     DisposableEffect(lifecycleOwner) {
+        var wasPaused = false
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> wasPaused = true
                 androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
                     // 別のアプリを開いた、またはホーム画面に戻ってアプリが裏に回った（スリープ状態）
                     isAppInForeground = false
@@ -198,6 +200,10 @@ fun MainRootScreen(
 
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
                     scope.launch { nhkExclusionRepository.refreshExpiry() }
+                    if (wasPaused) {
+                        wasPaused = false
+                        channelViewModel.refreshAfterRecovery()
+                    }
                     // アプリ画面に戻ってきた時（かつ、一度裏に回っていた場合のみ実行）
                     if (!isAppInForeground) {
                         isAppInForeground = true
@@ -210,7 +216,6 @@ fun MainRootScreen(
                         // 1. ホーム画面のデータを最新に更新する
                         homeViewModel.refreshHomeData()
                         homeViewModel.refreshLauncherApps()
-                        channelViewModel.fetchChannels()
 
                     }
                 }
@@ -639,7 +644,7 @@ fun MainRootScreen(
     val reconnectGate = remember { NetworkReconnectGate() }
     LaunchedEffect(isNetworkAvailable, isSettingsInitialized) {
         if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized)) {
-            channelViewModel.fetchChannels(afterNetworkRecovery = true)
+            channelViewModel.refreshAfterRecovery()
             homeViewModel.refreshHomeData()
         }
         if (isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {

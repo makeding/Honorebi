@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.data.repository
 
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresApi
 import com.beeregg2001.komorebi.data.SettingsRepository
@@ -9,6 +10,7 @@ import com.beeregg2001.komorebi.data.model.LiveRowState
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.UiChannelState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,13 +40,25 @@ private const val PROGRESS_REFRESH_INTERVAL_MS = 15_000L
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Singleton
-class AppContentStore @Inject constructor(
+class AppContentStore internal constructor(
     private val liveProvider: LiveProvider,
     private val recordProvider: RecordProvider,
     private val settingsRepository: SettingsRepository,
     private val nhkExclusionRepository: NHKExclusionRepository,
+    private val scope: CoroutineScope,
+    private val ioDispatcher: CoroutineDispatcher,
+    private val elapsedRealtime: () -> Long,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @Inject constructor(
+        liveProvider: LiveProvider,
+        recordProvider: RecordProvider,
+        settingsRepository: SettingsRepository,
+        nhkExclusionRepository: NHKExclusionRepository,
+    ) : this(
+        liveProvider, recordProvider, settingsRepository, nhkExclusionRepository,
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        Dispatchers.IO, SystemClock::elapsedRealtime,
+    )
 
     private val _isChannelsLoading = MutableStateFlow(true)
     val isChannelsLoading: StateFlow<Boolean> = _isChannelsLoading.asStateFlow()
@@ -89,11 +103,9 @@ class AppContentStore @Inject constructor(
     private val _sourceErrors = MutableStateFlow<Map<String, String?>>(emptyMap())
     val sourceErrors: StateFlow<Map<String, String?>> = _sourceErrors.asStateFlow()
 
-    private val channelRefreshRunner = ChannelRefreshRunner()
-    @Volatile
-    private var isFetchingRecordings = false
-
-    private var recordingFetchJob: Job? = null
+    private val channelRefreshRunner = ContentRefreshRunner()
+    private val recordingRefreshRunner = ContentRefreshRunner()
+    private var recordingPollingJob: Job? = null
     private var pollingJob: Job? = null
     private var progressUpdateJob: Job? = null
     private var lastChannelsFetchedAtMillis = 0L
@@ -128,22 +140,38 @@ class AppContentStore @Inject constructor(
         }
     }
 
-    fun refreshRecentRecordings() {
+    fun refreshRecentRecordings(afterRecovery: Boolean = false) {
         // Recordings are intentionally lazy.  The first recording surface to call
         // this method opts into both the initial request and subsequent polling.
         isRecordingPollingEnabled = true
-        if (isFetchingRecordings || recordingFetchJob?.isActive == true) return
         recordingRetry.reset()
         _isRecordingsLoading.value = true
-        recordingFetchJob?.cancel()
-        recordingFetchJob = scope.launch {
-            fetchRecentRecordingsInternal()
+        scope.launch {
+            fetchRecentRecordingsInternal(queueIfRunning = afterRecovery)
         }
+    }
+
+    /** Recovery never opts a Live-only session into recording requests. */
+    fun refreshAfterRecovery() {
+        refreshChannels(afterNetworkRecovery = true)
+        if (isRecordingPollingEnabled) refreshRecentRecordings(afterRecovery = true)
     }
 
     private fun startMaintenance() {
         if (progressUpdateJob?.isActive != true) {
             startProgressUpdater()
+        }
+        if (recordingPollingJob?.isActive != true) {
+            recordingPollingJob = scope.launch {
+                while (isActive) {
+                    delay(5_000L)
+                    if (isRecordingPollingEnabled &&
+                        recordingRetry.canAttempt(elapsedRealtime() - lastRecordingsFetchedAtMillis)
+                    ) {
+                        fetchRecentRecordingsInternal()
+                    }
+                }
+            }
         }
         if (pollingJob?.isActive == true) return
         pollingJob?.cancel()
@@ -154,14 +182,9 @@ class AppContentStore @Inject constructor(
                 delay(5_000L)
 
                 if (!isActive) break
-                val now = System.currentTimeMillis()
+                val now = elapsedRealtime()
                 if (channelRetry.canAttempt(now - lastChannelsFetchedAtMillis)) {
                     fetchChannelsInternal()
-                }
-                if (isRecordingPollingEnabled &&
-                    recordingRetry.canAttempt(now - lastRecordingsFetchedAtMillis)
-                ) {
-                    fetchRecentRecordingsInternal()
                 }
             }
         }
@@ -193,7 +216,7 @@ class AppContentStore @Inject constructor(
 
     private suspend fun fetchChannelsOnce() {
         try {
-            val response = withContext(Dispatchers.IO) { liveProvider.getChannels() }
+            val response = withContext(ioDispatcher) { liveProvider.getChannels() }
             _connectionError.value = false
             _channelError.value = null
             channelRetry.reset()
@@ -261,15 +284,21 @@ class AppContentStore @Inject constructor(
             _channelError.value = e.backendApiFailure()?.displayText ?: e.message ?: "チャンネルを取得できませんでした。接続を確認して再試行してください。"
             channelRetry.failed(e)
         } finally {
-            lastChannelsFetchedAtMillis = System.currentTimeMillis()
+            lastChannelsFetchedAtMillis = elapsedRealtime()
         }
     }
 
-    private suspend fun fetchRecentRecordingsInternal() {
-        if (isFetchingRecordings) return
-        isFetchingRecordings = true
+    private suspend fun fetchRecentRecordingsInternal(queueIfRunning: Boolean = false) {
         try {
-            val firstPage = withContext(Dispatchers.IO) {
+            recordingRefreshRunner.run(queueIfRunning) { fetchRecentRecordingsOnce() }
+        } finally {
+            if (!recordingRefreshRunner.isRunning) _isRecordingsLoading.value = false
+        }
+    }
+
+    private suspend fun fetchRecentRecordingsOnce() {
+        try {
+            val firstPage = withContext(ioDispatcher) {
                 val raw = mutableListOf<RecordedProgram>()
                 var page = 1
                 do {
@@ -293,9 +322,7 @@ class AppContentStore @Inject constructor(
             _recordingError.value = e.backendApiFailure()?.displayText ?: e.message ?: "録画番組を取得できませんでした。接続を確認して再試行してください。"
             recordingRetry.failed(e)
         } finally {
-            lastRecordingsFetchedAtMillis = System.currentTimeMillis()
-            isFetchingRecordings = false
-            _isRecordingsLoading.value = false
+            lastRecordingsFetchedAtMillis = elapsedRealtime()
         }
     }
 

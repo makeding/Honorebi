@@ -1,7 +1,7 @@
 package com.beeregg2001.komorebi.data.repository
 
-/** Main-thread single flight, retaining a reconnect request behind an older in-flight request. */
-internal class ChannelRefreshRunner {
+/** Main-thread single flight, retaining a recovery request behind an older in-flight request. */
+internal class ContentRefreshRunner {
     var isRunning = false
         private set
     private var pending = false
