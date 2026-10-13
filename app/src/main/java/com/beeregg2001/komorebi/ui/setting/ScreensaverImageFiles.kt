@@ -189,6 +189,24 @@ internal object ScreensaverImageFiles {
         }
     }
 
+    /** Remove private copies only; originals outside our owned directory are never deleted. */
+    fun removeSavedImages(context: Context, uris: List<String>) {
+        val ownedDirectory = File(context.filesDir, DIRECTORY).canonicalFile
+        uris.distinct().forEach { raw ->
+            val uri = Uri.parse(raw)
+            if (uri.scheme == "file") {
+                val file = uri.path?.let(::File)?.canonicalFile
+                if (file?.parentFile == ownedDirectory && file.isFile && !file.delete()) {
+                    throw IOException("保存した画像ファイルを削除できません。再試行してください。")
+                }
+            } else if (uri.scheme == "content") {
+                runCatching {
+                    context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+        }
+    }
+
     fun clearOwnedImages(context: Context) {
         File(context.filesDir, DIRECTORY).listFiles().orEmpty().filter { it.isFile }.forEach { it.delete() }
     }

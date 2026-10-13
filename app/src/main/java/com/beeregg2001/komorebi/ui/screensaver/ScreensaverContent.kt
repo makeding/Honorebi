@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -68,23 +69,31 @@ internal fun screensaverDate(now: LocalDateTime): String =
 
 private val screensaverTextShadow = Shadow(Color.Black.copy(alpha = 0.9f), Offset(0f, 3f), 10f)
 
-// Paint only around the content, without changing its bounds or covering the image.
-private fun Modifier.screensaverReadability(): Modifier = drawBehind {
-    val feather = 24.dp.toPx()
-    val radius = size.height / 2f + feather
-    withTransform({
-        scale(scaleX = (size.width / 2f + feather) / radius, scaleY = 1f, pivot = center)
-    }) {
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.22f), Color.Transparent),
-                center = center,
-                radius = radius,
-            ),
-            radius = radius,
-            center = center,
-        )
-    }
+// Draw in the full surface so the feather cannot be clipped to text or row bounds.
+@Composable
+internal fun ScreensaverReadabilityOverlay(modifier: Modifier = Modifier) {
+    Canvas(modifier.fillMaxSize().testTag("screensaver-readability")) { drawScreensaverReadability() }
+}
+
+internal fun DrawScope.drawScreensaverReadability() {
+        fun feather(center: Offset, radiusX: Float, radiusY: Float, opacity: Float) {
+            withTransform({ scale(radiusX / radiusY, 1f, pivot = center) }) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to Color.Black.copy(alpha = opacity),
+                        0.35f to Color.Black.copy(alpha = opacity * 0.8f),
+                        0.7f to Color.Black.copy(alpha = opacity * 0.3f),
+                        1f to Color.Transparent,
+                        center = center,
+                        radius = radiusY,
+                    ),
+                    radius = radiusY,
+                    center = center,
+                )
+            }
+        }
+        feather(Offset(size.width * 0.14f, size.height * 0.85f), size.width * 0.57f, size.height * 0.48f, 0.62f)
+        feather(Offset(size.width * 0.86f, size.height * 0.12f), size.width * 0.5f, size.height * 0.43f, 0.56f)
 }
 
 @OptIn(ExperimentalAnimationApi::class)
@@ -144,8 +153,9 @@ fun ScreensaverContent(
                 )
             }
         }
+        ScreensaverReadabilityOverlay()
         Column(
-            modifier = Modifier.align(Alignment.BottomStart).widthIn(max = 460.dp).padding(64.dp).screensaverReadability(),
+            modifier = Modifier.align(Alignment.BottomStart).widthIn(max = 460.dp).padding(64.dp).testTag("screensaver-clock"),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
@@ -165,7 +175,7 @@ fun ScreensaverContent(
             }
         }
         Row(
-            modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).screensaverReadability().testTag("screensaver-status"),
+            modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).testTag("screensaver-status"),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

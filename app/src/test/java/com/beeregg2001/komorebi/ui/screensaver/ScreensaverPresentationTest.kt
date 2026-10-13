@@ -1,6 +1,9 @@
 package com.beeregg2001.komorebi.ui.screensaver
 
 import android.app.Application
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import org.robolectric.annotation.GraphicsMode
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -75,4 +78,28 @@ class ScreensaverPresentationTest {
         assertTrue(status.bottom < screen.height / 3)
         compose.onNodeWithTag("screensaver-upcoming-panel").assertDoesNotExist()
     }
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun readabilityFeathersAcrossBothCornersWithoutTextSizedEdges() {
+        val bitmap = androidx.compose.ui.graphics.ImageBitmap(960, 540)
+        androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(
+            androidx.compose.ui.unit.Density(1f),
+            androidx.compose.ui.unit.LayoutDirection.Ltr,
+            androidx.compose.ui.graphics.Canvas(bitmap),
+            androidx.compose.ui.geometry.Size(960f, 540f),
+        ) {
+            drawRect(Color.White)
+            drawScreensaverReadability()
+        }
+        val pixels = bitmap.toPixelMap()
+        fun brightness(x: Float, y: Float) = pixels[(pixels.width * x).toInt(), (pixels.height * y).toInt()].red
+        assertTrue(brightness(0.14f, 0.85f) < 0.5f)
+        // The shade reaches far beyond both text groups, then fades into untouched artwork.
+        assertTrue(brightness(0.02f, 0.75f) < 0.7f)
+        assertTrue(brightness(0.4f, 0.75f) < 0.85f)
+        assertTrue(brightness(0.86f, 0.12f) < 0.5f)
+        assertTrue(brightness(0.7f, 0.23f) < 0.8f)
+        assertTrue(brightness(0.86f, 0.36f) < 0.9f)
+        assertTrue(brightness(0.5f, 0.5f) > 0.97f)
+    }
+
 }

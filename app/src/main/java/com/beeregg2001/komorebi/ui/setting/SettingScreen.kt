@@ -272,7 +272,7 @@ private fun SettingsMenuScreen(
             List(6) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(11) { FocusRequester() },
+            List(10) { FocusRequester() },
             emptyList(),
             List(7) { FocusRequester() },
             List(6) { FocusRequester() }
@@ -1108,7 +1108,7 @@ private fun SettingsMenuScreen(
                             screensaverTransition,
                             screensaverImages.size,
                             itemFocusRequesters[8][4], itemFocusRequesters[8][5], itemFocusRequesters[8][6],
-                            itemFocusRequesters[8][7], itemFocusRequesters[8][8], itemFocusRequesters[8][9], itemFocusRequesters[8][10],
+                            itemFocusRequesters[8][7], itemFocusRequesters[8][8], itemFocusRequesters[8][9],
                             { viewModel.setScreensaverEnabled(!screensaverEnabled) },
                             { viewModel.setScreensaverTimeoutMinutes(when (screensaverTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
                             { viewModel.setScreensaverIntervalSeconds(when (screensaverInterval) { 5 -> 15; 15 -> 30; 30 -> 60; else -> 5 }) },
@@ -1118,17 +1118,6 @@ private fun SettingsMenuScreen(
                                     try { screensaverImagePicker.launch(arrayOf("image/*")) }
                                     catch (_: android.content.ActivityNotFoundException) { showInternalImagePicker = true }
                                 } else showInternalImagePicker = true
-                            },
-                            {
-                                screensaverImages.forEach { raw -> runCatching {
-                                    context.contentResolver.releasePersistableUriPermission(
-                                        android.net.Uri.parse(raw), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                    )
-                                } }
-                                scope.launch(Dispatchers.IO) {
-                                    repository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, "[]")
-                                    ScreensaverImageFiles.clearOwnedImages(context)
-                                }
                             },
                             { screensaverPreview = true },
                             onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 },
@@ -1514,6 +1503,13 @@ private fun SettingsMenuScreen(
         if (showScreensaverGallery) {
             ScreensaverImageGallery(
                 imageUris = screensaverImages,
+                onDelete = { removed ->
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                        val remaining = screensaverImages.filterNot { it in removed }
+                        repository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, com.google.gson.Gson().toJson(remaining))
+                        ScreensaverImageFiles.removeSavedImages(context, removed)
+                    }
+                },
                 onDismiss = { showScreensaverGallery = false; closeDialog() },
             )
         }

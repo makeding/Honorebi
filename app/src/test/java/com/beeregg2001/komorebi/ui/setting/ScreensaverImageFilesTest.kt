@@ -134,4 +134,15 @@ class ScreensaverImageFilesTest {
             outside.delete()
         }
     }
+    @Test fun singleRemovalDeletesOnlySelectedOwnedCopyAndNeverOriginals() = runBlocking {
+        val source = image("source.png")
+        val copied = ScreensaverImageFiles.import(context, listOf(Uri.fromFile(source), Uri.fromFile(image("other.png"))))
+        ScreensaverImageFiles.removeSavedImages(context, listOf(copied[0], Uri.fromFile(source).toString()))
+        assertFalse(File(Uri.parse(copied[0]).path!!).exists())
+        assertTrue(File(Uri.parse(copied[1]).path!!).isFile)
+        assertTrue(source.isFile)
+        // Repeating cleanup after persistence is safe.
+        ScreensaverImageFiles.removeSavedImages(context, listOf(copied[0]))
+    }
+
 }

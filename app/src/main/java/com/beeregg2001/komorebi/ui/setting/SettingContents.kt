@@ -1022,14 +1022,12 @@ fun DisplaySettingsContent(
     screensaverIntervalR: FocusRequester,
     screensaverTransitionR: FocusRequester,
     screensaverImagesR: FocusRequester,
-    screensaverClearR: FocusRequester,
     screensaverPreviewR: FocusRequester,
     onToggleScreensaver: () -> Unit,
     onCycleScreensaverTimeout: () -> Unit,
     onCycleScreensaverInterval: () -> Unit,
     onCycleScreensaverTransition: () -> Unit,
     onPickScreensaverImages: () -> Unit,
-    onClearScreensaverImages: () -> Unit,
     onPreviewScreensaver: () -> Unit,
     onClick: (FocusRequester) -> Unit,
     screensaverShowUpcoming: Boolean = false,
@@ -1208,30 +1206,20 @@ fun DisplaySettingsContent(
                 onClick = { onClick(screensaverImagesR); onPickScreensaverImages() }
             )
             SettingItem(
-                "登録画像を見る",
+                "登録画像一覧",
                 "${screensaverImageCount} 枚",
                 Icons.Default.PhotoLibrary,
                 modifier = Modifier.focusRequester(galleryR).focusProperties {
-                    left = sidebarR; up = screensaverImagesR; down = screensaverClearR
+                    left = sidebarR; up = screensaverImagesR; down = upcomingR
                 },
                 onClick = { onClick(galleryR); onShowScreensaverGallery() }
-            )
-            SettingItem(
-                "登録画像をすべて削除",
-                "${screensaverImageCount} 枚",
-                Icons.Default.DeleteOutline,
-                enabled = screensaverImageCount > 0,
-                modifier = Modifier.focusRequester(screensaverClearR).focusProperties {
-                    left = sidebarR; up = galleryR; down = upcomingR
-                },
-                onClick = { onClick(screensaverClearR); onClearScreensaverImages() }
             )
             SettingItem(
                 "これからの録画予定を表示",
                 if (screensaverShowUpcoming) "ON" else "OFF",
                 Icons.Default.Event,
                 modifier = Modifier.focusRequester(upcomingR).focusProperties {
-                    left = sidebarR; up = screensaverClearR; down = screensaverPreviewR
+                    left = sidebarR; up = galleryR; down = screensaverPreviewR
                 },
                 onClick = { onClick(upcomingR); onToggleScreensaverUpcoming() }
             )
