@@ -4,13 +4,13 @@
   "releaseNotes": "Honorebi 1.1.0 stable",
   "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.0-huggy/app-universal-release.apk",
   "beta": {
-    "versionCode": 19,
-    "versionName": "1.1.1-beta3-huggy",
-    "releaseNotes": "ホーム・録画一覧のフォーカス復帰と日付をまたぐ番組の時刻表示を修正しました。設定ガイドとスクリーンセーバーを追加し、OTA更新で端末に適したAPKを選択するようにしました。",
-    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta3-huggy/app-universal-release.apk",
+    "versionCode": 20,
+    "versionName": "1.1.1-beta4-huggy",
+    "releaseNotes": "MPEG-TS録画のデータ欠損による再生停止を修正しました。録画・シリーズ・SMBの読み込みエラーと再試行、フォーカス復帰、ダイアログの配色を改善しました。手動CMスキップの操作待ち時間を10秒に延長し、ニュース・報道番組では時計を非表示にしました。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta4-huggy/app-universal-release.apk",
     "apkUrls": {
-      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta3-huggy/app-arm64-v8a-release.apk",
-      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta3-huggy/app-armeabi-v7a-release.apk"
+      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta4-huggy/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-beta4-huggy/app-armeabi-v7a-release.apk"
     }
   },
   "apkUrls": {
