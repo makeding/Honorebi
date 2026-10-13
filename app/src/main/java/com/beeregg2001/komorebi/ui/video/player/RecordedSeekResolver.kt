@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.ui.video.player
 import android.util.Log
 import com.beeregg2001.komorebi.data.model.SeekPositionResponse
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** サーバー側で解決済みのシーク先 (再生時刻と録画ファイル内のバイト位置)。 */
@@ -21,17 +22,20 @@ internal class RecordedSeekResolver(
     private val resolvePosition: suspend (videoId: Int, timeSeconds: Double) -> SeekPositionResponse?,
 ) {
     val resolutionRef = AtomicReference<RecordedSeekResolution?>(null)
+    private val requestSerial = AtomicLong(0L)
 
     /**
      * 目標時刻を解決し、ExoPlayer の seekTo / setMediaItem に渡す時刻 (ms) を返す。
      * 解決できなければ [resolutionRef] をクリアして目標時刻をそのまま返す (従来の比例シークにフォールバック)。
      */
     suspend fun resolve(targetMs: Long): Long {
+        val serial = requestSerial.incrementAndGet()
         if (!enabled || videoId == 0 || targetMs <= 0L) {
             resolutionRef.set(null)
             return targetMs
         }
         val response = withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { resolvePosition(videoId, targetMs / 1000.0) }
+        if (serial != requestSerial.get()) return targetMs
         if (response == null || response.position < 0L) {
             resolutionRef.set(null)
             Log.w(TAG, "Seek position not resolved, falling back to proportional seek. [video=$videoId, target_ms=$targetMs]")
@@ -44,6 +48,12 @@ internal class RecordedSeekResolver(
             "Resolved seek position. [video=$videoId, target_ms=$targetMs, resolved_ms=${resolvedTimeUs / 1000L}, position=${response.position}]"
         )
         return resolvedTimeUs / 1000L
+    }
+
+    /** Automatic damage recovery must have a real byte/keyframe result. */
+    suspend fun resolveForRecovery(targetMs: Long): Long? {
+        resolve(targetMs)
+        return resolutionRef.get()?.timeUs?.div(1_000L)
     }
 
     companion object {

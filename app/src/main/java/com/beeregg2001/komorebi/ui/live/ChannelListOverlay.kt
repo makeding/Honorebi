@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -78,7 +79,9 @@ fun ChannelListOverlay(
     onRecordingSelect: (RecordedProgram) -> Unit,
     logoUrls: Map<String, String>,
     shouldCropLogo: Boolean,
-    focusRequester: FocusRequester
+    focusRequester: FocusRequester,
+    onFirstDraw: () -> Unit = {},
+    onInitialFocus: () -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val channelTypeOrder = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY")
@@ -104,11 +107,12 @@ fun ChannelListOverlay(
         if (firstSection == null) return@LaunchedEffect
         isTwoRowsVisible = false
         columnState.scrollToItem(0)
-        focusRequester.safeRequestFocusWithRetry(
+        val focused = focusRequester.safeRequestFocusWithRetry(
             tag = "ChannelBrowserFocus",
             maxRetries = 8,
             delayMillis = 40
         )
+        if (focused) onInitialFocus()
     }
 
     LaunchedEffect(isTwoRowsVisible, secondSection) {
@@ -131,6 +135,10 @@ fun ChannelListOverlay(
             state = columnState,
             modifier = Modifier
                 .fillMaxWidth()
+                .drawWithContent {
+                    drawContent()
+                    onFirstDraw()
+                }
                 .height(if (isTwoRowsVisible) 336.dp else 180.dp)
                 .background(
                     Brush.verticalGradient(
@@ -228,10 +236,12 @@ private fun ChannelSectionRow(
     onChannelSelect: (Channel) -> Unit,
     initialFocusRequester: FocusRequester?
 ) {
-    val listState = rememberLazyListState()
     val focusIndex = remember(channels, currentChannelId) {
         channels.indexOfFirst { it.id == currentChannelId }.coerceAtLeast(0)
     }
+    // Compose the entry card in the first layout rather than building the start
+    // of the row and immediately discarding it to scroll to the current station.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = focusIndex)
 
     LaunchedEffect(focusIndex) {
         if (focusIndex > 0) listState.scrollToItem(focusIndex)

@@ -27,6 +27,9 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.util.playbackHttpDataSourceFactory
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -163,6 +166,7 @@ fun rememberManagedExoPlayer(
     onPlaybackEnded: () -> Unit = {},
     dataBroadcastingCallback: B60DataBroadcastingCallback? = null,
     seekResolutionRef: AtomicReference<RecordedSeekResolution?>? = null,
+    sourceBytesRead: AtomicLong? = null,
     enableHdrToSdrToneMapping: Boolean = false,
     isNetworkAvailable: () -> Boolean = { true },
     onStreamSessionExpired: suspend (ExoPlayer) -> Boolean = { false },
@@ -335,7 +339,7 @@ fun rememberManagedExoPlayer(
 
         val isPlaybackRecoveryRunning = AtomicBoolean(false)
 
-        val dataSourceFactory = buildRecordedDataSourceFactory(
+        val originalDataSourceFactory = buildRecordedDataSourceFactory(
             nativeLib = nativeLib,
             httpDataSourceFactory = httpDataSourceFactory,
             accessConfiguration = { accessSettings.cloudflareAccessConfiguration.value },
@@ -347,6 +351,18 @@ fun rememberManagedExoPlayer(
             programRef = programRef,
             programDurationUsRef = programDurationUsRef,
         )
+        val dataSourceFactory = DataSource.Factory {
+            originalDataSourceFactory.createDataSource().apply {
+                if (sourceBytesRead != null) addTransferListener(object : TransferListener {
+                    override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+                    override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+                    override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+                    override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
+                        sourceBytesRead.addAndGet(bytesTransferred.toLong())
+                    }
+                })
+            }
+        }
         val customExtractorsFactory = buildRecordedExtractorsFactory(
             constructionKey = constructionKey,
             epgDurationUs = epgDurationUs,

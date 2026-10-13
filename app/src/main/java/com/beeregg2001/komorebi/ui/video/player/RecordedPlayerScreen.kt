@@ -63,6 +63,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.isBangumiPlaybackProgress
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
+import com.beeregg2001.komorebi.ui.video.player.policy.RecordedTsRecoveryPolicy
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel as CommentChannel
@@ -73,6 +74,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.util.UUID
 
@@ -634,6 +636,11 @@ internal fun RecordedPlayerScreen(
             },
         )
     }
+    val tsRecoveryEnabled = usesResolvedByteSeek && !isRecordingChasePlayback && !isLiveStream
+    val tsRecoveryPolicy = remember(recordedPlaybackFence.identity, vs.currentQuality.value, enableHdrToSdrToneMapping) {
+        RecordedTsRecoveryPolicy()
+    }
+    val sourceBytesRead = remember(tsRecoveryPolicy) { AtomicLong(0L) }
     val renewStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
         if (!currentPlaybackFence.accepts() || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
             false
@@ -695,6 +702,7 @@ internal fun RecordedPlayerScreen(
     val exoPlayer = rememberManagedExoPlayer(
         program = currentProgram,
         seekResolutionRef = seekResolver.resolutionRef,
+        sourceBytesRead = sourceBytesRead,
         recordedPlaybackFence = recordedPlaybackFence,
         vs = vs,
         isLiveStream = isLiveStream,
@@ -731,6 +739,10 @@ internal fun RecordedPlayerScreen(
                         "テレビのデコーダーが変換要求を受け付けなかったため、" +
                         "HLG そのままに戻して再生します。"
                 )
+                return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
+            }
+            if (tsRecoveryEnabled && error.isTsDamageError()) {
+                tsRecoveryPolicy.pendingError = true
                 return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
             }
             val networkRetry = RecordedNetworkRetry.RenewStreamSession
@@ -786,6 +798,18 @@ internal fun RecordedPlayerScreen(
                 videoPlayerViewModel.updateWatchHistory(currentProgram, posMs / 1000.0)
             }
         }
+    )
+
+    RecordedTsRecovery(
+        player = exoPlayer,
+        enabled = tsRecoveryEnabled,
+        networkAvailable = isNetworkAvailable,
+        fence = recordedPlaybackFence,
+        policy = tsRecoveryPolicy,
+        bytesRead = sourceBytesRead,
+        resolver = seekResolver,
+        onSeek = { recordedCaptions.seek() },
+        onFailure = { message -> isBuffering = false; onShowToast(message); onShowControlsChange(true) },
     )
 
     DisposableEffect(exoPlayer) {
@@ -1111,6 +1135,7 @@ internal fun RecordedPlayerScreen(
             return@seek
         }
         recordedCaptions.seek()
+        tsRecoveryPolicy.userSeek()
         val safeTarget = targetMs.coerceIn(
             0L,
             if (totalDurationForControls > 0) totalDurationForControls else Long.MAX_VALUE
@@ -1156,6 +1181,9 @@ internal fun RecordedPlayerScreen(
                     val resolvedTargetMs = seekResolver.resolve(safeTarget)
                     if (!currentPlaybackFence.accepts()) return@launch
                     exoPlayer.seekTo(resolvedTargetMs)
+                    if (exoPlayer.playbackState == Player.STATE_IDLE) {
+                        exoPlayer.prepare()
+                    }
                 }
                 if (currentProgram.id != 0) {
                     videoPlayerViewModel.updateWatchHistory(

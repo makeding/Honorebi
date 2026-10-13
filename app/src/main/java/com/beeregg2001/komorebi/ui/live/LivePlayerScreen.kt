@@ -113,6 +113,7 @@ fun LivePlayerScreen(
     val scope = rememberCoroutineScope()
 
     val ps = rememberLivePlayerState(uiContext)
+    val channelBrowserOpenTrace = remember { ChannelBrowserOpenTrace() }
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val lastWatchedChannels by channelViewModel.lastWatchedChannels.collectAsState()
@@ -771,7 +772,10 @@ fun LivePlayerScreen(
                     onManualOverlayChange = onManualOverlayChange,
                     onPinnedOverlayChange = onPinnedOverlayChange,
                     onSubMenuToggle = onSubMenuToggle,
-                    onMiniListToggle = onMiniListToggle,
+                    onMiniListToggle = { open ->
+                        if (open) channelBrowserOpenTrace.begin(keyEvent.nativeKeyEvent.eventTime)
+                        onMiniListToggle(open)
+                    },
                     onShowToast = onShowToast,
                     onPiPRequested = onPiPRequested,
                     onBackPressed = onBackPressed,
@@ -1119,7 +1123,9 @@ fun LivePlayerScreen(
                 },
                 logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,
-                focusRequester = listFocusRequester
+                focusRequester = listFocusRequester,
+                onFirstDraw = channelBrowserOpenTrace::firstDraw,
+                onInitialFocus = channelBrowserOpenTrace::initialFocus,
             )
         }
 
