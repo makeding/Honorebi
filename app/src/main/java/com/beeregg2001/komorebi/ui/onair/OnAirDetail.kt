@@ -177,9 +177,21 @@ internal fun OnAirDetail(
             autoFocused = true
             if ((cellRequesters[returnCell] ?: defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")) onRestored()
         } else if (!autoFocused && !waitingForPlayerReturn) {
-            // 詳細は作品情報（hero）から始める。録画一覧へは Down、一覧へは Back。
-            autoFocused = true
-            summaryFocus.safeRequestFocusWithRetry("OnAirOpenDetail")
+            // 録画を待つ間に hero へ仮フォーカスを置かない。Ready 後に末尾スロットを
+            // 上から順に探す latestCellKey へ一度だけ入るため、同一話数の局は行順先頭が選ばれる。
+            when (detail.programsStatus) {
+                OnAirLoadState.Ready -> {
+                    if ((defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirOpenLatestEpisode")) {
+                        autoFocused = true
+                    }
+                }
+                is OnAirLoadState.Error -> {
+                    if (summaryFocus.safeRequestFocusWithRetry("OnAirOpenDetailFallback")) {
+                        autoFocused = true
+                    }
+                }
+                OnAirLoadState.Loading, OnAirLoadState.Idle -> Unit
+            }
         }
     }
 

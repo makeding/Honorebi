@@ -42,7 +42,9 @@ internal object VideoFocusPolicy {
     ): Boolean {
         if (playedProgramId != null && playedProgramId in recentProgramIds) return false
         // Recent has priority even when History already contains the program.
-        return recentLoading || !historyReady
+        if (recentLoading) return true
+        if (playedProgramId != null && playedProgramId in historyProgramIds) return false
+        return !historyReady
     }
 
     fun restoreTarget(

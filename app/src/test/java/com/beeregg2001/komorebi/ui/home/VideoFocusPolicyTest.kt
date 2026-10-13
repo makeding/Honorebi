@@ -55,6 +55,16 @@ class VideoFocusPolicyTest {
             VideoFocusPolicy.shouldWaitForPlayerReturn(
                 playedProgramId = "B",
                 recentProgramIds = listOf("A"),
+                historyProgramIds = listOf("B"),
+                recentLoading = true,
+                historyReady = true,
+            ),
+        )
+        assertEquals(
+            true,
+            VideoFocusPolicy.shouldWaitForPlayerReturn(
+                playedProgramId = "B",
+                recentProgramIds = listOf("A"),
                 historyProgramIds = listOf("C"),
                 recentLoading = true,
                 historyReady = true,

@@ -50,7 +50,7 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-series-1").requestFocus().assertIsFocused()
             .performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
         compose.onNodeWithTag("onair-series-2").assertIsFocused().confirm()
-        // 決定で全画面詳細へ。詳細はまず作品情報（hero）へフォーカスする。
+        // 録画がない作品は作品情報をフォールバックにする。
         compose.onNodeWithTag("onair-details").assertIsDisplayed()
         compose.onNodeWithTag("onair-summary").assertIsFocused()
         // Back は常に一覧へ戻り、確認前のカードへフォーカスを復元する。
@@ -62,8 +62,17 @@ class OnAirScreenTest {
         val vm = viewModel()
         compose.setContent { screen(vm) }
         compose.onNodeWithTag("onair-series-1").confirm()
-        compose.onNodeWithTag("onair-summary").assertIsFocused()
+        compose.onNodeWithTag("onair-episode-1:ch:episode:4:14").assertIsFocused()
+        compose.onNodeWithTag("onair-summary").requestFocus()
             .performKeyInput { keyDown(Key.DirectionDown); keyUp(Key.DirectionDown) }
+        compose.onNodeWithTag("onair-episode-1:ch:episode:4:14").assertIsFocused()
+    }
+
+    @Test fun detailInitialFocusUsesLatestEpisodeOnFirstStationWhenStationsTie() {
+        val vm = viewModel()
+        compose.setContent { screen(vm) }
+        compose.onNodeWithTag("onair-series-1").confirm()
+        // 第4話は A/B 両局にある。matrix の行順先頭 A 局を選ぶ。
         compose.onNodeWithTag("onair-episode-1:ch:episode:4:14").assertIsFocused()
     }
 
@@ -71,7 +80,7 @@ class OnAirScreenTest {
         val vm = viewModel()
         compose.setContent { screen(vm) }
         compose.onNodeWithTag("onair-series-1").confirm()
-        compose.onNodeWithTag("onair-summary").assertIsFocused()
+        compose.onNodeWithTag("onair-summary").requestFocus().assertIsFocused()
         // A 局の第2話から右へ: 第3話は A 局に無いので B 局の同じ話数へ回り道する。
         compose.onNodeWithTag("onair-episode-1:ch:episode:2:12").requestFocus().assertIsFocused()
             .performKeyInput { keyDown(Key.DirectionRight); keyUp(Key.DirectionRight) }
@@ -98,7 +107,7 @@ class OnAirScreenTest {
         compose.setContent { screen(vm) }
         compose.onNodeWithTag("onair-series-1").confirm()
         // 作品情報の取得に失敗しても詳細は開き、hero から Up で再試行チップへ到達できる。
-        compose.onNodeWithTag("onair-summary").assertIsFocused()
+        compose.onNodeWithTag("onair-summary").requestFocus().assertIsFocused()
             .performKeyInput { keyDown(Key.DirectionUp); keyUp(Key.DirectionUp) }
         compose.onNodeWithText("再試行").assertIsFocused()
     }
@@ -118,13 +127,14 @@ class OnAirScreenTest {
         compose.onNodeWithTag("onair-grid").assertIsDisplayed()
     }
 
-    @Test fun playbackReturnRestoresSameCompositeEpisodeCell() {
+    @Test fun playbackReturnRestoresSameCompositeEpisodeCellInsteadOfInitialLatest() {
         val vm = viewModel()
         val returning = androidx.compose.runtime.mutableStateOf(false)
         compose.setContent { KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), returning.value, { returning.value = false }, vm) } }
         compose.onNodeWithTag("onair-series-1").confirm()
-        // 決定で全画面詳細が開き、最初の再生可能エピソードへ入る。
+        // 通常入場は最新話だが、再生からの復帰は実際に再生したセルを優先する。
         compose.onNodeWithTag("onair-details").assertIsDisplayed()
+        compose.onNodeWithTag("onair-episode-1:ch:episode:4:14").assertIsFocused()
         val key = "1:ch:episode:1:10"
         compose.onNodeWithTag("onair-episode-$key").assertIsDisplayed().requestFocus().confirm()
         compose.runOnIdle { returning.value = true }
