@@ -11,6 +11,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -33,6 +34,38 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class, sdk = [28])
 class SelectionDialogFocusTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun timeFormatStartsOn24AndUpSelects28DownReaches12() {
+        var selected: String? = null
+        compose.setContent {
+            KomorebiTheme {
+                SelectionDialog(
+                    title = "時刻の表示形式",
+                    options = TIME_FORMAT_OPTIONS,
+                    current = "24H",
+                    onDismiss = {},
+                    onSelect = { selected = it }
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(200)
+        val row24 = compose.onNodeWithText("24時間表記")
+        val row28 = compose.onNodeWithText("28時間表記 (24:00–27:59)")
+        val row12 = compose.onNodeWithText("12時間表記 (AM/PM)")
+        row24.assertIsFocused().performKeyInput {
+            keyDown(Key.DirectionDown); keyUp(Key.DirectionDown)
+        }
+        row12.assertIsFocused().assertIsDisplayed().performKeyInput {
+            keyDown(Key.DirectionUp); keyUp(Key.DirectionUp)
+        }
+        row24.assertIsFocused().performKeyInput {
+            keyDown(Key.DirectionUp); keyUp(Key.DirectionUp)
+        }
+        row28.assertIsFocused().assertIsDisplayed().performKeyInput {
+            keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter)
+        }
+        assertEquals("28H", selected)
+    }
 
     @Test fun selectionRowKeepsMeasuredBoundsAcrossFocusAndSelection() {
         compose.setContent {

@@ -56,6 +56,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import java.time.LocalTime
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
 
+internal val TIME_FORMAT_OPTIONS = listOf(
+    "28時間表記 (24:00–27:59)" to "28H",
+    "24時間表記" to "24H",
+    "12時間表記 (AM/PM)" to "12H"
+)
+
 private data class SettingSidebarRow(
     val contentIndex: Int,
     val title: String,
@@ -167,11 +173,14 @@ private fun SettingsMenuScreen(
     val honomiSession by viewModel.honomiSession.collectAsState()
     val honomiLoginInProgress by viewModel.honomiLoginInProgress.collectAsState()
     val screensaverEnabled by viewModel.screensaverEnabled.collectAsState()
+    val screensaverShowUpcoming by viewModel.screensaverShowUpcoming.collectAsState()
+    val screensaverUpcomingR = remember { FocusRequester() }
     val screensaverTimeout by viewModel.screensaverTimeoutMinutes.collectAsState()
     val screensaverInterval by viewModel.screensaverIntervalSeconds.collectAsState()
     val screensaverTransition by viewModel.screensaverTransition.collectAsState()
     val screensaverImages by viewModel.screensaverImageUris.collectAsState()
     var screensaverPreview by remember { mutableStateOf(false) }
+    var showInternalImagePicker by remember { mutableStateOf(false) }
     val screensaverImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -343,7 +352,7 @@ private fun SettingsMenuScreen(
                                 }
     }
 
-    val isDialogOpen = uiState.activeDialog !is SettingDialogState.None
+    val isDialogOpen = uiState.activeDialog !is SettingDialogState.None || showInternalImagePicker
 
     // ダイアログ表示中の戻るキーは「ダイアログを閉じる」に割り当てる。
     // ここで消費しないと MainRoot 側の BackHandler が動いてホームへ戻ってしまう。
@@ -1086,11 +1095,7 @@ private fun SettingsMenuScreen(
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "時刻の表示形式",
-                                    listOf(
-                                        "24時間表記" to "24H",
-                                        "12時間表記 (AM/PM)" to "12H",
-                                        "28時間表記 (24:00–27:59)" to "28H"
-                                    ),
+                                    TIME_FORMAT_OPTIONS,
                                     prefs.timeFormat
                                 ) { viewModel.updateTimeFormat(it) }
                             },
@@ -1106,17 +1111,29 @@ private fun SettingsMenuScreen(
                             { viewModel.setScreensaverTimeoutMinutes(when (screensaverTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
                             { viewModel.setScreensaverIntervalSeconds(when (screensaverInterval) { 5 -> 15; 15 -> 30; 30 -> 60; else -> 5 }) },
                             { viewModel.setScreensaverTransition(when (screensaverTransition) { "FADE" -> "SLIDE"; "SLIDE" -> "NONE"; else -> "FADE" }) },
-                            { screensaverImagePicker.launch(arrayOf("image/*")) },
+                            {
+                                if (ScreensaverImageFiles.hasDocumentPicker(context)) {
+                                    try { screensaverImagePicker.launch(arrayOf("image/*")) }
+                                    catch (_: android.content.ActivityNotFoundException) { showInternalImagePicker = true }
+                                } else showInternalImagePicker = true
+                            },
                             {
                                 screensaverImages.forEach { raw -> runCatching {
                                     context.contentResolver.releasePersistableUriPermission(
                                         android.net.Uri.parse(raw), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                                     )
                                 } }
-                                viewModel.setScreensaverImageUris(emptyList())
+                                scope.launch(Dispatchers.IO) {
+                                    repository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, "[]")
+                                    ScreensaverImageFiles.clearOwnedImages(context)
+                                }
                             },
-                            { screensaverPreview = true }
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 }
+                            { screensaverPreview = true },
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 },
+                            screensaverShowUpcoming = screensaverShowUpcoming,
+                            screensaverUpcomingR = screensaverUpcomingR,
+                            onToggleScreensaverUpcoming = { viewModel.setScreensaverShowUpcoming(!screensaverShowUpcoming) },
+                        )
 
                         4 -> EpgSettingsContent(
                             pref = prefs,
@@ -1473,7 +1490,27 @@ private fun SettingsMenuScreen(
 
             else -> {}
         }
+        if (showInternalImagePicker) {
+            ScreensaverImagePicker(
+                onDismiss = { showInternalImagePicker = false; closeDialog() },
+                onImport = { uris ->
+                    val imported = ScreensaverImageFiles.import(context, uris)
+                    try {
+                        repository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS,
+                            com.google.gson.Gson().toJson((screensaverImages + imported).distinct()))
+                    } catch (failure: Throwable) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                            imported.forEach { java.io.File(android.net.Uri.parse(it).path!!).delete() }
+                        }
+                        throw failure
+                    }
+                },
+            )
+        }
         if (screensaverPreview) {
+            val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
+                enabled = screensaverShowUpcoming, visible = true,
+            )
             androidx.compose.ui.window.Dialog(
                 onDismissRequest = { screensaverPreview = false },
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
@@ -1488,7 +1525,7 @@ private fun SettingsMenuScreen(
                 ) {
                     com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
                         imageUris = screensaverImages, intervalSeconds = 5,
-                        transition = screensaverTransition, nextRecording = null
+                        transition = screensaverTransition, upcomingRecordings = upcoming
                     )
                 }
             }

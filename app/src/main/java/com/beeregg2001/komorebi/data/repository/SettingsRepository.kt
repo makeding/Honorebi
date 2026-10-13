@@ -124,6 +124,7 @@ class SettingsRepository @Inject constructor(
         val SCREENSAVER_INTERVAL_SECONDS = intPreferencesKey("screensaver_interval_seconds")
         val SCREENSAVER_TRANSITION = stringPreferencesKey("screensaver_transition")
         val SCREENSAVER_IMAGE_URIS = stringPreferencesKey("screensaver_image_uris")
+        val SCREENSAVER_SHOW_UPCOMING = booleanPreferencesKey("screensaver_show_upcoming")
 
         val AVAILABLE_STREAM_QUALITIES = stringPreferencesKey("available_stream_qualities")
 
@@ -263,6 +264,8 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[SCREENSAVER_TRANSITION] ?: "FADE" }
     val screensaverImageUris: Flow<String> =
         context.dataStore.data.map { it[SCREENSAVER_IMAGE_URIS] ?: "[]" }
+    val screensaverShowUpcoming: Flow<Boolean> =
+        context.dataStore.data.map { it[SCREENSAVER_SHOW_UPCOMING] ?: false }
     val availableStreamQualities: Flow<String> =
         context.dataStore.data.map { it[AVAILABLE_STREAM_QUALITIES] ?: "" }
 

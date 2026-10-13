@@ -333,6 +333,9 @@ class SettingsViewModel @Inject constructor(
     val screensaverImageUris: StateFlow<List<String>> = settingsRepository.screensaverImageUris
         .map { json -> runCatching { Gson().fromJson(json, Array<String>::class.java)?.toList().orEmpty() }.getOrDefault(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val screensaverShowUpcoming: StateFlow<Boolean> = settingsRepository.screensaverShowUpcoming.stateIn(
+        viewModelScope, SharingStarted.Eagerly, false
+    )
 
     fun setScreensaverEnabled(enabled: Boolean) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveBoolean(SettingsRepository.SCREENSAVER_ENABLED, enabled)
@@ -352,6 +355,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setScreensaverImageUris(uris: List<String>) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, Gson().toJson(uris.distinct()))
+    }
+
+    fun setScreensaverShowUpcoming(enabled: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveBoolean(SettingsRepository.SCREENSAVER_SHOW_UPCOMING, enabled)
     }
     val hideSubChannels: StateFlow<Boolean> = settingsRepository.hideSubChannels.stateIn(
         viewModelScope,

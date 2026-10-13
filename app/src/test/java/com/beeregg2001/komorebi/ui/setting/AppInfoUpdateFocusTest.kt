@@ -86,8 +86,8 @@ class AppInfoUpdateFocusTest {
                 manager = LocalFocusManager.current
                 AppInfoFocusReturnEffect(state, check, true, check, windowFocused)
                 Column {
-                    Button({}, Modifier.focusRequester(check)) { Text("check") }
                     Button({}, Modifier.focusRequester(other)) { Text("other") }
+                    Button({}, Modifier.focusRequester(check)) { Text("check") }
                 }
             }
         }

@@ -102,24 +102,22 @@ class HomeLauncherState(
     }
 
     fun handleBackNavigation(
+        defaultTabIndex: Int,
         onTabChange: (Int) -> Unit,
-        onFinalBack: () -> Unit,
         onBackTriggered: () -> Unit,
-        requestTopNavFocus: () -> Unit,
+        requestTopNavFocus: (Int) -> Unit,
         escapeToSafeHouse: () -> Unit
     ) {
         if (!topNavHasFocus) {
             escapeToSafeHouse()
-            requestTopNavFocus()
-            onBackTriggered()
-        } else if (selectedTabIndex != 0) {
-            escapeToSafeHouse()
-            selectedTabIndex = 0
-            onTabChange(0)
-            requestTopNavFocus()
+            requestTopNavFocus(selectedTabIndex)
             onBackTriggered()
         } else {
-            onFinalBack()
+            escapeToSafeHouse()
+            selectedTabIndex = defaultTabIndex
+            onTabChange(defaultTabIndex)
+            requestTopNavFocus(defaultTabIndex)
+            onBackTriggered()
         }
     }
 }

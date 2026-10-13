@@ -8,56 +8,46 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.fillMaxSize
 import com.beeregg2001.komorebi.data.SettingsRepository
-import com.beeregg2001.komorebi.data.repository.ReserveProvider
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.MutableStateFlow
-import java.time.OffsetDateTime
 
 /** Android system DreamService path; the foreground app screensaver uses the same renderer. */
 @AndroidEntryPoint
 class ScreensaverDreamService : DreamService() {
     @Inject lateinit var settingsRepository: SettingsRepository
-    @Inject lateinit var reserveProvider: ReserveProvider
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val nextRecording = MutableStateFlow<String?>(null)
+    @Inject lateinit var upcomingRecordingsSource: UpcomingRecordingsSource
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         isFullscreen = true
         isInteractive = false
-        serviceScope.launch {
-            val reservations = runCatching { reserveProvider.getReserves().getOrNull().orEmpty() }.getOrDefault(emptyList())
-            nextRecording.value = reservations.mapNotNull { item ->
-                val start = runCatching { OffsetDateTime.parse(item.program.startTime) }.getOrNull()
-                if (start != null && start.isAfter(OffsetDateTime.now())) start to item.program.title else null
-            }.minByOrNull { it.first }?.let { (start, title) -> "${start.toLocalTime().toString().take(5)}  $title" }
-        }
         setContentView(ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 val imagesJson by settingsRepository.screensaverImageUris.collectAsState(initial = "[]")
                 val interval by settingsRepository.screensaverIntervalSeconds.collectAsState(initial = 30)
                 val transition by settingsRepository.screensaverTransition.collectAsState(initial = "FADE")
-                val recording by nextRecording.collectAsState()
+                val showUpcoming by settingsRepository.screensaverShowUpcoming.collectAsState(initial = false)
                 val images = rememberDreamImages(imagesJson)
+                val upcoming = rememberUpcomingRecordings(
+                    enabled = showUpcoming,
+                    visible = true,
+                    source = upcomingRecordingsSource,
+                )
                 KomorebiTheme {
-                    ScreensaverContent(images, interval, transition, recording, Modifier.fillMaxSize())
+                    ScreensaverContent(
+                        imageUris = images,
+                        intervalSeconds = interval,
+                        transition = transition,
+                        upcomingRecordings = upcoming,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         })
     }
 
-    override fun onDestroy() {
-        serviceScope.cancel()
-        super.onDestroy()
-    }
 }
 
 @androidx.compose.runtime.Composable

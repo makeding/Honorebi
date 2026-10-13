@@ -1031,9 +1031,13 @@ fun DisplaySettingsContent(
     onPickScreensaverImages: () -> Unit,
     onClearScreensaverImages: () -> Unit,
     onPreviewScreensaver: () -> Unit,
-    onClick: (FocusRequester) -> Unit
+    onClick: (FocusRequester) -> Unit,
+    screensaverShowUpcoming: Boolean = false,
+    screensaverUpcomingR: FocusRequester? = null,
+    onToggleScreensaverUpcoming: () -> Unit = {},
 ) {
     val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
+    val upcomingR = screensaverUpcomingR ?: remember { FocusRequester() }
     val baseThemeLabel =
         if (isTimeLinked) "時間連動テーマ" else if (!isDarkMode) AppStrings.SETTINGS_VALUE_THEME_DARK else AppStrings.SETTINGS_VALUE_THEME_LIGHT
 
@@ -1206,16 +1210,25 @@ fun DisplaySettingsContent(
                 Icons.Default.DeleteOutline,
                 enabled = screensaverImageCount > 0,
                 modifier = Modifier.focusRequester(screensaverClearR).focusProperties {
-                    left = sidebarR; up = screensaverImagesR; down = screensaverPreviewR
+                    left = sidebarR; up = screensaverImagesR; down = upcomingR
                 },
                 onClick = { onClick(screensaverClearR); onClearScreensaverImages() }
+            )
+            SettingItem(
+                "これからの録画予定を表示",
+                if (screensaverShowUpcoming) "ON" else "OFF",
+                Icons.Default.Event,
+                modifier = Modifier.focusRequester(upcomingR).focusProperties {
+                    left = sidebarR; up = screensaverClearR; down = screensaverPreviewR
+                },
+                onClick = { onClick(upcomingR); onToggleScreensaverUpcoming() }
             )
             SettingItem(
                 "プレビュー",
                 "5 秒ごとに切り替え",
                 Icons.Default.Preview,
                 modifier = Modifier.focusRequester(screensaverPreviewR).focusProperties {
-                    left = sidebarR; up = screensaverClearR; down = FocusRequester.Cancel
+                    left = sidebarR; up = upcomingR; down = FocusRequester.Cancel
                 },
                 onClick = { onClick(screensaverPreviewR); onPreviewScreensaver() }
             )

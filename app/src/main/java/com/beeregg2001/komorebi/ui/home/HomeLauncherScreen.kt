@@ -37,9 +37,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
@@ -221,7 +218,6 @@ fun HomeLauncherScreen(
     onEpgJumpMenuStateChanged: (Boolean) -> Unit,
     triggerBack: Boolean,
     onBackTriggered: () -> Unit,
-    onFinalBack: () -> Unit,
     onUiReady: () -> Unit,
     isUiReadyFlag: Boolean,
     onNavigateToPlayer: (String, String, String) -> Unit,
@@ -257,7 +253,6 @@ fun HomeLauncherScreen(
 
     val focusMemory = rememberFocusMemory()
     val scope = rememberCoroutineScope()
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val inputSourceApp = remember(launcherApps) {
@@ -271,6 +266,17 @@ fun HomeLauncherScreen(
     val tabs = remember(hideAppsTab) { visibleHomeTabs(hideAppsTab) }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+
+    suspend fun handleLauncherBack() {
+        val defaultIndex = tabs.indexOf(settingsViewModel.getStartupTabOnce()).coerceAtLeast(0)
+        ui.handleBackNavigation(
+            defaultTabIndex = defaultIndex,
+            onTabChange = onTabChange,
+            onBackTriggered = onBackTriggered,
+            requestTopNavFocus = { targetIndex -> focusMemory.remember(targetIndex) },
+            escapeToSafeHouse = { ui.safeHouseRequester.safeRequestFocus("Back_SafeHouse") },
+        )
+    }
 
     // 各タブの先頭コンテンツのフォーカス先。
     fun firstContentRequesterFor(index: Int): FocusRequester =
@@ -288,46 +294,18 @@ fun HomeLauncherScreen(
         isSettingsOpen, isRecordListOpen, isReserveOverlayOpen
     ) && !hasActivePlayer
 
-    val shouldRestoreTopNavOnResume = rememberUpdatedState(
-        !isFullScreenMode && !isReturningFromPlayer
-    )
-    // ★ 追加: LifecycleEventObserver は状態変化で再起動しないため、
-    // ON_RESUME 内で参照する値は rememberUpdatedState 経由で最新を読む。
-    val visibleTabsState = rememberUpdatedState(tabs)
-    val safeTabIndexState = rememberUpdatedState(safeTabIndex)
-
-    DisposableEffect(lifecycleOwner) {
-        var wasPaused = false
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> wasPaused = true
-                Lifecycle.Event.ON_RESUME -> {
-                    if (wasPaused) {
-                        wasPaused = false
-                        scope.launch {
-                            delay(250)
-                            if (shouldRestoreTopNavOnResume.value) {
-                                val currentTabName =
-                                    visibleTabsState.value.getOrNull(safeTabIndexState.value)
-                                val itemId = homeViewModel.lastClickedItemId
-                                if (currentTabName == "アプリ" &&
-                                    homeViewModel.lastClickedSection == "apps" &&
-                                    itemId != null
-                                ) {
-                                    focusMemory.remember(safeTabIndex, "apps", itemId)
-                                } else {
-                                    focusMemory.remember(safeTabIndex)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                else -> Unit
+    HomeResumeFocusEffect {
+        if (!isFullScreenMode && !isReturningFromPlayer) {
+            val currentTabName = tabs.getOrNull(safeTabIndex)
+            val itemId = homeViewModel.lastClickedItemId
+            if (currentTabName == "アプリ" &&
+                homeViewModel.lastClickedSection == "apps" && itemId != null
+            ) {
+                focusMemory.remember(safeTabIndex, "apps", itemId)
+            } else {
+                focusMemory.remember(safeTabIndex)
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val returnPlayerFocusRequester = remember { FocusRequester() }
@@ -557,19 +535,7 @@ fun HomeLauncherScreen(
 
     LaunchedEffect(triggerBack) {
         if (triggerBack) {
-            ui.handleBackNavigation(
-                onTabChange = onTabChange,
-                onFinalBack = onFinalBack,
-                onBackTriggered = onBackTriggered,
-                requestTopNavFocus = {
-                    focusMemory.remember(safeTabIndex)
-                },
-                escapeToSafeHouse = {
-                    scope.launch {
-                        ui.safeHouseRequester.safeRequestFocusWithRetry("Back_SafeHouse")
-                    }
-                }
-            )
+            handleLauncherBack()
         }
     }
 
@@ -605,21 +571,7 @@ fun HomeLauncherScreen(
                         .onFocusChanged { ui.topNavHasFocus = it.hasFocus }
                         .onPreviewKeyEvent { event ->
                             if (event.type == KeyEventType.KeyDown && (event.key == Key.Back || event.key == Key.Escape)) {
-                                ui.handleBackNavigation(
-                                    onTabChange = onTabChange,
-                                    onFinalBack = onFinalBack,
-                                    onBackTriggered = onBackTriggered,
-                                    requestTopNavFocus = {
-                                        focusMemory.remember(safeTabIndex)
-                                    },
-                                    escapeToSafeHouse = {
-                                        scope.launch {
-                                            ui.safeHouseRequester.safeRequestFocusWithRetry(
-                                                "Back_SafeHouse"
-                                            )
-                                        }
-                                    }
-                                )
+                                scope.launch { handleLauncherBack() }
                                 return@onPreviewKeyEvent true
                             }
                             false

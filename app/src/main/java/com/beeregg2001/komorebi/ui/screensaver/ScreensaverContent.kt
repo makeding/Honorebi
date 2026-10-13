@@ -22,11 +22,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,7 +57,7 @@ fun ScreensaverContent(
     imageUris: List<String>,
     intervalSeconds: Int,
     transition: String,
-    nextRecording: String?,
+    upcomingRecordings: UpcomingRecordingsState? = null,
     modifier: Modifier = Modifier,
 ) {
     var currentImage by remember(imageUris) { mutableIntStateOf(0) }
@@ -112,7 +111,7 @@ fun ScreensaverContent(
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)))
 
         Column(
-            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(64.dp),
+            modifier = Modifier.align(Alignment.BottomStart).widthIn(max = 460.dp).padding(64.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
@@ -135,10 +134,15 @@ fun ScreensaverContent(
                 NetworkTransport.DISCONNECTED -> "ネットワーク未接続"
             })
             StatusLine(Icons.Default.Dns, deviceName)
-            StatusLine(Icons.Default.Radio, nextRecording ?: "次の録画予約はありません")
             if (imageUris.isEmpty()) {
                 Text("設定からスクリーンセーバー画像を追加してください", color = Color.White.copy(alpha = 0.85f))
             }
+        }
+        if (upcomingRecordings != null) {
+            UpcomingRecordingsPanel(
+                state = upcomingRecordings,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(64.dp),
+            )
         }
     }
 }

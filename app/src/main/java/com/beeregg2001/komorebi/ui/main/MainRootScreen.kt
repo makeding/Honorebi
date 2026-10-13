@@ -450,15 +450,10 @@ fun MainRootScreen(
     val screensaverInterval by settingsViewModel.screensaverIntervalSeconds.collectAsState()
     val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
     val screensaverImages by settingsViewModel.screensaverImageUris.collectAsState()
+    val screensaverShowUpcoming by settingsViewModel.screensaverShowUpcoming.collectAsState()
     val lastInteraction by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.lastInteractionMillis.collectAsState()
     val playbackActive by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.playbackActive.collectAsState()
     var showScreensaver by remember { mutableStateOf(false) }
-    val nextRecording = remember(reserves) {
-        reserves.mapNotNull { item ->
-            val start = runCatching { java.time.OffsetDateTime.parse(item.program.startTime) }.getOrNull()
-            if (start != null && start.isAfter(java.time.OffsetDateTime.now())) start to item.program.title else null
-        }.minByOrNull { it.first }?.let { (start, title) -> "${start.toLocalTime().toString().take(5)}  $title" }
-    }
     LaunchedEffect(screensaverEnabled, screensaverTimeout, screensaverImages, isAppInForeground, playbackActive, lastInteraction) {
         showScreensaver = false
         if (!screensaverEnabled || screensaverImages.isEmpty() || !isAppInForeground || playbackActive) return@LaunchedEffect
@@ -909,6 +904,10 @@ fun MainRootScreen(
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
             }
             if (showScreensaver && screensaverImages.isNotEmpty()) {
+                val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
+                    enabled = screensaverShowUpcoming,
+                    visible = true,
+                )
                 androidx.compose.ui.window.Dialog(
                     onDismissRequest = { showScreensaver = false },
                     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
@@ -929,7 +928,7 @@ fun MainRootScreen(
                             imageUris = screensaverImages,
                             intervalSeconds = screensaverInterval,
                             transition = screensaverTransition,
-                            nextRecording = nextRecording
+                            upcomingRecordings = upcoming,
                         )
                     }
                 }
