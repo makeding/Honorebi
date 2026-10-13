@@ -12,9 +12,47 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.withLock
+import io.ktor.server.application.ApplicationCall
+
+internal suspend fun ApplicationCall.setupExpired() {
+    response.headers.append("Cache-Control", "no-store")
+    respondText("""{"code":"SETUP_EXPIRED","message":"テレビで「スマホで設定」を開き直し、表示されたQRコードからこのページを開いてください。"}""",
+        ContentType.Application.Json, HttpStatusCode.Unauthorized)
+}
+
+internal suspend fun ApplicationCall.setupFailure(error: Exception, code: String = "SAVE_FAILED") {
+    if (error is CancellationException) throw error
+    if (error is SetupExpiredException) { setupExpired(); return }
+    val invalid = error is IllegalArgumentException || error is com.google.gson.JsonParseException || error is NullPointerException
+    val message = if (error is IllegalArgumentException && error !is com.google.gson.JsonParseException)
+        error.message ?: "入力内容を確認してください。"
+        else if (invalid) "入力内容を確認して再送信してください。"
+        else error.message?.takeIf { it.matches(Regex(".*\\(HTTP [0-9]{3}\\).*")) }
+            ?: "テレビに設定を反映できませんでした。接続を確認して再試行してください。"
+    respondText(com.google.gson.Gson().toJson(mapOf("code" to if (invalid) "INVALID_CONNECTION" else code, "message" to message)),
+        ContentType.Application.Json, if (invalid) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError)
+}
+
 
 // A QR session grants access only while its TV setup surface is open.
-data class ConnectionSetupSession(val token: String, val source: String? = null)
+class ConnectionSetupSession(
+    val token: String = newSetupSecret(), val source: String? = null,
+) {
+    @Volatile private var open = true
+    private val operations = kotlinx.coroutines.sync.Mutex()
+    fun revoke() { open = false }
+    fun accepts(candidate: String?): Boolean = open && candidate != null &&
+        java.security.MessageDigest.isEqual(token.toByteArray(), candidate.toByteArray())
+    suspend fun <T> authorized(candidate: String?, action: suspend () -> T): T = operations.withLock {
+        if (!accepts(candidate)) throw SetupExpiredException()
+        action()
+    }
+}
+private fun newSetupSecret(): String = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+    ByteArray(32).also { java.security.SecureRandom().nextBytes(it) })
+class SetupExpiredException : IllegalStateException()
+
 data class ConnectionSetupUiState(val session: ConnectionSetupSession? = null, val error: String? = null)
 
 fun Route.connectionSetupRoutes(
@@ -53,46 +91,26 @@ fun Route.connectionSetupRoutes(
     get("/api/connections") {
         val current = session()
         call.response.headers.append("Cache-Control", "no-store")
-        if (current == null || call.request.headers["X-Setup-Token"] != current.token) {
-            call.respondText(gson.toJson(mapOf("code" to "SETUP_EXPIRED", "message" to "テレビで「スマホで設定」を開き直し、表示されたQRコードからこのページを開いてください。")),
-                ContentType.Application.Json, HttpStatusCode.Unauthorized)
-            return@get
-        }
-        call.respondText(gson.toJson(read().copy(scope = current.source)), ContentType.Application.Json)
+        if (current == null) { call.setupExpired(); return@get }
+        try {
+            val snapshot = current.authorized(call.request.headers["X-Setup-Token"]) { read() }
+            call.respondText(gson.toJson(snapshot), ContentType.Application.Json)
+        } catch (error: Exception) { call.setupFailure(error) }
     }
     post("/api/connections") {
         val current = session()
         call.response.headers.append("Cache-Control", "no-store")
-        if (current == null || call.request.headers["X-Setup-Token"] != current.token) {
-            call.respondText(gson.toJson(mapOf("code" to "SETUP_EXPIRED", "message" to "テレビで「スマホで設定」を開き直し、表示されたQRコードからこのページを開いてください。")),
-                ContentType.Application.Json, HttpStatusCode.Unauthorized)
-            return@post
-        }
+        if (current == null) { call.setupExpired(); return@post }
         try {
-            val body = call.receiveText()
-            require(body.length <= 16384) { "入力内容が長すぎます。" }
-            val payload = requireNotNull(gson.fromJson(body, ConnectionSettingsSnapshot::class.java)) {
-                "入力内容を確認してください。"
-            }
-            if (current.source != null) {
-                val before = read()
-                require(before.sources.filter { it.id != current.source }.map { it.copy(label = "") } ==
-                    payload.sources.filter { it.id != current.source }.map { it.copy(label = "") }) {
-                    "この画面では選択した接続先だけを変更できます。"
+            val saved = current.authorized(call.request.headers["X-Setup-Token"]) {
+                val body = call.receiveText()
+                require(body.length <= 65536) { "入力内容が長すぎます。" }
+                val payload = requireNotNull(gson.fromJson(body, ConnectionSettingsSnapshot::class.java)) {
+                    "入力内容を確認してください。"
                 }
+                save(payload)
             }
-            val saved = save(payload).copy(scope = current.source)
             call.respondText(gson.toJson(saved), ContentType.Application.Json)
-        } catch (error: CancellationException) { throw error }
-        catch (error: Exception) {
-            val invalid = error is IllegalArgumentException || error is com.google.gson.JsonParseException || error is NullPointerException
-            val code = if (invalid) "INVALID_CONNECTION" else "SAVE_FAILED"
-            val message = if (error is IllegalArgumentException && error !is com.google.gson.JsonParseException)
-                error.message ?: "入力内容を確認して再送信してください。"
-                else if (invalid) "入力内容を確認して再送信してください。"
-                else "テレビに保存できませんでした。接続を確認して再送信してください。"
-            call.respondText(gson.toJson(mapOf("code" to code, "message" to message)), ContentType.Application.Json,
-                if (invalid) HttpStatusCode.BadRequest else HttpStatusCode.InternalServerError)
-        }
+        } catch (error: Exception) { call.setupFailure(error) }
     }
 }

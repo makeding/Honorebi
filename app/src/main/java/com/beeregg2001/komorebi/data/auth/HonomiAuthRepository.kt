@@ -46,7 +46,7 @@ class HonomiAuthRepository @Inject constructor(
         }
     }
 
-    suspend fun pollPairing(pairing: DeviceAuthRequest): Result<HonomiSession?> = withContext(Dispatchers.IO) {
+    suspend fun pollPairing(pairing: DeviceAuthRequest, maySaveSession: () -> Boolean = { true }): Result<HonomiSession?> = withContext(Dispatchers.IO) {
         runCatching {
             val origin = currentOrigin()
             val tokenRequest = Request.Builder()
@@ -67,6 +67,7 @@ class HonomiAuthRepository @Inject constructor(
                 gson.fromJson(response.body.charStream(), KonomiUser::class.java)
             }
             HonomiSession(canonicalOrigin(origin), token, user.id, user.name).also {
+                check(maySaveSession()) { "設定ページの有効期限が切れました。テレビで開き直してください。" }
                 sessionStore.save(it)
                 _session.value = it
             }

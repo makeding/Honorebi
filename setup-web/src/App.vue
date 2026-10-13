@@ -1,170 +1,44 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { blankSnapshot, canSave as canSaveConnection, connectionPlaceholder, isConfigured, normalizeSnapshot, resolveMainSystem, saveBody, sourceIds, validSource, type ConnectionSnapshot, type SourceId } from './connection'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { blankSnapshot, canSave as canSaveConnection, connectionPlaceholder, isConfigured, normalizeSnapshot, resolveMainSystem, saveBody, sourceIds, validSmbServer, validSource, type ConnectionSnapshot, type SmbServer, type SourceId } from './connection'
 import honoRebiMark from '../../app/src/main/res/drawable/honorebi_mark.png'
 
-const params = new URLSearchParams(window.location.search)
-const token = params.get('token') ?? ''
-const sourceParam = params.get('source')
-const scope = sourceIds.includes(sourceParam as SourceId) ? sourceParam as SourceId : null
-
-const snapshot = ref<ConnectionSnapshot>(blankSnapshot(scope))
-const state = ref<'loading' | 'ready' | 'failure'>('loading')
-const saving = ref(false)
-const saved = ref(false)
-const error = ref('')
-const expired = ref(false)
+const token = window.location.hash.slice(1)
+const sourceParam = new URLSearchParams(window.location.search).get('source')
+const initialSource = sourceIds.includes(sourceParam as SourceId) ? sourceParam as SourceId : null
+const draftKey = 'honorebi.connectionDraft.v1'
+const snapshot = ref<ConnectionSnapshot>(blankSnapshot())
+const state = ref<'loading' | 'ready' | 'failure'>('loading'), saving = ref(false), saved = ref(false), dirty = ref(false), restoredDraft = ref(false), error = ref(''), expired = ref(false)
+const openId = ref<SourceId | null>(initialSource), removeTarget = ref<SmbServer | null>(null)
+const accountState = ref<'idle' | 'pairing' | 'waiting' | 'success' | 'expired' | 'error'>('idle'), accountError = ref(''), verificationUrl = ref(''), userCode = ref('')
+let polling: number | undefined
 const reopenSetupMessage = 'テレビで「スマホで設定」を開き直し、表示されたQRコードからこのページを開いてください。'
-const openId = ref<SourceId | null>(scope)
-
-const visibleSources = computed(() => snapshot.value.scope ? snapshot.value.sources.filter((source) => source.id === snapshot.value.scope) : snapshot.value.sources)
 const configuredSources = computed(() => snapshot.value.sources.filter(isConfigured))
 const canChooseMain = computed(() => configuredSources.value.length >= 2)
-const mainSystem = computed({
-  get: () => resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem),
-  set: (value: SourceId | null) => { snapshot.value.mainSystem = value },
-})
-const controlsLocked = computed(() => saving.value || saved.value || expired.value)
-
-watch(() => snapshot.value.sources.map((source) => `${source.id}:${source.host}:${source.port}`).join('|'), () => {
-  snapshot.value.mainSystem = resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem)
-})
-
-function apiError(response: Response, payload: unknown): string {
-  if (typeof payload === 'object' && payload !== null) {
-    const body = payload as { message?: string; error?: string; code?: string }
-    if (body.code === 'SETUP_EXPIRED') { expired.value = true; return `${reopenSetupMessage} (SETUP_EXPIRED)` }
-    const message = body.message ?? body.error
-    if (message && body.code) return `${message} (${body.code})`
-    if (message) return message
-    if (body.code) return `設定を保存できませんでした (${body.code})`
-  }
-  return `設定を保存できませんでした (HTTP ${response.status})`
-}
-
-async function request(method: 'GET' | 'POST', body?: unknown) {
-  const response = await fetch('/api/connections', {
-    method,
-    headers: { 'X-Setup-Token': token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  })
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(apiError(response, payload))
-  return payload
-}
-
-async function load() {
-  state.value = 'loading'
-  error.value = ''
-  saved.value = false
-  expired.value = false
-  if (!token) {
-    expired.value = true
-    error.value = reopenSetupMessage
-    state.value = 'failure'
-    return
-  }
-  try {
-    const result = await request('GET') as Partial<ConnectionSnapshot>
-    snapshot.value = normalizeSnapshot(result, scope)
-    if (snapshot.value.scope) openId.value = snapshot.value.scope
-    snapshot.value.mainSystem = resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem)
-    state.value = 'ready'
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '設定を読み込めませんでした。'
-    state.value = 'failure'
-  }
-}
-
-const invalidSource = computed(() => snapshot.value.sources.find((source) => !validSource(source)) ?? null)
-const canSave = computed(() => canSaveConnection(snapshot.value.sources, mainSystem.value) && !controlsLocked.value)
-const mainPrompt = computed(() => {
-  if (configuredSources.value.length === 0) return '未設定'
-  if (configuredSources.value.length === 1) return `${configuredSources.value[0].label} を自動で利用します`
-  return 'テレビ視聴に使う接続先を選択してください'
-})
-
-async function save() {
-  if (!canSave.value) return
-  saving.value = true
-  error.value = ''
-  saved.value = false
-  try {
-    const result = await request('POST', saveBody(snapshot.value.sources, resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem))) as Partial<ConnectionSnapshot>
-    snapshot.value = normalizeSnapshot(result, scope)
-    if (snapshot.value.scope) openId.value = snapshot.value.scope
-    snapshot.value.mainSystem = resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem)
-    saved.value = true
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '設定を保存できませんでした。'
-  } finally {
-    saving.value = false
-  }
-}
-
-onMounted(load)
+const controlsLocked = computed(() => saving.value || expired.value)
+const mainSystem = computed({ get: () => resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem), set: (value: SourceId | null) => { snapshot.value.mainSystem = value } })
+const invalidSmb = computed(() => snapshot.value.smbServers.find((server) => !validSmbServer(server)) ?? null)
+const canSave = computed(() => canSaveConnection(snapshot.value.sources, mainSystem.value) && !invalidSmb.value && !controlsLocked.value)
+const mainPrompt = computed(() => configuredSources.value.length === 0 ? '未設定' : configuredSources.value.length === 1 ? `${configuredSources.value[0].label} を自動で利用します` : 'テレビ視聴に使う接続先を選択してください')
+function editableDraft(s: ConnectionSnapshot) { return { sources: s.sources.map(({ id, host, port, httpPort }) => ({ id, host, port, httpPort })), mainSystem: s.mainSystem, preferredSource: s.preferredSource, edcbRecordPlayMethod: s.edcbRecordPlayMethod, cloudflareAccess: { clientId: s.cloudflareAccess.clientId, clientSecret: s.cloudflareAccess.clientSecret }, smbServers: s.smbServers.map(({ id, name, ip, port, user, password }) => ({ id, name, ip, port, user, password })) } }
+function saveDraft() { try { sessionStorage.setItem(draftKey, JSON.stringify(editableDraft(snapshot.value))) } catch { /* drafts are optional */ } }
+function clearDraft() { try { sessionStorage.removeItem(draftKey) } catch { /* drafts are optional */ } }
+function restoreDraft() { try { const draft = JSON.parse(sessionStorage.getItem(draftKey) ?? 'null'); if (!draft || typeof draft !== 'object') return; const byId = new Map((draft.sources ?? []).map((s: { id: SourceId }) => [s.id, s])); snapshot.value.sources.forEach((s) => Object.assign(s, byId.get(s.id) ?? {})); Object.assign(snapshot.value, { mainSystem: draft.mainSystem ?? snapshot.value.mainSystem, preferredSource: sourceIds.includes(draft.preferredSource) ? draft.preferredSource : snapshot.value.preferredSource, edcbRecordPlayMethod: draft.edcbRecordPlayMethod === 'API' ? 'API' : snapshot.value.edcbRecordPlayMethod }); if (draft.cloudflareAccess) Object.assign(snapshot.value.cloudflareAccess, draft.cloudflareAccess); if (Array.isArray(draft.smbServers)) snapshot.value.smbServers = draft.smbServers.map((s: SmbServer) => ({ ...s, passwordConfigured: false })); restoredDraft.value = dirty.value = true } catch { clearDraft() } }
+function discardDraft() { clearDraft(); restoredDraft.value = false; load() }
+function edited() { if (state.value !== 'ready') return; dirty.value = true; saved.value = false; error.value = ''; saveDraft() }
+watch(() => JSON.stringify(editableDraft(snapshot.value)), edited)
+watch(() => snapshot.value.sources.map((s) => `${s.id}:${s.host}:${s.port}`).join('|'), () => { snapshot.value.mainSystem = resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem) })
+function apiError(response: Response, payload: unknown): string { const body = payload as { message?: string; code?: string } | null; if (body?.code === 'SETUP_EXPIRED') { expired.value = true; stopPolling(); return `${reopenSetupMessage} (SETUP_EXPIRED)` }; return body?.message ? `${body.message}${body.code ? ` (${body.code})` : ''}` : `設定を保存できませんでした (HTTP ${response.status})` }
+async function request(path: string, method: 'GET' | 'POST', body?: unknown) { const response = await fetch(path, { method, headers: { 'X-Setup-Token': token, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }); const payload = await response.json().catch(() => null); if (!response.ok) throw new Error(apiError(response, payload)); return payload }
+async function load() { state.value = 'loading'; error.value = ''; saved.value = false; expired.value = false; if (!token) { expired.value = true; error.value = reopenSetupMessage; state.value = 'failure'; return }; try { snapshot.value = normalizeSnapshot(await request('/api/connections', 'GET')); snapshot.value.mainSystem = resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem); dirty.value = false; restoreDraft(); state.value = 'ready' } catch (cause) { error.value = cause instanceof Error ? cause.message : '設定を読み込めませんでした。'; state.value = 'failure' } }
+async function save() { if (!canSave.value) return; saving.value = true; error.value = ''; try { snapshot.value = normalizeSnapshot(await request('/api/connections', 'POST', saveBody(snapshot.value))); snapshot.value.mainSystem = resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem); dirty.value = false; saved.value = true; restoredDraft.value = false; clearDraft() } catch (cause) { error.value = cause instanceof Error ? cause.message : '設定を保存できませんでした。' } finally { saving.value = false } }
+function addSmb() { snapshot.value.smbServers.push({ id: crypto.randomUUID(), name: '', ip: '', port: '445', user: '', password: null, passwordConfigured: false }) }
+function confirmRemove() { if (removeTarget.value) snapshot.value.smbServers = snapshot.value.smbServers.filter((s) => s.id !== removeTarget.value?.id); removeTarget.value = null }
+function stopPolling() { if (polling !== undefined) window.clearInterval(polling); polling = undefined }
+async function startPairing() { if (dirty.value) { accountError.value = '先に「テレビに保存」を押して、KonomiTV の入力内容を保存してください。'; return }; accountError.value = ''; accountState.value = 'pairing'; try { const result = await request('/api/connections/account/pair', 'POST') as { verificationUrl: string; userCode: string }; verificationUrl.value = result.verificationUrl; userCode.value = result.userCode; accountState.value = 'waiting'; stopPolling(); polling = window.setInterval(checkPairing, 2000); await checkPairing() } catch (cause) { accountError.value = cause instanceof Error ? cause.message : 'アカウント連携を開始できませんでした。'; accountState.value = 'error' } }
+async function checkPairing() { if (accountState.value !== 'waiting') return; try { const result = await request('/api/connections/account/pair', 'GET') as { userName?: string | null; status: 'waiting' | 'success' | 'expired' }; if (result.status === 'success') { snapshot.value.account.userName = result.userName ?? null; accountState.value = 'success'; stopPolling() } else if (result.status === 'expired') { accountState.value = 'expired'; stopPolling() } } catch (cause) { accountError.value = cause instanceof Error ? cause.message : 'アカウント連携の確認に失敗しました。'; accountState.value = 'error'; stopPolling() } }
+async function logout() { accountError.value = ''; try { await request('/api/connections/account/logout', 'POST', {}); snapshot.value.account.userName = null; accountState.value = 'idle' } catch (cause) { accountError.value = cause instanceof Error ? cause.message : 'ログアウトできませんでした。' } }
+onMounted(load); onBeforeUnmount(stopPolling)
 </script>
 
-<template>
-  <main class="page-shell">
-    <header>
-      <div class="brand"><img :src="honoRebiMark" alt="HonoRebi" /><span>HonoRebi</span></div>
-      <h1>接続設定</h1>
-    </header>
-
-    <section class="panel" aria-live="polite">
-      <div v-if="state === 'loading'" class="state-slot"><span class="spinner" /> 接続設定を読み込んでいます…</div>
-      <div v-else-if="state === 'failure'" class="state-slot failure">
-        <strong>{{ expired ? '設定ページを開き直してください' : '設定を読み込めませんでした' }}</strong><span>{{ error }}</span>
-        <button v-if="!expired" class="secondary" type="button" @click="load">再試行</button>
-      </div>
-      <template v-else>
-        <section class="section-heading">
-          <h2>視聴システム</h2>
-          <p>使う接続先を選び、必要な情報を入力してください。</p>
-        </section>
-
-        <div class="source-list">
-          <article v-for="source in visibleSources" :key="source.id" class="source-card" :class="{ expanded: openId === source.id }">
-            <button class="source-summary" type="button" :aria-expanded="openId === source.id" :disabled="controlsLocked" @click="openId = openId === source.id ? null : source.id">
-              <span class="source-icon">{{ source.id === 'KONOMITV' ? '▦' : source.id === 'EDCB' ? '◫' : '◉' }}</span>
-              <span><strong>{{ source.label }}</strong><small>{{ isConfigured(source) ? `${source.host}:${source.port}` : '未設定' }}</small></span>
-              <span class="chevron">⌄</span>
-            </button>
-            <div v-if="openId === source.id" class="source-fields">
-              <label>サーバーのアドレス
-                <input v-model="source.host" :disabled="controlsLocked" inputmode="url" autocomplete="url" :placeholder="connectionPlaceholder" />
-              </label>
-              <label>ポート番号
-                <input v-model="source.port" :disabled="controlsLocked" type="text" inputmode="numeric" />
-              </label>
-              <label v-if="source.id === 'EDCB'">EDCB HTTP ポート
-                <input v-model="source.httpPort" :disabled="controlsLocked" type="text" inputmode="numeric" />
-              </label>
-          <p v-if="!validSource(source)" class="field-error">アドレスとポート番号を確認してください。</p>
-              <p v-if="source.id === 'KONOMITV'" class="detail-note">HonomiTV アカウントの設定はテレビで行えます。</p>
-            </div>
-          </article>
-        </div>
-
-        <section class="main-picker" :class="{ disabled: !canChooseMain }">
-          <div><h2>メインシステム</h2><p>{{ mainPrompt }}</p></div>
-          <div class="radio-list">
-            <label v-for="source in configuredSources" :key="source.id" class="radio-option">
-              <input v-model="mainSystem" type="radio" name="main-system" :value="source.id" :disabled="!canChooseMain || controlsLocked" />
-              <span>{{ source.label }}</span>
-            </label>
-          </div>
-        </section>
-
-        <div class="feedback-slot" aria-live="polite">
-          <p v-if="error" class="save-error" role="alert">{{ error }}</p>
-          <p v-else-if="saved" class="success" role="status">テレビの接続設定を更新しました。</p>
-        </div>
-        <button class="save" type="button" :disabled="!canSave" @click="save">
-          {{ saving ? '保存しています…' : 'テレビに保存' }}
-        </button>
-      </template>
-    </section>
-  </main>
-</template>
+<template><main class="page-shell"><header><div class="brand"><img :src="honoRebiMark" alt="HonoRebi" /><span>HonoRebi</span></div><h1>接続設定</h1></header><section class="panel" aria-live="polite"><div v-if="state === 'loading'" class="state-slot"><span class="spinner" /> 接続設定を読み込んでいます…</div><div v-else-if="state === 'failure'" class="state-slot failure"><strong>{{ expired ? '設定ページを開き直してください' : '設定を読み込めませんでした' }}</strong><span>{{ error }}</span><button v-if="!expired" class="secondary" type="button" @click="load">再試行</button></div><template v-else><section class="section-heading"><h2>視聴システム</h2><p>各システムを開いて接続先を入力します。</p></section><div class="source-list"><article v-for="source in snapshot.sources" :key="source.id" class="source-card" :class="{ expanded: openId === source.id }"><button class="source-summary" type="button" :aria-expanded="openId === source.id" :disabled="controlsLocked" @click="openId = openId === source.id ? null : source.id"><span class="source-icon">{{ source.id === 'KONOMITV' ? '▦' : source.id === 'EDCB' ? '◫' : '◉' }}</span><span><strong>{{ source.label }}</strong><small>{{ isConfigured(source) ? `${source.host}:${source.port}` : '未設定' }}</small></span><span class="chevron">⌄</span></button><div v-if="openId === source.id" class="source-fields"><label>サーバーのアドレス<input v-model="source.host" :disabled="controlsLocked" inputmode="url" :placeholder="connectionPlaceholder" /></label><label>ポート番号<input v-model="source.port" :disabled="controlsLocked" inputmode="numeric" /></label><label v-if="source.id === 'EDCB'">EDCB HTTP ポート<input v-model="source.httpPort" :disabled="controlsLocked" inputmode="numeric" /></label><label v-if="source.id === 'EDCB'">録画番組の再生方法<select v-model="snapshot.edcbRecordPlayMethod" :disabled="controlsLocked"><option value="DIRECT">直接再生</option><option value="API">API 経由</option></select></label><p v-if="!validSource(source)" class="field-error">アドレスとポート番号を確認してください。</p><section v-if="source.id === 'KONOMITV'" class="account-box"><h3>HonomiTV アカウント</h3><p v-if="snapshot.account.userName">ログイン中: {{ snapshot.account.userName }}</p><template v-else><p>HonomiTV を連携すると、アカウントの視聴情報を利用できます。</p><a v-if="verificationUrl" :href="verificationUrl" target="_blank" rel="noopener">認証ページを開く</a><code v-if="userCode">{{ userCode }}</code><button class="secondary" type="button" :disabled="controlsLocked || accountState === 'pairing' || accountState === 'waiting'" @click="startPairing">{{ accountState === 'waiting' ? '連携を確認中…' : accountState === 'expired' || accountState === 'error' ? 'もう一度連携' : 'アカウントを連携' }}</button></template><button v-if="snapshot.account.userName" class="secondary danger" type="button" @click="logout">ログアウト</button><p v-if="accountError" class="field-error">{{ accountError }}</p><p v-if="accountState === 'expired'" class="field-error">連携の有効期限が切れました。もう一度連携してください。</p></section></div></article></div><section class="main-picker" :class="{ disabled: !canChooseMain }"><div><h2>メインシステム</h2><p>{{ mainPrompt }}</p></div><div class="radio-list"><label v-for="source in configuredSources" :key="source.id" class="radio-option"><input v-model="mainSystem" type="radio" name="main-system" :value="source.id" :disabled="!canChooseMain || controlsLocked" /><span>{{ source.label }}</span></label></div></section><section class="settings-block"><h2>ライブ視聴の優先</h2><p>ライブ視聴を開始する際に優先するシステムです。</p><select v-model="snapshot.preferredSource" :disabled="controlsLocked"><option v-for="source in snapshot.sources" :key="source.id" :value="source.id">{{ source.label }}</option></select></section><section class="settings-block"><h2>Cloudflare Access</h2><label>Client ID<input v-model="snapshot.cloudflareAccess.clientId" :disabled="controlsLocked" autocomplete="off" /></label><label>Client Secret<input v-model="snapshot.cloudflareAccess.clientSecret" :disabled="controlsLocked" type="password" :placeholder="snapshot.cloudflareAccess.secretConfigured ? '設定済み（変更する場合のみ入力）' : ''" autocomplete="new-password" /></label></section><section class="settings-block"><div class="block-title"><div><h2>SMB サーバー</h2><p>録画ファイルを参照するサーバーを追加できます。</p></div><button class="secondary" type="button" :disabled="controlsLocked" @click="addSmb">追加</button></div><div v-for="server in snapshot.smbServers" :key="server.id" class="smb-card"><label>名前<input v-model="server.name" :disabled="controlsLocked" /></label><label>アドレス<input v-model="server.ip" :disabled="controlsLocked" /></label><label>ポート<input v-model="server.port" :disabled="controlsLocked" inputmode="numeric" /></label><label>ユーザー名<input v-model="server.user" :disabled="controlsLocked" autocomplete="username" /></label><label>パスワード<input v-model="server.password" :disabled="controlsLocked" type="password" :placeholder="server.passwordConfigured ? '設定済み（変更する場合のみ入力）' : ''" autocomplete="new-password" /></label><button class="secondary danger" type="button" :disabled="controlsLocked" @click="removeTarget = server">削除</button><p v-if="!validSmbServer(server)" class="field-error">名前、アドレス、ポート番号を確認してください。</p></div><p v-if="snapshot.smbServers.length === 0" class="empty-note">SMB サーバーは未登録です。</p></section><div v-if="restoredDraft" class="draft-notice">未保存の設定を復元しました。<button class="secondary" type="button" @click="discardDraft">破棄</button></div><div class="feedback-slot" aria-live="polite"><p v-if="error" class="save-error" role="alert">{{ error }}</p><p v-else-if="saved" class="success" role="status">テレビの接続設定を更新しました。</p></div><button class="save" type="button" :disabled="!canSave" @click="save">{{ saving ? '保存しています…' : 'テレビに保存' }}</button></template></section><div v-if="removeTarget" class="modal-backdrop"><section class="confirm-dialog" role="dialog" aria-modal="true"><h2>SMB サーバーを削除しますか？</h2><p>{{ removeTarget.name || removeTarget.ip }} は、保存時にテレビから削除されます。</p><div><button class="secondary" type="button" @click="removeTarget = null">キャンセル</button><button class="secondary danger" type="button" @click="confirmRemove">削除する</button></div></section></div></main></template>

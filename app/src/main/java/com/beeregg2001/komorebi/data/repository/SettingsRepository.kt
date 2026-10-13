@@ -295,7 +295,7 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.first().connectionSettingsSnapshot()
 
     /** All source fields and the main system become visible in one DataStore transaction. */
-    suspend fun saveConnectionSettings(snapshot: ConnectionSettingsSnapshot): ConnectionSettingsSnapshot = networkSettingsMutex.withLock {
+    suspend fun saveConnectionSettings(snapshot: ConnectionSettingsSnapshot, beforeCommit: () -> Unit = {}): ConnectionSettingsSnapshot = networkSettingsMutex.withLock {
         val sources = requireNotNull(snapshot.sources) { "接続先を入力してください。" }
         require(sources.size == ConnectionSource.entries.size &&
             sources.map { it.id }.toSet() == ConnectionSource.entries.map { it.backend }.toSet()) {
@@ -322,11 +322,38 @@ class SettingsRepository @Inject constructor(
         require(configured.size == 1 || configured.any { it.backend == snapshot.mainSystem }) {
             "設定済みの接続先からメインシステムを選んでください。"
         }
+        require(snapshot.preferredSource in listOf("KONOMITV", "EDCB", "MIRAKURUN")) { "ライブ視聴の優先ソースを確認してください。" }
+        require(snapshot.edcbRecordPlayMethod in listOf("DIRECT", "API")) { "録画ファイルの再生方式を確認してください。" }
+        val access = requireNotNull(snapshot.cloudflareAccess) { "サービス トークンを確認してください。" }
+        val id = access.clientId.filterNot(Char::isWhitespace)
+        val submittedSecret = access.clientSecret?.filterNot(Char::isWhitespace)
+        require(snapshot.smbServers.map { it.id }.toSet().size == snapshot.smbServers.size) { "SMBサーバーが重複しています。" }
+        snapshot.smbServers.forEach {
+            require(it.id.isNotBlank() && it.name.isNotBlank() && it.ip.isNotBlank() && it.ip.none(Char::isWhitespace)) {
+                "SMBサーバーの表示名とアドレスを入力してください。"
+            }
+            port(it.port)
+        }
         val saved = context.dataStore.edit {
+            val secret = submittedSecret ?: it[CF_ACCESS_CLIENT_SECRET].orEmpty()
+            require((id.isEmpty() && secret.isEmpty()) || (id.isNotEmpty() && secret.isNotEmpty())) {
+                "Client ID と Client Secret を両方入力するか、両方消去してください。"
+            }
+            require((id + secret).all { character -> character.code in 33..126 }) { "トークンには半角英数字・記号を入力してください。" }
+            val oldSmb = it.storedSmbServers().associateBy { server -> server.id }
+            val smb = snapshot.smbServers.map { server ->
+                com.beeregg2001.komorebi.viewmodel.SmbServer(server.id, server.name.trim(), server.ip.trim(),
+                    server.port.trim(), server.user, server.password ?: oldSmb[server.id]?.password.orEmpty())
+            }
+            beforeCommit()
             it[KONOMI_IP] = k.host; it[KONOMI_PORT] = k.port
             it[EDCB_IP] = e.host; it[EDCB_PORT] = e.port; it[EDCB_HTTP_PORT] = e.httpPort!!
             it[MIRAKURUN_IP] = m.host; it[MIRAKURUN_PORT] = m.port
             it[BACKEND_TYPE] = ConnectionSourcePolicy.resolve(snapshot.mainSystem, configured)
+            it[PREFERRED_STREAM_SOURCE] = snapshot.preferredSource
+            it[EDCB_RECORD_PLAY_METHOD] = snapshot.edcbRecordPlayMethod
+            it[CF_ACCESS_CLIENT_ID] = id; it[CF_ACCESS_CLIENT_SECRET] = secret
+            it[SMB_SERVER_LIST] = com.google.gson.Gson().toJson(smb)
         }
         cloudflareAccessConfiguration.first { it == saved.toCloudflareAccessConfiguration() }
         saved.connectionSettingsSnapshot()
