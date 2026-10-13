@@ -31,9 +31,40 @@ import org.robolectric.annotation.Config
 class ConnectionSettingsContentTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun initialQrStaysOpenAfterSaveAndRevokesItsLinkWhenFinished() {
+        val session = com.beeregg2001.komorebi.setup.ConnectionSetupSession()
+        var finishable by mutableStateOf(false)
+        var visible by mutableStateOf(true)
+        var starts = 0
+        var stops = 0
+        compose.setContent {
+            KomorebiTheme(AppTheme.AUTUMN) {
+                if (visible) ConnectionSetupDialog("初期設定", "192.168.1.10",
+                    com.beeregg2001.komorebi.setup.ConnectionSetupUiState(session),
+                    onStart = { starts++ }, onStop = { stops++; session.revoke() },
+                    onDismiss = { visible = false }, onManualInput = { visible = false },
+                    initialSetup = true, canFinishInitialSetup = finishable)
+            }
+        }
+        val finish = compose.onNodeWithText("設定を完了")
+        val manual = compose.onNodeWithText("リモコンで手動入力")
+        finish.assertIsNotEnabled()
+        manual.assertIsFocused()
+        val before = finish.getUnclippedBoundsInRoot()
+        compose.runOnIdle { finishable = true }
+        finish.assertIsEnabled()
+        assertEquals(before, finish.getUnclippedBoundsInRoot())
+        manual.assertIsFocused()
+        assertTrue(session.accepts(session.token))
+        assertEquals(1, starts); assertEquals(0, stops)
+        finish.performClick()
+        compose.runOnIdle { assertFalse(session.accepts(session.token)); assertEquals(1, stops) }
+    }
+
     @Test fun sourceDetailsAccountAndRemoteBackPreserveOriginAndMainRowBounds() {
         val repository = SettingsRepository(ApplicationProvider.getApplicationContext())
         runBlocking {
+            repository.saveString(SettingsRepository.SMB_SERVER_LIST, "[]")
             repository.saveString(SettingsRepository.KONOMI_IP, "")
             repository.saveString(SettingsRepository.MIRAKURUN_IP, "")
             repository.saveString(SettingsRepository.EDCB_IP, "192.168.1.20")

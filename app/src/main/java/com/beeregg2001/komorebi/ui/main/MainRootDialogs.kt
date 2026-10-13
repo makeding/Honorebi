@@ -399,7 +399,11 @@ fun MainRootDialogs(
         )
     }
 
-    if (!isSettingsInitialized && !state.isSettingsOpen && state.isSplashFinished) {
+    var initialQrOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(isSettingsInitialized, state.isSettingsOpen, state.isSplashFinished) {
+        if (!isSettingsInitialized && !state.isSettingsOpen && state.isSplashFinished) initialQrOpen = true
+    }
+    if ((!isSettingsInitialized || initialQrOpen) && !state.isSettingsOpen && state.isSplashFinished) {
         val setupViewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
         val setupState by setupViewModel.connectionSetupState.collectAsState()
         val setupIp by setupViewModel.localIpAddress.collectAsState()
@@ -407,8 +411,10 @@ fun MainRootDialogs(
             title = "接続先の初期設定", serverIp = setupIp, state = setupState,
             onStart = { setupViewModel.startConnectionSetup() },
             onStop = { setupViewModel.stopGeminiLocalServer() },
-            onDismiss = {}, initialSetup = true,
+            onDismiss = { if (isSettingsInitialized) initialQrOpen = false }, initialSetup = true,
+            canFinishInitialSetup = isSettingsInitialized,
             onManualInput = {
+                initialQrOpen = false
                 state.settingsInitialCategoryIndex = 1
                 state.settingsInitialFocusItemIndex = 0
                 state.isSettingsOpen = true

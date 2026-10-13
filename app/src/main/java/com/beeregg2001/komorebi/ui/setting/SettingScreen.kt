@@ -207,11 +207,7 @@ private fun SettingsMenuScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        viewModel.smbServerAddedEvent.collect { name ->
-            toastMessage = "設定を受信しました！\n「$name」"
-        }
-    }
+
 
     // サイドバーの表示順。contentIndex は下の when 分岐（既存の内容インデックス）に対応させ、
     // 内容ロジックとディープリンクを一切変えずに並び順だけ組み替えられるようにする。

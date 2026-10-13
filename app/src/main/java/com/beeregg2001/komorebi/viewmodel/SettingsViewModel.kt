@@ -723,11 +723,10 @@ class SettingsViewModel @Inject constructor(
     fun startConnectionSetup(source: String? = null) {
         try {
             _connectionSetupState.value.session?.revoke()
+            _connectionSetupState.value = ConnectionSetupUiState(ConnectionSetupSession(source = source))
             startGeminiLocalServer()
-            _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
-                com.beeregg2001.komorebi.setup.ConnectionSetupSession(source = source),
-            )
         } catch (error: Exception) {
+            _connectionSetupState.value.session?.revoke()
             _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
                 error = "設定ページを開けませんでした。ネットワーク接続を確認して再試行してください。",
             )

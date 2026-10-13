@@ -85,6 +85,12 @@ fun Route.connectionAccountRoutes(
         }
     }
     get("/api/connections/account/pair") { guarded(call) { current -> status(current) } }
+    post("/api/connections/account/pair/cancel") {
+        guarded(call) {
+            pairingJob?.cancel(); pairing = null; pairingSession = null; result = null; failure = null; pairingStatus = "idle"
+            account()
+        }
+    }
     post("/api/connections/account/logout") {
         guarded(call) {
             pairingJob?.cancel(); pairing = null; pairingSession = null; result = null; failure = null; pairingStatus = "idle"

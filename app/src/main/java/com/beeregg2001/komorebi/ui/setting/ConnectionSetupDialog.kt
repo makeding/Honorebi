@@ -33,6 +33,7 @@ fun ConnectionSetupDialog(
     onDismiss: () -> Unit,
     onManualInput: () -> Unit,
     initialSetup: Boolean = false,
+    canFinishInitialSetup: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val manualR = remember { FocusRequester() }
@@ -42,7 +43,7 @@ fun ConnectionSetupDialog(
     val url = session?.let { "http://$serverIp:8081/connections/" +
         (it.source?.let { source -> "?source=$source" } ?: "") + "#${it.token}" }
     val bitmap = url?.let { rememberQrBitmap(it, 300) }
-    Dialog(onDismissRequest = if (initialSetup) ({}) else onDismiss,
+    Dialog(onDismissRequest = if (initialSetup && !canFinishInitialSetup) ({}) else onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = !initialSetup)) {
         ThemedDialogSurface(width = 680.dp) {
             Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -54,7 +55,9 @@ fun ConnectionSetupDialog(
                         Text("同じネットワークのスマホでQRコードを読み取り、設定を入力して保存してください。",
                             color = colors.textSecondary)
                         Box(Modifier.fillMaxWidth().height(72.dp), contentAlignment = Alignment.CenterStart) {
-                            Text(state.error ?: if (session == null) "設定ページを準備しています…" else "テレビに設定を反映します。",
+                            Text(state.error ?: if (session == null) "設定ページを準備しています…"
+                                else if (initialSetup && !canFinishInitialSetup) "接続設定を保存すると、初期設定を完了できます。"
+                                else "テレビに設定を反映します。",
                                 color = if (state.error != null) Color(0xFFE53935) else colors.textSecondary,
                                 style = MaterialTheme.typography.bodyMedium)
                         }
@@ -69,7 +72,10 @@ fun ConnectionSetupDialog(
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if (!initialSetup) DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f)) { Text("閉じる") }
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f),
+                        enabled = !initialSetup || canFinishInitialSetup) {
+                        Text(if (initialSetup) "設定を完了" else "閉じる")
+                    }
                     DialogActionButton(DialogActionRole.Primary, onManualInput,
                         Modifier.weight(1f).focusRequester(manualR)) { Text("リモコンで手動入力") }
                 }

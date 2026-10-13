@@ -4,6 +4,8 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.*
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,6 +69,7 @@ class HonomiAuthRepository @Inject constructor(
                 gson.fromJson(response.body.charStream(), KonomiUser::class.java)
             }
             HonomiSession(canonicalOrigin(origin), token, user.id, user.name).also {
+                currentCoroutineContext().ensureActive()
                 check(maySaveSession()) { "設定ページの有効期限が切れました。テレビで開き直してください。" }
                 sessionStore.save(it)
                 _session.value = it
