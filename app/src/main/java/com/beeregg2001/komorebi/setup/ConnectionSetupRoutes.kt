@@ -12,6 +12,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.sync.withLock
 import io.ktor.server.application.ApplicationCall
 
@@ -41,7 +42,8 @@ class ConnectionSetupSession(
 ) {
     @Volatile private var open = true
     private val operations = kotlinx.coroutines.sync.Mutex()
-    fun revoke() { open = false }
+    internal val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    fun revoke() { open = false; scope.cancel() }
     fun accepts(candidate: String?): Boolean = open && candidate != null &&
         java.security.MessageDigest.isEqual(token.toByteArray(), candidate.toByteArray())
     suspend fun <T> authorized(candidate: String?, action: suspend () -> T): T = operations.withLock {

@@ -9,6 +9,7 @@ export interface ConnectionSnapshot { sources: ConnectionSource[]; mainSystem: S
 type ConnectionResponse = Partial<ConnectionSnapshot> & { sources?: Array<Partial<ConnectionSource> & { port?: string | number | null; httpPort?: string | number | null }>; smbServers?: Array<Partial<SmbServer> & { port?: string | number | null }> }
 export const defaults: Record<SourceId, Omit<ConnectionSource, 'label'>> = { KONOMITV: { id: 'KONOMITV', host: '', port: '7000' }, EDCB: { id: 'EDCB', host: '', port: '4510', httpPort: '5510' }, MIRAKURUN: { id: 'MIRAKURUN', host: '', port: '40772' } }
 export const labels: Record<SourceId, string> = { KONOMITV: 'KonomiTV', EDCB: 'EDCB', MIRAKURUN: 'Mirakurun' }
+export function setupTokenFromHash(hash: string): string { return hash.startsWith('#') ? hash.slice(1) : '' }
 function portString(value: string | number | null | undefined, fallback: string): string { return typeof value === 'string' || typeof value === 'number' ? String(value) : fallback }
 export function blankSnapshot(): ConnectionSnapshot { return { sources: sourceIds.map((id) => ({ ...defaults[id], label: labels[id] })), mainSystem: null, preferredSource: 'KONOMITV', edcbRecordPlayMethod: 'DIRECT', cloudflareAccess: { clientId: '', clientSecret: null, secretConfigured: false }, smbServers: [], account: { userName: null } } }
 export function isPort(value: string): boolean { return /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 65535 }

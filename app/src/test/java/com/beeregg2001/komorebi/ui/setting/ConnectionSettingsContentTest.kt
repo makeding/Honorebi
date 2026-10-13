@@ -47,7 +47,7 @@ class ConnectionSettingsContentTest {
                 back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
                 val scroll = rememberScrollState()
                 val preferences = rememberSettingPreferences(repository)
-                val requesters = remember { List(7) { FocusRequester() } }
+                val requesters = remember { List(8) { FocusRequester() } }
                 Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
                     ConnectionSettingsContent(preferences, "huggy", { accountClicks++ }, {}, {}, emptyList(), {},
                         { _, _ -> }, { webSource = it }, { selected = it }, {}, {}, requesters,

@@ -34,7 +34,7 @@ fun ConnectionSettingsContent(
     smbItemRs: List<FocusRequester>,
     onSelectEdcbPlayMethod: () -> Unit,
     onEdit: (String, String) -> Unit,
-    onWebSetup: (ConnectionSource) -> Unit,
+    onWebSetup: (ConnectionSource?) -> Unit,
     onSelectBackend: (List<ConnectionSource>) -> Unit,
     onSelectSrc: () -> Unit,
     onEditCloudflareAccess: () -> Unit,
@@ -124,11 +124,12 @@ fun ConnectionSettingsContent(
                 }
             }
         } else {
+            row(7, "スマホで設定", "", Icons.Default.QrCode, FocusRequester.Cancel, itemRs[0]) { onWebSetup(null) }
             SettingsSection("接続先") {
                 ConnectionSource.entries.forEachIndexed { index, entry ->
                     row(index, entry.label, if (entry in configured) "設定済み" else AppStrings.SETTINGS_VALUE_UNSET,
                         Icons.Default.Dns,
-                        if (index == 0) FocusRequester.Cancel else itemRs[index - 1],
+                        if (index == 0) itemRs[7] else itemRs[index - 1],
                         if (index == 2 && !canSelectMain) itemRs[4] else itemRs[index + 1]) {
                         origin = index; source = entry; navigating = true
                     }

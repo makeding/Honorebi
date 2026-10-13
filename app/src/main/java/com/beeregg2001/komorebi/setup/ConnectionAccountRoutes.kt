@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.setup
 import com.beeregg2001.komorebi.data.ConnectionAccountSettings
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
 import com.google.gson.GsonBuilder
+import kotlinx.coroutines.*
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
 import io.ktor.server.response.respondText
@@ -24,7 +25,16 @@ fun Route.connectionAccountRoutes(
     var pairing: DeviceAuthRequest? = null
     var pairingOrigin = ""
     var deadline = 0L
-    var nextPoll = 0L
+    var result: ConnectionAccountSettings? = null
+    var failure: Exception? = null
+    var pairingStatus = "idle"
+    var pairingJob: Job? = null
+
+    suspend fun status(current: ConnectionSetupSession): Any {
+        if (pairingSession !== current) return mapOf("status" to "idle", "userName" to account().userName)
+        failure?.let { throw it }
+        return mapOf("status" to pairingStatus, "userName" to (result ?: account()).userName)
+    }
 
     suspend fun guarded(call: io.ktor.server.application.ApplicationCall, action: suspend (ConnectionSetupSession) -> Any) {
         call.response.headers.append("Cache-Control", "no-store")
@@ -36,38 +46,49 @@ fun Route.connectionAccountRoutes(
         } catch (error: Exception) { call.setupFailure(error, "ACCOUNT_FAILED") }
     }
 
-    get("/api/connections/account") { guarded(call) { account() } }
+    get("/api/connections/account") { guarded(call) { current -> status(current) } }
     post("/api/connections/account/pair") {
         guarded(call) { current ->
             val currentOrigin = origin()
-            val active = pairing.takeIf { pairingSession === current && pairingOrigin == currentOrigin && System.currentTimeMillis() < deadline }
+            val active = pairing.takeIf { pairingSession === current && pairingOrigin == currentOrigin && pairingStatus == "waiting" && System.currentTimeMillis() < deadline }
                 ?: create().also {
                     pairingSession = current; pairing = it; pairingOrigin = currentOrigin
                     deadline = System.currentTimeMillis() + it.expiresIn * 1000L
-                    nextPoll = System.currentTimeMillis() + it.interval.coerceAtLeast(1) * 1000L
+                    result = null; failure = null; pairingStatus = "waiting"
+                    pairingJob?.cancel()
+                    val activePairing = it
+                    pairingJob = current.scope.launch {
+                        try {
+                            while (System.currentTimeMillis() < deadline && current.accepts(current.token)) {
+                                delay(activePairing.interval.coerceAtLeast(1) * 1000L)
+                                val done = current.authorized(current.token) {
+                                    if (pairingSession !== current || pairing !== activePairing) return@authorized true
+                                    if (pairingOrigin != origin() || System.currentTimeMillis() >= deadline) {
+                                        pairingStatus = "expired"; return@authorized true
+                                    }
+                                    val user = poll(activePairing, current)
+                                    if (user != null) { result = user; pairingStatus = "success" }
+                                    user != null
+                                }
+                                if (done) return@launch
+                            }
+                            current.authorized(current.token) { pairingStatus = "expired" }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) {
+                            if (current.accepts(current.token)) current.authorized(current.token) {
+                                failure = error; pairingStatus = "failure"
+                            }
+                        }
+                    }
                 }
             mapOf("verificationUrl" to active.verificationUrl, "userCode" to active.userCode)
         }
     }
-    get("/api/connections/account/pair") {
-        guarded(call) { current ->
-            val active = pairing
-            if (active == null || pairingSession !== current || pairingOrigin != origin() || System.currentTimeMillis() >= deadline) {
-                pairing = null
-                mapOf("status" to "expired", "userName" to account().userName)
-            } else {
-                val user = account().takeIf { it.userName != null } ?: if (System.currentTimeMillis() >= nextPoll) {
-                    nextPoll = System.currentTimeMillis() + active.interval.coerceAtLeast(1) * 1000L
-                    try { poll(active, current) } catch (error: Exception) { pairing = null; throw error }
-                } else null
-                if (user != null) pairing = null
-                mapOf("status" to if (user == null) "waiting" else "success", "userName" to user?.userName)
-            }
-        }
-    }
+    get("/api/connections/account/pair") { guarded(call) { current -> status(current) } }
     post("/api/connections/account/logout") {
         guarded(call) {
-            logout(); pairing = null
+            pairingJob?.cancel(); pairing = null; pairingSession = null; result = null; failure = null; pairingStatus = "idle"
+            logout()
             account()
         }
     }

@@ -45,7 +45,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import com.beeregg2001.komorebi.setup.connectionSetupRoutes
+import com.beeregg2001.komorebi.setup.*
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -423,8 +423,6 @@ class SettingsViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _smbServerAddedEvent = MutableSharedFlow<String>()
-    val smbServerAddedEvent = _smbServerAddedEvent.asSharedFlow()
 
     init {
         // ★ 修正: 初期化時の重い同期処理をバックグラウンドに回し、UI描画後に遅らせる
@@ -721,14 +719,13 @@ class SettingsViewModel @Inject constructor(
 
     private val _connectionSetupState = MutableStateFlow(com.beeregg2001.komorebi.setup.ConnectionSetupUiState())
     val connectionSetupState = _connectionSetupState.asStateFlow()
-    private val _connectionSettingsSaved = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val connectionSettingsSaved = _connectionSettingsSaved.asSharedFlow()
 
     fun startConnectionSetup(source: String? = null) {
         try {
+            _connectionSetupState.value.session?.revoke()
             startGeminiLocalServer()
             _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
-                com.beeregg2001.komorebi.setup.ConnectionSetupSession(java.util.UUID.randomUUID().toString(), source),
+                com.beeregg2001.komorebi.setup.ConnectionSetupSession(source = source),
             )
         } catch (error: Exception) {
             _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
@@ -740,113 +737,66 @@ class SettingsViewModel @Inject constructor(
 
     private suspend fun saveWebConnectionSettings(snapshot: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot): com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot {
         val before = settingsRepository.connectionSettings()
-        val saved = settingsRepository.saveConnectionSettings(snapshot)
+        val active = _connectionSetupState.value.session ?: throw SetupExpiredException()
+        val saved = settingsRepository.saveConnectionSettings(snapshot) {
+            if (!active.accepts(active.token) || _connectionSetupState.value.session !== active) throw SetupExpiredException()
+        }
         connectionConfigurationChanged(before, saved)
-        _connectionSettingsSaved.emit(Unit)
-        return saved
+        return saved.copy(account = com.beeregg2001.komorebi.data.ConnectionAccountSettings(honomiSession.value?.userName))
     }
 
     fun startGeminiLocalServer() {
         if (ktorServer != null) return
+        if (_connectionSetupState.value.session == null) _connectionSetupState.value = ConnectionSetupUiState(ConnectionSetupSession())
         _localIpAddress.value = getLocalIpAddress()
 
         ktorServer = embeddedServer(CIO, port = 8081) {
             routing {
                 connectionSetupRoutes(
                     session = { _connectionSetupState.value.session },
-                    read = { settingsRepository.connectionSettings() },
+                    read = { settingsRepository.connectionSettings().copy(account = com.beeregg2001.komorebi.data.ConnectionAccountSettings(honomiSession.value?.userName)) },
                     save = { saveWebConnectionSettings(it) },
                     readAsset = { path -> context.assets.open(path).use { it.readBytes() } },
                 )
                 get("/") { call.respondText(getSetupHtml(), ContentType.Text.Html) }
                 post("/submit") {
-                    val formParams = call.receiveParameters()
-                    val apiKey = formParams["api_key"] ?: ""
-                    if (apiKey.isNotBlank()) {
-                        viewModelScope.launch {
-                            settingsRepository.saveString(
-                                SettingsRepository.GEMINI_API_KEY,
-                                apiKey
-                            )
+                    val active = _connectionSetupState.value.session
+                    if (active == null) { call.setupExpired(); return@post }
+                    try {
+                        active.authorized(call.request.headers["X-Setup-Token"]) {
+                            val form = call.receiveParameters()
+                            val key = form["api_key"].orEmpty()
+                            require(key.isNotBlank()) { "APIキーを入力してください。" }
+                            if (!active.accepts(active.token)) throw SetupExpiredException()
+                            settingsRepository.saveString(SettingsRepository.GEMINI_API_KEY, key)
                         }
-                        call.respondText(
-                            "<html><body style='font-family:sans-serif; text-align:center; padding:50px; background:#e8f0fe;'><h2 style='color:#1a73e8;'>連携が完了しました！🎉</h2><p>テレビ画面を確認してください。この画面は閉じて大丈夫です。</p></body></html>",
-                            ContentType.Text.Html
-                        )
-                    } else {
-                        call.respondText(
-                            "APIキーが空です。戻ってやり直してください。",
-                            ContentType.Text.Plain
-                        )
-                    }
+                        call.respondText("保存しました。", ContentType.Text.Plain)
+                    } catch (error: Exception) { call.setupFailure(error) }
                 }
-
-                get("/smb") {
-                    val targetId = call.request.queryParameters["id"]
-                    val json = settingsRepository.smbServerList.first()
-                    val currentList = try {
-                        val type = object : TypeToken<List<SmbServer>>() {}.type
-                        gson.fromJson<List<SmbServer>>(json, type) ?: emptyList()
-                    } catch (e: Exception) {
-                        emptyList()
-                    }
-
-                    val targetServer = currentList.find { it.id == targetId }
-                    call.respondText(getSmbSetupHtml(targetServer), ContentType.Text.Html)
-                }
-
-                post("/submit_smb") {
-                    val formParams = call.receiveParameters()
-                    val id =
-                        formParams["id"]?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID()
-                            .toString()
-                    val name = formParams["name"] ?: ""
-                    val ip = formParams["ip"] ?: ""
-                    val port = formParams["port"]?.takeIf { it.isNotBlank() } ?: "445"
-                    val user = formParams["user"] ?: ""
-                    val password = formParams["password"] ?: ""
-
-                    if (name.isNotBlank() && ip.isNotBlank()) {
-                        saveSmbServer(SmbServer(id, name, ip, port, user, password))
-
-                        _smbServerAddedEvent.emit(name)
-
-                        val successHtml = """
-                            <!DOCTYPE html>
-                            <html lang="ja">
-                            <head>
-                                <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>送信完了</title>
-                                <style>
-                                    body { font-family: sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; } 
-                                    .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 500px; text-align: center;} 
-                                    h2 { color: #1a73e8; } 
-                                    .btn { display: inline-block; width: 100%; padding: 15px; background: #34a853; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-top: 20px; box-sizing: border-box;}
-                                </style>
-                            </head>
-                            <body>
-                                <div class="card">
-                                    <h2 style='color:#1a73e8;'>設定を完了しました！🎉</h2>
-                                    <p>テレビ側に「<b>$name</b>」の登録・更新が反映されました。</p>
-                                    <br>
-                                    <a href="/smb" class="btn">続けて別のサーバーを追加する</a>
-                                </div>
-                            </body>
-                            </html>
-                        """.trimIndent()
-                        call.respondText(successHtml, ContentType.Text.Html)
-                    } else {
-                        call.respondText(
-                            "表示名とIPアドレスは必須です。戻ってやり直してください。",
-                            ContentType.Text.Plain
-                        )
-                    }
-                }
+                connectionAccountRoutes(
+                    session = { _connectionSetupState.value.session },
+                    account = { com.beeregg2001.komorebi.data.ConnectionAccountSettings(honomiSession.value?.userName) },
+                    origin = {
+                        val config = settingsRepository.connectionSettings().sources.first { it.id == "KONOMITV" }
+                        require(config.host.isNotBlank()) { "KonomiTV の接続先を保存してからログインしてください。" }
+                        "${config.host}:${config.port}"
+                    },
+                    create = { createHonomiPairing().getOrThrow() },
+                    poll = { pairing, active ->
+                        honomiAuthRepository.pollPairing(pairing) { active.accepts(active.token) }.getOrThrow()?.let {
+                            viewModelScope.launch { watchHistoryRepository.syncWithServer() }
+                            com.beeregg2001.komorebi.data.ConnectionAccountSettings(it.userName)
+                        }
+                    },
+                    logout = { logoutHonomi() },
+                )
             }
         }.start(wait = false)
         Log.i("SettingsViewModel", "Started Local Server on port 8081")
     }
 
     fun stopGeminiLocalServer() {
+        _connectionSetupState.value.session?.revoke()
         _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState()
         val stopping = ktorServer
         ktorServer = null
@@ -857,6 +807,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        _connectionSetupState.value.session?.revoke()
         _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState()
         ktorServer?.stop(gracePeriodMillis = 0, timeoutMillis = 1000)
         ktorServer = null
@@ -888,43 +839,26 @@ class SettingsViewModel @Inject constructor(
                 <div class="card"><h2>AIコンシェルジュ連携</h2>
                     <div class="step"><p><b>Step 1:</b> 以下のボタンからGoogle AI Studioを開き、APIキー(AIzaSy...)を作成してコピーしてください。</p><a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn">GoogleからAPIキーを取得</a></div>
                     <div class="step"><p><b>Step 2:</b> コピーしたAPIキーを下に貼り付けて、送信ボタンを押してください。</p>
-                        <form action="/submit" method="post"><input type="text" name="api_key" placeholder="AIzaSy..." required><button type="submit">テレビに送信する</button></form>
+                        <form id="setup-form"><input type="password" name="api_key" placeholder="AIzaSy..." required><button type="submit">テレビに送信する</button></form><p id="result" role="status"></p>
+                        <script>
+                        const token = location.hash.slice(1);
+                        const form = document.getElementById('setup-form');
+                        const result = document.getElementById('result');
+                        if (!token) { result.textContent = 'テレビで設定ページを開き直してください。'; form.querySelector('button').disabled = true; }
+                        form.addEventListener('submit', async (event) => {
+                            event.preventDefault(); const button = form.querySelector('button'); button.disabled = true;
+                            try {
+                                const response = await fetch('/submit', {method: 'POST', headers: {'X-Setup-Token': token}, body: new URLSearchParams(new FormData(form))});
+                                if (!response.ok) { const error = await response.json(); throw new Error(error.message); }
+                                result.textContent = await response.text();
+                            } catch (error) { result.textContent = error.message || '保存できませんでした。再試行してください。'; }
+                            finally { button.disabled = false; }
+                        });
+                        </script>
                     </div>
                 </div>
             </body></html>
         """.trimIndent()
     }
 
-    private fun getSmbSetupHtml(server: SmbServer?): String {
-        val title = if (server != null) "SMBサーバーの編集" else "新しいSMBサーバーの登録"
-        val idVal = server?.id ?: ""
-        val nameVal = server?.name ?: ""
-        val ipVal = server?.ip ?: ""
-        val portVal = server?.port ?: "445"
-        val userVal = server?.user ?: ""
-        val passVal = server?.password ?: ""
-
-        return """
-            <!DOCTYPE html>
-            <html lang="ja">
-            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>$title</title>
-                <style>body { font-family: sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding: 20px; } .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 500px;} h2 { color: #1a73e8; text-align: center; } .step { background: #e8f0fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; } input { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; } button { width: 100%; padding: 15px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; } label { font-weight: bold; font-size: 14px; color: #555; }</style>
-            </head>
-            <body>
-                <div class="card"><h2>$title</h2>
-                    <div class="step"><p>必要な情報を入力して送信ボタンを押してください。</p>
-                        <form action="/submit_smb" method="post">
-                            <input type="hidden" name="id" value="$idVal">
-                            <label>表示名 (必須)</label><input type="text" name="name" placeholder="例: リビングのNAS" value="$nameVal" required>
-                            <label>IPアドレス (必須)</label><input type="text" name="ip" placeholder="例: 192.168.1.10" value="$ipVal" required>
-                            <label>ポート番号</label><input type="text" name="port" placeholder="例: 445" value="$portVal">
-                            <label>ユーザー名 (空ならゲスト)</label><input type="text" name="user" placeholder="ユーザー名" value="$userVal">
-                            <label>パスワード</label><input type="password" name="password" placeholder="パスワード" value="$passVal">
-                            <button type="submit">テレビに設定を送信</button>
-                        </form>
-                    </div>
-                </div>
-            </body></html>
-        """.trimIndent()
-    }
 }

@@ -39,8 +39,8 @@ fun ConnectionSetupDialog(
     DisposableEffect(Unit) { onStart(); onDispose { onStop() } }
     LaunchedEffect(Unit) { withFrameNanos { }; manualR.safeRequestFocus("ConnectionSetup_Initial") }
     val session = state.session
-    val url = session?.let { "http://$serverIp:8081/connections/?token=${it.token}" +
-        (it.source?.let { source -> "&source=$source" } ?: "") }
+    val url = session?.let { "http://$serverIp:8081/connections/" +
+        (it.source?.let { source -> "?source=$source" } ?: "") + "#${it.token}" }
     val bitmap = url?.let { rememberQrBitmap(it, 300) }
     Dialog(onDismissRequest = if (initialSetup) ({}) else onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = !initialSetup)) {
@@ -50,8 +50,8 @@ fun ConnectionSetupDialog(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("スマホで接続先を設定", style = MaterialTheme.typography.titleLarge)
-                        Text("同じネットワークのスマホでQRコードを読み取り、接続先を入力して保存してください。",
+                        Text("スマホで接続設定", style = MaterialTheme.typography.titleLarge)
+                        Text("同じネットワークのスマホでQRコードを読み取り、設定を入力して保存してください。",
                             color = colors.textSecondary)
                         Box(Modifier.fillMaxWidth().height(72.dp), contentAlignment = Alignment.CenterStart) {
                             Text(state.error ?: if (session == null) "設定ページを準備しています…" else "テレビに設定を反映します。",

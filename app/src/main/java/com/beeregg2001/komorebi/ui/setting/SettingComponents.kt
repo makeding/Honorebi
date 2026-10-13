@@ -103,7 +103,7 @@ sealed class SettingDialogState {
     object Licenses : SettingDialogState()
     data class LinkQr(val title: String, val url: String) : SettingDialogState()
     object GeminiSetup : SettingDialogState()
-    data class ConnectionSetup(val source: String) : SettingDialogState()
+    data class ConnectionSetup(val source: String?) : SettingDialogState()
     object DeviceCapabilities : SettingDialogState()
     object HonomiLogin : SettingDialogState()
     object HonomiLogout : SettingDialogState()
@@ -897,140 +897,6 @@ fun SmbManualInputDialog(
 }
 
 @Composable
-fun SmbSetupDialog(
-    target: SmbServer?,
-    serverIp: String,
-    onStartServer: () -> Unit,
-    onStopServer: () -> Unit,
-    onDismiss: () -> Unit,
-    onManualInputClick: () -> Unit,
-    onShowToast: (String) -> Unit = {}
-) {
-    val colors = KomorebiTheme.colors
-    var isClosing by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-
-    val viewModel: SettingsViewModel = hiltViewModel()
-
-    DisposableEffect(Unit) { onStartServer(); onDispose { onStopServer() } }
-    LaunchedEffect(Unit) { delay(150); focusRequester.safeRequestFocus() }
-
-    LaunchedEffect(Unit) {
-        viewModel.smbServerAddedEvent.collect { name ->
-            onShowToast("設定を受信しました！\n「$name」")
-        }
-    }
-
-    val serverUrl = "http://$serverIp:8081/smb" + if (target != null) "?id=${target.id}" else ""
-    val qrBitmap = rememberQrBitmap(content = serverUrl, size = 300)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(0.85f))
-            .focusGroup()
-            .focusProperties {
-                exit = { if (isClosing) FocusRequester.Default else FocusRequester.Cancel }
-            }
-            .onKeyEvent {
-                if (it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK && it.type == KeyEventType.KeyUp) {
-                    isClosing = true; onDismiss(); return@onKeyEvent true
-                }; false
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        ThemedDialogSurface(width = 680.dp) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.FolderShared,
-                        null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Text(
-                        if (target != null) "SMBサーバーの編集" else "SMBサーバーの追加",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(Modifier.height(32.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "設定手順",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.accent,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "1. スマホのカメラで右のQRコードを読み取ります。",
-                            color = colors.textPrimary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            lineHeight = 24.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "2. スマホの画面に従い、必要な情報を入力して送信してください。",
-                            color = colors.textPrimary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            lineHeight = 24.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "3. 送信後もこの画面は開いたままになるため、スマホから連続して複数のサーバーを追加できます！",
-                            color = colors.textSecondary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            lineHeight = 24.sp
-                        )
-                    }
-                    Spacer(Modifier.width(32.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(220.dp)
-                            .background(Color.White, RoundedCornerShape(12.dp))
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (qrBitmap != null) Image(
-                            bitmap = qrBitmap,
-                            contentDescription = "QR Code",
-                            modifier = Modifier.fillMaxSize()
-                        ) else CircularProgressIndicator(color = colors.accent)
-                    }
-                }
-                Spacer(Modifier.height(40.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    DialogActionButton(
-                        DialogActionRole.Secondary,
-                        onClick = { isClosing = true; onDismiss() },
-                        modifier = Modifier
-                            .width(180.dp)
-                            .focusRequester(focusRequester)
-                    ) { Text(if (target != null) "キャンセル" else "閉じる") }
-                    Spacer(Modifier.width(24.dp))
-                    DialogActionButton(
-                        DialogActionRole.Primary,
-                        onClick = { isClosing = true; onManualInputClick() },
-                        modifier = Modifier.width(180.dp)
-                    ) { Text("リモコンで手動入力") }
-                }
-            }
-        }
-    }
-}
-
-// ----------------------------------------------------------------------
-// これ以降は既存コンポーネント
-// ----------------------------------------------------------------------
-
-@Composable
 fun SelectionDialog(
     title: String,
     options: List<Pair<String, String>>,
@@ -1389,8 +1255,10 @@ fun GeminiSetupDialog(
     DisposableEffect(Unit) { onStartServer(); onDispose { onStopServer() } }
     LaunchedEffect(Unit) { delay(150); focusRequester.safeRequestFocus() }
 
-    val serverUrl = "http://$serverIp:8081"
-    val qrBitmap = rememberQrBitmap(content = serverUrl, size = 300)
+    val viewModel: SettingsViewModel = hiltViewModel()
+    val setupState by viewModel.connectionSetupState.collectAsState()
+    val serverUrl = setupState.session?.let { "http://$serverIp:8081/#${it.token}" }
+    val qrBitmap = serverUrl?.let { rememberQrBitmap(content = it, size = 300) }
     val isKeySet = currentKey.isNotBlank() && currentKey.startsWith("AIza")
 
     Box(

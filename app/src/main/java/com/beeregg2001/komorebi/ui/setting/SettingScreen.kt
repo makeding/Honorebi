@@ -264,7 +264,7 @@ private fun SettingsMenuScreen(
     val itemFocusRequesters = remember {
         listOf(
             List(5) { FocusRequester() },
-            List(7) { FocusRequester() },
+            List(8) { FocusRequester() },
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
@@ -573,7 +573,7 @@ private fun SettingsMenuScreen(
                                     prefs.edcbRecordPlayMethod,
                                 ) { viewModel.updateEdcbRecordPlayMethod(it) }
                             },
-                            onWebSetup = { uiState.activeDialog = SettingDialogState.ConnectionSetup(it.backend) },
+                            onWebSetup = { uiState.activeDialog = SettingDialogState.ConnectionSetup(it?.backend) },
                             onEdit = { title, value ->
                                 uiState.activeDialog = SettingDialogState.Input(title, value) { input ->
                                     when (title) {
@@ -1316,7 +1316,6 @@ private fun SettingsMenuScreen(
             is SettingDialogState.ConnectionSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
                 val setupState by viewModel.connectionSetupState.collectAsState()
-                LaunchedEffect(Unit) { viewModel.connectionSettingsSaved.collect { closeDialog() } }
                 ConnectionSetupDialog(
                     title = "接続先の設定", serverIp = localIp, state = setupState,
                     onStart = { viewModel.startConnectionSetup(state.source) },
@@ -1374,20 +1373,17 @@ private fun SettingsMenuScreen(
 
             is SettingDialogState.SmbSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
-                SmbSetupDialog(
-                    target = state.target,
-                    serverIp = localIp,
-                    onStartServer = { viewModel.startGeminiLocalServer() },
-                    onStopServer = { viewModel.stopGeminiLocalServer() },
+                val setupState by viewModel.connectionSetupState.collectAsState()
+                ConnectionSetupDialog(
+                    title = "接続設定", serverIp = localIp, state = setupState,
+                    onStart = { viewModel.startConnectionSetup() },
+                    onStop = { viewModel.stopGeminiLocalServer() },
                     onDismiss = { closeDialog() },
-                    onManualInputClick = {
+                    onManualInput = {
                         viewModel.stopGeminiLocalServer()
-                        uiState.activeDialog =
-                            SettingDialogState.SmbManualInput(state.target) { server ->
-                                viewModel.saveSmbServer(server)
-                            }
+                        uiState.activeDialog = SettingDialogState.SmbManualInput(state.target) { viewModel.saveSmbServer(it) }
                     },
-                    onShowToast = { msg -> toastMessage = msg })
+                )
             }
 
             is SettingDialogState.SmbManualInput -> {

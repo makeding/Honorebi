@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class ConnectionSetupHttpTest {
-    @Test fun actualHttpSaveReadbackAndScopedSessionUsePersistedRepository() = runBlocking {
+    @Test fun actualHttpSaveReadbackAndSessionLifetimeUsePersistedRepository() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val repository = SettingsRepository(context)
         val gson = GsonBuilder().serializeNulls().create()
@@ -65,6 +65,23 @@ class ConnectionSetupHttpTest {
             assertEquals(200, request("/api/connections", two).first)
             assertEquals("EDCB", repository.backendType.first())
             assertEquals(200, request("/api/connections", two.copy(mainSystem = "KONOMITV")).first)
+            val expanded = repository.connectionSettings().copy(
+                preferredSource = "MIRAKURUN", edcbRecordPlayMethod = "API",
+                cloudflareAccess = ConnectionAccessSettings("access-id", "access-secret"),
+                smbServers = listOf(ConnectionSmbSettings("nas", "NAS", "192.168.1.50", "445", "user", "smb-secret")),
+            )
+            val full = request("/api/connections", expanded)
+            assertEquals(full.second, 200, full.first)
+            assertFalse(full.second.contains("access-secret")); assertFalse(full.second.contains("smb-secret"))
+            val redacted = gson.fromJson(full.second, ConnectionSettingsSnapshot::class.java)
+            assertTrue(redacted.cloudflareAccess.secretConfigured)
+            assertTrue(redacted.smbServers.single().passwordConfigured)
+            assertEquals("MIRAKURUN", redacted.preferredSource); assertEquals("API", redacted.edcbRecordPlayMethod)
+            assertEquals(200, request("/api/connections", redacted.copy(smbServers = redacted.smbServers.map { it.copy(name = "Renamed") })).first)
+            assertTrue(repository.connectionSettings().smbServers.single().passwordConfigured)
+            assertTrue(repository.connectionSettings().cloudflareAccess.secretConfigured)
+            val invalidAccess = request("/api/connections", redacted.copy(cloudflareAccess = ConnectionAccessSettings("", null)))
+            assertEquals(400, invalidAccess.first)
             val current = repository.connectionSettings()
             val bad = current.copy(sources = current.sources.map { if (it.id == "EDCB") it.copy(port = "0") else it })
             val rejected = request("/api/connections", bad)
@@ -74,13 +91,21 @@ class ConnectionSetupHttpTest {
             assertEquals(401, request("/api/connections", token = "wrong").first)
 
             session = ConnectionSetupSession("test-token", "EDCB")
-            val scopedRead = gson.fromJson(request("/api/connections").second, ConnectionSettingsSnapshot::class.java)
-            assertEquals("EDCB", scopedRead.scope)
             val scoped = current.copy(sources = current.sources.map { if (it.id == "EDCB") it.copy(host = "192.168.1.21") else it })
             assertEquals(200, request("/api/connections", scoped).first)
-            val outsideScope = scoped.copy(sources = scoped.sources.map { if (it.id == "KONOMITV") it.copy(host = "https://changed.example.org") else it })
-            assertEquals(400, request("/api/connections", outsideScope).first)
-            assertEquals(scoped, repository.connectionSettings())
+            val otherSource = scoped.copy(sources = scoped.sources.map { if (it.id == "KONOMITV") it.copy(host = "https://changed.example.org") else it })
+            assertEquals(200, request("/api/connections", otherSource).first)
+            assertEquals(otherSource, repository.connectionSettings())
+            assertEquals(200, request("/api/connections").first) // same link works for repeated visits
+            session!!.revoke()
+            assertEquals(401, request("/api/connections").first)
+            assertEquals(401, request("/api/connections", one).first)
+            assertEquals(otherSource, repository.connectionSettings())
+            session = ConnectionSetupSession() // reopening generates a different secret
+            assertEquals(43, session!!.token.length)
+            assertEquals(401, request("/api/connections").first)
+            assertEquals(200, request("/api/connections", token = session!!.token).first)
+            assertEquals(401, request("/api/connections?token=${session!!.token}", token = "").first)
             session = null
             assertEquals(401, request("/api/connections").first)
             assertEquals(401, request("/api/connections", one).first)
