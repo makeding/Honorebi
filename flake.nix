@@ -42,6 +42,8 @@
             ANDROID_HOME = "${android.androidsdk}/libexec/android-sdk";
 
             shellHook = ''
+              # Keep an inherited system SDK from conflicting with this project's SDK.
+              unset ANDROID_SDK_ROOT
               export JAVA_HOME="${pkgs.jdk21}"
               export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmake/3.22.1/bin:$PATH"
             '';
