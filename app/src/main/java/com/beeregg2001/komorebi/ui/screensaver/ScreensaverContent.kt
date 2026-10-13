@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -39,6 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -62,7 +66,26 @@ import java.time.format.DateTimeFormatter
 internal fun screensaverDate(now: LocalDateTime): String =
     now.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.JAPANESE))
 
-private val screensaverTextShadow = Shadow(Color.Black.copy(alpha = 0.8f), Offset(0f, 2f), 6f)
+private val screensaverTextShadow = Shadow(Color.Black.copy(alpha = 0.9f), Offset(0f, 3f), 10f)
+
+// Paint only around the content, without changing its bounds or covering the image.
+private fun Modifier.screensaverReadability(): Modifier = drawBehind {
+    val feather = 24.dp.toPx()
+    val radius = size.height / 2f + feather
+    withTransform({
+        scale(scaleX = (size.width / 2f + feather) / radius, scaleY = 1f, pivot = center)
+    }) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.22f), Color.Transparent),
+                center = center,
+                radius = radius,
+            ),
+            radius = radius,
+            center = center,
+        )
+    }
+}
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -122,7 +145,7 @@ fun ScreensaverContent(
             }
         }
         Column(
-            modifier = Modifier.align(Alignment.BottomStart).widthIn(max = 460.dp).padding(64.dp),
+            modifier = Modifier.align(Alignment.BottomStart).widthIn(max = 460.dp).padding(64.dp).screensaverReadability(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
@@ -138,25 +161,15 @@ fun ScreensaverContent(
                 style = MaterialTheme.typography.titleLarge.copy(shadow = screensaverTextShadow),
             )
             if (imageUris.isEmpty()) {
-                Text("設定からスクリーンセーバー画像を追加してください", color = Color.White.copy(alpha = 0.85f))
+                Text("設定からスクリーンセーバー画像を追加してください", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium.copy(shadow = screensaverTextShadow))
             }
         }
         Row(
-            modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).testTag("screensaver-status"),
+            modifier = Modifier.align(Alignment.TopEnd).padding(48.dp).screensaverReadability().testTag("screensaver-status"),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StatusLine(when (network.transport) {
-                NetworkTransport.WIFI -> Icons.Default.Wifi
-                NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet
-                NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff
-                NetworkTransport.OTHER -> Icons.Default.NetworkCheck
-            }, when (network.transport) {
-                NetworkTransport.WIFI -> "Wi-Fi"
-                NetworkTransport.ETHERNET -> "有線LAN"
-                NetworkTransport.OTHER -> "ネットワーク接続中"
-                NetworkTransport.DISCONNECTED -> "ネットワーク未接続"
-            })
+            ScreensaverNetworkIcon(network.transport)
             StatusLine(Icons.Default.Cast, deviceName)
         }
         if (upcomingRecordings != null) {
@@ -166,6 +179,22 @@ fun ScreensaverContent(
             )
         }
     }
+}
+
+@Composable
+internal fun ScreensaverNetworkIcon(transport: NetworkTransport, modifier: Modifier = Modifier) {
+    val (icon, description) = when (transport) {
+        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi"
+        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線LAN"
+        NetworkTransport.OTHER -> Icons.Default.NetworkCheck to "ネットワーク接続中"
+        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "ネットワーク未接続"
+    }
+    Icon(
+        icon,
+        contentDescription = description,
+        tint = Color.White.copy(alpha = 0.85f),
+        modifier = modifier.size(24.dp).testTag("screensaver-network"),
+    )
 }
 
 @Composable

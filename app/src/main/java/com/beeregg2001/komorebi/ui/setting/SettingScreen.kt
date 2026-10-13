@@ -179,6 +179,8 @@ private fun SettingsMenuScreen(
     val screensaverInterval by viewModel.screensaverIntervalSeconds.collectAsState()
     val screensaverTransition by viewModel.screensaverTransition.collectAsState()
     val screensaverImages by viewModel.screensaverImageUris.collectAsState()
+    val screensaverGalleryR = remember { FocusRequester() }
+    var showScreensaverGallery by remember { mutableStateOf(false) }
     var screensaverPreview by remember { mutableStateOf(false) }
     var showInternalImagePicker by remember { mutableStateOf(false) }
     val screensaverImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -352,7 +354,7 @@ private fun SettingsMenuScreen(
                                 }
     }
 
-    val isDialogOpen = uiState.activeDialog !is SettingDialogState.None || showInternalImagePicker
+    val isDialogOpen = uiState.activeDialog !is SettingDialogState.None || showInternalImagePicker || showScreensaverGallery || screensaverPreview
 
     // ダイアログ表示中の戻るキーは「ダイアログを閉じる」に割り当てる。
     // ここで消費しないと MainRoot 側の BackHandler が動いてホームへ戻ってしまう。
@@ -1133,6 +1135,8 @@ private fun SettingsMenuScreen(
                             screensaverShowUpcoming = screensaverShowUpcoming,
                             screensaverUpcomingR = screensaverUpcomingR,
                             onToggleScreensaverUpcoming = { viewModel.setScreensaverShowUpcoming(!screensaverShowUpcoming) },
+                            screensaverGalleryR = screensaverGalleryR,
+                            onShowScreensaverGallery = { showScreensaverGallery = true },
                         )
 
                         4 -> EpgSettingsContent(
@@ -1505,6 +1509,12 @@ private fun SettingsMenuScreen(
                         throw failure
                     }
                 },
+            )
+        }
+        if (showScreensaverGallery) {
+            ScreensaverImageGallery(
+                imageUris = screensaverImages,
+                onDismiss = { showScreensaverGallery = false; closeDialog() },
             )
         }
         if (screensaverPreview) {

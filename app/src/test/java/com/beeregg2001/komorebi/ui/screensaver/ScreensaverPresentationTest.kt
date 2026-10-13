@@ -2,6 +2,11 @@ package com.beeregg2001.komorebi.ui.screensaver
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.unit.dp
+import com.beeregg2001.komorebi.ui.main.NetworkTransport
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -28,6 +33,32 @@ class ScreensaverPresentationTest {
             Locale.setDefault(Locale.TRADITIONAL_CHINESE)
             assertEquals("2026年10月13日 火曜日", screensaverDate(LocalDateTime.of(2026, 10, 13, 19, 20)))
         } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun networkStatesAreIconOnlyAndKeepNeighborBounds() {
+        val transport = mutableStateOf(NetworkTransport.WIFI)
+        compose.setContent {
+            KomorebiTheme {
+                Row {
+                    ScreensaverNetworkIcon(transport.value)
+                    Box(Modifier.size(48.dp).testTag("neighbor"))
+                }
+            }
+        }
+        val iconBounds = compose.onNodeWithTag("screensaver-network").fetchSemanticsNode().boundsInRoot
+        val neighborBounds = compose.onNodeWithTag("neighbor").fetchSemanticsNode().boundsInRoot
+        for ((state, description) in listOf(
+            NetworkTransport.WIFI to "Wi-Fi",
+            NetworkTransport.ETHERNET to "有線LAN",
+            NetworkTransport.OTHER to "ネットワーク接続中",
+            NetworkTransport.DISCONNECTED to "ネットワーク未接続",
+        )) {
+            compose.runOnIdle { transport.value = state }
+            compose.onNodeWithContentDescription(description).assertExists()
+            compose.onNodeWithText(description).assertDoesNotExist()
+            assertEquals(iconBounds, compose.onNodeWithTag("screensaver-network").fetchSemanticsNode().boundsInRoot)
+            assertEquals(neighborBounds, compose.onNodeWithTag("neighbor").fetchSemanticsNode().boundsInRoot)
+        }
     }
 
     @Test fun statusIsHorizontalTopRightAndUpcomingRemainsOptional() {

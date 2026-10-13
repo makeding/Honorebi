@@ -107,7 +107,7 @@ class ScreensaverImageFilesTest {
 
         assertEquals(
             listOf("nested/a.jpg", "z.png"),
-            images.map { File(it.path!!).relativeTo(fixtures).invariantSeparatorsPath },
+            images.map { File(it.path!!).relativeTo(fixtures.canonicalFile).invariantSeparatorsPath },
         )
     }
 

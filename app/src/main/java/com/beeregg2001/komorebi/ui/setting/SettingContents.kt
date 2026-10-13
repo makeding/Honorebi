@@ -1035,9 +1035,12 @@ fun DisplaySettingsContent(
     screensaverShowUpcoming: Boolean = false,
     screensaverUpcomingR: FocusRequester? = null,
     onToggleScreensaverUpcoming: () -> Unit = {},
+    screensaverGalleryR: FocusRequester? = null,
+    onShowScreensaverGallery: () -> Unit = {},
 ) {
     val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
     val upcomingR = screensaverUpcomingR ?: remember { FocusRequester() }
+    val galleryR = screensaverGalleryR ?: remember { FocusRequester() }
     val baseThemeLabel =
         if (isTimeLinked) "時間連動テーマ" else if (!isDarkMode) AppStrings.SETTINGS_VALUE_THEME_DARK else AppStrings.SETTINGS_VALUE_THEME_LIGHT
 
@@ -1196,13 +1199,22 @@ fun DisplaySettingsContent(
                 onClick = { onClick(screensaverTransitionR); onCycleScreensaverTransition() }
             )
             SettingItem(
-                "スクリーンセーバー画像",
+                "画像を追加",
                 if (screensaverImageCount == 0) "未選択" else "${screensaverImageCount} 枚",
                 Icons.Default.AddPhotoAlternate,
                 modifier = Modifier.focusRequester(screensaverImagesR).focusProperties {
-                    left = sidebarR; up = screensaverTransitionR; down = screensaverClearR
+                    left = sidebarR; up = screensaverTransitionR; down = galleryR
                 },
                 onClick = { onClick(screensaverImagesR); onPickScreensaverImages() }
+            )
+            SettingItem(
+                "登録画像を見る",
+                "${screensaverImageCount} 枚",
+                Icons.Default.PhotoLibrary,
+                modifier = Modifier.focusRequester(galleryR).focusProperties {
+                    left = sidebarR; up = screensaverImagesR; down = screensaverClearR
+                },
+                onClick = { onClick(galleryR); onShowScreensaverGallery() }
             )
             SettingItem(
                 "登録画像をすべて削除",
@@ -1210,7 +1222,7 @@ fun DisplaySettingsContent(
                 Icons.Default.DeleteOutline,
                 enabled = screensaverImageCount > 0,
                 modifier = Modifier.focusRequester(screensaverClearR).focusProperties {
-                    left = sidebarR; up = screensaverImagesR; down = upcomingR
+                    left = sidebarR; up = galleryR; down = upcomingR
                 },
                 onClick = { onClick(screensaverClearR); onClearScreensaverImages() }
             )
