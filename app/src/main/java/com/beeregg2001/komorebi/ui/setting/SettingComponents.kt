@@ -175,7 +175,10 @@ fun CategoryItem(
             focusedSelectedContentColor = focusedTextColor,
         ),
         shape = SelectableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-        scale = SelectableSurfaceDefaults.scale(focusedScale = if (enabled) 1.05f else 1.0f)
+        scale = SelectableSurfaceDefaults.scale(
+            focusedScale = if (enabled) 1.05f else 1.0f,
+            focusedSelectedScale = if (enabled) 1.05f else 1.0f,
+        )
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),

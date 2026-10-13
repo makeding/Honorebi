@@ -12,6 +12,39 @@ internal data class VideoCardFocus(
 )
 
 internal object VideoFocusPolicy {
+    /**
+     * Playback returns follow the program that was actually playing when Back
+     * was pressed.  A card's old row is intentionally ignored here: a program
+     * which appears in both rows returns to Recent first, then Continue
+     * Watching.  That makes A -> B playback restore B, rather than A's origin.
+     */
+    fun playerReturnTarget(
+        playedProgramId: String?,
+        recentProgramIds: List<String>,
+        historyProgramIds: List<String>,
+    ): VideoCardFocus? {
+        if (playedProgramId != null && playedProgramId in recentProgramIds) {
+            return VideoCardFocus(VideoFocusRow.RECENT, playedProgramId)
+        }
+        if (playedProgramId != null && playedProgramId in historyProgramIds) {
+            return VideoCardFocus(VideoFocusRow.HISTORY, playedProgramId)
+        }
+        return historyProgramIds.firstOrNull()?.let { VideoCardFocus(VideoFocusRow.HISTORY, it) }
+            ?: recentProgramIds.firstOrNull()?.let { VideoCardFocus(VideoFocusRow.RECENT, it) }
+    }
+
+    fun shouldWaitForPlayerReturn(
+        playedProgramId: String?,
+        recentProgramIds: List<String>,
+        historyProgramIds: List<String>,
+        recentLoading: Boolean,
+        historyReady: Boolean,
+    ): Boolean {
+        if (playedProgramId != null && playedProgramId in recentProgramIds) return false
+        // Recent has priority even when History already contains the program.
+        return recentLoading || !historyReady
+    }
+
     fun restoreTarget(
         requestedProgramId: String?,
         priorTarget: VideoCardFocus?,

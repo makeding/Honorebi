@@ -185,17 +185,39 @@ class HomeViewModel @Inject constructor(
         _isFallbackTriggered.value = false
     }
 
+    private val _isWatchHistoryReady = MutableStateFlow(false)
+    /** Local history has completed its current policy-filtered projection. */
+    val isWatchHistoryReady: StateFlow<Boolean> = _isWatchHistoryReady.asStateFlow()
+    private var lastWatchHistoryExclusionActive: Boolean? = null
+
     val watchHistory: StateFlow<List<KonomiHistoryProgram>> =
         combine(watchHistoryRepository.getLocalWatchHistory(), nhkExclusionRepository.state) { entities, exclusion ->
             entities to exclusion
         }.transformLatest { (entities, exclusion) ->
-            emit(emptyList())
-            if (exclusion.isLoaded) emit(withContext(Dispatchers.IO) {
+            val policyChanged = lastWatchHistoryExclusionActive != exclusion.isActive
+            // Keep the previous rows visible while this ordinary update projects,
+            // but do not let a playback-return fallback mistake those rows for a
+            // settled view of the freshly exited program.
+            _isWatchHistoryReady.value = false
+            if (!exclusion.isLoaded) {
+                emit(emptyList())
+                return@transformLatest
+            }
+            // A normal history write (including the program that just finished
+            // playing) must not remove the row while the updated projection is
+            // being calculated. Policy changes intentionally clear immediately.
+            if (policyChanged) {
+                _isWatchHistoryReady.value = false
+                emit(emptyList())
+            }
+            emit(withContext(Dispatchers.IO) {
                 entities.filter { entity ->
                     !exclusion.isActive || recordProvider.getRecordedProgram(entity.id).getOrNull()
                         ?.let { !nhkExclusionRepository.isExcluded(it) } == true
                 }.map { KonomiDataMapper.toUiModel(it) }
             })
+            lastWatchHistoryExclusionActive = exclusion.isActive
+            _isWatchHistoryReady.value = true
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

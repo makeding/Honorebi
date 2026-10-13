@@ -229,6 +229,8 @@ class RecordViewModel @Inject constructor(
 
     /** Safe, user-facing reason for the last recent-recordings failure. */
     val recordingError: StateFlow<String?> = appContentStore.recordingError
+    /** Whether the Video tab's first-page recording data is still resolving. */
+    val isRecentRecordingsLoading: StateFlow<Boolean> = appContentStore.isRecordingsLoading
 
     init {
         loadSearchHistory()

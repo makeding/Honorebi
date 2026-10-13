@@ -20,6 +20,69 @@ class VideoFocusPolicyTest {
     }
 
     @Test
+    fun playerReturnUsesTheActuallyExitedProgramAndPrefersRecentOverItsOldRow() {
+        assertEquals(
+            VideoCardFocus(VideoFocusRow.RECENT, "B"),
+            VideoFocusPolicy.playerReturnTarget(
+                playedProgramId = "B",
+                recentProgramIds = listOf("A", "B"),
+                historyProgramIds = listOf("B", "A"),
+            ),
+        )
+    }
+
+    @Test
+    fun playerReturnFallsBackFromMissingRecentProgramToHistoryThenAvailableCard() {
+        assertEquals(
+            VideoCardFocus(VideoFocusRow.HISTORY, "B"),
+            VideoFocusPolicy.playerReturnTarget("B", listOf("A"), listOf("B", "C")),
+        )
+        assertEquals(
+            VideoCardFocus(VideoFocusRow.HISTORY, "C"),
+            VideoFocusPolicy.playerReturnTarget("B", listOf("A"), listOf("C")),
+        )
+        assertEquals(
+            VideoCardFocus(VideoFocusRow.RECENT, "A"),
+            VideoFocusPolicy.playerReturnTarget("B", listOf("A"), emptyList()),
+        )
+        assertNull(VideoFocusPolicy.playerReturnTarget("B", emptyList(), emptyList()))
+    }
+
+    @Test
+    fun playerReturnKeepsBPendingUntilBothSourcesHaveResolved() {
+        assertEquals(
+            true,
+            VideoFocusPolicy.shouldWaitForPlayerReturn(
+                playedProgramId = "B",
+                recentProgramIds = listOf("A"),
+                historyProgramIds = listOf("C"),
+                recentLoading = true,
+                historyReady = true,
+            ),
+        )
+        assertEquals(
+            true,
+            VideoFocusPolicy.shouldWaitForPlayerReturn(
+                playedProgramId = "B",
+                recentProgramIds = listOf("A"),
+                historyProgramIds = emptyList(),
+                recentLoading = false,
+                historyReady = false,
+            ),
+        )
+        assertEquals(
+            false,
+            VideoFocusPolicy.shouldWaitForPlayerReturn(
+                playedProgramId = "B",
+                recentProgramIds = listOf("A", "B"),
+                historyProgramIds = emptyList(),
+                recentLoading = true,
+                historyReady = false,
+            ),
+        )
+    }
+
+    @Test
     fun playerReturnFallsBackToTheRecordedRowWhenOriginIsUnavailable() {
         assertEquals(
             VideoCardFocus(VideoFocusRow.RECENT, "8"),

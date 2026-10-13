@@ -12,13 +12,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -63,6 +69,48 @@ class VideoRowFocusTest {
         compose.runOnIdle { ids = listOf("first", "third") }
         compose.onNodeWithTag("onair").press(Key.DirectionDown)
         compose.onNodeWithTag("first").assertIsFocused()
+    }
+
+    @Test fun onAirDownTargetsTheFirstCardAtTheBoundaryWithoutVisitingTheSecondCard() {
+        val banner = FocusRequester()
+        val focusOrder = mutableListOf<String>()
+        compose.setContent {
+            val ids = listOf("first", "second", "third")
+            val state = rememberLazyListState()
+            val focus = rememberVideoRowFocus(ids, state)
+            Column(Modifier.width(400.dp)) {
+                Box(
+                    Modifier.padding(start = 120.dp).size(100.dp, 50.dp)
+                        .testTag("onair")
+                        .focusRequester(banner)
+                        .onPreviewKeyEvent { event ->
+                            event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown &&
+                                focus.requestEntryFocus()
+                        }
+                        .focusable(),
+                )
+                LazyRow(state = state, modifier = Modifier.width(400.dp).height(60.dp).then(focus.groupModifier())) {
+                    itemsIndexed(ids, key = { _, id -> id }) { _, id ->
+                        Box(
+                            Modifier.size(100.dp, 60.dp).testTag(id)
+                                .then(focus.itemModifier(id))
+                                .onFocusChanged { if (it.isFocused) focusOrder += id }
+                                .focusable(),
+                        )
+                    }
+                }
+            }
+        }
+
+        compose.onNodeWithTag("onair").requestFocus().performKeyInput {
+            keyDown(Key.DirectionDown)
+            keyUp(Key.DirectionDown)
+            keyDown(Key.DirectionDown)
+            keyUp(Key.DirectionDown)
+        }
+        compose.waitUntil { focusOrder.isNotEmpty() }
+        compose.onNodeWithTag("first").assertIsFocused()
+        compose.runOnIdle { assertEquals(listOf("first"), focusOrder) }
     }
 
     private fun SemanticsNodeInteraction.press(key: Key): SemanticsNodeInteraction =

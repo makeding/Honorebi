@@ -95,6 +95,8 @@ fun VideoTabContent(
     var lastFocusedBanner by remember { mutableStateOf(VideoBannerFocus.ON_AIR) }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
+    val recentRecordingsLoading by recordViewModel.isRecentRecordingsLoading.collectAsState()
+    val watchHistoryReady by homeViewModel.isWatchHistoryReady.collectAsState()
     val groupedSeries by recordViewModel.groupedSeries.collectAsState()
     val availableGenres by recordViewModel.availableGenres.collectAsState()
     val selectedGenre by recordViewModel.selectedSeriesGenre.collectAsState()
@@ -109,8 +111,26 @@ fun VideoTabContent(
     }
 
     var focusedProgramId by remember { mutableStateOf<Int?>(null) }
-    val recentItems = remember(recentRecordings) { recentRecordings.take(20) }
-    val historyItems = remember(watchHistory) { watchHistory.take(20) }
+    // The normal preview stays compact.  A player return may address a program
+    // outside that first page though, so keep its stable item visible long
+    // enough to return focus to what the viewer actually exited.
+    val playbackReturnProgramId = lastPlayedProgramId
+    val recentItems = remember(recentRecordings, playbackReturnProgramId) {
+        recentRecordings.take(20).let { preview ->
+            recentRecordings.find { it.id.toString() == playbackReturnProgramId }
+                ?.takeUnless { candidate -> candidate in preview }
+                ?.let { preview + it }
+                ?: preview
+        }
+    }
+    val historyItems = remember(watchHistory, playbackReturnProgramId) {
+        watchHistory.take(20).let { preview ->
+            watchHistory.find { it.program.id.toString() == playbackReturnProgramId }
+                ?.takeUnless { candidate -> candidate in preview }
+                ?.let { preview + it }
+                ?: preview
+        }
+    }
     val historyByProgramId = remember(watchHistory) {
         watchHistory.associateBy { it.program.id.toString() }
     }
@@ -225,13 +245,58 @@ fun VideoTabContent(
         return fallback.safeRequestFocusWithRetry("VideoTabRestoreFallback")
     }
 
+    suspend fun focusPlayerReturnTarget(target: VideoCardFocus): Boolean {
+        val rowIndex = VideoFocusPolicy.rowItemIndex(target, recentProgramIds, historyProgramIds)
+        val requester = cardFocusRequesters.getOrPut(target) { FocusRequester() }
+        listState.scrollToItem(VideoFocusPolicy.columnItemIndex(target, recentItems.isNotEmpty()))
+        when (target.row) {
+            VideoFocusRow.RECENT -> recentRowState.scrollToItem(maxOf(0, rowIndex - 1))
+            VideoFocusRow.HISTORY -> historyRowState.scrollToItem(maxOf(0, rowIndex - 1))
+        }
+        withFrameNanos { }
+        return requester.safeRequestFocusWithRetry("VideoTabPlayerReturn_${target.row}_${target.programId}")
+    }
+
+    suspend fun restorePlayerReturnFocus(playedProgramId: String?): Boolean {
+        // The card may arrive from either the recording refresh or the local
+        // history write made by player disposal. Do not consume B's return or
+        // move focus to a temporary fallback until both are settled.
+        if (VideoFocusPolicy.shouldWaitForPlayerReturn(
+                playedProgramId = playedProgramId,
+                recentProgramIds = recentProgramIds,
+                historyProgramIds = historyProgramIds,
+                recentLoading = recentRecordingsLoading,
+                historyReady = watchHistoryReady,
+            )
+        ) return false
+
+        val fallbackTarget = VideoFocusPolicy.playerReturnTarget(
+            playedProgramId = playedProgramId,
+            recentProgramIds = recentProgramIds,
+            historyProgramIds = historyProgramIds,
+        )
+        if (fallbackTarget != null) return focusPlayerReturnTarget(fallbackTarget)
+
+        listState.scrollToItem(0)
+        withFrameNanos { }
+        return onAirRequester.safeRequestFocusWithRetry("VideoTabPlayerReturnFallback")
+    }
+
     // Player and AI returns are deliberately serialized here: scroll the target row,
     // then request the attached keyed card.  Neither card composition nor a second
     // effect is allowed to race this restore.
-    LaunchedEffect(aiFocusReturnTick, isReturningFromPlayer, recentProgramIds, historyProgramIds) {
+    LaunchedEffect(
+        aiFocusReturnTick,
+        isReturningFromPlayer,
+        lastPlayedProgramId,
+        recentProgramIds,
+        historyProgramIds,
+        recentRecordingsLoading,
+        watchHistoryReady,
+    ) {
         when {
             isReturningFromPlayer -> {
-                if (restoreVideoFocus(lastPlayedProgramId, fallbackToLastBanner = false)) {
+                if (restorePlayerReturnFocus(lastPlayedProgramId)) {
                     onReturnFocusConsumed()
                 }
             }
@@ -304,6 +369,13 @@ fun VideoTabContent(
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(onAirRequester)
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                        recentFocus.requestEntryFocus() || historyFocus.requestEntryFocus()
+                                    } else {
+                                        false
+                                    }
+                                }
                                 .then(upToTabModifier)
                                 .focusProperties {
                                     left = recordingsRequester

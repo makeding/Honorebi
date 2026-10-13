@@ -709,6 +709,13 @@ fun LauncherAppCard(
                         true
                     }
 
+                    // 編集中の Back は、KeyUp でアクションメニューを開く一組の操作として
+                    // カードが最後まで所有する。KeyDown を親へ漏らすと Root の BackHandler が
+                    // 先にアプリタブへフォーカスを戻し、その後の KeyUp だけでメニューが開く。
+                    isEditing &&
+                        event.type == KeyEventType.KeyDown &&
+                        keyCode == android.view.KeyEvent.KEYCODE_BACK -> true
+
                     isEditing &&
                         event.type == KeyEventType.KeyUp &&
                         keyCode == android.view.KeyEvent.KEYCODE_BACK -> {

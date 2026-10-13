@@ -29,24 +29,36 @@ internal class VideoRowFocus(
             // row entry should substitute the remembered child.
             if (requestedFocusDirection != FocusDirection.Down &&
                 requestedFocusDirection != FocusDirection.Up) return@entry
-            val currentIds = ids()
-            if (!entering && currentIds.isNotEmpty()) {
-                val index = currentIds.indexOf(lastFocusedId).takeIf { it >= 0 } ?: 0
-                val requester = requester(currentIds[index])
-                entering = true
-                cancelFocusChange()
-                scope.launch {
-                    try {
-                        state.scrollToItem(index)
-                        withFrameNanos { }
-                        requester.safeRequestFocusWithRetry("VideoRowEntry")
-                    } finally {
-                        entering = false
-                    }
-                }
-            }
+            if (requestEntryFocus()) cancelFocusChange()
         }
     }.focusGroup()
+
+    /**
+     * Handles an explicit directional boundary before spatial navigation can
+     * briefly focus a geometrically nearer card.  The remembered stable ID is
+     * restored when available; first entry always chooses the first card.
+     */
+    fun requestEntryFocus(): Boolean {
+        val currentIds = ids()
+        if (entering || currentIds.isEmpty()) return entering
+        val index = currentIds.indexOf(lastFocusedId).takeIf { it >= 0 } ?: 0
+        val requester = requester(currentIds[index])
+        // When the first card is already attached, move focus synchronously at
+        // the boundary.  This prevents Android TV's spatial search from briefly
+        // landing on the centered second card.
+        if (runCatching { requester.requestFocus() }.getOrDefault(false)) return true
+        entering = true
+        scope.launch {
+            try {
+                state.scrollToItem(index)
+                withFrameNanos { }
+                requester.safeRequestFocusWithRetry("VideoRowEntry")
+            } finally {
+                entering = false
+            }
+        }
+        return true
+    }
 
     private fun requester(id: String) = requesters.getOrPut(id) { FocusRequester() }
 

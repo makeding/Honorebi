@@ -100,6 +100,7 @@ fun AppsTabContent(
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
+    var dismissedActionAppId by remember { mutableStateOf<String?>(null) }
     var isHiddenCatalog by remember { mutableStateOf(false) }
     var hasEnteredCatalog by remember { mutableStateOf(false) }
     var pendingFocusAppId by remember { mutableStateOf<String?>(null) }
@@ -210,6 +211,25 @@ fun AppsTabContent(
         if (requester.safeRequestFocusWithRetry("AppsEditMoved")) {
             pendingFocusAppId = null
             pendingFocusAppIndex = null
+        }
+    }
+
+    // AlertDialog が閉じた後にだけ元カードへ戻す。ダイアログが存在する間に要求すると
+    // ダイアログの FocusGroup に拒否され、背面のタブへフォーカスが落ちる。
+    LaunchedEffect(dismissedActionAppId, catalogApps, actionMenuApp, hiddenActionMenuApp) {
+        val targetId = dismissedActionAppId ?: return@LaunchedEffect
+        if (actionMenuApp != null || hiddenActionMenuApp != null) return@LaunchedEffect
+        val index = catalogApps.indexOfFirst { it.stableId == targetId }
+        if (index < 0) {
+            dismissedActionAppId = null
+            return@LaunchedEffect
+        }
+        gridState.scrollToItem(index)
+        androidx.compose.runtime.withFrameNanos { }
+        val requester = if (index == 0) contentFirstItemRequester
+            else appFocusRequesters.getOrPut(targetId) { FocusRequester() }
+        if (requester.safeRequestFocusWithRetry("AppsActionDismiss")) {
+            dismissedActionAppId = null
         }
     }
 
@@ -416,6 +436,7 @@ fun AppsTabContent(
             },
             onDismiss = {
                 editingAppId = null
+                dismissedActionAppId = app.stableId
                 actionMenuApp = null
             },
             canShowHiddenList = hiddenApps.isNotEmpty(),
@@ -438,7 +459,10 @@ fun AppsTabContent(
                 homeViewModel.restoreLauncherApp(app)
                 hiddenActionMenuApp = null
             },
-            onDismiss = { hiddenActionMenuApp = null }
+            onDismiss = {
+                dismissedActionAppId = app.stableId
+                hiddenActionMenuApp = null
+            }
         )
     }
 }
