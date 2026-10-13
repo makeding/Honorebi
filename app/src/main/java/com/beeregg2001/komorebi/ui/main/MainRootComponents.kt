@@ -2,6 +2,7 @@
 
 package com.beeregg2001.komorebi.ui.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -130,6 +131,7 @@ fun RobustUpdateDialog(
 ) {
     val colors = KomorebiTheme.colors
     val confirmRequester = remember { FocusRequester() }
+    BackHandler(onBack = onDismiss)
     var isDialogFocused by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) { delay(300); runCatching { confirmRequester.requestFocus() } }

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -1495,6 +1496,10 @@ fun AppInfoContent(
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
+    var updateRequested by remember { mutableStateOf(false) }
+    var lastFocusedRow by remember { mutableStateOf<FocusRequester?>(null) }
+    AppInfoFocusReturnEffect(updateState, checkR, updateRequested, lastFocusedRow)
+
     var versionPresses by remember { mutableIntStateOf(0) }
     var onFire by remember { mutableStateOf(false) }
 
@@ -1552,7 +1557,7 @@ fun AppInfoContent(
             icon = Icons.Default.Info,
             modifier = Modifier
                 .width(420.dp)
-                .focusRequester(versionR)
+                .focusRequester(versionR).onFocusChanged { if (it.isFocused) lastFocusedRow = versionR }
                 .onPreviewKeyEvent { event ->
                     if (event.key == Key.DirectionUp) {
                         if (event.type == KeyEventType.KeyDown) onScrollToTop()
@@ -1583,7 +1588,7 @@ fun AppInfoContent(
             title = "ベータ版を受け取る",
             value = if (receiveBetaUpdates) "ON" else "OFF",
             icon = Icons.Default.SystemUpdate,
-            modifier = Modifier.width(420.dp).focusRequester(betaR).focusProperties {
+            modifier = Modifier.width(420.dp).focusRequester(betaR).onFocusChanged { if (it.isFocused) lastFocusedRow = betaR }.focusProperties {
                 left = sidebarR
                 up = versionR
                 down = checkR
@@ -1601,7 +1606,7 @@ fun AppInfoContent(
             title = "更新を確認",
             value = checkValue,
             icon = Icons.Default.Refresh,
-            modifier = Modifier.width(420.dp).focusRequester(checkR).focusProperties {
+            modifier = Modifier.width(420.dp).focusRequester(checkR).onFocusChanged { if (it.isFocused) lastFocusedRow = checkR }.focusProperties {
                 left = sidebarR
                 up = betaR
                 down = capabilityR
@@ -1609,6 +1614,7 @@ fun AppInfoContent(
             onClick = {
                 if (updateState !is com.beeregg2001.komorebi.util.UpdateState.Checking &&
                     updateState !is com.beeregg2001.komorebi.util.UpdateState.Downloading) {
+                    updateRequested = true
                     onClick(checkR)
                     onCheckUpdates()
                 }
@@ -1625,7 +1631,7 @@ fun AppInfoContent(
             title = "テレビ再生能力",
             value = "",
             icon = Icons.Default.Memory,
-            modifier = Modifier.width(420.dp).focusRequester(capabilityR).focusProperties {
+            modifier = Modifier.width(420.dp).focusRequester(capabilityR).onFocusChanged { if (it.isFocused) lastFocusedRow = capabilityR }.focusProperties {
                 left = sidebarR
                 up = checkR
                 down = projectR
@@ -1640,7 +1646,7 @@ fun AppInfoContent(
             Icons.Default.Code,
             modifier = Modifier
                 .width(420.dp)
-                .focusRequester(projectR)
+                .focusRequester(projectR).onFocusChanged { if (it.isFocused) lastFocusedRow = projectR }
                 .focusProperties {
                     left = sidebarR
                     up = capabilityR
@@ -1656,7 +1662,7 @@ fun AppInfoContent(
             Icons.Default.Info,
             modifier = Modifier
                 .width(420.dp)
-                .focusRequester(licR)
+                .focusRequester(licR).onFocusChanged { if (it.isFocused) lastFocusedRow = licR }
                 .focusProperties {
                     left = sidebarR
                     up = projectR
