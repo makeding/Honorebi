@@ -126,11 +126,13 @@ fun StatusOverlay(
     now: () -> ZonedDateTime = { ZonedDateTime.now() },
 ) {
     Box(Modifier.fillMaxSize().padding(24.dp)) {
-        PlayerWallClock(
-            timeFormatSetting,
-            Modifier.align(Alignment.TopStart).testTag("live-wall-clock"),
-            now = now,
-        )
+        if (channel.programPresent?.genres?.any { it.major == "ニュース・報道" } != true) {
+            PlayerWallClock(
+                timeFormatSetting,
+                Modifier.align(Alignment.TopStart).testTag("live-wall-clock"),
+                now = now,
+            )
+        }
         PlayerChannelStatus(
             channelName = channel.name,
             logoUrl = logoUrl,
