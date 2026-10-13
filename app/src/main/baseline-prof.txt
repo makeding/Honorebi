@@ -1,0 +1,7 @@
+# Fullscreen Live and its Down-key browser are post-startup critical paths.
+# Keep these supplemental rules outside the generated startup profile so that
+# regeneration and Compose signature changes cannot drop browser coverage.
+HPLcom/beeregg2001/komorebi/ui/live/**;->**(**)**
+HPLcom/beeregg2001/komorebi/ui/components/ChannelLogo**;->**(**)**
+HPLcom/beeregg2001/komorebi/ui/components/RecordedCard**;->**(**)**
+HPLcoil/compose/**;->**(**)**

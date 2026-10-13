@@ -29,6 +29,7 @@
 #include "id3conv.hpp"
 #include "util.hpp"
 #include "traceb24.hpp"
+#include "ts_packet_framer.hpp"
 
 namespace {
 
@@ -399,8 +400,7 @@ public:
     CTraceB24Caption traceb24;
     CID3Converter id3conv;
 
-    int unitSize = 0;
-    std::vector<uint8_t> residualBuffer;
+    TsPacketFramer packetFramer;
 
     // 非同期キュー
     std::mutex mtx;
@@ -439,35 +439,11 @@ public:
     }
 
     void pushData(const uint8_t* input, int inputLen) {
-        std::vector<uint8_t> data;
-        if (!residualBuffer.empty()) {
-            data.insert(data.end(), residualBuffer.begin(), residualBuffer.end());
-            residualBuffer.clear();
-        }
-        data.insert(data.end(), input, input + inputLen);
-
-        const uint8_t* p = data.data();
-        int size = (int)data.size();
-        int pos = 0;
-
-        if (unitSize == 0) {
-            pos = resync_ts(p, size, &unitSize);
-            if (unitSize == 0) {
-                residualBuffer.insert(residualBuffer.end(), p, p + size);
-                return;
+        packetFramer.push(input, static_cast<size_t>(inputLen), [this](const uint8_t* packet) {
+            if (excludePidSet.find(extract_ts_header_pid(packet)) == excludePidSet.end()) {
+                servicefilter.AddPacket(packet);
             }
-        }
-
-        for (int i = pos; i + unitSize <= size; i += unitSize) {
-            if (excludePidSet.find(extract_ts_header_pid(p + i)) == excludePidSet.end()) {
-                servicefilter.AddPacket(p + i);
-            }
-        }
-
-        int processedEnd = pos + ((size - pos) / unitSize) * unitSize;
-        if (processedEnd < size) {
-            residualBuffer.insert(residualBuffer.end(), p + processedEnd, p + size);
-        }
+        });
 
         const auto& filtered = servicefilter.GetPackets();
         for (auto it = filtered.cbegin(); it != filtered.cend(); it += 188) {
