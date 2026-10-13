@@ -38,6 +38,7 @@ import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
 import com.beeregg2001.komorebi.ui.video.player.displayLabel
+import com.beeregg2001.komorebi.ui.components.ExitDialog
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -706,6 +707,7 @@ fun MainRootScreen(
     }
 
     KomorebiTheme(theme = currentTheme) {
+        var showExitDialog by remember { mutableStateOf(false) }
         RootSystemMediaSessionHost(
             playbackSessionEpoch = state.playbackState.playbackSessionEpoch,
             remoteContentType = when {
@@ -790,7 +792,7 @@ fun MainRootScreen(
                         safeTabIndex = safeTabIndex,
                         isSyncingInitial = isSyncingInitial,
                         backgroundBrush = backgroundBrush,
-                        onExitApp = onExitApp
+                        onExitApp = { showExitDialog = true }
                     )
 
                     if (state.playbackState.isPlaybackActive) {
@@ -888,7 +890,7 @@ fun MainRootScreen(
                 hasSyncError = hasSyncError,
                 detailFocusRequester = detailFocusRequester,
                 apiKey = if (AI_FEATURES_ENABLED) geminiApiKey else "",
-                onExitApp = onExitApp,
+                onExitApp = { showExitDialog = true },
                 closeSettingsAndRefresh = closeSettingsAndRefresh,
                 closeAiConcierge = closeAiConcierge,
                 onGoToSettings = {
@@ -898,6 +900,9 @@ fun MainRootScreen(
                     state.isSettingsOpen = true
                 }
             )
+            if (showExitDialog) {
+                ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
+            }
             if (showScreensaver && screensaverImages.isNotEmpty()) {
                 androidx.compose.ui.window.Dialog(
                     onDismissRequest = { showScreensaver = false },

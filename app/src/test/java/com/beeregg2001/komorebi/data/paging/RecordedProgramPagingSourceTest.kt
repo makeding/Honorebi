@@ -29,13 +29,36 @@ class RecordedProgramPagingSourceTest {
         assertEquals(2, result.nextKey)
     }
 
+    @Test
+    fun requestFailureRemainsAnErrorAndRetryLoadsTheSamePage() = kotlinx.coroutines.runBlocking {
+        val provider = FakeRecordProvider()
+        val source = RecordedProgramPagingSource(provider, "", "desc")
+        provider.failure = java.io.IOException("offline")
+        assertTrue(source.load(PagingSource.LoadParams.Refresh(null, 30, false)) is PagingSource.LoadResult.Error)
+        provider.failure = null
+        val retry = source.load(PagingSource.LoadParams.Refresh(null, 30, false))
+        assertTrue(retry is PagingSource.LoadResult.Page)
+        assertEquals(30, (retry as PagingSource.LoadResult.Page).data.size)
+    }
+
+    @Test(expected = kotlinx.coroutines.CancellationException::class)
+    fun cancelledRequestIsNotShownAsAFailure() = kotlinx.coroutines.runBlocking {
+        val provider = FakeRecordProvider().apply { failure = kotlinx.coroutines.CancellationException() }
+        RecordedProgramPagingSource(provider, "", "desc").load(PagingSource.LoadParams.Refresh(null, 30, false))
+        Unit
+    }
+
     private class FakeRecordProvider : RecordProvider {
+        var failure: Exception? = null
         override suspend fun getRecordedPrograms(
             page: Int,
             order: String,
             channelId: String?,
             genre: String?,
-        ) = RecordedApiResponse(60, List(30) { recording(it + 1) })
+        ): RecordedApiResponse {
+            failure?.let { throw it }
+            return RecordedApiResponse(60, List(30) { recording(it + 1) })
+        }
 
         override suspend fun getRecordedProgram(videoId: Int): Result<RecordedProgram> = Result.failure(UnsupportedOperationException())
         override suspend fun searchRecordedPrograms(keyword: String, page: Int, order: String) = RecordedApiResponse(0, emptyList())

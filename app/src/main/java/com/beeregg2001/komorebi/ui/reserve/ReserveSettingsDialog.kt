@@ -34,6 +34,8 @@ import com.beeregg2001.komorebi.data.model.ReserveRecordSettings
 import com.beeregg2001.komorebi.ui.setting.SelectionDialog
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import com.beeregg2001.komorebi.viewmodel.PostRecordingBatch
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -73,8 +75,6 @@ fun ReserveSettingsDialog(
 
     val firstItemFocusRequester = remember { FocusRequester() }
     val batSelectionFocusRequester = remember { FocusRequester() }
-    val inverseColor = if (colors.isDark) Color.Black else Color.White
-
     // 初回起動時の判定フラグ
     var isFirstEnter by remember { mutableStateOf(true) }
 
@@ -118,14 +118,14 @@ fun ReserveSettingsDialog(
                 }
                 .focusRestorer()
                 .focusGroup(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = SurfaceDefaults.colors(
                 containerColor = colors.surface,
                 contentColor = colors.textPrimary
             )
         ) {
             Column(
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
@@ -226,20 +226,11 @@ fun ReserveSettingsDialog(
                         .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
                 ) {
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color.Transparent,
-                            contentColor = colors.textSecondary,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = inverseColor
-                        )
-                    ) {
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss) {
                         Text("キャンセル", fontWeight = FontWeight.Bold)
                     }
 
-                    Button(
-                        onClick = {
+                    DialogActionButton(DialogActionRole.Primary, onClick = {
                             val newSettings = initialSettings.copy(
                                 isEnabled = isEnabled,
                                 priority = priority,
@@ -248,13 +239,7 @@ fun ReserveSettingsDialog(
                                 isEventRelayFollowEnabled = isEventRelay
                             )
                             onConfirm(newSettings)
-                        },
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.15f),
-                            contentColor = colors.textPrimary,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = inverseColor
-                        )
+                        }
                     ) {
                         Text(
                             if (isNewReservation) "録画予約" else "設定を更新",

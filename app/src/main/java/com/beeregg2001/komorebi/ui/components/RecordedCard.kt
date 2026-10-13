@@ -162,7 +162,7 @@ fun RecordedCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        colors.background.copy(
+                        Color.Black.copy(
                             alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
                         )
                     )

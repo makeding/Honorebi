@@ -158,6 +158,11 @@ class RecordViewModel @Inject constructor(
     private val _availableGenres = MutableStateFlow<List<String>>(emptyList())
     val availableGenres: StateFlow<List<String>> = _availableGenres.asStateFlow()
 
+    private val _seriesError = MutableStateFlow<String?>(null)
+    val seriesError: StateFlow<String?> = _seriesError.asStateFlow()
+
+    fun retrySeries() = loadOnlineFilterIndexes(forceReload = true)
+
     private val _groupedSeries = MutableStateFlow<Map<String, List<SeriesInfo>>>(emptyMap())
     val groupedSeries: StateFlow<Map<String, List<SeriesInfo>>> = _groupedSeries.asStateFlow()
 
@@ -674,6 +679,7 @@ class RecordViewModel @Inject constructor(
         onlineFilterIndexJob = viewModelScope.launch(Dispatchers.IO) {
             val exclusion = nhkExclusionRepository.state.value
             _isSeriesLoading.value = true
+            _seriesError.value = null
             try {
                 val channelsResponse = runCatching { liveProvider.getChannels() }.getOrNull()
                 channelsResponse?.let { buildOnlineChannelMap(it, exclusion) }
@@ -704,6 +710,9 @@ class RecordViewModel @Inject constructor(
                 publishVisibleSeries()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                if (isActive && exclusion == nhkExclusionRepository.state.value) {
+                    _seriesError.value = com.beeregg2001.komorebi.ui.video.libraryFailureMessage(e)
+                }
                 Log.e(TAG, "Failed to load online filter indexes", e)
             } finally {
                 if (isActive && exclusion == nhkExclusionRepository.state.value) _isSeriesLoading.value = false

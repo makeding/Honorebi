@@ -15,6 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
+import com.beeregg2001.komorebi.ui.components.ThemedDialogSurface
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,8 +55,8 @@ fun CloudflareAccessDialog(
         },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(shape = RoundedCornerShape(16.dp), colors = SurfaceDefaults.colors(containerColor = colors.surface), modifier = Modifier.width(620.dp)) {
-            Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        ThemedDialogSurface(width = 620.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Cloudflare Access", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("保護する HTTPS バックエンドだけにサービス トークンを送信します。ID と Secret は両方入力するか、両方消去してください。")
                 DialogTextField(clientId, { if (!saving) { clientId = it; error = null } }, "Client ID", focusRequester = clientIdFocus)
@@ -62,8 +65,8 @@ fun CloudflareAccessDialog(
                     Text(status, color = if (error != null || !valid) Color(0xFFE53935) else colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Button(onClick = onDismiss, modifier = Modifier.weight(1f), enabled = !saving) { Text("キャンセル") }
-                    Button(onClick = {
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f), enabled = !saving) { Text("キャンセル") }
+                    DialogActionButton(DialogActionRole.Primary, onClick = {
                         val id = clientId.trim()
                         val secret = clientSecret.trim()
                         if (id.isBlank() != secret.isBlank()) error = "Client ID と Client Secret を両方入力するか、両方消去してください。"

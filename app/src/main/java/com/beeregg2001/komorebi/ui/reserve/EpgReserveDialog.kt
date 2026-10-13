@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
@@ -184,14 +186,14 @@ fun EpgReserveDialog(
                 }
                 .focusRestorer()
                 .focusGroup(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = SurfaceDefaults.colors(
                 containerColor = colors.surface,
                 contentColor = colors.textPrimary
             )
         ) {
             Column(
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
@@ -376,19 +378,9 @@ fun EpgReserveDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
                 ) {
-                    Button(
-                        onClick = onDismiss,
-                        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                        )
-                    ) { Text("キャンセル", fontWeight = FontWeight.Bold) }
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss) { Text("キャンセル", fontWeight = FontWeight.Bold) }
 
-                    Button(
-                        onClick = {
+                    DialogActionButton(DialogActionRole.Primary, onClick = {
                             onConfirm(
                                 keyword,
                                 selectedDaysOfWeek,
@@ -400,14 +392,7 @@ fun EpgReserveDialog(
                                 advIsFuzzySearch, advDuplicateScope, advPriority,
                                 advIsEventRelay, advIsExactRecord
                             )
-                        },
-                        scale = ButtonDefaults.scale(focusedScale = 1.05f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.accent,
-                            contentColor = if (colors.isDark) Color.Black else Color.White,
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                        )
+                        }
                     ) { Text("この条件で予約", fontWeight = FontWeight.Bold) }
                 }
             }

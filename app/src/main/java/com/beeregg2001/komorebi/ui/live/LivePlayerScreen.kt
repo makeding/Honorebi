@@ -1039,7 +1039,13 @@ fun LivePlayerScreen(
             SignalInfoOverlay(ps.signalInfo)
         }
 
-        androidx.compose.animation.AnimatedVisibility(visible = !isPiPMode && !ps.isDualDisplayMode && isPinnedOverlay && ps.playerError == null) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
+                (isPinnedOverlay || (showOverlay && !isManualOverlay)) &&
+                !isMiniListOpen && !isSubMenuOpen && ps.crop.mode == PlayerCropMode.HIDDEN,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
             StatusOverlay(
                 channel = currentChannelItem,
                 logoUrl = sharedCurrentLogoUrl,

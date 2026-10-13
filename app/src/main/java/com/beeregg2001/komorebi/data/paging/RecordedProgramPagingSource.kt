@@ -60,6 +60,8 @@ class RecordedProgramPagingSource(
                 prevKey = if (page == 1) null else page - 1,
                 nextKey = if (reachedEnd) null else page + 1
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             LoadResult.Error(e)
         }

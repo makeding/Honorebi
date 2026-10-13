@@ -88,6 +88,7 @@ fun SmbLibraryScreen(
     val currentPath by viewModel.currentPath.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val retryRequester = remember { FocusRequester() }
 
     val focuses = rememberRecordListFocusRequesters()
     val ticketManager = rememberFocusTicketManager()
@@ -125,6 +126,14 @@ fun SmbLibraryScreen(
         } else {
             viewModel.initSmb()
             ticketManager.issue(FocusTicket.LIST_TOP)
+        }
+    }
+
+    LaunchedEffect(ticketManager.currentTicket, ticketManager.requestGeneration, isLoading, fileList.isEmpty(), errorMessage) {
+        val ticket = ticketManager.currentTicket
+        if (!isLoading && fileList.isEmpty() && (ticket == FocusTicket.LIST_TOP || ticket == FocusTicket.TARGET_ID)) {
+            ticketManager.restore(ticket, ticketManager.requestGeneration,
+                if (errorMessage != null) retryRequester else focuses.backButton, "SMB_Empty")
         }
     }
 
@@ -260,80 +269,63 @@ fun SmbLibraryScreen(
                             }
                         }
                 ) {
-                    if (isListView) {
-                        SmbListContent(
-                            items = fileList,
-                            onItemClick = { item ->
-                                if (item.isDirectory) {
-                                    focuses.loadingSafeHouse.safeRequestFocus("DirClick")
-                                    viewModel.loadDirectory(item.path)
-                                    ticketManager.issue(FocusTicket.LIST_TOP)
-                                } else onFileClick(item)
-                            },
-                            focuses = focuses,
-                            ticketManager = ticketManager,
-                            onOpenRightMenu = { selectedItemForMenu = it; isRightMenuOpen = true },
-                            onLeftKey = { if (!isAnyOverlayOpen) focuses.navPane.safeRequestFocus("MoveToNav") },
-                            onFocusedItemChanged = { lastFocusedPath = it.path },
-                            isMenuOpen = isAnyOverlayOpen,
-                            onBackPress = { handleBackPress() },
-                            onTopBarDownRequesterChanged = { topBarDownRequester = it }
-                        )
-                    } else {
-                        SmbGridContent(
-                            items = fileList,
-                            onItemClick = { item ->
-                                if (item.isDirectory) {
-                                    focuses.loadingSafeHouse.safeRequestFocus("GridDirClick")
-                                    viewModel.loadDirectory(item.path)
-                                    ticketManager.issue(FocusTicket.LIST_TOP)
-                                } else onFileClick(item)
-                            },
-                            focuses = focuses,
-                            ticketManager = ticketManager,
-                            onOpenRightMenu = { selectedItemForMenu = it; isRightMenuOpen = true },
-                            onLeftKey = { if (!isAnyOverlayOpen) isLeftMenuOverlayOpen = true },
-                            onFocusedItemChanged = { lastFocusedPath = it.path },
-                            isMenuOpen = isAnyOverlayOpen,
-                            onBackPress = { handleBackPress() },
-                            onTopBarDownRequesterChanged = { topBarDownRequester = it }
-                        )
-                    }
-
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = isLoading, enter = fadeIn(), exit = fadeOut()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(colors.background.copy(alpha = 0.6f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = colors.accent)
-                                Spacer(modifier = Modifier.height(16.dp))
-                                if (activeSearchQuery.isNotEmpty()) {
-                                    Text(
-                                        text = "ネットワーク内を横断検索中...",
-                                        color = colors.textPrimary,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (errorMessage != null && !isLoading) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = errorMessage!!,
-                                color = colors.textSecondary,
-                                style = MaterialTheme.typography.titleMedium
+                    Box(Modifier.fillMaxSize().padding(bottom = LibraryFeedbackHeight)) {
+                        if (isListView) {
+                            SmbListContent(
+                                items = fileList,
+                                onItemClick = { item ->
+                                    if (item.isDirectory) {
+                                        focuses.loadingSafeHouse.safeRequestFocus("DirClick")
+                                        viewModel.loadDirectory(item.path)
+                                        ticketManager.issue(FocusTicket.LIST_TOP)
+                                    } else onFileClick(item)
+                                },
+                                focuses = focuses,
+                                ticketManager = ticketManager,
+                                onOpenRightMenu = { selectedItemForMenu = it; isRightMenuOpen = true },
+                                onLeftKey = { if (!isAnyOverlayOpen) focuses.navPane.safeRequestFocus("MoveToNav") },
+                                onFocusedItemChanged = { lastFocusedPath = it.path },
+                                isMenuOpen = isAnyOverlayOpen,
+                                onBackPress = { handleBackPress() },
+                                onTopBarDownRequesterChanged = { topBarDownRequester = it }
+                            )
+                        } else {
+                            SmbGridContent(
+                                items = fileList,
+                                onItemClick = { item ->
+                                    if (item.isDirectory) {
+                                        focuses.loadingSafeHouse.safeRequestFocus("GridDirClick")
+                                        viewModel.loadDirectory(item.path)
+                                        ticketManager.issue(FocusTicket.LIST_TOP)
+                                    } else onFileClick(item)
+                                },
+                                focuses = focuses,
+                                ticketManager = ticketManager,
+                                onOpenRightMenu = { selectedItemForMenu = it; isRightMenuOpen = true },
+                                onLeftKey = { if (!isAnyOverlayOpen) isLeftMenuOverlayOpen = true },
+                                onFocusedItemChanged = { lastFocusedPath = it.path },
+                                isMenuOpen = isAnyOverlayOpen,
+                                onBackPress = { handleBackPress() },
+                                onTopBarDownRequesterChanged = { topBarDownRequester = it }
                             )
                         }
+
+                    }
+                    key(currentPath, activeSearchQuery) {
+                        LibraryFeedback(
+                            hasContent = fileList.isNotEmpty(),
+                            loading = isLoading,
+                            error = errorMessage,
+                            failureTitle = if (activeSearchQuery.isNotEmpty()) "ファイルを検索できませんでした" else "フォルダーを読み込めませんでした",
+                            emptyTitle = if (activeSearchQuery.isNotEmpty()) "一致するファイルがありません" else "ファイルがありません",
+                            retryRequester = retryRequester,
+                            onRetry = viewModel::retryCurrentRequest,
+                            onRecovery = {
+                                if (fileList.isNotEmpty()) ticketManager.issue(FocusTicket.LIST_TOP)
+                                else focuses.backButton.safeRequestFocus("SmbEmptyRecovery")
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -364,7 +356,7 @@ fun SmbLibraryScreen(
             innerTextFieldFocusRequester = focuses.innerTextField,
             historyListFocusRequester = focuses.historyList,
             historyFirstItemFocusRequester = historyFirstItemRequester,
-            firstItemFocusRequester = topBarDownRequester,
+            firstItemFocusRequester = if (fileList.isEmpty() && errorMessage != null) retryRequester else topBarDownRequester,
             backButtonFocusRequester = focuses.backButton,
             searchOpenButtonFocusRequester = focuses.searchOpenButton,
             viewToggleButtonFocusRequester = focuses.viewToggleButton,

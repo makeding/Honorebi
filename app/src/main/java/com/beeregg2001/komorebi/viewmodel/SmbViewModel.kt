@@ -8,11 +8,15 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
 import com.beeregg2001.komorebi.ui.video.smb.player.SmbContextBuilder
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
+import com.beeregg2001.komorebi.ui.video.smb.SmbDirectoryReader
+import com.beeregg2001.komorebi.ui.video.libraryFailureMessage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import jcifs.smb.SmbFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +39,8 @@ enum class SmbSortOrder { ASC, DESC }
 @HiltViewModel
 class SmbViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val directoryReader: SmbDirectoryReader,
 ) : ViewModel() {
 
     private val _currentPath = MutableStateFlow("")
@@ -118,6 +123,9 @@ class SmbViewModel @Inject constructor(
 
     // ★ 追加: 検索用のJob（キャンセルできるように保持）
     private var searchJob: Job? = null
+    private var directoryJob: Job? = null
+    private var requestGeneration = 0L
+    private var publishedRequest: Pair<String, String>? = null
 
     init {
         loadPinnedFolders()
@@ -191,8 +199,20 @@ class SmbViewModel @Inject constructor(
     }
 
     fun initSmb(resumePath: String? = null) {
+        if (_isLoading.value) return
+        _isLoading.value = true
+        _errorMessage.value = null
         viewModelScope.launch {
-            val json = settingsRepository.smbServerList.first()
+            val json = try {
+                settingsRepository.smbServerList.first()
+            } catch (e: CancellationException) {
+                _isLoading.value = false
+                throw e
+            } catch (e: Exception) {
+                _errorMessage.value = libraryFailureMessage(e)
+                _isLoading.value = false
+                return@launch
+            }
             val type = object : TypeToken<List<SmbServer>>() {}.type
             cachedServers = try {
                 Gson().fromJson<List<SmbServer>>(json, type) ?: emptyList()
@@ -203,6 +223,7 @@ class SmbViewModel @Inject constructor(
             if (cachedServers.isEmpty()) {
                 _errorMessage.value =
                     "SMBサーバーが登録されていません。設定画面から追加してください。"
+                _isLoading.value = false
                 return@launch
             }
 
@@ -236,60 +257,47 @@ class SmbViewModel @Inject constructor(
         }
     }
 
+    fun retryCurrentRequest() {
+        if (_isLoading.value) return
+        when {
+            cachedServers.isEmpty() || _currentPath.value.isBlank() -> initSmb()
+            _activeSearchQuery.value.isNotBlank() -> performRecursiveSearch(_currentPath.value, _activeSearchQuery.value)
+            else -> loadDirectory(_currentPath.value)
+        }
+    }
+
+    private fun beginRequest(path: String, query: String): Long {
+        requestGeneration += 1
+        searchJob?.cancel()
+        directoryJob?.cancel()
+        _isLoading.value = true
+        _errorMessage.value = null
+        if (publishedRequest != (path to query)) _rawFileList.value = emptyList()
+        _currentPath.value = path
+        _searchQuery.value = query
+        _activeSearchQuery.value = query
+        return requestGeneration
+    }
+
     fun loadDirectory(path: String) {
-        searchJob?.cancel() // フォルダ移動時に検索はキャンセル
-        viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            _currentPath.value = path
-            _rawFileList.value = emptyList()
-            _searchQuery.value = ""
-            _activeSearchQuery.value = ""
+        val generation = beginRequest(path, "")
+        directoryJob = viewModelScope.launch {
 
             try {
-                val items = withContext(Dispatchers.IO) {
-                    val currentServer = cachedServers.find { server ->
-                        val port = server.port.ifEmpty { "445" }
-                        val host = server.ip.split("/", limit = 2)[0]
-                        path.startsWith("smb://$host:$port/") || path.startsWith("smb://$host/")
-                    }
+                val items = directoryReader.read(path, cachedServers)
 
-                    val user = currentServer?.user ?: ""
-                    val pass = currentServer?.password ?: ""
-
-                    val context = SmbContextBuilder.build(user, pass)
-                    val smbFile = SmbFile(path, context)
-
-                    if (!smbFile.exists()) throw Exception("Path not found.")
-                    val children = smbFile.listFiles() ?: emptyArray()
-
-                    children.filter { !it.name.startsWith(".") }.map { child ->
-                        SmbItem(
-                            name = child.name.replace("/", ""),
-                            path = child.url.toString(),
-                            isDirectory = child.isDirectory,
-                            size = try {
-                                child.length()
-                            } catch (e: Exception) {
-                                0L
-                            },
-                            lastModified = try {
-                                child.lastModified()
-                            } catch (e: Exception) {
-                                0L
-                            }
-                        )
-                    }
-                }
-
+                if (generation != requestGeneration || !isActive) return@launch
                 _rawFileList.value = items
-
+                publishedRequest = path to ""
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e("SmbViewModel", "Failed to load SMB directory: $path", e)
-                _errorMessage.value = "エラーが発生しました: ${e.localizedMessage}"
-                _rawFileList.value = emptyList()
+                if (generation == requestGeneration && isActive) {
+                    Log.e("SmbViewModel", "Failed to load SMB directory: $path", e)
+                    _errorMessage.value = libraryFailureMessage(e)
+                }
             } finally {
-                _isLoading.value = false
+                if (generation == requestGeneration) _isLoading.value = false
             }
         }
     }
@@ -298,90 +306,68 @@ class SmbViewModel @Inject constructor(
     // ★ 追加: SMB配下の横断的（再帰的）検索
     // ==========================================
     private fun performRecursiveSearch(basePath: String, query: String) {
-        searchJob?.cancel()
-        searchJob = viewModelScope.launch(Dispatchers.IO) {
-            _isLoading.value = true
-            _errorMessage.value = null
-            _rawFileList.value = emptyList() // 検索開始時にリストをクリア
+        val generation = beginRequest(basePath, query)
+        searchJob = viewModelScope.launch {
+            val retainedItems = _rawFileList.value
+            fun publish(items: List<SmbItem>) {
+                if (generation == requestGeneration && isActive) {
+                    _rawFileList.value = items
+                    publishedRequest = basePath to query
+                }
+            }
 
             try {
-                val currentServer = cachedServers.find { server ->
-                    val port = server.port.ifEmpty { "445" }
-                    val host = server.ip.split("/", limit = 2)[0]
-                    basePath.startsWith("smb://$host:$port/") || basePath.startsWith("smb://$host/")
-                }
-                val user = currentServer?.user ?: ""
-                val pass = currentServer?.password ?: ""
-                val context = SmbContextBuilder.build(user, pass)
-
                 val foundItems = mutableListOf<SmbItem>()
                 var lastUpdateTime = System.currentTimeMillis()
+                var traversalFailure: Exception? = null
 
                 // 再帰検索関数（深さ5まで制限して無限ループや遅延を防止）
                 suspend fun traverse(path: String, depth: Int) {
-                    if (depth > 5 || !isActive) return
+                    ensureActive()
+                    if (depth > 5) return
                     try {
-                        val smbFile = SmbFile(path, context)
-                        if (!smbFile.exists()) return
-                        val children = smbFile.listFiles() ?: emptyArray()
-
+                        val children = directoryReader.read(path, cachedServers)
                         for (child in children) {
-                            if (!isActive) break // キャンセルされたら即停止
-                            val name = child.name.replace("/", "")
-                            if (name.startsWith(".")) continue
-
-                            val isDir = child.isDirectory
-
-                            // クエリに一致すればリストに追加
-                            if (name.contains(query, ignoreCase = true)) {
-                                val item = SmbItem(
-                                    name = name,
-                                    path = child.url.toString(),
-                                    isDirectory = isDir,
-                                    size = try {
-                                        child.length()
-                                    } catch (e: Exception) {
-                                        0L
-                                    },
-                                    lastModified = try {
-                                        child.lastModified()
-                                    } catch (e: Exception) {
-                                        0L
-                                    }
-                                )
-                                foundItems.add(item)
+                            ensureActive()
+                            if (child.name.contains(query, ignoreCase = true)) {
+                                foundItems.add(child)
 
                                 // ★ リアルタイムプログレッシブ描画（0.5秒ごとにUIへ順次反映させる）
                                 val now = System.currentTimeMillis()
                                 if (now - lastUpdateTime > 500) {
-                                    _rawFileList.value = foundItems.toList()
+                                    publish((retainedItems + foundItems).distinctBy { it.path })
                                     lastUpdateTime = now
                                 }
                             }
 
                             // ディレクトリならさらに深堀り
-                            if (isDir) {
-                                traverse(child.url.toString(), depth + 1)
-                            }
+                            if (child.isDirectory) traverse(child.path, depth + 1)
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
+                        if (depth == 0) throw e
+                        traversalFailure = traversalFailure ?: e
                         Log.w("SmbViewModel", "Cannot access $path: ${e.message}")
                     }
                 }
 
                 traverse(basePath, 0)
 
-                // 最終結果を反映
-                _rawFileList.value = foundItems.toList()
-                if (foundItems.isEmpty()) {
-                    _errorMessage.value = "「${query}」に一致するファイルは見つかりませんでした"
+                if (traversalFailure == null) publish(foundItems.toList())
+                else publish((retainedItems + foundItems).distinctBy { it.path })
+                if (generation == requestGeneration) {
+                    _errorMessage.value = traversalFailure?.let(::libraryFailureMessage)
                 }
-
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e("SmbViewModel", "Search error", e)
-                _errorMessage.value = "検索中にエラーが発生しました: ${e.localizedMessage}"
+                if (generation == requestGeneration && isActive) {
+                    Log.e("SmbViewModel", "Search error", e)
+                    _errorMessage.value = libraryFailureMessage(e)
+                }
             } finally {
-                _isLoading.value = false
+                if (generation == requestGeneration) _isLoading.value = false
             }
         }
     }

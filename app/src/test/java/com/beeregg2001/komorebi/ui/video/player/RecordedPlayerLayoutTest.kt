@@ -4,6 +4,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.width
+import androidx.compose.ui.unit.height
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsFocused
@@ -25,6 +26,7 @@ import com.beeregg2001.komorebi.data.model.RecordedVideo
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
+import com.beeregg2001.komorebi.ui.player.formatPlayerWallClock
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
@@ -52,6 +54,82 @@ class RecordedPlayerLayoutTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun liveStatus_matchesRecordedCornerGeometryAndStopsClockWhenHidden() {
+        val visible = mutableStateOf(true)
+        val live = mutableStateOf(true)
+        val format = mutableStateOf("24H")
+        val name = mutableStateOf("NHK総合")
+        val logo = mutableStateOf("")
+        var time = java.time.ZonedDateTime.parse("2026-10-11T23:59:59+09:00[Asia/Tokyo]")
+        var reads = 0
+        val now = { reads++; time }
+        composeRule.setContent {
+            KomorebiTheme {
+                Box(Modifier.size(960.dp, 540.dp)) {
+                    if (visible.value) {
+                        if (live.value) {
+                            com.beeregg2001.komorebi.ui.live.StatusOverlay(
+                                channel = com.beeregg2001.komorebi.data.model.Channel(
+                                    id = "1", displayChannelId = "GR011", name = name.value,
+                                    channelNumber = "011", type = "GR", isWatchable = true,
+                                    isDisplay = true, programPresent = null, programFollowing = null,
+                                ),
+                                logoUrl = logo.value, shouldCropLogo = false,
+                                timeFormatSetting = format.value, now = now,
+                            )
+                        } else {
+                            RecordedWallClock(format.value, Modifier.offset(24.dp, 24.dp), now)
+                            RecordedProgramStatus(testProgram(), format.value, RecordedProgramPresentation())
+                        }
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithText("23:59").assertIsDisplayed()
+        composeRule.onNodeWithTag("live-channel-name").assertTextEquals("NHK総合")
+        composeRule.onNodeWithText("地デジ011").assertDoesNotExist()
+        val clock = composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot()
+        val card = composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot()
+        assertEquals(24.dp, clock.left)
+        assertEquals(24.dp, clock.top)
+        assertEquals(256.dp, clock.width)
+        assertEquals(56.dp, clock.height)
+        assertEquals(24.dp, card.top)
+        assertEquals(936.dp, card.right)
+        assertEquals(48.dp, card.height)
+        composeRule.runOnIdle { live.value = false }
+        assertEquals(clock, composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot())
+        assertEquals(card, composeRule.onNodeWithTag("recorded-channel-status").getUnclippedBoundsInRoot())
+        composeRule.runOnIdle { live.value = true; time = time.plusMinutes(1) }
+        composeRule.onNodeWithText("00:00").assertIsDisplayed()
+        composeRule.runOnIdle { format.value = "12H" }
+        composeRule.onNodeWithText("午前 12:00").assertIsDisplayed()
+        composeRule.runOnIdle { time = time.withZoneSameInstant(java.time.ZoneId.of("UTC")) }
+        composeRule.mainClock.advanceTimeBy(1_100)
+        composeRule.onNodeWithText("午後 3:00").assertIsDisplayed()
+        assertEquals(clock, composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot())
+        assertEquals(card, composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot())
+        composeRule.runOnIdle { visible.value = false }
+        composeRule.waitForIdle()
+        val hiddenReads = reads
+        composeRule.mainClock.advanceTimeBy(3_000)
+        assertEquals(hiddenReads, reads)
+        composeRule.runOnIdle { time = time.plusHours(1); format.value = "28H"; visible.value = true }
+        composeRule.onNodeWithText("16:00").assertIsDisplayed()
+        for (nextName in listOf("", "長いチャンネル名称".repeat(30), "NHK総合")) {
+            composeRule.runOnIdle { name.value = nextName; logo.value = "unsupported-logo-model" }
+            val nextCard = composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot()
+            assertEquals(card.top, nextCard.top)
+            assertEquals(card.right, nextCard.right)
+            assertEquals(card.height, nextCard.height)
+            assertTrue(nextCard.left > clock.right)
+            composeRule.onNodeWithTag("live-channel-name")
+                .assertTextEquals(nextName.ifBlank { "チャンネル情報なし" }).assertIsDisplayed()
+            composeRule.onNodeWithTag("channel-logo-fallback").assertIsDisplayed()
+        }
+    }
 
     @Test
     fun wallClockTracksSystemTimeAndZoneAndStopsWhenHiddenWithoutMovingControls() {
@@ -89,7 +167,7 @@ class RecordedPlayerLayoutTest {
             val bounds = controlBounds()
             composeRule.runOnIdle { time = time.plusMinutes(1); playing.value = false; seeking.value = true }
             composeRule.mainClock.advanceTimeBy(1_100)
-            composeRule.onNodeWithText(formatRecordedWallClock(time, "24H")).assertIsDisplayed()
+            composeRule.onNodeWithText(formatPlayerWallClock(time, "24H")).assertIsDisplayed()
             assertEquals(bounds, controlBounds())
             assertEquals(clockBounds, composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot())
             if (style) composeRule.onNodeWithTag("playback-track").assertIsFocused()

@@ -12,7 +12,6 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import com.beeregg2001.komorebi.ui.components.ExitDialog
 import com.beeregg2001.komorebi.ui.main.MainRootScreen
 import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
@@ -67,8 +66,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             KomorebiTheme {
-                var showExitDialog by remember { mutableStateOf(false) }
-
                 // アプリのメインナビゲーション
                 MainRootScreen(
                     channelViewModel = channelViewModel,
@@ -77,15 +74,8 @@ class MainActivity : ComponentActivity() {
                     recordViewModel = recordViewModel,
                     homeIntentVersion = homeIntentVersion,
                     onRemotePlaybackOpened = ::showRemotePlayback,
-                    onExitApp = { showExitDialog = true }
+                    onExitApp = ::finish
                 )
-
-                if (showExitDialog) {
-                    ExitDialog(
-                        onConfirm = { finish() },
-                        onDismiss = { showExitDialog = false }
-                    )
-                }
             }
         }
     }

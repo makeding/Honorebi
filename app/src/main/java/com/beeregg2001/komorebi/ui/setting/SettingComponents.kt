@@ -45,6 +45,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -59,6 +60,10 @@ import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
+import com.beeregg2001.komorebi.ui.components.ThemedDialogSurface
+import com.beeregg2001.komorebi.ui.components.dialogForeground
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.viewmodel.SmbServer
 import com.google.zxing.BarcodeFormat
@@ -149,8 +154,8 @@ fun CategoryItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedTextColor = MaterialTheme.colorScheme.onPrimary
     val focusedBgColor = MaterialTheme.colorScheme.primary
+    val focusedTextColor = dialogForeground(focusedBgColor)
 
     Surface(
         selected = isSelected, onClick = { if (enabled) onClick() },
@@ -216,8 +221,8 @@ fun SettingItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedTextColor = focusedContentColor ?: MaterialTheme.colorScheme.onPrimary
     val focusedBgColor = focusedContainerColor ?: MaterialTheme.colorScheme.primary
+    val focusedTextColor = focusedContentColor ?: dialogForeground(focusedBgColor)
 
     Surface(
         onClick = { if (enabled) onClick() },
@@ -403,13 +408,8 @@ fun InputDialog(
             },
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(540.dp)
-        ) {
+        ThemedDialogSurface(width = 540.dp) {
             Column(
-                modifier = Modifier.padding(32.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
@@ -429,18 +429,8 @@ fun InputDialog(
                         .padding(top = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
-                        onClick = { isClosing = true; onDismiss() },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(0.1f),
-                            contentColor = colors.textPrimary
-                        )
-                    ) { Text("キャンセル") }
-                    Button(
-                        onClick = { isClosing = true; onConfirm(value) },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("OK") }
+                    DialogActionButton(DialogActionRole.Secondary, { isClosing = true; onDismiss() }, Modifier.weight(1f)) { Text("キャンセル") }
+                    DialogActionButton(DialogActionRole.Primary, { isClosing = true; onConfirm(value) }, Modifier.weight(1f)) { Text("OK") }
                 }
             }
         }
@@ -469,12 +459,8 @@ fun HonomiLoginDialog(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(540.dp),
-        ) {
-            Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        ThemedDialogSurface(width = 540.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text("HonomiTV とペアリング", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("スマートフォンで QR コードを開き、HonomiTV にログインしてこのテレビを許可してください。")
                 if (qrBitmap != null) Image(qrBitmap, null, Modifier.size(260.dp).align(Alignment.CenterHorizontally))
@@ -488,7 +474,7 @@ fun HonomiLoginDialog(
                 )
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Button(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.weight(1f)) { Text("キャンセル") }
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f), enabled = !isLoading) { Text("キャンセル") }
                     if (isLoading) CircularProgressIndicator(Modifier.size(36.dp).align(Alignment.CenterVertically))
                 }
             }
@@ -524,13 +510,8 @@ fun LinkQrDialog(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(520.dp),
-        ) {
+        ThemedDialogSurface(width = 520.dp) {
             Column(
-                modifier = Modifier.padding(32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -554,11 +535,10 @@ fun LinkQrDialog(
                     color = colors.textSecondary,
                     textAlign = TextAlign.Center
                 )
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(closeRequester)
+                DialogActionButton(
+                    DialogActionRole.Secondary,
+                    onDismiss,
+                    Modifier.fillMaxWidth().focusRequester(closeRequester),
                 ) { Text("閉じる") }
             }
         }
@@ -613,17 +593,13 @@ fun DefaultHomeGuideDialog(
         // ダイアログが画面からはみ出し、下端の閉じるボタンが切れる。
         val dialogMaxHeight = maxHeight * 0.9f
 
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier
-                .width(560.dp)
-                .heightIn(max = dialogMaxHeight),
+        ThemedDialogSurface(
+            width = 560.dp,
+            modifier = Modifier.heightIn(max = dialogMaxHeight),
         ) {
             Column(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(28.dp),
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
@@ -652,11 +628,10 @@ fun DefaultHomeGuideDialog(
                             "Android TV ではシステムのホーム設定から直接このアプリを既定のホームに指定できます。",
                             color = colors.textSecondary
                         )
-                        Button(
-                            onClick = onOpenHomeSettings,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(primaryRequester)
+                        DialogActionButton(
+                            DialogActionRole.Primary,
+                            onOpenHomeSettings,
+                            Modifier.fillMaxWidth().focusRequester(primaryRequester),
                         ) { Text("ホーム設定を開く") }
                     }
 
@@ -688,10 +663,7 @@ fun DefaultHomeGuideDialog(
                 }
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.focusRequester(closeRequester)
-                    ) { Text("閉じる") }
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.focusRequester(closeRequester)) { Text("閉じる") }
                 }
             }
         }
@@ -723,13 +695,8 @@ fun BatchInputDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit)
             },
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(540.dp)
-        ) {
+        ThemedDialogSurface(width = 540.dp) {
             Column(
-                modifier = Modifier.padding(32.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
@@ -768,22 +735,13 @@ fun BatchInputDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit)
                         .padding(top = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
-                        onClick = { isClosing = true; onDismiss() },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(0.1f),
-                            contentColor = colors.textPrimary
-                        )
-                    ) { Text("キャンセル") }
-                    Button(
-                        onClick = {
+                    DialogActionButton(DialogActionRole.Secondary, { isClosing = true; onDismiss() }, Modifier.weight(1f)) { Text("キャンセル") }
+                    DialogActionButton(DialogActionRole.Primary, onClick = {
                             if (name.isNotBlank() && path.isNotBlank()) {
                                 isClosing = true
                                 onConfirm(name, path)
                             }
-                        },
-                        modifier = Modifier.weight(1f),
+                        }, modifier = Modifier.weight(1f),
                         enabled = name.isNotBlank() && path.isNotBlank()
                     ) { Text("追加") }
                 }
@@ -826,14 +784,9 @@ fun SmbManualInputDialog(
             },
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(540.dp)
-        ) {
+        ThemedDialogSurface(width = 540.dp) {
             Column(
                 modifier = Modifier
-                    .padding(32.dp)
                     .heightIn(max = 500.dp)
             ) {
                 Text(
@@ -918,23 +871,14 @@ fun SmbManualInputDialog(
                             .padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Button(
-                            onClick = { isClosing = true; onDismiss() },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.colors(
-                                containerColor = colors.textPrimary.copy(0.1f),
-                                contentColor = colors.textPrimary
-                            )
-                        ) { Text("キャンセル") }
-                        Button(
-                            onClick = {
+                        DialogActionButton(DialogActionRole.Secondary, { isClosing = true; onDismiss() }, Modifier.weight(1f)) { Text("キャンセル") }
+                        DialogActionButton(DialogActionRole.Primary, onClick = {
                                 if (name.isNotBlank() && ip.isNotBlank()) {
                                     isClosing = true
                                     val id = target?.id ?: java.util.UUID.randomUUID().toString()
                                     onConfirm(SmbServer(id, name, ip, port, user, password))
                                 }
-                            },
-                            modifier = Modifier.weight(1f),
+                            }, modifier = Modifier.weight(1f),
                             enabled = name.isNotBlank() && ip.isNotBlank()
                         ) { Text(if (target != null) "保存" else "追加") }
                     }
@@ -987,12 +931,8 @@ fun SmbSetupDialog(
             },
         contentAlignment = Alignment.Center
     ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(680.dp)
-        ) {
-            Column(modifier = Modifier.padding(40.dp)) {
+        ThemedDialogSurface(width = 680.dp) {
+            Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.FolderShared,
@@ -1059,23 +999,17 @@ fun SmbSetupDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Button(
+                    DialogActionButton(
+                        DialogActionRole.Secondary,
                         onClick = { isClosing = true; onDismiss() },
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier
                             .width(180.dp)
                             .focusRequester(focusRequester)
                     ) { Text(if (target != null) "キャンセル" else "閉じる") }
                     Spacer(Modifier.width(24.dp))
-                    Button(
+                    DialogActionButton(
+                        DialogActionRole.Primary,
                         onClick = { isClosing = true; onManualInputClick() },
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier.width(180.dp)
                     ) { Text("リモコンで手動入力") }
                 }
@@ -1161,13 +1095,10 @@ fun SelectionDialog(
                     // ★ 予防対応: LazyColumnの中にボタンを格納
                     item {
                         Spacer(Modifier.height(8.dp))
-                        Button(
+                        DialogActionButton(
+                            DialogActionRole.Secondary,
                             onClick = { isClosing = true; onDismiss() },
-                            colors = ButtonDefaults.colors(
-                                containerColor = colors.textPrimary.copy(0.1f),
-                                contentColor = colors.textPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
                         ) { Text("キャンセル") }
                     }
                 }
@@ -1186,12 +1117,12 @@ fun SelectionDialogItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedTextColor = MaterialTheme.colorScheme.onPrimary
     val focusedBgColor = MaterialTheme.colorScheme.primary
+    val focusedTextColor = dialogForeground(focusedBgColor)
 
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().testTag("selection-item-$label"),
         interactionSource = interactionSource,
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isSelected) colors.textPrimary.copy(
@@ -1222,7 +1153,7 @@ fun SelectionDialogItem(
                     modifier = Modifier.size(20.dp),
                     tint = if (isFocused) focusedTextColor else colors.textPrimary
                 )
-            }
+            } else Spacer(Modifier.size(20.dp))
         }
     }
 }
@@ -1303,21 +1234,15 @@ fun MultiSelectionDialog(
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Button(
+                            DialogActionButton(
+                                DialogActionRole.Secondary,
                                 onClick = { isClosing = true; onDismiss() },
-                                colors = ButtonDefaults.colors(
-                                    containerColor = colors.textPrimary.copy(0.1f),
-                                    contentColor = colors.textPrimary
-                                ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
                             ) { Text("キャンセル") }
-                            Button(
+                            DialogActionButton(
+                                DialogActionRole.Primary,
                                 onClick = { isClosing = true; onConfirm(selections) },
-                                colors = ButtonDefaults.colors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
                             ) { Text("確定", fontWeight = FontWeight.Bold) }
                         }
                     }
@@ -1337,12 +1262,12 @@ fun MultiSelectionDialogItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedTextColor = MaterialTheme.colorScheme.onPrimary
     val focusedBgColor = MaterialTheme.colorScheme.primary
+    val focusedTextColor = dialogForeground(focusedBgColor)
 
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().testTag("multi-selection-item-$label"),
         interactionSource = interactionSource,
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isSelected) colors.textPrimary.copy(
@@ -1407,7 +1332,7 @@ fun ConfirmClearDialog(
             modifier = Modifier.width(420.dp)
         ) {
             Column(
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -1427,23 +1352,11 @@ fun ConfirmClearDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                            contentColor = colors.textPrimary
-                        ),
-                        modifier = Modifier.weight(1f)
-                    ) { Text(AppStrings.BUTTON_CANCEL) }
-                    Button(
-                        onClick = onConfirm,
-                        colors = ButtonDefaults.colors(
-                            containerColor = Color(0xFFD32F2F),
-                            contentColor = Color.White
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(focusRequester)
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f)) { Text(AppStrings.BUTTON_CANCEL) }
+                    DialogActionButton(
+                        DialogActionRole.Destructive,
+                        onConfirm,
+                        Modifier.weight(1f).focusRequester(focusRequester),
                     ) { Text(confirmButtonText) }
                 }
             }
@@ -1486,12 +1399,8 @@ fun GeminiSetupDialog(
                 }; false
             }, contentAlignment = Alignment.Center
     ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            colors = SurfaceDefaults.colors(containerColor = colors.surface),
-            modifier = Modifier.width(680.dp)
-        ) {
-            Column(modifier = Modifier.padding(40.dp)) {
+        ThemedDialogSurface(width = 680.dp) {
+            Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.AutoAwesome,
@@ -1574,33 +1483,24 @@ fun GeminiSetupDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Button(
+                    DialogActionButton(
+                        DialogActionRole.Secondary,
                         onClick = { isClosing = true; onDismiss() },
-                        colors = ButtonDefaults.colors(
-                            containerColor = colors.textPrimary.copy(0.1f),
-                            contentColor = colors.textPrimary
-                        ),
                         modifier = Modifier
                             .width(180.dp)
                             .focusRequester(focusRequester)
                     ) { Text(if (isKeySet) "閉じる" else "キャンセル") }
                     Spacer(Modifier.width(24.dp))
                     if (isKeySet) {
-                        Button(
+                        DialogActionButton(
+                            DialogActionRole.Destructive,
                             onClick = { isClosing = true; onDeleteKey() },
-                            colors = ButtonDefaults.colors(
-                                containerColor = Color(0xFFD32F2F),
-                                contentColor = Color.White
-                            ),
                             modifier = Modifier.width(180.dp)
                         ) { Text("連携を解除") }
                     } else {
-                        Button(
+                        DialogActionButton(
+                            DialogActionRole.Primary,
                             onClick = { isClosing = true; onManualInputClick() },
-                            colors = ButtonDefaults.colors(
-                                containerColor = colors.textPrimary.copy(0.1f),
-                                contentColor = colors.textPrimary
-                            ),
                             modifier = Modifier.width(180.dp)
                         ) { Text("手動で入力") }
                     }
@@ -1651,8 +1551,8 @@ fun SettingToggleItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedTextColor = MaterialTheme.colorScheme.onPrimary
     val focusedBgColor = MaterialTheme.colorScheme.primary
+    val focusedTextColor = dialogForeground(focusedBgColor)
 
     Surface(
         onClick = { onCheckedChange(!checked) },

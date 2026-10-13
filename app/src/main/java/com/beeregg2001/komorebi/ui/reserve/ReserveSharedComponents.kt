@@ -24,6 +24,9 @@ import androidx.compose.ui.zIndex
 import androidx.compose.foundation.lazy.items
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.components.DialogActionButton
+import com.beeregg2001.komorebi.ui.components.DialogActionRole
+import com.beeregg2001.komorebi.ui.components.dialogForeground
 import kotlinx.coroutines.delay
 
 enum class NumberSelectType { START_HOUR, START_MINUTE, END_HOUR, END_MINUTE }
@@ -36,12 +39,12 @@ fun TimeSelectButton(text: String, modifier: Modifier = Modifier, onClick: () ->
         onClick = onClick,
         modifier = modifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.textPrimary.copy(alpha = 0.05f),
             contentColor = colors.textPrimary,
-            focusedContainerColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
+            focusedContainerColor = colors.accent,
+            focusedContentColor = dialogForeground(colors.accent)
         )
     ) {
         Text(
@@ -94,8 +97,8 @@ fun DayOfWeekSelectionDialog(
         Box(
             modifier = Modifier
                 .width(360.dp)
-                .background(colors.surface, RoundedCornerShape(12.dp))
-                .border(1.dp, colors.textPrimary.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                .background(colors.surface, RoundedCornerShape(16.dp))
+                .border(1.dp, colors.textPrimary.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text(
@@ -117,12 +120,12 @@ fun DayOfWeekSelectionDialog(
                                     if (isSelected) selected - dayValue else selected + dayValue
                             },
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
                             colors = ClickableSurfaceDefaults.colors(
-                                containerColor = if (isSelected) colors.accent.copy(alpha = 0.2f) else Color.Transparent,
+                                containerColor = if (isSelected) colors.textPrimary.copy(alpha = 0.1f) else Color.Transparent,
                                 contentColor = colors.textPrimary,
-                                focusedContainerColor = colors.textPrimary,
-                                focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                                focusedContainerColor = MaterialTheme.colorScheme.primary,
+                                focusedContentColor = dialogForeground(MaterialTheme.colorScheme.primary)
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -157,22 +160,8 @@ fun DayOfWeekSelectionDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Button(
-                                onClick = onDismiss, modifier = Modifier.weight(1f),
-                                scale = ButtonDefaults.scale(focusedScale = 1f),
-                                colors = ButtonDefaults.colors(
-                                    containerColor = colors.textPrimary.copy(alpha = 0.1f),
-                                    contentColor = colors.textPrimary
-                                )
-                            ) { Text("キャンセル") }
-                            Button(
-                                onClick = { onConfirm(selected) }, modifier = Modifier.weight(1f),
-                                scale = ButtonDefaults.scale(focusedScale = 1f),
-                                colors = ButtonDefaults.colors(
-                                    containerColor = colors.accent,
-                                    contentColor = if (colors.isDark) Color.Black else Color.White
-                                )
-                            ) { Text("決定") }
+                            DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f)) { Text("キャンセル") }
+                            DialogActionButton(DialogActionRole.Primary, { onConfirm(selected) }, Modifier.weight(1f)) { Text("決定") }
                         }
                     }
                 }
@@ -224,8 +213,8 @@ fun NumberSelectionDialog(
             modifier = Modifier
                 .width(200.dp)
                 .height(360.dp)
-                .background(colors.surface, RoundedCornerShape(12.dp))
-                .border(1.dp, colors.textPrimary.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                .background(colors.surface, RoundedCornerShape(16.dp))
+                .border(1.dp, colors.textPrimary.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
         ) {
             Column(
                 modifier = Modifier.padding(vertical = 24.dp),
@@ -263,12 +252,12 @@ fun NumberSelectionDialog(
                         Surface(
                             onClick = { onConfirm(num) },
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
                             colors = ClickableSurfaceDefaults.colors(
-                                containerColor = Color.Transparent,
+                                containerColor = if (isInitial) colors.textPrimary.copy(alpha = 0.1f) else Color.Transparent,
                                 contentColor = colors.textPrimary,
-                                focusedContainerColor = colors.textPrimary,
-                                focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                                focusedContainerColor = colors.accent,
+                                focusedContentColor = dialogForeground(colors.accent)
                             ),
                             modifier = Modifier
                                 .width(120.dp)
@@ -276,15 +265,23 @@ fun NumberSelectionDialog(
                                     if (isInitial) Modifier.focusRequester(initialItemRequester) else Modifier
                                 )
                         ) {
-                            Text(
-                                text = displayText,
-                                modifier = Modifier
-                                    .padding(vertical = 12.dp)
-                                    .fillMaxWidth(),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = displayText,
+                                    modifier = Modifier.weight(1f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = if (isInitial) FontWeight.Bold else FontWeight.Normal,
+                                )
+                                if (isInitial) Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                ) else Spacer(Modifier.size(16.dp))
+                            }
                         }
                     }
                 }

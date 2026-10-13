@@ -32,6 +32,10 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingHorizontal
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingVertical
+import com.beeregg2001.komorebi.ui.player.PlayerChannelStatus
+import com.beeregg2001.komorebi.ui.player.PlayerWallClock
+import androidx.compose.ui.platform.testTag
+import java.time.ZonedDateTime
 import com.beeregg2001.komorebi.ui.player.PlayerLCropOverlay
 import com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel
 import com.beeregg2001.komorebi.ui.player.liveChannelTitle
@@ -116,54 +120,22 @@ fun StatusOverlay(
     channel: Channel,
     logoUrl: String,
     shouldCropLogo: Boolean, // ★ 追加: クロップフラグ
-    timeFormatSetting: String = "24H"
+    timeFormatSetting: String = "24H",
+    now: () -> ZonedDateTime = { ZonedDateTime.now() },
 ) {
-    var currentTime by remember { mutableStateOf("") }
-
-    val displaySdf = remember(timeFormatSetting) {
-        if (timeFormatSetting == "12H") SimpleDateFormat("a h:mm", Locale.getDefault())
-        else SimpleDateFormat("HH:mm", Locale.getDefault())
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = displaySdf.format(Date())
-            delay(1000)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(PlayerOverlayEdgePaddingHorizontal),
-        contentAlignment = Alignment.TopEnd
-    ) {
-        Row(
-            modifier = Modifier
-                .background(Color.Black.copy(0.8f), RoundedCornerShape(8.dp))
-                .border(1.dp, Color.White.copy(0.15f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            com.beeregg2001.komorebi.ui.player.PlayerChannelLogo(
-                logoUrl, channel.name, shouldCropLogo, Modifier.size(56.dp, 32.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            liveChannelNumberLabel(channel)?.let { label ->
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.width(20.dp))
-            }
-            Text(
-                text = currentTime,
-                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 20.sp),
-                color = Color.White
-            )
-        }
+    Box(Modifier.fillMaxSize().padding(24.dp)) {
+        PlayerWallClock(
+            timeFormatSetting,
+            Modifier.align(Alignment.TopStart).testTag("live-wall-clock"),
+            now = now,
+        )
+        PlayerChannelStatus(
+            channelName = channel.name,
+            logoUrl = logoUrl,
+            shouldCropLogo = shouldCropLogo,
+            modifier = Modifier.align(Alignment.TopEnd).testTag("live-channel-status"),
+            nameModifier = Modifier.testTag("live-channel-name"),
+        )
     }
 }
 

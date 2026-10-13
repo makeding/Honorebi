@@ -42,6 +42,9 @@ import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
 import com.beeregg2001.komorebi.viewmodel.SeriesInfo
 import com.beeregg2001.komorebi.ui.video.components.SeriesThumbnailCollage
 import java.time.OffsetDateTime
@@ -63,6 +66,7 @@ fun VideoRecentRecordCard(
     allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
+    val focusSpec = tvCardFocus(TvCardFamily.GRID)
     var isFocused by remember { mutableStateOf(false) }
 
     val fallbackUrl = program.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
@@ -101,17 +105,16 @@ fun VideoRecentRecordCard(
             .height(160.dp)
             .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface.copy(alpha = 0.5f),
             focusedContainerColor = colors.surface,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
         border = ClickableSurfaceDefaults.border(
-            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            focusedBorder = focusSpec.focusedBorder
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -120,14 +123,16 @@ fun VideoRecentRecordCard(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(if (isFocused) 0.8f else 0.5f),
+                    .fillMaxSize(),
                 onError = {
                     if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
                         currentThumbnailUrl = fallbackUrl
                     }
                 }
             )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(
+                alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
+            )))
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -218,6 +223,7 @@ fun VideoWatchHistoryCard(
     allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
+    val focusSpec = tvCardFocus(TvCardFamily.GRID)
     var isFocused by remember { mutableStateOf(false) }
     val videoId = matchedProgram?.id ?: try {
         historyItem.program.id.toString().toInt()
@@ -267,17 +273,16 @@ fun VideoWatchHistoryCard(
             .height(160.dp)
             .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface.copy(alpha = 0.5f),
             focusedContainerColor = colors.surface,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
         border = ClickableSurfaceDefaults.border(
-            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            focusedBorder = focusSpec.focusedBorder
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -285,8 +290,7 @@ fun VideoWatchHistoryCard(
                 model = imageRequest,
                 contentDescription = null,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(if (isFocused) 0.8f else 0.5f),
+                    .fillMaxSize(),
                 contentScale = ContentScale.Crop,
                 onError = {
                     if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
@@ -294,6 +298,9 @@ fun VideoWatchHistoryCard(
                     }
                 }
             )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(
+                alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
+            )))
             Box(
                 modifier = Modifier
                     .fillMaxSize()
