@@ -636,11 +636,13 @@ internal fun RecordedPlayerScreen(
             },
         )
     }
-    val tsRecoveryEnabled = usesResolvedByteSeek && !isRecordingChasePlayback && !isLiveStream
+    val tsRecoveryEnabled = usesResolvedByteSeek && !isRecordingChasePlayback && !isLiveStream &&
+        currentProgram.recordedVideo.videoCodec.equals("MPEG-2", ignoreCase = true)
     val tsRecoveryPolicy = remember(recordedPlaybackFence.identity, vs.currentQuality.value, enableHdrToSdrToneMapping) {
         RecordedTsRecoveryPolicy()
     }
     val sourceBytesRead = remember(tsRecoveryPolicy) { AtomicLong(0L) }
+    var tsRecoveryFailure by remember(tsRecoveryPolicy) { mutableStateOf<String?>(null) }
     val renewStreamSession: suspend (ExoPlayer) -> Boolean = { player ->
         if (!currentPlaybackFence.accepts() || currentProgram.id == 0 || vs.currentQuality.value.isBlank()) {
             false
@@ -742,6 +744,11 @@ internal fun RecordedPlayerScreen(
                 return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
             }
             if (tsRecoveryEnabled && error.isTsDamageError()) {
+                tsRecoveryPolicy.failureReason = if (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+                    "録画のデコードに失敗しました（${error.errorCodeName}）"
+                } else {
+                    "録画データを解析できませんでした（${error.errorCodeName}）"
+                }
                 tsRecoveryPolicy.pendingError = true
                 return@rememberManagedExoPlayer PlayerErrorRecovery.Handled
             }
@@ -809,7 +816,7 @@ internal fun RecordedPlayerScreen(
         bytesRead = sourceBytesRead,
         resolver = seekResolver,
         onSeek = { recordedCaptions.seek() },
-        onFailure = { message -> isBuffering = false; onShowToast(message); onShowControlsChange(true) },
+        onFailure = { message -> isBuffering = false; tsRecoveryFailure = message; onShowControlsChange(true) },
     )
 
     DisposableEffect(exoPlayer) {
@@ -1135,6 +1142,8 @@ internal fun RecordedPlayerScreen(
             return@seek
         }
         recordedCaptions.seek()
+        val resumeAfterFailure = tsRecoveryFailure != null || exoPlayer.playerError != null
+        tsRecoveryFailure = null
         tsRecoveryPolicy.userSeek()
         val safeTarget = targetMs.coerceIn(
             0L,
@@ -1184,6 +1193,7 @@ internal fun RecordedPlayerScreen(
                     if (exoPlayer.playbackState == Player.STATE_IDLE) {
                         exoPlayer.prepare()
                     }
+                    if (resumeAfterFailure) exoPlayer.playWhenReady = true
                 }
                 if (currentProgram.id != 0) {
                     videoPlayerViewModel.updateWatchHistory(
@@ -2100,6 +2110,14 @@ internal fun RecordedPlayerScreen(
                     ) { androidx.tv.material3.Text(AppStrings.BUTTON_RETRY_TV) }
                 }
             }
+        }
+        if (!isPiPMode && !isSubOverlayOpen && tsRecoveryFailure != null) {
+            RecordedTsFailure(
+                message = tsRecoveryFailure!!,
+                onSeekForward = { performSeek(getCurrentPositionMs() + 30_000L) },
+                onQuality = { onSubMenuToggle(true) },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 96.dp),
+            )
         }
     }
 }

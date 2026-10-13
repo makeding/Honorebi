@@ -1,4 +1,4 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.beeregg2001.komorebi.ui.video.player
 
@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -36,12 +37,25 @@ internal fun RecordedTsRecovery(
     val online = rememberUpdatedState(networkAvailable)
     val currentOnSeek = rememberUpdatedState(onSeek)
     val currentOnFailure = rememberUpdatedState(onFailure)
+    LaunchedEffect(networkAvailable, policy) {
+        if (!networkAvailable) policy.cancelPending()
+    }
+    DisposableEffect(player, policy) {
+        val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) policy.cancelPending()
+            }
+        }
+        player.addListener(listener)
+        onDispose { policy.cancelPending(); player.removeListener(listener) }
+    }
     LaunchedEffect(player, enabled, policy, fence.identity) {
         if (!enabled) return@LaunchedEffect
         while (isActive && fence.accepts()) {
             delay(1_000L)
             if (!online.value || !player.playWhenReady || player.mediaItemCount == 0 ||
-                player.playbackState == Player.STATE_ENDED) {
+                player.playbackState == Player.STATE_ENDED ||
+                (player.currentTracks.isEmpty && !policy.pendingError)) {
                 policy.clearObservation()
                 continue
             }
@@ -66,17 +80,18 @@ internal fun RecordedTsRecovery(
                     null
                 }
                 if (!fence.accepts() || serial != policy.seekSerial || !online.value ||
-                    !player.playWhenReady) break
+                    !player.playWhenReady || (!policy.pendingError && player.isPlaying &&
+                        player.currentPosition > failedPosition + 500L)) break
                 // The index may repeatedly return the last GOP preceding a damaged region.
                 if (resolved != null && resolved > failedPosition + 500L) resolvedTarget = resolved
                 else Log.w("RecordedTsRecovery", "Skipping old keyframe: target_ms=$target resolved_ms=$resolved failed_ms=$failedPosition")
             }
             if (!fence.accepts() || serial != policy.seekSerial || !online.value ||
-                !player.playWhenReady) continue
+                !player.playWhenReady || (player.isPlaying && player.currentPosition > failedPosition + 500L)) continue
             if (resolvedTarget == null) {
                 player.pause()
                 player.stop()
-                currentOnFailure.value("録画データの読み取り・デコードが進まないため再生を停止しました（TS_RECOVERY_EXHAUSTED）。先へシークするか画質を変更してください。")
+                currentOnFailure.value("${policy.failureReason}（TS_RECOVERY_EXHAUSTED）。先へシークするか画質を変更してください。")
                 continue
             }
             Log.w("RecordedTsRecovery", "Reopening damaged TS: position_ms=$failedPosition target_ms=$resolvedTarget bytes_read=${bytesRead.get()} loading=${player.isLoading} buffered_ms=${player.bufferedPosition}")

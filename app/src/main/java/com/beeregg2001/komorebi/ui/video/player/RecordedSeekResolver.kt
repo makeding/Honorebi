@@ -52,8 +52,8 @@ internal class RecordedSeekResolver(
 
     /** Automatic damage recovery must have a real byte/keyframe result. */
     suspend fun resolveForRecovery(targetMs: Long): Long? {
-        resolve(targetMs)
-        return resolutionRef.get()?.timeUs?.div(1_000L)
+        val resolved = resolve(targetMs)
+        return resolutionRef.get()?.takeIf { it.timeUs / 1_000L == resolved }?.timeUs?.div(1_000L)
     }
 
     companion object {

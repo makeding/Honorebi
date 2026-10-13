@@ -106,7 +106,9 @@ fun ChannelListOverlay(
     LaunchedEffect(firstSection, currentChannelId) {
         if (firstSection == null) return@LaunchedEffect
         isTwoRowsVisible = false
-        columnState.scrollToItem(0)
+        if (columnState.firstVisibleItemIndex != 0 || columnState.firstVisibleItemScrollOffset != 0) {
+            columnState.scrollToItem(0)
+        }
         val focused = focusRequester.safeRequestFocusWithRetry(
             tag = "ChannelBrowserFocus",
             maxRetries = 8,
@@ -244,7 +246,9 @@ private fun ChannelSectionRow(
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = focusIndex)
 
     LaunchedEffect(focusIndex) {
-        if (focusIndex > 0) listState.scrollToItem(focusIndex)
+        if (listState.firstVisibleItemIndex != focusIndex || listState.firstVisibleItemScrollOffset != 0) {
+            listState.scrollToItem(focusIndex)
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {

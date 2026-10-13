@@ -5,6 +5,7 @@ internal class RecordedTsRecoveryPolicy {
     var seekSerial = 0
         private set
     var pendingError = false
+    var failureReason = "録画データの読み取り・デコードが進みません"
     var exhausted = false
         private set
     private var attempts = 0
@@ -15,8 +16,14 @@ internal class RecordedTsRecoveryPolicy {
     private var stalledSinceMs = -1L
     private var advancingSinceMs = -1L
 
-    fun userSeek() {
+    fun cancelPending() {
         seekSerial++
+        pendingError = false
+        clearObservation()
+    }
+
+    fun userSeek() {
+        cancelPending()
         attempts = 0
         lastTargetMs = -1L
         pendingError = false
@@ -52,7 +59,7 @@ internal class RecordedTsRecoveryPolicy {
         observedBufferMs = bufferedMs
         return buffering && stalledSinceMs >= 0L && nowMs - stalledSinceMs >= 12_000L &&
             (bytesRead - observedBytes >= 1_048_576L ||
-                (!loading && bufferedMs - positionMs <= 500L))
+                !loading)
     }
 
     fun nextTarget(positionMs: Long, durationMs: Long): Long? {

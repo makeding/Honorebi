@@ -95,6 +95,21 @@ fun ManualCmSkipPrompt() {
     }
 }
 
+/** Persistent failure alongside the existing player controls, without replacing their focus tree. */
+@Composable
+internal fun RecordedTsFailure(message: String, onSeekForward: () -> Unit, onQuality: () -> Unit,
+                               modifier: Modifier = Modifier) {
+    Column(modifier.width(680.dp).background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+        .padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(message, color = Color.White, fontSize = 18.sp)
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Button(onClick = onSeekForward) { Text("30秒先へ") }
+            Button(onClick = onQuality) { Text("画質を変更") }
+        }
+    }
+}
+
 /**
  * ★ 追加: L字クロップ機能の設定・調整用オーバーレイ (録画視聴版)
  * (パネル本体は ui/player/PlayerCropOverlay.kt のライブ/録画共通実装に委譲)
