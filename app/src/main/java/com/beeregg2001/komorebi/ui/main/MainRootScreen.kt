@@ -39,6 +39,7 @@ import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
 import com.beeregg2001.komorebi.ui.video.player.displayLabel
 import com.beeregg2001.komorebi.ui.components.ExitDialog
+import com.beeregg2001.komorebi.ui.screensaver.rememberInAppScreensaverState
 
 private const val TAG = "MainRootScreen"
 private const val AI_FEATURES_ENABLED = false
@@ -451,17 +452,11 @@ fun MainRootScreen(
     val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
     val screensaverImages by settingsViewModel.screensaverImageUris.collectAsState()
     val screensaverShowUpcoming by settingsViewModel.screensaverShowUpcoming.collectAsState()
-    val lastInteraction by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.lastInteractionMillis.collectAsState()
-    val playbackActive by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.playbackActive.collectAsState()
-    var showScreensaver by remember { mutableStateOf(false) }
-    LaunchedEffect(screensaverEnabled, screensaverTimeout, screensaverImages, isAppInForeground, playbackActive, lastInteraction) {
-        showScreensaver = false
-        if (!screensaverEnabled || screensaverImages.isEmpty() || !isAppInForeground || playbackActive) return@LaunchedEffect
-        val deadline = lastInteraction + screensaverTimeout.coerceAtLeast(1) * 60_000L
-        val remaining = deadline - android.os.SystemClock.elapsedRealtime()
-        if (remaining > 0) delay(remaining)
-        if (android.os.SystemClock.elapsedRealtime() >= deadline) showScreensaver = true
-    }
+    val screensaverState = rememberInAppScreensaverState(
+        enabled = screensaverEnabled,
+        timeoutMinutes = screensaverTimeout,
+        hasImages = screensaverImages.isNotEmpty(),
+    )
     val defaultSystemChannel = remember(groupedChannels) {
         val channels = groupedChannels.values.flatten()
         channels.firstOrNull { it.type == "GR" } ?: channels.firstOrNull()
@@ -903,13 +898,13 @@ fun MainRootScreen(
             if (showExitDialog) {
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
             }
-            if (showScreensaver && screensaverImages.isNotEmpty()) {
+            if (screensaverState.isVisible && screensaverImages.isNotEmpty()) {
                 val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
                     enabled = screensaverShowUpcoming,
                     visible = true,
                 )
                 androidx.compose.ui.window.Dialog(
-                    onDismissRequest = { showScreensaver = false },
+                    onDismissRequest = screensaverState::dismiss,
                     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                 ) {
                     androidx.compose.foundation.layout.Box(
@@ -920,9 +915,9 @@ fun MainRootScreen(
                                         android.view.KeyEvent.KEYCODE_MEDIA_NEXT, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
                                         android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, android.view.KeyEvent.KEYCODE_MEDIA_REWIND,
                                         android.view.KeyEvent.KEYCODE_MEDIA_RECORD)
-                                }) showScreensaver = false
+                                }) screensaverState.dismiss()
                             false
-                        }.clickable { showScreensaver = false }
+                        }.clickable { screensaverState.dismiss() }
                     ) {
                         com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
                             imageUris = screensaverImages,
