@@ -69,6 +69,12 @@ fun rememberNetworkAvailableState(): State<Boolean> {
 
 @Composable
 fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
+    val wakeState = rememberAppWakeState()
+    return rememberNetworkConnectionStatus(wakeState.isAwake, wakeState.generation)
+}
+
+@Composable
+internal fun rememberNetworkConnectionStatus(awake: Boolean, wakeGeneration: Int): State<NetworkConnectionStatus> {
     val context = LocalContext.current.applicationContext
     val connectivityManager = remember(context) {
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -78,10 +84,16 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
         mutableStateOf(connectivityManager.getDefaultConnectionStatus())
     }
 
-    DisposableEffect(connectivityManager, mainHandler) {
+    DisposableEffect(connectivityManager, mainHandler, awake, wakeGeneration) {
+        if (!awake) {
+            state.value = NetworkConnectionStatus.Disconnected
+            return@DisposableEffect onDispose { }
+        }
+        var disposed = false
         val knownTransports = linkedMapOf<Network, NetworkTransport>()
 
         fun publishState() {
+            if (disposed) return
             val defaultNetwork = connectivityManager.activeNetwork
             state.value = resolveNetworkConnectionStatus(
                 knownTransports.map { (network, transport) ->
@@ -95,6 +107,7 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
 
         fun updateNetwork(network: Network, capabilities: NetworkCapabilities) {
             mainHandler.post {
+                if (disposed) return@post
                 knownTransports[network] = capabilities.toNetworkTransport()
                 publishState()
             }
@@ -103,6 +116,7 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 mainHandler.post {
+                    if (disposed) return@post
                     connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
                         knownTransports[network] = capabilities.toNetworkTransport()
                     }
@@ -112,6 +126,7 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
 
             override fun onLost(network: Network) {
                 mainHandler.post {
+                    if (disposed) return@post
                     knownTransports.remove(network)
                     publishState()
                 }
@@ -129,7 +144,8 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
             }
         }
 
-        connectivityManager.activeNetwork?.let { network ->
+        // Sleep may lose callbacks. Rebuild from the OS instead of retaining old transports.
+        connectivityManager.allNetworks.forEach { network ->
             connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
                 knownTransports[network] = capabilities.toNetworkTransport()
             }
@@ -140,6 +156,7 @@ fun rememberNetworkConnectionStatus(): State<NetworkConnectionStatus> {
         runCatching { connectivityManager.registerNetworkCallback(request, callback) }
 
         onDispose {
+            disposed = true
             runCatching { connectivityManager.unregisterNetworkCallback(callback) }
         }
     }

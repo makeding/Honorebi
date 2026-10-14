@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.OffsetDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,6 +38,7 @@ private const val TAG = "AppContentStore"
 private const val CHANNEL_REFRESH_INTERVAL_MS = 60_000L
 private const val RECORDING_REFRESH_INTERVAL_MS = 30_000L
 private const val PROGRESS_REFRESH_INTERVAL_MS = 15_000L
+private val RECOVERY_RETRY_DELAYS_MS = listOf(1_000L, 2_000L, 4_000L, 8_000L, 15_000L)
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Singleton
@@ -110,6 +112,9 @@ class AppContentStore internal constructor(
     private var progressUpdateJob: Job? = null
     private var lastChannelsFetchedAtMillis = 0L
     private var lastRecordingsFetchedAtMillis = 0L
+    private var appAwake = true
+    private val wakeGeneration = MutableStateFlow(0)
+    private var channelRecoveryPending = false
     @Volatile
     private var isRecordingPollingEnabled = false
 
@@ -132,7 +137,14 @@ class AppContentStore internal constructor(
 
     fun setPollingPaused(paused: Boolean) = Unit
 
+    fun setAppAwake(awake: Boolean) {
+        if (appAwake == awake) return
+        appAwake = awake
+        wakeGeneration.value++
+    }
+
     fun refreshChannels(afterNetworkRecovery: Boolean = false) {
+        channelRecoveryPending = channelRecoveryPending || afterNetworkRecovery
         channelRetry.reset()
         _isChannelsLoading.value = true
         scope.launch {
@@ -165,7 +177,7 @@ class AppContentStore internal constructor(
             recordingPollingJob = scope.launch {
                 while (isActive) {
                     delay(5_000L)
-                    if (isRecordingPollingEnabled &&
+                    if (appAwake && isRecordingPollingEnabled &&
                         recordingRetry.canAttempt(elapsedRealtime() - lastRecordingsFetchedAtMillis)
                     ) {
                         fetchRecentRecordingsInternal()
@@ -183,7 +195,7 @@ class AppContentStore internal constructor(
 
                 if (!isActive) break
                 val now = elapsedRealtime()
-                if (channelRetry.canAttempt(now - lastChannelsFetchedAtMillis)) {
+                if (appAwake && channelRetry.canAttempt(now - lastChannelsFetchedAtMillis)) {
                     fetchChannelsInternal()
                 }
             }
@@ -207,20 +219,35 @@ class AppContentStore internal constructor(
 
     private suspend fun fetchChannelsInternal(queueIfRunning: Boolean = false) {
         try {
-            channelRefreshRunner.run(queueIfRunning) { fetchChannelsOnce() }
+            channelRefreshRunner.run(queueIfRunning) {
+                val recovering = channelRecoveryPending
+                channelRecoveryPending = false
+                var retry = 0
+                val generation = wakeGeneration.value
+                while (appAwake && generation == wakeGeneration.value) {
+                    val failure = fetchChannelsOnce()
+                    if (failure == null || !recovering ||
+                        failure.backendApiFailure()?.automaticallyRetryable == false ||
+                        retry >= RECOVERY_RETRY_DELAYS_MS.size ||
+                        !appAwake || generation != wakeGeneration.value
+                    ) break
+                    // A new sleep/wake cancels the old wait so queued recovery is not delayed.
+                    withTimeoutOrNull(RECOVERY_RETRY_DELAYS_MS[retry++]) {
+                        wakeGeneration.first { it != generation }
+                    }
+                }
+            }
         } finally {
             // A queued reconnect must finish before the UI accepts a result from this flight.
             if (!channelRefreshRunner.isRunning) _isChannelsLoading.value = false
         }
     }
 
-    private suspend fun fetchChannelsOnce() {
+    private suspend fun fetchChannelsOnce(): Throwable? {
+        val generation = wakeGeneration.value
         try {
             val response = withContext(ioDispatcher) { liveProvider.getChannels() }
-            _connectionError.value = false
-            _channelError.value = null
-            channelRetry.reset()
-            _sourceErrors.value = response.sourceErrors
+            if (!appAwake || generation != wakeGeneration.value) return null
             val hideSubChannels = settingsRepository.hideSubChannels.first()
 
             val processed = withContext(Dispatchers.Default) {
@@ -266,23 +293,31 @@ class AppContentStore internal constructor(
                 filtered.filter { it.isDisplay }.groupBy { it.type }
             }
 
+            val newRows = transformToUiState(processed)
+            if (!appAwake || generation != wakeGeneration.value) return null
+            _connectionError.value = false
+            _channelError.value = null
+            channelRetry.reset()
+            _sourceErrors.value = response.sourceErrors
             if (_groupedChannels.value != processed) {
                 _groupedChannels.value = processed
             }
-
-            val newRows = transformToUiState(processed)
             if (_liveRows.value != newRows) {
                 _liveRows.value = newRows
             }
+
+            return null
 
         } catch (e: CancellationException) {
             Log.d(TAG, "fetchChannelsInternal cancelled")
             throw e
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching channels", e)
+            if (!appAwake || generation != wakeGeneration.value) return null
             _connectionError.value = true
             _channelError.value = e.backendApiFailure()?.displayText ?: e.message ?: "チャンネルを取得できませんでした。接続を確認して再試行してください。"
             channelRetry.failed(e)
+            return e
         } finally {
             lastChannelsFetchedAtMillis = elapsedRealtime()
         }
@@ -297,6 +332,8 @@ class AppContentStore internal constructor(
     }
 
     private suspend fun fetchRecentRecordingsOnce() {
+        if (!appAwake) return
+        val generation = wakeGeneration.value
         try {
             val firstPage = withContext(ioDispatcher) {
                 val raw = mutableListOf<RecordedProgram>()
@@ -309,6 +346,7 @@ class AppContentStore internal constructor(
                 } while (raw.count { !nhkExclusionRepository.isExcluded(it) } < 20)
                 raw.toList()
             }
+            if (!appAwake || generation != wakeGeneration.value) return
             _recordingError.value = null
             recordingRetry.reset()
             if (_recentRecordings.value != firstPage) {
@@ -319,6 +357,7 @@ class AppContentStore internal constructor(
             throw e
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching recent recordings", e)
+            if (!appAwake || generation != wakeGeneration.value) return
             _recordingError.value = e.backendApiFailure()?.displayText ?: e.message ?: "録画番組を取得できませんでした。接続を確認して再試行してください。"
             recordingRetry.failed(e)
         } finally {

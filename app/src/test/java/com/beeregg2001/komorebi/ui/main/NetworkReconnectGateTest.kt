@@ -6,6 +6,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NetworkReconnectGateTest {
+    @Test fun wakeRechecksEvenWhenNoNetworkLostCallbackWasDelivered() {
+        val gate = NetworkReconnectGate()
+        assertFalse(gate.shouldRecheck(true, true, awake = true, wakeGeneration = 0))
+        assertTrue(gate.shouldRecheck(true, true, awake = true, wakeGeneration = 1))
+        assertFalse(gate.shouldRecheck(true, true, awake = true, wakeGeneration = 1))
+    }
+
+    @Test fun wakeWaitsForLateNetworkAndSettingsThenChecksOnce() {
+        val gate = NetworkReconnectGate()
+        assertFalse(gate.shouldRecheck(true, true, awake = false))
+        assertFalse(gate.shouldRecheck(false, true, awake = true, wakeGeneration = 1))
+        assertFalse(gate.shouldRecheck(true, false, awake = true, wakeGeneration = 1))
+        assertTrue(gate.shouldRecheck(true, true, awake = true, wakeGeneration = 1))
+        assertFalse(gate.shouldRecheck(true, true, awake = true, wakeGeneration = 1))
+    }
+
     @Test fun offlineStartupAndEachReconnectRequestExactlyOneRecheck() {
         val gate = NetworkReconnectGate()
         assertFalse(gate.shouldRecheck(false, true))

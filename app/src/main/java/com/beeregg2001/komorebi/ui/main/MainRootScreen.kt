@@ -33,7 +33,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalTime
 import androidx.compose.runtime.collectAsState
-import androidx.media3.common.util.Log
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
@@ -186,48 +185,13 @@ fun MainRootScreen(
     // =========================================================================================
     // ★ 追加: アプリのバックグラウンド移行（スリープ）と復帰を検知する機構
     // =========================================================================================
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    var isAppInForeground by remember { mutableStateOf(true) }
-
-    DisposableEffect(lifecycleOwner) {
-        var wasPaused = false
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> wasPaused = true
-                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
-                    // 別のアプリを開いた、またはホーム画面に戻ってアプリが裏に回った（スリープ状態）
-                    isAppInForeground = false
-                }
-
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
-                    scope.launch { nhkExclusionRepository.refreshExpiry() }
-                    if (wasPaused) {
-                        wasPaused = false
-                        channelViewModel.refreshAfterRecovery()
-                    }
-                    // アプリ画面に戻ってきた時（かつ、一度裏に回っていた場合のみ実行）
-                    if (!isAppInForeground) {
-                        isAppInForeground = true
-
-                        Log.i(
-                            "KomorebiLifecycle",
-                            "アプリがバックグラウンドから復帰しました。データをリフレッシュします。"
-                        )
-
-                        // 1. ホーム画面のデータを最新に更新する
-                        homeViewModel.refreshHomeData()
-                        homeViewModel.refreshLauncherApps()
-
-                    }
-                }
-
-                else -> {}
-            }
+    val appWakeState = rememberAppWakeState(channelViewModel::setAppAwake)
+    LaunchedEffect(appWakeState.isAwake, appWakeState.generation) {
+        if (appWakeState.isAwake) {
+            nhkExclusionRepository.refreshExpiry()
+            if (appWakeState.generation > 0) homeViewModel.refreshLauncherApps()
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    // =========================================================================================
 
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState(initial = "")
@@ -437,7 +401,7 @@ fun MainRootScreen(
     val isHomeLoading by homeViewModel.isLoading.collectAsState()
     val isChannelError by channelViewModel.connectionError.collectAsState()
     val channelErrorReason by channelViewModel.channelError.collectAsState()
-    val networkConnectionStatus by rememberNetworkConnectionStatus()
+    val networkConnectionStatus by rememberNetworkConnectionStatus(appWakeState.isAwake, appWakeState.generation)
     val isNetworkAvailable = networkConnectionStatus.isAvailable
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
     val watchHistory by homeViewModel.watchHistory.collectAsState()
@@ -456,6 +420,7 @@ fun MainRootScreen(
         enabled = screensaverEnabled,
         timeoutMinutes = screensaverTimeout,
         hasImages = screensaverImages.isNotEmpty(),
+        wakeState = appWakeState,
     )
     val defaultSystemChannel = remember(groupedChannels) {
         val channels = groupedChannels.values.flatten()
@@ -632,12 +597,12 @@ fun MainRootScreen(
     }
 
     val reconnectGate = remember { NetworkReconnectGate() }
-    LaunchedEffect(isNetworkAvailable, isSettingsInitialized) {
-        if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized)) {
+    LaunchedEffect(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation) {
+        if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation)) {
             channelViewModel.refreshAfterRecovery()
             homeViewModel.refreshHomeData()
         }
-        if (isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {
+        if (appWakeState.isAwake && isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {
             state.showConnectionErrorDialog = false
             state.isOfflineMode = true
             state.isDataReady = true
@@ -647,8 +612,8 @@ fun MainRootScreen(
         }
     }
 
-    LaunchedEffect(isChannelLoading, isHomeLoading, isChannelError, isNetworkAvailable) {
-        if (!isChannelLoading && !isHomeLoading) {
+    LaunchedEffect(isChannelLoading, isHomeLoading, isChannelError, isNetworkAvailable, appWakeState.isAwake) {
+        if (appWakeState.isAwake && !isChannelLoading && !isHomeLoading) {
             delay(300)
             when (offlinePresentation(isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady)) {
                 OfflinePresentation.CONNECTION_FAILURE -> {
@@ -898,7 +863,7 @@ fun MainRootScreen(
             if (showExitDialog) {
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
             }
-            if (screensaverState.isVisible && screensaverImages.isNotEmpty()) {
+            if (appWakeState.isAwake && screensaverState.isVisible && screensaverImages.isNotEmpty()) {
                 val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
                     enabled = screensaverShowUpcoming,
                     visible = true,

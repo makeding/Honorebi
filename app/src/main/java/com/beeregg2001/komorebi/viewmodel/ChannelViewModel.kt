@@ -91,6 +91,10 @@ class ChannelViewModel @Inject constructor(
         appContentStore.refreshAfterRecovery()
     }
 
+    fun setAppAwake(awake: Boolean) {
+        appContentStore.setAppAwake(awake)
+    }
+
     fun fetchRecentRecordings() {
         appContentStore.refreshRecentRecordings()
     }

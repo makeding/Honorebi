@@ -9,8 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
@@ -38,7 +36,7 @@ import java.time.Duration
 class InAppScreensaverStateTest {
     private val effects = TestCoroutineScheduler()
     @get:Rule val compose = createComposeRule(effectContext = UnconfinedTestDispatcher(effects))
-    private val context get() = RuntimeEnvironment.getApplication<Application>()
+    private val context get() = RuntimeEnvironment.getApplication()
     private val owner = object : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry

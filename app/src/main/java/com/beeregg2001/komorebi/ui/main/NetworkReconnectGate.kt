@@ -3,10 +3,12 @@ package com.beeregg2001.komorebi.ui.main
 /** Remembers a disconnection even when backend settings are not ready yet. */
 internal class NetworkReconnectGate {
     private var needsRecheck = false
+    private var lastWakeGeneration = 0
 
-    fun shouldRecheck(available: Boolean, settingsInitialized: Boolean): Boolean {
-        if (!available) needsRecheck = true
-        if (!available || !settingsInitialized || !needsRecheck) return false
+    fun shouldRecheck(available: Boolean, settingsInitialized: Boolean, awake: Boolean = true, wakeGeneration: Int = 0): Boolean {
+        if (!available || !awake || wakeGeneration != lastWakeGeneration) needsRecheck = true
+        lastWakeGeneration = wakeGeneration
+        if (!available || !awake || !settingsInitialized || !needsRecheck) return false
         needsRecheck = false
         return true
     }
