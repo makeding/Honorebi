@@ -360,6 +360,7 @@ h1 {
   margin: 0;
   color: #d9ccce;
 }
+.account-feedback { min-height: 5em; }
 .account-box a {
   color: #f3abc4;
 }

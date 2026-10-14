@@ -37,8 +37,13 @@ fun ConnectionSetupDialog(
 ) {
     val colors = KomorebiTheme.colors
     val manualR = remember { FocusRequester() }
+    val closeR = remember { FocusRequester() }
     DisposableEffect(Unit) { onStart(); onDispose { onStop() } }
-    LaunchedEffect(Unit) { withFrameNanos { }; manualR.safeRequestFocus("ConnectionSetup_Initial") }
+    LaunchedEffect(initialSetup) {
+        withFrameNanos { }
+        if (initialSetup) manualR.safeRequestFocus("ConnectionSetup_Initial")
+        else closeR.safeRequestFocus("ConnectionSetup_Close")
+    }
     val session = state.session
     val url = session?.let { "http://$serverIp:8081/connections/" +
         (it.source?.let { source -> "?source=$source" } ?: "") + "#${it.token}" }
@@ -71,13 +76,23 @@ fun ConnectionSetupDialog(
                         else Text("QRコードを準備中", color = Color.Black)
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f),
-                        enabled = !initialSetup || canFinishInitialSetup) {
-                        Text(if (initialSetup) "設定を完了" else "閉じる")
+                if (initialSetup) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f),
+                            enabled = canFinishInitialSetup) {
+                            Text("設定を完了")
+                        }
+                        DialogActionButton(DialogActionRole.Primary, onManualInput,
+                            Modifier.weight(1f).focusRequester(manualR)) { Text("リモコンで手動入力") }
                     }
-                    DialogActionButton(DialogActionRole.Primary, onManualInput,
-                        Modifier.weight(1f).focusRequester(manualR)) { Text("リモコンで手動入力") }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        DialogActionButton(
+                            DialogActionRole.Secondary,
+                            onDismiss,
+                            Modifier.focusRequester(closeR),
+                        ) { Text("閉じる") }
+                    }
                 }
             }
         }

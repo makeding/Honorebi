@@ -19,6 +19,6 @@ Every API request includes `X-Setup-Token` from the fragment. Query-string token
 
 Unsaved edits use origin-scoped `sessionStorage` drafts. Restoration merges changed fields into freshly fetched settings; successful saves clear the draft. Account/device tokens and setup secrets never enter drafts.
 
-Account endpoints under `/api/connections/account` require the same open QR session. Pairing starts on the TV; the phone navigates directly to the provider's verification page while the TV continues polling. Closing the QR dialog cancels polling. Logout requires explicit confirmation.
+Account endpoints under `/api/connections/account` require the same open QR session. Clicking account linking first applies any edited KonomiTV connection/Access fields, retaining unrelated unsaved edits as a draft; no separate save is required. Pairing starts on the TV; the phone navigates directly to the provider's verification page while the TV continues polling. Closing the QR dialog cancels polling. Logout requires explicit confirmation.
 
 Validation contracts: [settings categories](../docs/validation/settings_categories.md). Run `pnpm test` for the frontend regressions; Android HTTP/persistence and focus tests also cover the packaged assets.

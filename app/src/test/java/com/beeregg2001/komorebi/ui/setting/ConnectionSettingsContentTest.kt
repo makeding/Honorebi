@@ -31,6 +31,32 @@ import org.robolectric.annotation.Config
 class ConnectionSettingsContentTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun dailyQrUsesCompactRightAlignedCloseAndRevokesOnClose() {
+        val session = com.beeregg2001.komorebi.setup.ConnectionSetupSession()
+        var visible by mutableStateOf(true)
+        var starts = 0
+        var stops = 0
+        compose.setContent {
+            KomorebiTheme(AppTheme.AUTUMN) {
+                if (visible) ConnectionSetupDialog("接続設定", "192.168.1.10",
+                    com.beeregg2001.komorebi.setup.ConnectionSetupUiState(session),
+                    onStart = { starts++ }, onStop = { stops++; session.revoke() },
+                    onDismiss = { visible = false }, onManualInput = {}, initialSetup = false)
+            }
+        }
+        val close = compose.onNodeWithText("閉じる")
+        close.assertIsFocused()
+        compose.onNodeWithText("リモコンで手動入力").assertDoesNotExist()
+        val closeBounds = close.getUnclippedBoundsInRoot()
+        assertTrue("close should stay at the dialog's right edge", closeBounds.left.value > 480f)
+        assertTrue("close should be compact", (closeBounds.right - closeBounds.left).value < 300f)
+        assertTrue(session.accepts(session.token))
+        assertEquals(1, starts); assertEquals(0, stops)
+        close.performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil { stops == 1 }
+        compose.runOnIdle { assertFalse(session.accepts(session.token)); assertEquals(1, stops) }
+    }
+
     @Test fun initialQrStaysOpenAfterSaveAndRevokesItsLinkWhenFinished() {
         val session = com.beeregg2001.komorebi.setup.ConnectionSetupSession()
         var finishable by mutableStateOf(false)

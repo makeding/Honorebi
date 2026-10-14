@@ -19,6 +19,7 @@ import {
   type SourceId,
 } from "./connection";
 import { draftKey, editableSettings, createDraft, applyDraft } from "./draft";
+import { pairingConnectionChanged, pairingInputError, preparePairingConnection } from './pairing';
 import honoRebiMark from "../../app/src/main/res/drawable/honorebi_mark.png";
 
 const token = setupTokenFromHash(window.location.hash);
@@ -52,7 +53,7 @@ const configuredSources = computed(() =>
   snapshot.value.sources.filter(isConfigured),
 );
 const canChooseMain = computed(() => configuredSources.value.length >= 2);
-const controlsLocked = computed(() => saving.value || expired.value);
+const controlsLocked = computed(() => saving.value || expired.value || accountState.value === 'pairing');
 const mainSystem = computed({
   get: () =>
     resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem),
@@ -61,13 +62,7 @@ const mainSystem = computed({
   },
 });
 const accountPending = ref(false);
-const konomiDirty = computed(() => {
-  const current = snapshot.value.sources.find((s) => s.id === "KONOMITV");
-  const before = JSON.parse(baseline).sources.find(
-    (s: { id: string }) => s.id === "KONOMITV",
-  );
-  return current?.host !== before?.host || current?.port !== before?.port;
-});
+const pairingValidation = computed(() => pairingInputError(snapshot.value));
 const invalidSmb = computed(
   () =>
     snapshot.value.smbServers.find((server) => !validSmbServer(server)) ?? null,
@@ -336,25 +331,28 @@ async function cancelPairing() {
   }
 }
 async function startPairing() {
-  const konomiChanged =
-    JSON.stringify(snapshot.value.sources.find((s) => s.id === "KONOMITV")) !==
-    JSON.stringify(
-      JSON.parse(baseline || "{}").sources?.find(
-        (s: { id: string }) => s.id === "KONOMITV",
-      ),
-    );
-  if (konomiChanged) {
-    accountError.value =
-      "先に「テレビに保存」を押して、KonomiTV の入力内容を保存してください。";
-    return;
-  }
+  if (controlsLocked.value || accountPending.value || accountState.value === 'waiting') return;
+  if (pairingValidation.value) { accountError.value = pairingValidation.value; return; }
   accountError.value = "";
   accountState.value = "pairing";
   try {
+    if (pairingConnectionChanged(snapshot.value, baselineSnapshot)) {
+      const prepared = await preparePairingConnection(snapshot.value, baselineSnapshot,
+        async () => normalizeSnapshot(await request('/api/connections', 'GET')),
+        async settings => normalizeSnapshot(await request('/api/connections', 'POST', saveBody(settings))));
+      applyingSnapshot = true;
+      baselineSnapshot = prepared.saved;
+      baseline = JSON.stringify(editableSettings(baselineSnapshot));
+      snapshot.value = prepared.local;
+      applyingSnapshot = false;
+      edited();
+    }
     const result = (await request("/api/connections/account/pair", "POST")) as {
       verificationUrl: string;
       userCode: string;
     };
+    if (typeof result.verificationUrl !== 'string' || !result.verificationUrl.trim())
+      throw new Error('認証ページを開けませんでした。もう一度連携してください。 (INVALID_VERIFICATION_URL)');
     verificationUrl.value = result.verificationUrl;
     userCode.value = result.userCode;
     accountState.value = "waiting";
@@ -518,13 +516,16 @@ onBeforeUnmount(stopPolling);
                     :disabled="
                       controlsLocked ||
                       accountPending ||
+                      !!pairingValidation ||
                       accountState === 'pairing' ||
                       accountState === 'waiting'
                     "
                     @click="startPairing"
                   >
                     {{
-                      accountState === "waiting"
+                      accountState === 'pairing'
+                        ? '認証ページを開いています…'
+                        : accountState === "waiting"
                         ? "連携を確認中…"
                         : accountState === "expired" || accountState === "error"
                           ? "もう一度連携"
@@ -548,11 +549,8 @@ onBeforeUnmount(stopPolling);
                 >
                   ログアウト
                 </button>
-                <p v-if="accountError" class="field-error">
-                  {{ accountError }}
-                </p>
-                <p v-if="accountState === 'expired'" class="field-error">
-                  連携の有効期限が切れました。もう一度連携してください。
+                <p class="field-error account-feedback" role="alert">
+                  {{ accountError || pairingValidation || (accountState === 'expired' ? '連携の有効期限が切れました。もう一度連携してください。' : '') }}
                 </p>
               </section>
             </div>
