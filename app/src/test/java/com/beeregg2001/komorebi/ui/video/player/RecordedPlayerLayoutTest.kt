@@ -6,6 +6,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.width
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsDisplayed
@@ -31,6 +34,7 @@ import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -487,6 +491,56 @@ class RecordedPlayerLayoutTest {
     }
 
     @Test
+    fun heldDirectionalSeekUpdatesPreviewWithoutMovingLayoutOrLosingFocus() {
+        val state = VideoPlayerState()
+        val modern = mutableStateOf(true)
+        val identity = mutableStateOf("first")
+        val commits = mutableListOf<Long>()
+        composeRule.setContent {
+            KomorebiTheme {
+                RunRecordedDirectionalSeek(state, identity.value, true, 1_800_000L)
+                Box(Modifier.testTag("seek-input").onPreviewKeyEvent { event ->
+                    state.handleKeyEvent(
+                        keyEvent = event, isPiPMode = false, isModern = modern.value,
+                        showControls = true, isSubOverlayOpen = false, chapters = emptyList(),
+                        canOpenSceneSearch = false, totalDurationMs = 1_800_000L,
+                        getCurrentPositionMs = { 120_000L }, performSeek = commits::add,
+                        triggerSeekingPreview = {}, onShowControlsChange = {}, onPiPRequested = {},
+                        onBackPressed = {}, onSceneSearchToggle = {}, onSettingsMenuToggle = {},
+                        onChapterListToggle = {}, onSubMenuToggle = {}, exoPlayerIsPlaying = false,
+                        onPause = {}, onPlay = {}, onSkipPreviousChapter = {}, onSkipNextChapter = {},
+                    )
+                }.focusable()) {
+                    controls(modern.value, false, state.directionalSeek.isHolding, seekState = state)
+                }
+            }
+        }
+        composeRule.onNodeWithTag("playback-track").requestFocus().assertIsFocused()
+        val bounds = controlBounds()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("playback-track").performKeyInput { keyDown(Key.DirectionRight) }
+        composeRule.mainClock.advanceTimeBy(2_000L)
+        composeRule.runOnIdle {
+            assertTrue(state.directionalSeek.previewPositionMs!! > 130_000L)
+            assertTrue(commits.isEmpty())
+        }
+        assertEquals(bounds, controlBounds())
+        composeRule.onNodeWithTag("playback-track").assertIsFocused().performKeyInput { keyUp(Key.DirectionRight) }
+        composeRule.runOnIdle { assertEquals(1, commits.size); modern.value = false }
+        composeRule.mainClock.advanceTimeBy(250L)
+        composeRule.onNodeWithTag("seek-input").requestFocus()
+        val legacyBounds = controlBounds()
+        composeRule.onNodeWithTag("seek-input").performKeyInput { keyDown(Key.DirectionLeft) }
+        composeRule.mainClock.advanceTimeBy(1_500L)
+        assertEquals(legacyBounds, controlBounds())
+        composeRule.runOnIdle { identity.value = "second" }
+        composeRule.mainClock.advanceTimeBy(32L)
+        composeRule.runOnIdle { assertFalse(state.directionalSeek.isHolding) }
+        composeRule.onNodeWithTag("seek-input").performKeyInput { keyUp(Key.DirectionLeft) }
+        composeRule.runOnIdle { assertEquals(1, commits.size) }
+    }
+
+    @Test
     fun obstaclesUseContentWithEightDpMarginAndPreserveGapsInBothStylesAndViewports() {
         val modern = mutableStateOf(false)
         val visible = mutableStateOf(true)
@@ -638,6 +692,7 @@ class RecordedPlayerLayoutTest {
         bufferedProvider: () -> Long = { 180_000L },
         title: String = "番組",
         onObstacles: (List<Rect>) -> Unit = {},
+        seekState: VideoPlayerState? = null,
     ) {
         PlayerControls(
             mediaInfo = PlaybackMediaInfo.recorded(testProgram(title)),
@@ -655,11 +710,14 @@ class RecordedPlayerLayoutTest {
             displayPositionMsProvider = positionProvider,
             displayBufferedPositionMsProvider = bufferedProvider,
             controlsFocusRequester = remember { FocusRequester() },
-            onSeekBarFocusChanged = {},
+            seekPreviewPositionMs = { seekState?.directionalSeek?.previewPositionMs },
+            onSeekBarFocusChanged = {
+                if (seekState?.isSeekBarFocused == true && !it) seekState.directionalSeek.cancel()
+                seekState?.isSeekBarFocused = it
+            },
             onPlayPauseToggle = {},
             onSeekBack = {},
             onSeekForward = {},
-            onSeekRequested = {},
             onChapterListToggle = {},
             onInfoToggle = {},
             onSettingsToggle = {},

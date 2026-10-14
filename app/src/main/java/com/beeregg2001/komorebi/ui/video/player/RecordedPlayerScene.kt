@@ -422,13 +422,13 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         totalDurationMs = totalDurationMs,
         initialBufferedPositionMs = initialBufferedPositionMs,
         displayPositionMsProvider = controlsPositionMs,
+        seekPreviewPositionMs = { state.directionalSeek.previewPositionMs },
         displayBufferedPositionMsProvider = controlsBufferedPositionMs,
         controlsFocusRequester = playerControlsFocusRequester,
         onSeekBarFocusChanged = onSeekBarFocusChanged,
         onPlayPauseToggle = onPlayPauseToggle,
         onSeekBack = onSeekBack,
         onSeekForward = onSeekForward,
-        onSeekRequested = onSeekRequested,
         onSkipPreviousChapter = onSkipPreviousChapter,
         onSkipNextChapter = onSkipNextChapter,
         canOpenKeyframeGrid = canOpenKeyframeGrid,
@@ -823,6 +823,11 @@ internal fun handleRecordedPlayerKeyEvent(
     val manualSkipPromptActive = !state.manualCmSkipPromptSuppressed &&
         !cmSkipInteractionBlocked &&
         manualSkipTargetMs != null
+    if (keyCode != android.view.KeyEvent.KEYCODE_DPAD_LEFT &&
+        keyCode != android.view.KeyEvent.KEYCODE_DPAD_RIGHT) state.directionalSeek.cancel()
+    if (isPiPMode || isSubOverlayOpen || showNextEpisodeCountdown || isDataBroadcastingActive) {
+        state.directionalSeek.cancel()
+    }
     val isNonConfirmKeyDown = shouldDismissManualCmSkipPrompt(
         keyCode = keyCode,
         isActionDown = keyEvent.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN,

@@ -47,7 +47,7 @@ fun ConnectionSetupDialog(
     val session = state.session
     val url = session?.let { "http://$serverIp:8081/connections/" +
         (it.source?.let { source -> "?source=$source" } ?: "") + "#${it.token}" }
-    val bitmap = url?.let { rememberQrBitmap(it, 300) }
+    val bitmap = url?.let { rememberQrBitmap(it, 300, margin = 4) }
     Dialog(onDismissRequest = if (initialSetup && !canFinishInitialSetup) ({}) else onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = !initialSetup)) {
         ThemedDialogSurface(width = 680.dp) {
@@ -70,7 +70,7 @@ fun ConnectionSetupDialog(
                             if (state.error != null) DialogActionButton(DialogActionRole.Secondary, onStart) { Text("再試行") }
                         }
                     }
-                    Box(Modifier.size(220.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(16.dp),
+                    Box(Modifier.size(220.dp).background(Color.White, RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center) {
                         if (bitmap != null) Image(bitmap, "接続設定のQRコード", Modifier.fillMaxSize())
                         else Text("QRコードを準備中", color = Color.Black)

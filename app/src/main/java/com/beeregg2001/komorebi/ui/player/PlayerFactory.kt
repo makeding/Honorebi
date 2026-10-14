@@ -34,15 +34,19 @@ data class PlayerProfile(
     val detachSurfaceTimeoutMs: Long? = null,
     val handleAudioFocus: Boolean = true,
     val configureAudioAttributes: Boolean = true,
+    /** Original MPEG-TS must catch up after damaged video falls behind the audio clock. */
+    val recoverLateVideoFrames: Boolean = false,
 )
 
 internal object PlayerFactory {
     fun create(context: Context, profile: PlayerProfile, mediaSourceFactory: MediaSource.Factory?): ExoPlayer {
         val toneMapping = profile.enableHdrToSdrToneMapping
         val renderers = if (profile.audioOutputMode == null) {
-            LibaribtlvToneMappingRenderersFactory(context, if (toneMapping) HdrToneMapping.colorLut else null)
+            LibaribtlvToneMappingRenderersFactory(context, if (toneMapping) HdrToneMapping.colorLut else null,
+                profile.recoverLateVideoFrames)
         } else {
-            object : LibaribtlvToneMappingRenderersFactory(context, if (toneMapping) HdrToneMapping.colorLut else null) {
+            object : LibaribtlvToneMappingRenderersFactory(context, if (toneMapping) HdrToneMapping.colorLut else null,
+                profile.recoverLateVideoFrames) {
                 override fun buildAudioSink(ctx: Context, enableFloat: Boolean, enableParams: Boolean): DefaultAudioSink {
                     val processors = if (profile.audioOutputMode == "PASSTHROUGH") emptyArray<AudioProcessor>() else {
                         arrayOf<AudioProcessor>(ChannelMixingAudioProcessor().apply {

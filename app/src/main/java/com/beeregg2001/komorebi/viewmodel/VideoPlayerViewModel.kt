@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeout
 import com.beeregg2001.komorebi.data.model.SeekPositionResponse
 
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,6 +24,7 @@ import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
 import com.beeregg2001.komorebi.ui.video.player.policy.selectNaturalEpisodePrograms
+import com.beeregg2001.komorebi.ui.video.player.policy.BangumiProgressGate
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
 import com.beeregg2001.komorebi.ui.player.recorded.RecordedPlaybackSourceResolver
@@ -127,7 +129,7 @@ class VideoPlayerViewModel @Inject constructor(
     private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
     private var quickSeriesIdentity: String? = null
     private var preferredQuickSeriesChannelId: String? = null
-    private var bangumiProgressReportedProgramId: Int? = null
+    private val bangumiProgressGate = BangumiProgressGate()
 
     init {
         viewModelScope.launch {
@@ -148,25 +150,22 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
     fun reportBangumiPlaybackProgress(programId: Int, positionMs: Long, durationMs: Long) {
-        if (bangumiProgressReportedProgramId == programId) return
-        bangumiProgressReportedProgramId = programId
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                val response = konomiRepository.updateBangumiPlaybackProgress(
+        if (konomiRepository.currentUser.value?.bangumi_user_id == null) return
+        if (!bangumiProgressGate.begin(programId, positionMs, durationMs, SystemClock.elapsedRealtime())) return
+        viewModelScope.launch {
+            try {
+                konomiRepository.updateBangumiPlaybackProgress(
                     programId,
                     positionMs / 1000.0,
                     durationMs / 1000.0,
                 )
-                if (response.status == "Pending" && bangumiProgressReportedProgramId == programId) {
-                    delay(30_000L)
-                    bangumiProgressReportedProgramId = null
-                }
-            }.onFailure { error ->
-                if (bangumiProgressReportedProgramId == programId) {
-                    delay(30_000L)
-                    bangumiProgressReportedProgramId = null
-                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 Log.w(TAG, "Failed to update Bangumi playback progress. [video_id=$programId]", error)
+            } finally {
+                // A completed episode must not suppress later episodes in the same range recording.
+                bangumiProgressGate.finish(programId)
             }
         }
     }

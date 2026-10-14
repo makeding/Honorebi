@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -19,19 +20,6 @@ internal data class RecordedControlsDisplayProgress(
 )
 
 internal fun shouldPollRecordedControlsDisplay(isVisible: Boolean): Boolean = isVisible
-
-internal fun resolveRecordedControlsSeekTarget(
-    latestPositionMs: Long,
-    stepMs: Long,
-    totalDurationMs: Long,
-    forward: Boolean,
-): Long = if (forward) {
-    (latestPositionMs + stepMs).coerceAtMost(
-        if (totalDurationMs > 0L) totalDurationMs else Long.MAX_VALUE,
-    )
-} else {
-    (latestPositionMs - stepMs).coerceAtLeast(0L)
-}
 
 internal fun readRecordedControlsDisplayProgress(
     isVisible: Boolean,
@@ -58,9 +46,11 @@ internal fun rememberRecordedControlsDisplayProgress(
     initialBufferedPositionMs: Long,
     positionMs: () -> Long,
     bufferedPositionMs: () -> Long,
+    previewPositionMs: () -> Long? = { null },
 ): State<RecordedControlsDisplayProgress> {
     val currentPositionMs by rememberUpdatedState(positionMs)
     val currentBufferedPositionMs by rememberUpdatedState(bufferedPositionMs)
+    val currentPreviewPositionMs by rememberUpdatedState(previewPositionMs)
     val progress = remember {
         mutableStateOf(
             RecordedControlsDisplayProgress(
@@ -81,6 +71,15 @@ internal fun rememberRecordedControlsDisplayProgress(
             )
             if (next != progress.value) progress.value = next
             delay(RECORDED_CONTROLS_DISPLAY_POLL_MS)
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(isVisible) {
+        if (!isVisible) return@LaunchedEffect
+        snapshotFlow { currentPreviewPositionMs() != null }.collect { previewActive ->
+            // On commit/cancel, refresh immediately so the track never flashes its old 4Hz snapshot.
+            if (!previewActive) progress.value = readRecordedControlsDisplayProgress(
+                true, progress.value, currentPositionMs, currentBufferedPositionMs,
+            )
         }
     }
     return progress

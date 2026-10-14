@@ -1387,15 +1387,15 @@ fun GeminiSetupDialog(
 }
 
 @Composable
-fun rememberQrBitmap(content: String, size: Int): androidx.compose.ui.graphics.ImageBitmap? {
-    return remember(content, size) {
+fun rememberQrBitmap(content: String, size: Int, margin: Int = 1): androidx.compose.ui.graphics.ImageBitmap? {
+    return remember(content, size, margin) {
         try {
             val bitMatrix = QRCodeWriter().encode(
                 content,
                 BarcodeFormat.QR_CODE,
                 size,
                 size,
-                mapOf(EncodeHintType.MARGIN to 1)
+                mapOf(EncodeHintType.MARGIN to margin)
             )
             val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
             for (x in 0 until size) for (y in 0 until size) bmp.setPixel(

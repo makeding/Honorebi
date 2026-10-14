@@ -399,6 +399,7 @@ fun rememberManagedExoPlayer(
                     targetBufferBytes = bufferProfile.targetBufferBytes,
                 ),
                 enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
+                recoverLateVideoFrames = isOriginalMpegTsPlayback,
             ),
             mediaSourceFactory = mediaSourceFactory,
         )

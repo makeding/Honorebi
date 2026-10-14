@@ -39,19 +39,4 @@ class RecordedControlProgressTest {
         assertEquals(RecordedControlsDisplayProgress(13_000L, 19_000L), result)
     }
 
-    @Test
-    fun repeatedDirectionalSeek_usesTheLatestPendingTargetInsteadOfTheDisplayTick() {
-        var latestPendingTargetMs = 120_000L
-
-        repeat(2) {
-            latestPendingTargetMs = resolveRecordedControlsSeekTarget(
-                latestPositionMs = latestPendingTargetMs,
-                stepMs = 10_000L,
-                totalDurationMs = 1_800_000L,
-                forward = true,
-            )
-        }
-
-        assertEquals(140_000L, latestPendingTargetMs)
-    }
 }

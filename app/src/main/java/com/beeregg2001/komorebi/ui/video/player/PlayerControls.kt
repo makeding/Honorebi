@@ -93,7 +93,6 @@ fun PlayerControls(
     onPlayPauseToggle: () -> Unit,
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
-    onSeekRequested: (Long) -> Unit, // ★ 追加: シークバーでのシーク用コールバック
     onSkipPreviousChapter: () -> Unit = {},
     onSkipNextChapter: () -> Unit = {},
     canOpenKeyframeGrid: Boolean = false,
@@ -102,6 +101,7 @@ fun PlayerControls(
     onInfoToggle: () -> Unit,
     onSettingsToggle: () -> Unit,
     onAvoidanceObstaclesChanged: (List<Rect>) -> Unit = {},
+    seekPreviewPositionMs: () -> Long? = { null },
     infoFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val context = LocalContext.current
@@ -134,13 +134,22 @@ fun PlayerControls(
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
 
-    val displayProgress = rememberRecordedControlsDisplayProgress(
+    val playbackProgress = rememberRecordedControlsDisplayProgress(
         isVisible = isVisible,
         initialPositionMs = initialPositionMs,
         initialBufferedPositionMs = initialBufferedPositionMs,
         positionMs = displayPositionMsProvider,
         bufferedPositionMs = displayBufferedPositionMsProvider,
+        previewPositionMs = seekPreviewPositionMs,
     )
+
+    val latestSeekPreview by rememberUpdatedState(seekPreviewPositionMs)
+    val displayProgress = remember {
+        derivedStateOf {
+            val progress = playbackProgress.value
+            latestSeekPreview()?.let { progress.copy(positionMs = it) } ?: progress
+        }
+    }
 
     val tileInfo = mediaInfo.thumbnailInfo?.tile
     val tileColumns = tileInfo?.columnCount ?: 1
@@ -246,7 +255,6 @@ fun PlayerControls(
 
                 RecordedControlsProgressRow(
                     displayProgress = displayProgress,
-                    displayPositionMsProvider = displayPositionMsProvider,
                     totalDurationMs = totalDurationMs,
                     allComments = allComments,
                     hasChapters = hasChapters,
@@ -263,7 +271,6 @@ fun PlayerControls(
                     playHeadSize = playHeadSize,
                     playHeadVerticalOffset = playHeadVerticalOffset,
                     graphHeight = graphHeight,
-                    onSeekRequested = onSeekRequested,
                     onProgressBoundsChanged = { bounds -> recordAvoidanceBounds("progress", bounds) },
                     onPlayHeadBoundsChanged = { bounds -> recordAvoidanceBounds("play-head", bounds) },
                     onElapsedTimeBoundsChanged = { bounds -> recordTextBounds("elapsed-time", bounds) },
@@ -461,7 +468,6 @@ private fun BoxScope.RecordedSeekingPreview(
 @Composable
 private fun RecordedControlsProgressRow(
     displayProgress: State<RecordedControlsDisplayProgress>,
-    displayPositionMsProvider: () -> Long,
     totalDurationMs: Long,
     allComments: List<ArchivedComment>,
     hasChapters: Boolean,
@@ -475,7 +481,6 @@ private fun RecordedControlsProgressRow(
     playHeadSize: Dp,
     playHeadVerticalOffset: Dp,
     graphHeight: Dp,
-    onSeekRequested: (Long) -> Unit,
     onProgressBoundsChanged: (Rect) -> Unit,
     onPlayHeadBoundsChanged: (Rect) -> Unit,
     onElapsedTimeBoundsChanged: (List<Rect>) -> Unit,
@@ -501,37 +506,7 @@ private fun RecordedControlsProgressRow(
             modifier = Modifier.weight(1f).height(graphHeight).testTag("playback-track")
                 .onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
                 .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
-                .focusable(isModernUi)
-                .onKeyEvent { event ->
-                    if (isSeekBarFocused && event.type == KeyEventType.KeyDown) {
-                        val step = (10_000L * (1 + event.nativeKeyEvent.repeatCount / 5)).coerceAtMost(60_000L)
-                        when (event.key) {
-                            Key.DirectionLeft -> {
-                                onSeekRequested(
-                                    resolveRecordedControlsSeekTarget(
-                                        latestPositionMs = displayPositionMsProvider(),
-                                        stepMs = step,
-                                        totalDurationMs = totalDurationMs,
-                                        forward = false,
-                                    )
-                                )
-                                return@onKeyEvent true
-                            }
-                            Key.DirectionRight -> {
-                                onSeekRequested(
-                                    resolveRecordedControlsSeekTarget(
-                                        latestPositionMs = displayPositionMsProvider(),
-                                        stepMs = step,
-                                        totalDurationMs = totalDurationMs,
-                                        forward = true,
-                                    )
-                                )
-                                return@onKeyEvent true
-                            }
-                        }
-                    }
-                    false
-                },
+                .focusable(isModernUi),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (allComments.isNotEmpty() && totalDurationMs > 0) {

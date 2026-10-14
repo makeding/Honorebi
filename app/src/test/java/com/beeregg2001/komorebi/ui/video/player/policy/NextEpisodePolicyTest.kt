@@ -91,13 +91,6 @@ class NextEpisodePolicyTest {
     }
 
     @Test
-    fun bangumiProgressRequiresPositiveThresholdAndCompletionPosition() {
-        assertFalse(isBangumiPlaybackProgressEligible(1_000L, 0L))
-        assertFalse(isBangumiPlaybackProgressEligible(899_999L, 900_000L))
-        assertTrue(isBangumiPlaybackProgressEligible(900_000L, 900_000L))
-    }
-
-    @Test
     fun atxThirtyMinuteRecordingUsesFixedTwentySixMinuteTrigger() {
         val channel = RecordedChannel("CS333", serviceId = 333, displayChannelId = "CS333", type = "CS", name = "AT-X", channelNumber = "333")
 

@@ -59,7 +59,6 @@ import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDeci
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingAutomationDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingTimelineDurationMs
-import com.beeregg2001.komorebi.ui.video.player.policy.isBangumiPlaybackProgressEligible
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
@@ -1086,16 +1085,8 @@ internal fun RecordedPlayerScreen(
             )
         }
 
-    val bangumiPlaybackCompletionThresholdMs = if (currentProgram.recordedVideo.cmSections.isNullOrEmpty().not()) {
-        (currentProgram.recordedVideo.playbackCompletionThreshold * 1000.0).toLong()
-    } else {
-        trustedPlaybackEndDurationMs * 9L / 10L
-    }
-    LaunchedEffect(currentProgram.id, bangumiPlaybackCompletionThresholdMs, playbackPositionMs) {
-        if (
-            !isRecordingChasePlayback &&
-            isBangumiPlaybackProgressEligible(playbackPositionMs, bangumiPlaybackCompletionThresholdMs)
-        ) {
+    LaunchedEffect(currentProgram.id, trustedPlaybackEndDurationMs, playbackPositionMs) {
+        if (!isRecordingChasePlayback) {
             videoPlayerViewModel.reportBangumiPlaybackProgress(
                 currentProgram.id,
                 playbackPositionMs,
@@ -1552,10 +1543,12 @@ internal fun RecordedPlayerScreen(
         isModernSettingsOpen,
         vs.crop.mode,
         vs.lastInteractionTime,
-        vs.isSeekBarFocused
+        vs.isSeekBarFocused,
+        vs.directionalSeek.isHolding
     ) {
         if (showControls && !isSubMenuOpen && !isSceneSearchOpen && !isChapterListOpen &&
             !isProgramInfoOpen && !isModernSettingsOpen && !vs.isSeekBarFocused &&
+            !vs.directionalSeek.isHolding &&
             vs.crop.mode == PlayerCropMode.HIDDEN
         ) {
             delay(5000); onShowControlsChange(false)
@@ -1691,6 +1684,15 @@ internal fun RecordedPlayerScreen(
                 trustedPlaybackEndDurationMs > NEXT_EPISODE_COUNTDOWN_WINDOW_MS &&
                 exoPlayer.playbackState == Player.STATE_READY &&
                 getEffectivePositionMs() >= nextEpisodeCountdownStartMs
+    RunRecordedDirectionalSeek(
+        state = vs,
+        playbackIdentity = exoPlayer to recordedPlaybackFence.identity,
+        enabled = !isPiPMode && !isSubOverlayOpen && !isDataBroadcastingActive && !showNextEpisodeCountdown &&
+            vs.crop.mode == PlayerCropMode.HIDDEN,
+        durationMs = totalDurationForControls,
+    )
+    LaunchedEffect(showControls) { if (!showControls) vs.directionalSeek.cancel() }
+
     val nextEpisodeCountdownProgress = recordedCountdownProgress(
         nextEpisodeCountdownStartMs,
         nextEpisodeCountdownEndMs,
@@ -1961,7 +1963,7 @@ internal fun RecordedPlayerScreen(
                 tiledThumbnailUrl = tiledThumbnailUrl,
                 showControls = showControls,
                 isSubOverlayOpen = isSubOverlayOpen,
-                isSeekingPreviewVisible = isSeekingPreviewVisible,
+                isSeekingPreviewVisible = isSeekingPreviewVisible || vs.directionalSeek.isHolding,
                 isModern = isModern,
                 isPlaying = exoPlayer.playWhenReady,
                 chapters = chapters,
@@ -1971,7 +1973,10 @@ internal fun RecordedPlayerScreen(
                 controlsPositionMs = getEffectivePositionMs,
                 controlsBufferedPositionMs = getBufferedPositionMs,
                 playerControlsFocusRequester = playerControlsFocusRequester,
-                onSeekBarFocusChanged = { vs.isSeekBarFocused = it },
+                onSeekBarFocusChanged = {
+                    if (vs.isSeekBarFocused && !it) vs.directionalSeek.cancel()
+                    vs.isSeekBarFocused = it
+                },
                 onPlayPauseToggle = {
                     vs.lastInteractionTime = System.currentTimeMillis()
                     vs.togglePlayPause(exoPlayer.playWhenReady)

@@ -12,6 +12,7 @@ import com.beeregg2001.komorebi.MainActivity
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteChapter
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteSkipDirection
+import java.util.UUID
 
 /**
  * Pure ownership arbitration for the root-owned system media session.
@@ -70,6 +71,10 @@ internal class SystemMediaSessionAttachment internal constructor(
 internal class SystemMediaSessionController(context: Context) {
     private val appContext = context.applicationContext
     private val ownership = SystemMediaSessionOwnership()
+    // HOME and launcher tasks can hold overlapping root compositions. Media3
+    // checks IDs process-wide, so the default empty ID cannot identify a root.
+    // Keep this ID stable across child/player handoffs and root epochs.
+    private val sessionId = "Honorebi-${UUID.randomUUID()}"
     private var session: MediaSession? = null
     private var playbackStateChangedListener: (() -> Unit)? = null
     // 現在前面にある再生画面が提供する、システムのメディアボタンでは表現できない操作 (絶対シーク・チャプター送り・CM スキップ) と、
@@ -135,6 +140,7 @@ internal class SystemMediaSessionController(context: Context) {
             val activeSession = session
             if (activeSession == null) {
                 session = MediaSession.Builder(appContext, sessionPlayer)
+                    .setId(sessionId)
                     .setSessionActivity(sessionActivity())
                     .build()
                 sessionPlayer.addListener(playerListener)

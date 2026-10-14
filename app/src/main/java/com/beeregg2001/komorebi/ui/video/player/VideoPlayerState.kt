@@ -100,6 +100,7 @@ class VideoPlayerState {
     var downKeyDownTime = 0L
     var isDownKeyLongPressed = false
 
+    internal val directionalSeek = RecordedDirectionalSeek()
     private val mediaKeys = RecordedMediaKeys()
 
     internal fun resetMediaKeys() = mediaKeys.reset()
@@ -144,10 +145,13 @@ class VideoPlayerState {
         onSpeedUp: () -> Unit = {},
         onSpeedDown: () -> Unit = {}
     ): Boolean {
-        if (isPiPMode) { resetMediaKeys(); return false }
+        if (isPiPMode) { directionalSeek.cancel(); resetMediaKeys(); return false }
         val keyCode = keyEvent.nativeKeyEvent.keyCode
         val isActionDown = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_DOWN
         val isActionUp = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_UP
+        val isHorizontal = keyCode == NativeKeyEvent.KEYCODE_DPAD_LEFT ||
+            keyCode == NativeKeyEvent.KEYCODE_DPAD_RIGHT
+        if (!isHorizontal) directionalSeek.cancel()
 
         fun openModernSettingsMenu(): Boolean {
             if (isActionDown) {
@@ -163,6 +167,7 @@ class VideoPlayerState {
         }
 
         if (crop.mode == PlayerCropMode.DIRECT_ADJUST) {
+            directionalSeek.cancel()
             resetMediaKeys()
             return crop.handleDirectAdjustKey(
                 keyCode = keyCode,
@@ -172,7 +177,7 @@ class VideoPlayerState {
             )
         }
 
-        if (isSubOverlayOpen) { resetMediaKeys(); return false }
+        if (isSubOverlayOpen) { directionalSeek.cancel(); resetMediaKeys(); return false }
 
         // CH+/CH- で再生速度を変更 (1.0 → 1.25 → 1.5 → 1.75 → 2.0 → 0.8)
         if (keyCode == NativeKeyEvent.KEYCODE_CHANNEL_UP || keyCode == NativeKeyEvent.KEYCODE_CHANNEL_DOWN) {
@@ -256,6 +261,30 @@ class VideoPlayerState {
             }
         }
 
+        // Own key-up even if focus changed during a quick-seek gesture. Ordinary button
+        // navigation remains with Compose; only the focused track or quick-seek owns left/right.
+        if (isHorizontal && (directionalSeek.isHolding || !isModern || !showControls ||
+                isQuickSeeking || isSeekBarFocused)) {
+            if (isActionDown && keyEvent.nativeKeyEvent.repeatCount == 0 && totalDurationMs > 0L) {
+                if (!isSeekBarFocused) {
+                    isQuickSeeking = true
+                    indicatorState = if (keyCode == NativeKeyEvent.KEYCODE_DPAD_RIGHT) {
+                        IndicatorState(Icons.Default.FastForward, "早送り")
+                    } else IndicatorState(Icons.Default.FastRewind, "巻き戻し")
+                }
+                onShowControlsChange(true)
+            }
+            directionalSeek.handle(
+                keyEvent.nativeKeyEvent,
+                pendingSeekPositionMs ?: getCurrentPositionMs(),
+                totalDurationMs,
+                if (isSeekBarFocused) 10_000L else 30_000L,
+                performSeek,
+            )
+            if (directionalSeek.isHolding || isActionUp) triggerSeekingPreview()
+            return true
+        }
+
         // ★ モダンUI表示時のフォーカスとクイックシークの制御
         if (isModern && showControls) {
             if (keyCode == NativeKeyEvent.KEYCODE_DPAD_UP) {
@@ -298,35 +327,6 @@ class VideoPlayerState {
         // -----------------------------------------------------------
         // 以下の処理は、UI表示中（または左右キー押下時）にのみ到達します
         // -----------------------------------------------------------
-
-        if (keyCode == NativeKeyEvent.KEYCODE_DPAD_LEFT) {
-            if (isActionDown) {
-                isQuickSeeking = true // ★ クイックシークモード開始
-                onShowControlsChange(true)
-                indicatorState = IndicatorState(icon = Icons.Default.FastRewind, label = "巻き戻し")
-                val basePos = pendingSeekPositionMs ?: getCurrentPositionMs()
-                val skipAmount = if (keyEvent.nativeKeyEvent.repeatCount > 0) 15000L else 30000L
-                val newPos = (basePos - skipAmount).coerceAtLeast(0L)
-                performSeek(newPos)
-                triggerSeekingPreview()
-            }
-            return true
-        }
-
-        if (keyCode == NativeKeyEvent.KEYCODE_DPAD_RIGHT) {
-            if (isActionDown) {
-                isQuickSeeking = true // ★ クイックシークモード開始
-                onShowControlsChange(true)
-                indicatorState = IndicatorState(icon = Icons.Default.FastForward, label = "早送り")
-                val basePos = pendingSeekPositionMs ?: getCurrentPositionMs()
-                val skipAmount = if (keyEvent.nativeKeyEvent.repeatCount > 0) 15000L else 30000L
-                val newPos =
-                    (basePos + skipAmount).coerceAtMost(if (totalDurationMs > 0) totalDurationMs else Long.MAX_VALUE)
-                performSeek(newPos)
-                triggerSeekingPreview()
-            }
-            return true
-        }
 
         if (keyCode == NativeKeyEvent.KEYCODE_DPAD_DOWN) {
             if (isActionUp) {

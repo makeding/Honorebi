@@ -156,6 +156,14 @@ internal fun SmbPlayerScreen(
     UpdateRecordedCaptionState(captions, state.isSubtitleEnabled, subtitleLanguageId.toInt()) {
         currentPositionMs(player, positionMs)
     }
+    RunRecordedDirectionalSeek(
+        state = state,
+        playbackIdentity = player,
+        enabled = !isPiPMode && !isSubMenuOpen && !isProgramInfoOpen &&
+            state.crop.mode == com.beeregg2001.komorebi.ui.player.PlayerCropMode.HIDDEN,
+        durationMs = durationMs,
+    )
+    LaunchedEffect(showControls) { if (!showControls) state.directionalSeek.cancel() }
     BackHandler(enabled = isPiPMode) {}
     Box(
         modifier = Modifier
@@ -252,13 +260,13 @@ internal fun SmbPlayerScreen(
             totalDurationMs = durationMs,
             initialBufferedPositionMs = player.bufferedPosition.coerceAtLeast(positionMs),
             displayPositionMsProvider = { currentPositionMs(player, positionMs) },
+            seekPreviewPositionMs = { state.directionalSeek.previewPositionMs },
             displayBufferedPositionMsProvider = { player.bufferedPosition.coerceAtLeast(currentPositionMs(player, positionMs)) },
             controlsFocusRequester = controlsFocusRequester,
             onSeekBarFocusChanged = {},
             onPlayPauseToggle = { if (player.isPlaying) player.pause() else player.play() },
             onSeekBack = { captions.seek(); player.seekTo((currentPositionMs(player, positionMs) - 10_000L).coerceAtLeast(0L)) },
             onSeekForward = { captions.seek(); player.seekTo(smbSeekTarget(currentPositionMs(player, positionMs) + 30_000L, durationMs)) },
-            onSeekRequested = { captions.seek(); player.seekTo(smbSeekTarget(it, durationMs)) },
             onChapterListToggle = {},
             onInfoToggle = { isProgramInfoOpen = true; onSubMenuToggle(false) },
             onSettingsToggle = { onSubMenuToggle(true) },
