@@ -57,7 +57,8 @@ class ConnectionSettingsContentTest {
         manual.assertIsFocused()
         assertTrue(session.accepts(session.token))
         assertEquals(1, starts); assertEquals(0, stops)
-        finish.performClick()
+        finish.requestFocus().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitUntil { stops == 1 }
         compose.runOnIdle { assertFalse(session.accepts(session.token)); assertEquals(1, stops) }
     }
 
@@ -73,15 +74,18 @@ class ConnectionSettingsContentTest {
         var selected: List<ConnectionSource> = emptyList()
         var accountClicks = 0
         var webSource: ConnectionSource? = null
+        var webClicks = 0
+        var entryFocus: FocusRequester? = null
         compose.setContent {
             KomorebiTheme(AppTheme.AUTUMN) {
                 back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
                 val scroll = rememberScrollState()
                 val preferences = rememberSettingPreferences(repository)
                 val requesters = remember { List(8) { FocusRequester() } }
+                entryFocus = requesters.first()
                 Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
                     ConnectionSettingsContent(preferences, "huggy", { accountClicks++ }, {}, {}, emptyList(), {},
-                        { _, _ -> }, { webSource = it }, { selected = it }, {}, {}, requesters,
+                        { _, _ -> }, { webSource = it; webClicks++ }, { selected = it }, {}, {}, requesters,
                         remember { FocusRequester() }, scroll, false, {})
                 }
             }
@@ -89,6 +93,13 @@ class ConnectionSettingsContentTest {
         fun row(text: String) = compose.onNode(hasText(text) and hasClickAction() and
             if (text == "メインシステム") hasText(text) else !hasText("メインシステム"))
         compose.waitUntil { compose.onAllNodes(hasText("EDCB") and hasClickAction()).fetchSemanticsNodes().size == 2 }
+        // The settings guide and sidebar both enter via the first requester.
+        compose.runOnIdle { entryFocus!!.requestFocus() }
+        row("スマホで設定").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        row("KonomiTV").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        row("スマホで設定").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        assertEquals(1, webClicks)
+        assertNull(webSource)
         row("メインシステム").assertIsNotEnabled()
         val mainBounds = row("メインシステム").getUnclippedBoundsInRoot()
         row("Mirakurun").requestFocus().performKeyInput { pressKey(Key.DirectionDown) }

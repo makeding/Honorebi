@@ -7,6 +7,8 @@ import com.google.gson.GsonBuilder
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.routing.routing
+import io.ktor.server.routing.post
+import io.ktor.server.response.respondText
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
@@ -78,11 +80,23 @@ class ConnectionSetupHttpTest {
         val repository = SettingsRepository(context)
         val gson = GsonBuilder().serializeNulls().create()
         var session: ConnectionSetupSession? = ConnectionSetupSession("test-token")
-        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) {
+        val browserPreview = System.getenv("HONOREBI_SETUP_BROWSER_PREVIEW") == "1"
+        val browserFinished = java.util.concurrent.CountDownLatch(1)
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = if (browserPreview) 8081 else 0) {
             routing {
                 connectionSetupRoutes({ session }, { repository.connectionSettings() },
                     { repository.saveConnectionSettings(it) },
                     { path -> context.assets.open(path).use { it.readBytes() } })
+                if (browserPreview) {
+                    connectionAccountRoutes({ session }, { ConnectionAccountSettings() }, { "https://changed.example.org:443" },
+                        { error("Browser acceptance does not contact a provider") }, { _, _ -> ConnectionAccountSettings() }, {})
+                    post("/__test__/finish") {
+                        if (session?.accepts(call.request.headers["X-Setup-Token"]) == true) {
+                            browserFinished.countDown()
+                            call.respondText("finished")
+                        } else call.respondText("unauthorized", status = io.ktor.http.HttpStatusCode.Unauthorized)
+                    }
+                }
             }
         }.start(wait = false)
         try {
@@ -104,6 +118,18 @@ class ConnectionSetupHttpTest {
             assertEquals(saved, repository.connectionSettings())
             assertEquals("EDCB", repository.backendType.first())
             assertTrue(repository.isInitialized.first())
+            // Browser saveBody deliberately omits read-only account/labels/presence flags and unchanged secrets.
+            val browserBody = gson.toJsonTree(saved).asJsonObject.apply {
+                remove("account")
+                getAsJsonArray("sources").forEach { it.asJsonObject.remove("label") }
+                getAsJsonObject("cloudflareAccess").apply { remove("clientSecret"); remove("secretConfigured") }
+            }
+            val browserRequest = Request.Builder().url("http://127.0.0.1:$port/api/connections")
+                .header("X-Setup-Token", "test-token")
+                .post(gson.toJson(browserBody).toRequestBody("application/json".toMediaType())).build()
+            client.newCall(browserRequest).execute().use {
+                assertEquals(it.body!!.string(), 200, it.code)
+            }
             val reloaded = SettingsRepository(context)
             assertEquals(saved, reloaded.connectionSettings())
             val readback = request("/api/connections")
@@ -167,7 +193,11 @@ class ConnectionSetupHttpTest {
             val assets = Regex("(?:src|href)=\"(/connections/assets/[^\"]+)\"").findAll(html.second).map { it.groupValues[1] }.toList()
             assertTrue(assets.isNotEmpty())
             assets.forEach { assertEquals(it, 200, request(it).first) }
-        } finally { server.stop(0, 1000) }
+            if (browserPreview) {
+                session = ConnectionSetupSession("browser-acceptance")
+                assertTrue("Browser acceptance must finish within five minutes", browserFinished.await(300, java.util.concurrent.TimeUnit.SECONDS))
+            }
+        } finally { session?.revoke(); server.stop(0, 1000) }
     }
 
     @Test fun placeholderAndUnconfiguredSelectionCannotOverrideAConfiguredSource() {

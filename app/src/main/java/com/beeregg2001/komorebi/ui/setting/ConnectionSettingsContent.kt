@@ -124,44 +124,44 @@ fun ConnectionSettingsContent(
                 }
             }
         } else {
-            row(7, "スマホで設定", "", Icons.Default.QrCode, FocusRequester.Cancel, itemRs[0]) { onWebSetup(null) }
+            row(0, "スマホで設定", "", Icons.Default.QrCode, FocusRequester.Cancel, itemRs[1]) { onWebSetup(null) }
             SettingsSection("接続先") {
                 ConnectionSource.entries.forEachIndexed { index, entry ->
-                    row(index, entry.label, if (entry in configured) "設定済み" else AppStrings.SETTINGS_VALUE_UNSET,
+                    row(index + 1, entry.label, if (entry in configured) "設定済み" else AppStrings.SETTINGS_VALUE_UNSET,
                         Icons.Default.Dns,
-                        if (index == 0) itemRs[7] else itemRs[index - 1],
-                        if (index == 2 && !canSelectMain) itemRs[4] else itemRs[index + 1]) {
-                        origin = index; source = entry; navigating = true
+                        itemRs[index],
+                        if (index == 2 && !canSelectMain) itemRs[5] else itemRs[index + 2]) {
+                        origin = index + 1; source = entry; navigating = true
                     }
                 }
             }
             SettingsSection("メインシステム") {
                 val selected = ConnectionSourcePolicy.resolve(prefs.backendType, configured)
-                row(3, "メインシステム",
+                row(4, "メインシステム",
                     configured.firstOrNull { it.backend == selected }?.label ?: AppStrings.SETTINGS_VALUE_UNSET,
-                    Icons.Default.CheckCircle, itemRs[2], itemRs[4], enabled = canSelectMain) {
+                    Icons.Default.CheckCircle, itemRs[3], itemRs[5], enabled = canSelectMain) {
                     onSelectBackend(configured)
                 }
             }
             SettingsSection("ライブ視聴") {
-                row(4, "優先ソース", when (prefs.preferredSource) {
+                row(5, "優先ソース", when (prefs.preferredSource) {
                     "MIRAKURUN" -> "Mirakurun を優先"
                     "EDCB" -> "EDCB (ダイレクトストリーミング)"
                     else -> "メインシステムに従う（トランスコード）"
-                }, Icons.Default.PriorityHigh, itemRs[if (canSelectMain) 3 else 2], itemRs[5],
+                }, Icons.Default.PriorityHigh, itemRs[if (canSelectMain) 4 else 3], itemRs[6],
                     action = onSelectSrc)
             }
             SettingsSection("Cloudflare Access") {
-                row(5, "サービス トークン",
+                row(6, "サービス トークン",
                     if (prefs.cfAccessClientId.isNotBlank() && prefs.cfAccessClientSecret.isNotBlank()) "設定済み" else "未設定",
-                    Icons.Default.Cloud, itemRs[4], itemRs[6], action = onEditCloudflareAccess)
+                    Icons.Default.Cloud, itemRs[5], itemRs[7], action = onEditCloudflareAccess)
                 Text("HTTPS の設定済みバックエンドだけにサービス トークンを送信します。",
                     modifier = Modifier.padding(horizontal = 24.dp), color = colors.textSecondary,
                     style = MaterialTheme.typography.bodyMedium)
             }
             SettingsSection("ファイルライブラリ (SMB) 接続設定") {
-                row(6, "新しいSMBサーバーを追加", "", Icons.Default.Add,
-                    itemRs[5], smbItemRs.firstOrNull() ?: FocusRequester.Cancel, action = onAddSmbServer)
+                row(7, "新しいSMBサーバーを追加", "", Icons.Default.Add,
+                    itemRs[6], smbItemRs.firstOrNull() ?: FocusRequester.Cancel, action = onAddSmbServer)
                 if (prefs.smbServerList.isEmpty()) {
                     Text("登録されたSMBサーバーはありません", modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium, color = colors.textSecondary.copy(0.6f))
@@ -171,7 +171,7 @@ fun ConnectionSettingsContent(
                     SettingItem(server.name, server.ip, Icons.Default.Storage,
                         modifier = Modifier.focusRequester(requester).focusProperties {
                             left = sidebarR
-                            up = if (index == 0) itemRs[6] else smbItemRs[index - 1]
+                            up = if (index == 0) itemRs[7] else smbItemRs[index - 1]
                             down = smbItemRs.getOrNull(index + 1) ?: FocusRequester.Cancel
                         }, onClick = { onClick(requester); onSmbServerClick(server) })
                 }

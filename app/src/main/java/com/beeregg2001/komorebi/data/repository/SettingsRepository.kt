@@ -311,7 +311,8 @@ class SettingsRepository @Inject constructor(
             require(host.none(Char::isWhitespace) && host != ConnectionSourcePolicy.KONOMI_PLACEHOLDER) {
                 "IPアドレスまたはURLを確認してください。"
             }
-            source.id to source.copy(host = host, port = port(source.port),
+            source.id to ConnectionSourceSettings(source.id, ConnectionSource.entries.first { it.backend == source.id }.label,
+                host = host, port = port(source.port),
                 httpPort = if (source.id == "EDCB") port(source.httpPort, http = true) else null)
         }
         val k = normalized.getValue("KONOMITV")
