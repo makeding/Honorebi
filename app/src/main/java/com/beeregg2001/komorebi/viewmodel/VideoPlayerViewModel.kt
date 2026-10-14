@@ -8,7 +8,6 @@ import kotlinx.coroutines.withTimeout
 import com.beeregg2001.komorebi.data.model.SeekPositionResponse
 
 import android.net.Uri
-import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,7 +23,6 @@ import com.beeregg2001.komorebi.data.repository.RecordProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.video.player.ChapterInfo
 import com.beeregg2001.komorebi.ui.video.player.policy.selectNaturalEpisodePrograms
-import com.beeregg2001.komorebi.ui.video.player.policy.BangumiProgressGate
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
 import com.beeregg2001.komorebi.ui.player.recorded.RecordedPlaybackSourceResolver
@@ -129,7 +127,6 @@ class VideoPlayerViewModel @Inject constructor(
     private val quickVideoCache = mutableMapOf<String, QuickVideoCandidates>()
     private var quickSeriesIdentity: String? = null
     private var preferredQuickSeriesChannelId: String? = null
-    private val bangumiProgressGate = BangumiProgressGate()
 
     init {
         viewModelScope.launch {
@@ -145,27 +142,6 @@ class VideoPlayerViewModel @Inject constructor(
                 if (nhkExclusionRepository.isExcluded(_programDetail.value ?: return@collect)) {
                     clearProgramDetail()
                 }
-            }
-        }
-    }
-
-    fun reportBangumiPlaybackProgress(programId: Int, positionMs: Long, durationMs: Long) {
-        if (konomiRepository.currentUser.value?.bangumi_user_id == null) return
-        if (!bangumiProgressGate.begin(programId, positionMs, durationMs, SystemClock.elapsedRealtime())) return
-        viewModelScope.launch {
-            try {
-                konomiRepository.updateBangumiPlaybackProgress(
-                    programId,
-                    positionMs / 1000.0,
-                    durationMs / 1000.0,
-                )
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                Log.w(TAG, "Failed to update Bangumi playback progress. [video_id=$programId]", error)
-            } finally {
-                // A completed episode must not suppress later episodes in the same range recording.
-                bangumiProgressGate.finish(programId)
             }
         }
     }
@@ -602,8 +578,8 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
-    fun updateWatchHistory(program: RecordedProgram, positionSeconds: Double) {
-        historyRepository.enqueueWatchHistorySave(program, positionSeconds)
+    fun updateWatchHistory(program: RecordedProgram, positionSeconds: Double, durationSeconds: Double? = null) {
+        historyRepository.enqueueWatchHistorySave(program, positionSeconds, durationSeconds)
     }
 
     @UnstableApi

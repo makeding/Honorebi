@@ -1085,15 +1085,7 @@ internal fun RecordedPlayerScreen(
             )
         }
 
-    LaunchedEffect(currentProgram.id, trustedPlaybackEndDurationMs, playbackPositionMs) {
-        if (!isRecordingChasePlayback) {
-            videoPlayerViewModel.reportBangumiPlaybackProgress(
-                currentProgram.id,
-                playbackPositionMs,
-                trustedPlaybackEndDurationMs,
-            )
-        }
-    }
+    val historyPlaybackDurationMs by rememberUpdatedState(trustedPlaybackEndDurationMs)
 
     LaunchedEffect(isSubMenuOpen, currentProgram.id) {
         if (!isSubMenuOpen) openQuickVideosOnSubMenuOpen = false
@@ -1465,7 +1457,7 @@ internal fun RecordedPlayerScreen(
             ) {
                 continue
             }
-            videoPlayerViewModel.updateWatchHistory(currentProgram, positionMs / 1000.0)
+            videoPlayerViewModel.updateWatchHistory(currentProgram, positionMs / 1000.0, historyPlaybackDurationMs / 1000.0)
             lastCheckpointPositionMs = positionMs
         }
     }

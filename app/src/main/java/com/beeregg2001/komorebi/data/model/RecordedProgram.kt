@@ -127,7 +127,6 @@ data class RecordedVideo(
     @SerializedName("has_key_frames") val hasKeyFrames: Boolean? = true,
     @SerializedName("thumbnail_info") val thumbnailInfo: ThumbnailInfo? = null,
     @SerializedName("cm_sections") val cmSections: List<CmSection>? = null,
-    @SerializedName("playback_completion_threshold") val playbackCompletionThreshold: Double = 0.0
 )
 
 data class ThumbnailInfo(

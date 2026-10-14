@@ -11,13 +11,10 @@ data class KonomiUser(
     val bangumi_user_avatar_url: String? = null,
 )
 
-data class BangumiPlaybackProgressRequest(
+data class HistoryPlaybackProgress(
+    val video_id: Int,
     val playback_position: Double,
     val duration: Double,
-)
-
-data class BangumiPlaybackProgressResponse(
-    val status: String,
 )
 
 data class UserAccessToken(
@@ -32,7 +29,10 @@ data class WatchedHistoryItem(
     @com.google.gson.annotations.SerializedName("updated_at") val updatedAt: Double,
 )
 
-data class WatchedHistoryPayload(val items: List<WatchedHistoryItem>)
+data class WatchedHistoryPayload(
+    val items: List<WatchedHistoryItem>,
+    val playback_progress: HistoryPlaybackProgress? = null,
+)
 
 data class DeviceAuthCreateRequest(
     @com.google.gson.annotations.SerializedName("device_name") val deviceName: String,

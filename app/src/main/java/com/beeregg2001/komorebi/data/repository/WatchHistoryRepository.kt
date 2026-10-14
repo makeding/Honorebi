@@ -11,6 +11,7 @@ import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.WatchedHistoryItem
 import com.beeregg2001.komorebi.data.model.WatchedHistoryPayload
+import com.beeregg2001.komorebi.data.model.HistoryPlaybackProgress
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -48,16 +49,19 @@ class WatchHistoryRepository @Inject constructor(
         runCatching { apiService.getSyncedWatchHistory() }.onSuccess { applyRemoteHistory(it.items) }
     }
 
-    suspend fun saveWatchHistory(program: RecordedProgram, positionSeconds: Double) {
+    suspend fun saveWatchHistory(program: RecordedProgram, positionSeconds: Double, durationSeconds: Double? = null) {
         // 1. ローカルDBに保存
         val entity = KonomiDataMapper.toEntity(program, positionSeconds)
         watchHistoryDao.insertOrUpdate(entity)
 
         if (sessionStore.current() != null) {
             val now = entity.watchedAt / 1000.0
+            val duration = durationSeconds ?: program.recordedVideo.duration.takeUnless { program.requiresRawMmtsPlayback }
+            val progress = duration?.takeIf { it.isFinite() && it > 0.0 && !program.isRecording && program.recordedVideo.status == "Recorded" }
+                ?.let { HistoryPlaybackProgress(program.id, positionSeconds, it) }
             runCatching {
                 apiService.updateSyncedWatchHistory(
-                    WatchedHistoryPayload(listOf(WatchedHistoryItem(program.id, positionSeconds, now, now)))
+                    WatchedHistoryPayload(listOf(WatchedHistoryItem(program.id, positionSeconds, now, now)), progress)
                 )
             }
         }
@@ -109,10 +113,10 @@ class WatchHistoryRepository @Inject constructor(
      * Jobs are conflated per programme so switching programmes cannot cancel the
      * final checkpoint of the programme being left.
      */
-    fun enqueueWatchHistorySave(program: RecordedProgram, positionSeconds: Double) {
+    fun enqueueWatchHistorySave(program: RecordedProgram, positionSeconds: Double, durationSeconds: Double? = null) {
         val programId = program.id
         val job = saveScope.launch(start = CoroutineStart.LAZY) {
-            saveWatchHistory(program, positionSeconds)
+            saveWatchHistory(program, positionSeconds, durationSeconds)
         }
         pendingSaveJobs.put(programId, job)?.cancel()
         job.invokeOnCompletion { pendingSaveJobs.remove(programId, job) }
