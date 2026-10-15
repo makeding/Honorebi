@@ -42,6 +42,15 @@ androidComponents {
         variant.sources.assets?.addGeneratedSourceDirectory(packageConnectionSetupWeb) { it.assetOutputDirectory }
     }
 }
+// Instrumentation loads its dex before the target app. Keep the test's desugared
+// library complete so it cannot shadow methods needed only by the target app.
+afterEvaluate {
+    tasks.withType<com.android.build.gradle.internal.tasks.L8DexDesugarLibTask>().configureEach {
+        if (name.endsWith("AndroidTest")) {
+            keepRulesConfigurations.add("-keep class ** { *; }")
+        }
+    }
+}
 
 val releaseKeystorePropertiesFile =
     file("${System.getProperty("user.home")}/honorebi-release-keystore.properties")
@@ -57,6 +66,7 @@ android {
     namespace = "com.beeregg2001.komorebi"
     compileSdk = 37
     ndkVersion = "28.2.13676358"
+    testBuildType = providers.gradleProperty("installTestBuildType").getOrElse("debug")
 
     splits {
         abi {
@@ -72,8 +82,8 @@ android {
         applicationId = "com.beeregg2001.Honorebi"
         minSdk = 24
         targetSdk = 34
-        versionCode = 23 // 数値を1つ上げる
-        versionName = "1.1.2-beta2-huggy"
+        versionCode = 24 // 数値を1つ上げる
+        versionName = "1.1.2-beta3-huggy"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -176,6 +186,9 @@ ksp {
 //}
 
 dependencies {
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.uiautomator)
+    androidTestImplementation("androidx.test:runner:1.7.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     testImplementation("junit:junit:4.13.2")
