@@ -2,11 +2,6 @@
 
 package com.beeregg2001.komorebi.ui.home
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.Build
 import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -32,7 +27,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -107,40 +101,8 @@ fun AppsTabContent(
     var pendingFocusAppIndex by remember { mutableStateOf<Int?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val gridState = rememberLazyGridState()
-    val context = LocalContext.current.applicationContext
 
     val catalogApps = if (isHiddenCatalog) hiddenApps else apps
-
-    DisposableEffect(context, homeViewModel) {
-        val packageChangeReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    Intent.ACTION_PACKAGE_ADDED,
-                    Intent.ACTION_PACKAGE_REMOVED,
-                    Intent.ACTION_PACKAGE_CHANGED,
-                    Intent.ACTION_PACKAGE_REPLACED -> homeViewModel.refreshLauncherApps()
-                }
-            }
-        }
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED)
-            addAction(Intent.ACTION_PACKAGE_REMOVED)
-            addAction(Intent.ACTION_PACKAGE_CHANGED)
-            addAction(Intent.ACTION_PACKAGE_REPLACED)
-            addDataScheme("package")
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(packageChangeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            context.registerReceiver(packageChangeReceiver, filter)
-        }
-
-        onDispose {
-            runCatching { context.unregisterReceiver(packageChangeReceiver) }
-        }
-    }
 
     LaunchedEffect(apps.map { it.stableId }) {
         val visibleIds = apps.map { it.stableId }.toSet()

@@ -37,6 +37,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
@@ -253,6 +255,10 @@ fun HomeLauncherScreen(
 
     val focusMemory = rememberFocusMemory()
     val scope = rememberCoroutineScope()
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        homeViewModel.refreshLauncherApps()
+    }
 
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val inputSourceApp = remember(launcherApps) {

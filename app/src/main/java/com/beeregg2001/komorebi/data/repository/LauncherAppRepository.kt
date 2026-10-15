@@ -1,19 +1,30 @@
 package com.beeregg2001.komorebi.data.repository
 
 import android.content.ComponentName
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
@@ -27,6 +38,54 @@ class LauncherAppRepository @Inject constructor(
     private val launcherCachePreferences =
         context.getSharedPreferences(LAUNCHER_CACHE_PREFERENCES, Context.MODE_PRIVATE)
     private val gson = Gson()
+
+    fun observeLauncherApps(refreshRequests: Flow<Unit>): Flow<List<LauncherApp>> =
+        merge(packageChanges(), refreshRequests)
+            .conflate()
+            .mapNotNull {
+                try {
+                    loadLauncherApps()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Retain the last complete catalog and keep observing later events.
+                    Log.w("LauncherAppRepository", "Failed to refresh launcher apps", e)
+                    null
+                }
+            }
+            .distinctUntilChanged()
+
+    private fun packageChanges(): Flow<Unit> = callbackFlow {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.data?.scheme != "package" ||
+                    intent.data?.schemeSpecificPart.isNullOrBlank()
+                ) return
+                // An update removes the old APK before adding its replacement.
+                // Keep its card until the replacement is available to query.
+                if (intent.action == Intent.ACTION_PACKAGE_REMOVED &&
+                    intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+                ) return
+                trySend(Unit)
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(receiver, filter)
+        }
+        // Subscribe before scanning so an install during the scan is not lost.
+        trySend(Unit)
+        awaitClose { context.unregisterReceiver(receiver) }
+    }
 
     suspend fun loadLauncherApps(): List<LauncherApp> = withContext(Dispatchers.IO) {
         val cachedApps = readCachedLauncherApps()

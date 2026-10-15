@@ -24,6 +24,7 @@ import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.Channel as CoroutineChannel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -65,6 +66,7 @@ class HomeViewModel @Inject constructor(
     val isFallbackTriggered: StateFlow<Boolean> = _isFallbackTriggered.asStateFlow()
 
     private val _rawLauncherApps = MutableStateFlow<List<LauncherApp>>(emptyList())
+    private val launcherRefreshRequests = CoroutineChannel<Unit>(CoroutineChannel.CONFLATED)
     val launcherApps: StateFlow<List<LauncherApp>> = combine(
         _rawLauncherApps,
         settingsRepository.launcherAppOrder,
@@ -99,7 +101,10 @@ class HomeViewModel @Inject constructor(
     init {
         // This scan now publishes metadata/resource URIs only. Artwork itself is
         // decoded lazily and cached by Coil when a launcher card becomes visible.
-        refreshLauncherApps()
+        viewModelScope.launch {
+            launcherAppRepository.observeLauncherApps(launcherRefreshRequests.receiveAsFlow())
+                .collect { _rawLauncherApps.value = it }
+        }
     }
 
     fun clearFocusMemory() {
@@ -109,9 +114,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshLauncherApps() {
-        viewModelScope.launch {
-            _rawLauncherApps.value = launcherAppRepository.loadLauncherApps()
-        }
+        launcherRefreshRequests.trySend(Unit)
     }
 
     fun launchApp(app: LauncherApp): Boolean = launcherAppRepository.launch(app)
