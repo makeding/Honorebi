@@ -86,7 +86,7 @@ class SettingsViewModel @Inject constructor(
 
     fun checkForUpdates() {
         viewModelScope.launch {
-            appUpdater.checkForUpdates(settingsRepository.receiveBetaUpdates.first())
+            appUpdater.checkForUpdates(settingsRepository.receiveBetaUpdates.first(), userInitiated = true)
         }
     }
 

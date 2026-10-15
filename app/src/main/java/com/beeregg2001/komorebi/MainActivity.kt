@@ -9,6 +9,9 @@ import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.*
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -19,9 +22,15 @@ import com.beeregg2001.komorebi.viewmodel.EpgViewModel
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
 import com.beeregg2001.komorebi.viewmodel.RecordViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import com.beeregg2001.komorebi.util.AppUpdater
+import com.beeregg2001.komorebi.util.UpdateState
+import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var appUpdater: AppUpdater
 
     private var homeIntentVersion by mutableIntStateOf(0)
 
@@ -63,6 +72,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_Komorebi)
         super.onCreate(savedInstanceState)
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                appUpdater.updateState.collect { update ->
+                    if (update is UpdateState.AwaitingInstallConfirmation) {
+                        appUpdater.launchInstallConfirmation(this@MainActivity)
+                    }
+                }
+            }
+        }
 
         setContent {
             KomorebiTheme {

@@ -448,7 +448,8 @@ fun MainRootDialogs(
         )
     }
 
-    if (updateState is UpdateState.Downloading || updateState is UpdateState.ReadyToInstall) {
+    if (updateState is UpdateState.Downloading || updateState is UpdateState.ReadyToInstall ||
+        updateState is UpdateState.Installing || updateState is UpdateState.AwaitingInstallConfirmation) {
         Box(modifier = Modifier.fillMaxSize()) {
             UpdateProgressBanner(
                 updateState = updateState,

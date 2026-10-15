@@ -399,7 +399,7 @@ fun UpdateDialog(
 @Composable
 fun UpdateProgressBanner(updateState: UpdateState, modifier: Modifier = Modifier) {
     val colors = KomorebiTheme.colors
-    val isReady = updateState is UpdateState.ReadyToInstall
+    val isReady = updateState !is UpdateState.Downloading
     val progress =
         if (updateState is UpdateState.Downloading) updateState.progressPercentage else 100
 
@@ -421,7 +421,12 @@ fun UpdateProgressBanner(updateState: UpdateState, modifier: Modifier = Modifier
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (isReady) "インストーラ起動中..." else "アップデートをダウンロード中",
+                    text = when (updateState) {
+                        UpdateState.Installing -> "更新をインストール中…"
+                        is UpdateState.AwaitingInstallConfirmation -> "インストールを確認しています…"
+                        UpdateState.ReadyToInstall -> "インストーラ起動中…"
+                        else -> "アップデートをダウンロード中"
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )

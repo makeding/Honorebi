@@ -1261,6 +1261,9 @@ fun AppInfoContent(
             is com.beeregg2001.komorebi.util.UpdateState.Checking -> "確認中…"
             is com.beeregg2001.komorebi.util.UpdateState.UpToDate -> "最新です"
             is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable -> "更新があります"
+            is com.beeregg2001.komorebi.util.UpdateState.Installing -> "インストール中…"
+            is com.beeregg2001.komorebi.util.UpdateState.AwaitingInstallConfirmation -> "インストール確認待ち"
+            is com.beeregg2001.komorebi.util.UpdateState.Cancelled -> "キャンセルしました"
             else -> "未確認"
         }
         SettingItem(
@@ -1274,7 +1277,10 @@ fun AppInfoContent(
             },
             onClick = {
                 if (updateState !is com.beeregg2001.komorebi.util.UpdateState.Checking &&
-                    updateState !is com.beeregg2001.komorebi.util.UpdateState.Downloading) {
+                    updateState !is com.beeregg2001.komorebi.util.UpdateState.Downloading &&
+                    updateState !is com.beeregg2001.komorebi.util.UpdateState.ReadyToInstall &&
+                    updateState !is com.beeregg2001.komorebi.util.UpdateState.AwaitingInstallConfirmation &&
+                    updateState !is com.beeregg2001.komorebi.util.UpdateState.Installing) {
                     updateRequested = true
                     onClick(checkR)
                     onCheckUpdates()
