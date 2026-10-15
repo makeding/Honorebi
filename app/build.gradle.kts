@@ -72,8 +72,8 @@ android {
         applicationId = "com.beeregg2001.Honorebi"
         minSdk = 24
         targetSdk = 34
-        versionCode = 22 // 数値を1つ上げる
-        versionName = "1.1.2-beta1-huggy"
+        versionCode = 23 // 数値を1つ上げる
+        versionName = "1.1.2-beta2-huggy"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
