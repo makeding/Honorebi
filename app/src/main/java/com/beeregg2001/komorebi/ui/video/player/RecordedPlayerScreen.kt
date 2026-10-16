@@ -1546,10 +1546,8 @@ internal fun RecordedPlayerScreen(
         recordedPlaybackFence.identity,
         vs.crop.mode
     ) {
-        Log.i("PlayerInputTrace", "focus effect start pip=$isPiPMode overlay=$isSubOverlayOpen controls=$showControls crop=${vs.crop.mode} submenu=$isSubMenuOpen")
         if (isPiPMode) return@LaunchedEffect
         delay(150)
-        Log.i("PlayerInputTrace", "focus effect after delay overlay=$isSubOverlayOpen crop=${vs.crop.mode}")
 
         if (isSubMenuOpen) {
             subMenuFocusRequester.safeRequestFocus(TAG)
@@ -1822,7 +1820,6 @@ internal fun RecordedPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { keyEvent ->
-                Log.i("PlayerInputTrace", "recorded key=$keyEvent")
                 handleRecordedPlayerKeyEvent(
                     keyEvent = keyEvent,
                     isPiPMode = isPiPMode,

@@ -38,10 +38,7 @@ class MainActivity : ComponentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN && !event.isScreensaverMediaKey()) {
             ScreensaverInteractionTracker.onUserInteraction()
         }
-        val before = currentFocus
-        val handled = super.dispatchKeyEvent(event)
-        android.util.Log.i("PlayerInputTrace", "key=${event.keyCode} action=${event.action} before=$before after=$currentFocus handled=$handled")
-        return handled
+        return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
