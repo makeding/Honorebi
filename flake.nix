@@ -29,10 +29,16 @@
             ndkVersion = "28.2.13676358";
             abiVersions = [ "armeabi-v7a" "arm64-v8a" ];
           };
+          androidSdk = android.androidsdk.overrideAttrs (old: {
+            postInstall = (old.postInstall or "") + ''
+              # AGP scans both paths as separate packages. Keep only side-by-side NDKs.
+              rm "$out/libexec/android-sdk/ndk-bundle"
+            '';
+          });
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
-              android.androidsdk
+              androidSdk
               cacert
               git
               jdk21
@@ -41,7 +47,7 @@
               pkg-config
             ];
 
-            ANDROID_HOME = "${android.androidsdk}/libexec/android-sdk";
+            ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
 
             shellHook = ''
               # Keep an inherited system SDK from conflicting with this project's SDK.
