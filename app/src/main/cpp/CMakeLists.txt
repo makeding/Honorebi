@@ -20,7 +20,7 @@ set(PNG_TESTS OFF CACHE BOOL "" FORCE)
 set(PNG_TOOLS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(libpng
     GIT_REPOSITORY https://github.com/pnggroup/libpng.git
-    GIT_TAG v1.6.47
+    GIT_TAG v1.6.59
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(libpng)
