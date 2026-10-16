@@ -669,9 +669,8 @@ fun LivePlayerScreen(
 
     val isUiVisible =
         isSubMenuOpen || isMiniListOpen || showOverlay || isPinnedOverlay || ps.crop.mode != PlayerCropMode.HIDDEN
-    // Keep captions visible under lightweight overlays. The channel browser is a full-screen
-    // surface, so captions must not be drawn over its cards.
-    val isSubtitleBlockingUiVisible =
+    // Retry focus belongs to the foreground interactive surface.
+    val isRetryFocusBlocked =
         ps.crop.mode != PlayerCropMode.HIDDEN || isMiniListOpen
     var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
     val subtitleAvoidanceProgress by animateFloatAsState(
@@ -788,7 +787,7 @@ fun LivePlayerScreen(
                 getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
                 shouldCropLogo = shouldCropLogo,
                 isMiniListOpen = isMiniListOpen,
-                isSubtitleBlockingUiVisible = isSubtitleBlockingUiVisible,
+                isRetryFocusBlocked = isRetryFocusBlocked,
                 mainPlayer = mainPlayer,
                 mainVideoWidth = videoWidth,
                 mainVideoHeight = videoHeight,
@@ -924,7 +923,7 @@ fun LivePlayerScreen(
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(
                         cue = mainCaptionCue.value,
-                        visible = isSubtitleEnabled && !isSubtitleBlockingUiVisible,
+                        visible = isSubtitleEnabled,
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(
@@ -937,7 +936,7 @@ fun LivePlayerScreen(
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(
                         cue = mainSuperimposeCue.value,
-                        visible = !isSubtitleBlockingUiVisible,
+                        visible = true,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

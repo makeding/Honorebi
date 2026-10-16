@@ -63,7 +63,7 @@ fun DualDisplayPlayer(
     getLogoUrl: suspend (String) -> String,
     shouldCropLogo: Boolean,
     isMiniListOpen: Boolean,
-    isSubtitleBlockingUiVisible: Boolean,
+    isRetryFocusBlocked: Boolean,
     mainPlayer: ExoPlayer?,
     mainVideoWidth: Int,
     mainVideoHeight: Int,
@@ -153,20 +153,20 @@ fun DualDisplayPlayer(
                         (state.sseStatus == "Standby" || state.sseStatus == "Offline")),
                 message = state.sseDetail,
                 onRetry = onRetryMain,
-                focusRetry = state.activeDualPlayerIndex == 0 && !isSubtitleBlockingUiVisible,
+                focusRetry = state.activeDualPlayerIndex == 0 && !isRetryFocusBlocked,
                 modifier = Modifier.align(Alignment.Center)
             )
 
             if (isSubtitleEnabled) {
                 NativeCaptionOverlay(
                     cue = mainCaptionCue,
-                    visible = !isSubtitleBlockingUiVisible,
+                    visible = true,
                     modifier = Modifier.fillMaxSize()
                 )
             }
             NativeCaptionOverlay(
                 cue = mainSuperimposeCue,
-                visible = !isSubtitleBlockingUiVisible,
+                visible = true,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -211,20 +211,20 @@ fun DualDisplayPlayer(
                             (state.dualSseStatus == "Standby" || state.dualSseStatus == "Offline")),
                     message = state.dualSseDetail,
                     onRetry = onRetryDual,
-                    focusRetry = state.activeDualPlayerIndex == 1 && !isSubtitleBlockingUiVisible,
+                    focusRetry = state.activeDualPlayerIndex == 1 && !isRetryFocusBlocked,
                     modifier = Modifier.align(Alignment.Center)
                 )
 
                 if (isSubtitleEnabled) {
                     NativeCaptionOverlay(
                         cue = dualCaptionCue,
-                        visible = !isSubtitleBlockingUiVisible,
+                        visible = true,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
                 NativeCaptionOverlay(
                     cue = dualSuperimposeCue,
-                    visible = !isSubtitleBlockingUiVisible,
+                    visible = true,
                     modifier = Modifier.fillMaxSize()
                 )
 

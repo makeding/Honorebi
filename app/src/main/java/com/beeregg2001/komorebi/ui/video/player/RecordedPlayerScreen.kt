@@ -381,47 +381,36 @@ internal fun RecordedPlayerScreen(
         mutableStateOf(emptyList<NativeCaptionLanguage>())
     }
     var currentSubtitleLanguageId by remember(recordedPlaybackToken) { mutableIntStateOf(1) }
-    val mainFocusRequester = remember { FocusRequester() }
-    val subMenuFocusRequester = remember { FocusRequester() }
-    val playerControlsFocusRequester = remember { FocusRequester() }
 
-    var isProgramInfoOpen by remember { mutableStateOf(false) }
-    var infoFromMenu by remember { mutableStateOf(false) }
-    var infoFromButton by remember { mutableStateOf(false) }
-    val infoFocusRequester = remember { FocusRequester() }
+    val ui = remember { RecordedPlayerUiState() }
     var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
-    var isModernSettingsOpen by remember { mutableStateOf(false) }
 
     var videoWidth by remember { mutableStateOf(0) }
     var videoHeight by remember { mutableStateOf(0) }
     var pixelWidthHeightRatio by remember { mutableStateOf(1f) }
 
-    var isChapterListOpen by remember { mutableStateOf(false) }
-    var isKeyframeGridOpen by remember { mutableStateOf(false) }
     var isSeekingPreviewVisible by remember { mutableStateOf(false) }
     var seekingPreviewJob by remember { mutableStateOf<Job?>(null) }
 
     val openProgramInfo: () -> Unit = {
-        infoFromMenu = isSubMenuOpen
-        infoFromButton = false
+        ui.infoFromMenu = isSubMenuOpen
+        ui.infoFromButton = false
         onSubMenuToggle(false)
-        isProgramInfoOpen = true
+        ui.isProgramInfoOpen = true
         onShowControlsChange(true)
     }
     val closeProgramInfo: () -> Unit = {
-        isProgramInfoOpen = false
+        ui.isProgramInfoOpen = false
         onShowControlsChange(true)
-        if (infoFromMenu) onSubMenuToggle(true)
+        if (ui.infoFromMenu) onSubMenuToggle(true)
         scope.launch {
             delay(150)
-            (if (infoFromMenu) subMenuFocusRequester else if (infoFromButton) infoFocusRequester else mainFocusRequester).safeRequestFocus(TAG)
+            (if (ui.infoFromMenu) ui.subMenuFocusRequester else if (ui.infoFromButton) ui.infoFocusRequester else ui.mainFocusRequester).safeRequestFocus(TAG)
         }
     }
 
     val isSubOverlayOpen =
-        isSubMenuOpen || isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
-    val isSubtitleBlockingOverlayOpen =
-        isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen || isProgramInfoOpen || isModernSettingsOpen
+        isSubMenuOpen || isSceneSearchOpen || ui.isChapterListOpen || ui.isKeyframeGridOpen || ui.isProgramInfoOpen || ui.isModernSettingsOpen
     val subtitleAvoidanceProgress by animateFloatAsState(
         targetValue = if (
             showControls &&
@@ -1450,8 +1439,8 @@ internal fun RecordedPlayerScreen(
         }
     }
 
-    LaunchedEffect(isSceneSearchOpen, isChapterListOpen, isKeyframeGridOpen) {
-        if (isSceneSearchOpen || isChapterListOpen || isKeyframeGridOpen) {
+    LaunchedEffect(isSceneSearchOpen, ui.isChapterListOpen, ui.isKeyframeGridOpen) {
+        if (isSceneSearchOpen || ui.isChapterListOpen || ui.isKeyframeGridOpen) {
             vs.wasPlayingBeforeSceneSearch = exoPlayer.isPlaying
             if (vs.wasPlayingBeforeSceneSearch) exoPlayer.pause()
         } else if (vs.wasPlayingBeforeSceneSearch) {
@@ -1518,16 +1507,16 @@ internal fun RecordedPlayerScreen(
         showControls,
         isSubMenuOpen,
         isSceneSearchOpen,
-        isChapterListOpen,
-        isProgramInfoOpen,
-        isModernSettingsOpen,
+        ui.isChapterListOpen,
+        ui.isProgramInfoOpen,
+        ui.isModernSettingsOpen,
         vs.crop.mode,
         vs.lastInteractionTime,
         vs.isSeekBarFocused,
         vs.directionalSeek.isHolding
     ) {
-        if (showControls && !isSubMenuOpen && !isSceneSearchOpen && !isChapterListOpen &&
-            !isProgramInfoOpen && !isModernSettingsOpen && !vs.isSeekBarFocused &&
+        if (showControls && !isSubMenuOpen && !isSceneSearchOpen && !ui.isChapterListOpen &&
+            !ui.isProgramInfoOpen && !ui.isModernSettingsOpen && !vs.isSeekBarFocused &&
             !vs.directionalSeek.isHolding &&
             vs.crop.mode == PlayerCropMode.HIDDEN
         ) {
@@ -1535,13 +1524,12 @@ internal fun RecordedPlayerScreen(
         }
     }
 
-    var wasControlsVisible by remember { mutableStateOf(false) }
     LaunchedEffect(
         isSubMenuOpen,
         isSceneSearchOpen,
-        isChapterListOpen,
-        isProgramInfoOpen,
-        isModernSettingsOpen,
+        ui.isChapterListOpen,
+        ui.isProgramInfoOpen,
+        ui.isModernSettingsOpen,
         showControls,
         recordedPlaybackFence.identity,
         vs.crop.mode
@@ -1550,16 +1538,16 @@ internal fun RecordedPlayerScreen(
         delay(150)
 
         if (isSubMenuOpen) {
-            subMenuFocusRequester.safeRequestFocus(TAG)
+            ui.subMenuFocusRequester.safeRequestFocus(TAG)
         } else if (showControls && isModern && !isSubOverlayOpen) {
-            if (!wasControlsVisible) {
-                playerControlsFocusRequester.safeRequestFocus(TAG)
+            if (!ui.wasControlsVisible) {
+                ui.playerControlsFocusRequester.safeRequestFocus(TAG)
             }
         } else if (!isSubOverlayOpen && vs.crop.mode == PlayerCropMode.HIDDEN) {
-            mainFocusRequester.safeRequestFocus(TAG)
+            ui.mainFocusRequester.safeRequestFocus(TAG)
         }
 
-        wasControlsVisible = showControls
+        ui.wasControlsVisible = showControls
     }
 
     val seriesQuickPrograms = remember(currentProgram, recentRecordings) {
@@ -1723,8 +1711,8 @@ internal fun RecordedPlayerScreen(
         if (canOpenSceneSearch) {
             onSceneSearchToggle(false)
             onSubMenuToggle(false)
-            isChapterListOpen = false
-            isKeyframeGridOpen = true
+            ui.isChapterListOpen = false
+            ui.isKeyframeGridOpen = true
         } else {
             onShowToast(
                 if (isRecordingChasePlayback) {
@@ -1787,7 +1775,7 @@ internal fun RecordedPlayerScreen(
             }
             onShowToast(String.format(AppStrings.TOAST_QUALITY_CHANGED, quality.label))
         }
-        isModernSettingsOpen = false
+        ui.isModernSettingsOpen = false
         onSubMenuToggle(false)
         vs.lastInteractionTime = System.currentTimeMillis()
     }
@@ -1832,7 +1820,7 @@ internal fun RecordedPlayerScreen(
                     dispatchDataBroadcastingColorKey = dispatchDataBroadcastingColorKey,
                     openDataBroadcasting = openDataBroadcasting,
                     onShowToast = onShowToast,
-                    isProgramInfoOpen = isProgramInfoOpen,
+                    isProgramInfoOpen = ui.isProgramInfoOpen,
                     openProgramInfo = openProgramInfo,
                     closeProgramInfo = closeProgramInfo,
                     isSubOverlayOpen = isSubOverlayOpen,
@@ -1856,10 +1844,10 @@ internal fun RecordedPlayerScreen(
                     onBackPressed = onBackPressed,
                     onSceneSearchToggle = onSceneSearchToggle,
                     onSettingsMenuToggle = {
-                        isModernSettingsOpen = true
+                        ui.isModernSettingsOpen = true
                         onShowControlsChange(true)
                     },
-                    onChapterListToggle = { isChapterListOpen = it },
+                    onChapterListToggle = { ui.isChapterListOpen = it },
                     onSubMenuToggle = onSubMenuToggle,
                     onQuickMenuRequested = refreshQuickMenuVideos,
                     exoPlayerIsPlaying = exoPlayer.playWhenReady,
@@ -1893,7 +1881,7 @@ internal fun RecordedPlayerScreen(
             pixelWidthHeightRatio = pixelWidthHeightRatio,
             state = vs,
             renderedFrameGeneration = renderedFrameGeneration,
-            mainFocusRequester = mainFocusRequester,
+            mainFocusRequester = ui.mainFocusRequester,
             isPiPMode = isPiPMode,
             isSubOverlayOpen = isSubOverlayOpen
         )
@@ -1913,13 +1901,12 @@ internal fun RecordedPlayerScreen(
                 recordedPlaybackFence = recordedPlaybackFence,
                 subtitleCue = subtitleCue.value,
                 superimposeCue = superimposeCue.value,
-                isSubtitleBlockingOverlayOpen = isSubtitleBlockingOverlayOpen,
                 subtitleAvoidanceObstacles = subtitleAvoidanceObstacles,
                 subtitleAvoidanceProgress = subtitleAvoidanceProgress,
                 onAvoidanceObstaclesChanged = { obstacles ->
                     if (obstacles.isNotEmpty()) subtitleAvoidanceObstacles = obstacles
                 },
-                infoFocusRequester = infoFocusRequester,
+                infoFocusRequester = ui.infoFocusRequester,
                 presentation = rememberRecordedProgramPresentation(currentProgram, videoPlayerViewModel, backendType),
                 subtitleCommentLayer = subtitleCommentLayer,
                 isBuffering = isBuffering,
@@ -1927,7 +1914,7 @@ internal fun RecordedPlayerScreen(
                     closeRecordedLCrop(vs)
                     scope.launch {
                         delay(200)
-                        mainFocusRequester.safeRequestFocus(TAG)
+                        ui.mainFocusRequester.safeRequestFocus(TAG)
                     }
                 },
                 cmSkipMode = cmSkipMode,
@@ -1952,7 +1939,7 @@ internal fun RecordedPlayerScreen(
                 initialBufferedPositionMs = bufferedPositionMs,
                 controlsPositionMs = getEffectivePositionMs,
                 controlsBufferedPositionMs = getBufferedPositionMs,
-                playerControlsFocusRequester = playerControlsFocusRequester,
+                playerControlsFocusRequester = ui.playerControlsFocusRequester,
                 onSeekBarFocusChanged = {
                     if (vs.isSeekBarFocused && !it) vs.directionalSeek.cancel()
                     vs.isSeekBarFocused = it
@@ -1985,29 +1972,29 @@ internal fun RecordedPlayerScreen(
                 canOpenKeyframeGrid = canOpenSceneSearch,
                 onOpenKeyframeGrid = openKeyframeGrid,
                 onOpenChapterList = {
-                    isChapterListOpen = true
+                    ui.isChapterListOpen = true
                     onShowControlsChange(true)
                 },
-                onOpenProgramInfo = { openProgramInfo(); infoFromButton = true },
+                onOpenProgramInfo = { openProgramInfo(); ui.infoFromButton = true },
                 onOpenSettings = {
                     if (isModern) {
-                        isModernSettingsOpen = true
+                        ui.isModernSettingsOpen = true
                     } else {
                         onSubMenuToggle(true)
                     }
                 },
-                isProgramInfoOpen = isProgramInfoOpen,
+                isProgramInfoOpen = ui.isProgramInfoOpen,
                 onCloseProgramInfo = closeProgramInfo,
                 isSceneSearchOpen = isSceneSearchOpen,
                 onCloseSceneSearch = { onSceneSearchToggle(false) },
-                isChapterListOpen = isChapterListOpen,
-                onCloseChapterList = { isChapterListOpen = false },
-                isKeyframeGridOpen = isKeyframeGridOpen,
-                onCloseKeyframeGrid = { isKeyframeGridOpen = false }
+                isChapterListOpen = ui.isChapterListOpen,
+                onCloseChapterList = { ui.isChapterListOpen = false },
+                isKeyframeGridOpen = ui.isKeyframeGridOpen,
+                onCloseKeyframeGrid = { ui.isKeyframeGridOpen = false }
             )
 
             RecordedPlayerMenus(
-                isModernSettingsOpen = isModernSettingsOpen,
+                isModernSettingsOpen = ui.isModernSettingsOpen,
                 program = currentProgram,
                 seriesPrograms = quickMenuSeriesPrograms,
                 quickPrograms = quickMenuRecentPrograms,
@@ -2024,7 +2011,7 @@ internal fun RecordedPlayerScreen(
                 isDataBroadcastingAvailable = isDataBroadcastingAvailable,
                 isDataBroadcastingActive = isDataBroadcastingActive,
                 availableQualities = availableQualities,
-                subMenuFocusRequester = subMenuFocusRequester,
+                subMenuFocusRequester = ui.subMenuFocusRequester,
                 onAudioToggle = toggleAudio,
                 onSpeedToggle = toggleSpeed,
                 onProgramInfo = openProgramInfo,
@@ -2049,7 +2036,7 @@ internal fun RecordedPlayerScreen(
                 onOpenKeyframeGrid = openKeyframeGrid,
                 openQuickVideosInitially = openQuickVideosOnSubMenuOpen,
                 isSubMenuOpen = isSubMenuOpen,
-                onCloseModernSettings = { isModernSettingsOpen = false },
+                onCloseModernSettings = { ui.isModernSettingsOpen = false },
                 onCloseSubMenu = { onSubMenuToggle(false) },
                 isModern = isModern
             )

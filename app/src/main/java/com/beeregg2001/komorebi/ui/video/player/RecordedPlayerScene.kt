@@ -208,7 +208,6 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     recordedPlaybackFence: RecordedPlaybackFence,
     subtitleCue: NativeCaptionCue?,
     superimposeCue: NativeCaptionCue?,
-    isSubtitleBlockingOverlayOpen: Boolean,
     subtitleAvoidanceObstacles: List<Rect>,
     subtitleAvoidanceProgress: Float,
     onAvoidanceObstaclesChanged: (List<Rect>) -> Unit,
@@ -329,7 +328,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         if (isHeavyUiReady) {
             NativeCaptionOverlay(
                 cue = subtitleCue,
-                visible = state.isSubtitleEnabled && !isSubtitleBlockingOverlayOpen,
+                visible = state.isSubtitleEnabled,
                 modifier = Modifier.fillMaxSize(),
                 avoidanceObstacles = subtitleAvoidanceObstacles,
                 avoidanceProgress = subtitleAvoidanceProgress,
@@ -351,7 +350,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     if (isHeavyUiReady) {
         NativeCaptionOverlay(
             cue = superimposeCue,
-            visible = !isSubtitleBlockingOverlayOpen,
+            visible = true,
             modifier = Modifier.fillMaxSize()
         )
     }
