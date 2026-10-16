@@ -4,13 +4,13 @@
   "releaseNotes": "Honorebi 1.1.1 正式版。スマートフォンからの接続設定、スクリーンセーバーの画像管理、放送中画面、端末別 OTA 更新を追加・改善しました。録画・SMB の長押しシーク、MPEG-TS 再生、スリープ復帰、フォーカスとエラー時の再試行を改善しました。",
   "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-huggy/app-universal-release.apk",
   "beta": {
-    "versionCode": 25,
-    "versionName": "1.1.2-beta4-huggy",
-    "releaseNotes": "Honorebi 1.1.2 beta4。依存関係、プレイヤーのアーキテクチャ、スクリーンセーバーを更新しました。",
-    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta4-huggy/app-universal-release.apk",
+    "versionCode": 26,
+    "versionName": "1.1.2-beta5-huggy",
+    "releaseNotes": "Honorebi 1.1.2 beta5。beta4 でプレイヤーの操作画面・一時停止表示・字幕が表示されず、リモコン操作が効かなくなる問題を修正しました。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta5-huggy/app-universal-release.apk",
     "apkUrls": {
-      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta4-huggy/app-arm64-v8a-release.apk",
-      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta4-huggy/app-armeabi-v7a-release.apk"
+      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta5-huggy/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta5-huggy/app-armeabi-v7a-release.apk"
     }
   },
   "apkUrls": {
