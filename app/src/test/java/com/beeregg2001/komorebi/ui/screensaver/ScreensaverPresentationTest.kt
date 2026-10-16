@@ -11,6 +11,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.unit.dp
 import com.beeregg2001.komorebi.ui.main.NetworkTransport
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
@@ -18,6 +20,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.*
 import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -29,6 +32,11 @@ import java.util.Locale
 @Config(application = Application::class, sdk = [28], qualifiers = "w960dp-h540dp-land")
 class ScreensaverPresentationTest {
     @get:Rule val compose = createComposeRule()
+
+    @Before fun grantManifestReceiverPermission() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        org.robolectric.Shadows.shadowOf(context).grantPermissions("${context.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+    }
 
     @Test fun dateUsesJapaneseEvenOnChineseDevice() {
         val previous = Locale.getDefault()
@@ -77,6 +85,39 @@ class ScreensaverPresentationTest {
         assertTrue(status.left > screen.width / 2)
         assertTrue(status.bottom < screen.height / 3)
         compose.onNodeWithTag("screensaver-upcoming-panel").assertDoesNotExist()
+    }
+
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun playerClockAndMetadataKeepBoundsAcrossMissingAndLongTitles() {
+        val title = mutableStateOf("")
+        val subtitle = mutableStateOf("")
+        compose.setContent {
+            KomorebiTheme {
+                Box(Modifier.fillMaxSize().background(Color.Black).testTag("player-preview")) {
+                    PlayerScreensaverContent(title.value, subtitle.value)
+                }
+            }
+        }
+        compose.onNodeWithText("番組情報なし").assertExists()
+        compose.onNodeWithText("一時停止中").assertExists()
+        val tags = listOf("player-screensaver-clock", "player-screensaver-title", "player-screensaver-subtitle")
+        val bounds = tags.map { compose.onNodeWithTag(it).fetchSemanticsNode().boundsInRoot }
+        compose.runOnIdle { title.value = "長い番組タイトル".repeat(30); subtitle.value = "放送局".repeat(30) }
+        tags.forEachIndexed { index, tag ->
+            assertEquals(bounds[index], compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot)
+        }
+        val screen = compose.onNodeWithTag("player-screensaver").fetchSemanticsNode().boundsInRoot
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithTag("player-screensaver-clock").performSemanticsAction(
+            androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult
+        ) { it(layouts) }
+        assertTrue(layouts.single().layoutInput.style.fontSize.value > 72f)
+        bounds.forEach { assertTrue("Content $it must fit $screen", it.left >= screen.left && it.top >= screen.top && it.right <= screen.right && it.bottom <= screen.bottom) }
+        compose.runOnIdle { title.value = "テレビアニメ 第12話「木漏れ日の午後」"; subtitle.value = "番組のチャンネル · 一時停止中" }
+        val bitmap = compose.onNodeWithTag("player-preview").captureToImage().asAndroidBitmap()
+        val output = java.io.File("build/reports/screensaver/player-preview.png")
+        output.parentFile.mkdirs()
+        output.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     @Test fun readabilityFadesFromCornersWithoutInteriorHotspots() {

@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
-import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
@@ -195,12 +194,12 @@ fun LivePlayerScreen(
     val dualRuntimeState by livePlayerViewModel.dualRuntimeState.collectAsState()
     val isMainPlaying = mainRuntimeState.isPlaying
     val isDualPlaying = dualRuntimeState.isPlaying
-    LaunchedEffect(isMainPlaying, isDualPlaying) {
-        ScreensaverInteractionTracker.setPlaybackActive(livePlayerViewModel, isMainPlaying || isDualPlaying)
-    }
-    DisposableEffect(livePlayerViewModel) {
-        onDispose { ScreensaverInteractionTracker.setPlaybackActive(livePlayerViewModel, false) }
-    }
+    com.beeregg2001.komorebi.ui.screensaver.TrackPlayerIdle(
+        mainPlayer, currentChannelItem.programPresent?.title.orEmpty(), currentChannelItem.name,
+    )
+    com.beeregg2001.komorebi.ui.screensaver.TrackPlayerIdle(
+        dualPlayer, ps.dualRightChannel?.programPresent?.title.orEmpty(), ps.dualRightChannel?.name.orEmpty(),
+    )
     val mainSessionToken by livePlayerViewModel.mainSessionToken.collectAsState()
     val dualSessionToken by livePlayerViewModel.dualSessionToken.collectAsState()
     val mainSubtitleLanguages by livePlayerViewModel.mainSubtitleLanguages.collectAsState()

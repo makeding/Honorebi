@@ -326,6 +326,15 @@ class SettingsViewModel @Inject constructor(
     val screensaverTimeoutMinutes: StateFlow<Int> = settingsRepository.screensaverTimeoutMinutes.stateIn(
         viewModelScope, SharingStarted.Eagerly, 5
     )
+    val screensaverPlayerTimeoutMinutes: StateFlow<Int> = settingsRepository.screensaverPlayerTimeoutMinutes.stateIn(
+        viewModelScope, SharingStarted.Eagerly, 10
+    )
+    val screensaverPlayerStyle: StateFlow<String> = settingsRepository.screensaverPlayerStyle.stateIn(
+        viewModelScope, SharingStarted.Eagerly, "SLIDESHOW"
+    )
+    val playerEndSleepMinutes: StateFlow<Int> = settingsRepository.playerEndSleepMinutes.stateIn(
+        viewModelScope, SharingStarted.Eagerly, 60
+    )
     val screensaverIntervalSeconds: StateFlow<Int> = settingsRepository.screensaverIntervalSeconds.stateIn(
         viewModelScope, SharingStarted.Eagerly, 30
     )
@@ -345,6 +354,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setScreensaverTimeoutMinutes(minutes: Int) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveInt(SettingsRepository.SCREENSAVER_TIMEOUT_MINUTES, minutes)
+    }
+
+    fun setScreensaverPlayerTimeoutMinutes(minutes: Int) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveInt(SettingsRepository.SCREENSAVER_PLAYER_TIMEOUT_MINUTES, minutes)
+    }
+
+    fun setScreensaverPlayerStyle(style: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.SCREENSAVER_PLAYER_STYLE, style)
+    }
+
+    fun setPlayerEndSleepMinutes(minutes: Int) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveInt(SettingsRepository.PLAYER_END_SLEEP_MINUTES, minutes)
     }
 
     fun setScreensaverIntervalSeconds(seconds: Int) = viewModelScope.launch(Dispatchers.IO) {

@@ -21,7 +21,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
+import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -44,7 +46,14 @@ class InAppScreensaverStateTest {
     private val enabled = mutableStateOf(true)
     private val hasImages = mutableStateOf(true)
     private val mounted = mutableStateOf(true)
+    private val playerTimeout = mutableStateOf(10)
+    private val endedHold = mutableStateOf(1)
     private lateinit var state: InAppScreensaverState
+
+    @Before fun grantManifestReceiverPermission() {
+        shadowOf(context).grantPermissions("${context.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+        ScreensaverInteractionTracker.onUserInteraction()
+    }
 
     private fun start(interactive: Boolean = true, resumed: Boolean = true) {
         compose.runOnIdle {
@@ -54,7 +63,10 @@ class InAppScreensaverStateTest {
         compose.setContent {
             if (mounted.value) {
                 CompositionLocalProvider(LocalLifecycleOwner provides owner) {
-                    state = rememberInAppScreensaverState(enabled.value, 1, hasImages.value)
+                    val wake = com.beeregg2001.komorebi.ui.main.rememberAppWakeState()
+                    state = rememberInAppScreensaverState(enabled.value, 1, hasImages.value,
+                        wake, playerTimeout.value)
+                    EndedPlaybackScreenHold(endedHold.value, wake)
                     if (state.isVisible) {
                         Dialog(onDismissRequest = state::dismiss) {
                             Box(Modifier.size(100.dp).testTag("saver"))
@@ -97,6 +109,76 @@ class InAppScreensaverStateTest {
 
     private fun hidden() = compose.onNodeWithTag("saver").assertDoesNotExist()
     private fun shown() = compose.onNodeWithTag("saver").assertExists()
+
+    @Test fun pausedPlayerUsesItsOwnLongerDeadlineAndResumeCancelsIt() {
+        val player = Any()
+        try {
+            start()
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player,
+                PlayerIdleSession(false, PausedPlayback("番組"))) }
+            advance(60_000)
+            hidden()
+            advance(539_000)
+            hidden()
+            advance(1_000)
+            shown()
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player, PlayerIdleSession(true)) }
+            hidden()
+            advance(600_000)
+            hidden()
+        } finally { ScreensaverInteractionTracker.updatePlayer(player, null) }
+    }
+
+    @Test fun pausedPlayerCanStartEarlierAndPlayerStyleWorksWithoutImages() {
+        val player = Any()
+        try {
+            playerTimeout.value = 1
+            hasImages.value = false
+            start()
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player,
+                PlayerIdleSession(false, PausedPlayback("番組"))) }
+            advance(59_000)
+            hidden()
+            advance(1_000)
+            shown()
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player, null) }
+            hidden()
+            advance(120_000)
+            hidden()
+        } finally { ScreensaverInteractionTracker.updatePlayer(player, null) }
+    }
+
+    @Test fun onlyEndReleasesScreenHoldAndReplayOrInteractionRearmsIt() {
+        val player = Any()
+        try {
+            enabled.value = false
+            start()
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player,
+                PlayerIdleSession(false, PausedPlayback("番組"))) }
+            advance(120_000)
+            assertFalse(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player, PlayerIdleSession(false, ended = true)) }
+            advance(59_000)
+            assertFalse(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            advance(1_000)
+            assertTrue(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            compose.runOnIdle { ScreensaverInteractionTracker.onUserInteraction() }
+            assertFalse(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            advance(60_000)
+            assertTrue(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player, PlayerIdleSession(true)) }
+            assertFalse(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            advance(120_000)
+            assertFalse(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            compose.runOnIdle { endedHold.value = 0; ScreensaverInteractionTracker.updatePlayer(player, PlayerIdleSession(false, ended = true)) }
+            compose.waitForIdle()
+            assertTrue(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            pause()
+            assertFalse(ScreensaverInteractionTracker.systemSleepAllowed.value)
+            resume()
+            assertTrue(ScreensaverInteractionTracker.systemSleepAllowed.value)
+        } finally { ScreensaverInteractionTracker.updatePlayer(player, null) }
+    }
 
     @Test fun pendingDeadlineDoesNotCarryAcrossLongSleepAndStop() {
         start()
@@ -168,7 +250,7 @@ class InAppScreensaverStateTest {
         val player = Any()
         try {
             start()
-            compose.runOnIdle { ScreensaverInteractionTracker.setPlaybackActive(player, true) }
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player, PlayerIdleSession(true)) }
             pause()
             screen(false)
             advance(120_000)
@@ -176,7 +258,7 @@ class InAppScreensaverStateTest {
             resume()
             advance(120_000)
             hidden()
-            compose.runOnIdle { ScreensaverInteractionTracker.setPlaybackActive(player, false) }
+            compose.runOnIdle { ScreensaverInteractionTracker.updatePlayer(player, null) }
             advance(59_000)
             hidden()
             advance(1_000)
@@ -188,7 +270,7 @@ class InAppScreensaverStateTest {
             advance(120_000)
             hidden()
         } finally {
-            ScreensaverInteractionTracker.setPlaybackActive(player, false)
+            ScreensaverInteractionTracker.updatePlayer(player, null)
         }
     }
 

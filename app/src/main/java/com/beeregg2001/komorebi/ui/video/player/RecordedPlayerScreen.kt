@@ -41,7 +41,6 @@ import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
 import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
-import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.B60MediaPlane
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
@@ -818,19 +817,8 @@ internal fun RecordedPlayerScreen(
         onFailure = { message -> isBuffering = false; tsRecoveryFailure = message; onShowControlsChange(true) },
     )
 
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                ScreensaverInteractionTracker.setPlaybackActive(exoPlayer, isPlaying)
-            }
-        }
-        exoPlayer.addListener(listener)
-        ScreensaverInteractionTracker.setPlaybackActive(exoPlayer, exoPlayer.isPlaying)
-        onDispose {
-            exoPlayer.removeListener(listener)
-            ScreensaverInteractionTracker.setPlaybackActive(exoPlayer, false)
-        }
-    }
+    com.beeregg2001.komorebi.ui.screensaver.TrackPlayerIdle(exoPlayer, currentProgram.title, currentProgram.channel?.name.orEmpty())
+
 
     LaunchedEffect(exoPlayer, videoPlaybackSpeedStr) {
         val saved = videoPlaybackSpeedStr.toFloatOrNull()?.takeIf { it in PLAYBACK_SPEEDS } ?: 1.0f

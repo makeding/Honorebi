@@ -176,12 +176,17 @@ private fun SettingsMenuScreen(
     val screensaverShowUpcoming by viewModel.screensaverShowUpcoming.collectAsState()
     val screensaverUpcomingR = remember { FocusRequester() }
     val screensaverTimeout by viewModel.screensaverTimeoutMinutes.collectAsState()
+    val screensaverPlayerTimeout by viewModel.screensaverPlayerTimeoutMinutes.collectAsState()
+    val screensaverPlayerStyle by viewModel.screensaverPlayerStyle.collectAsState()
+    val playerEndSleepMinutes by viewModel.playerEndSleepMinutes.collectAsState()
     val screensaverInterval by viewModel.screensaverIntervalSeconds.collectAsState()
     val screensaverTransition by viewModel.screensaverTransition.collectAsState()
     val screensaverImages by viewModel.screensaverImageUris.collectAsState()
     val screensaverGalleryR = remember { FocusRequester() }
+    val screensaverPlayerPreviewR = remember { FocusRequester() }
     var showScreensaverGallery by remember { mutableStateOf(false) }
     var screensaverPreview by remember { mutableStateOf(false) }
+    var screensaverPlayerPreview by remember { mutableStateOf(false) }
     var showInternalImagePicker by remember { mutableStateOf(false) }
     val screensaverImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
@@ -267,7 +272,7 @@ private fun SettingsMenuScreen(
             List(6) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(10) { FocusRequester() },
+            List(13) { FocusRequester() },
             emptyList(),
             List(7) { FocusRequester() },
             List(6) { FocusRequester() }
@@ -349,7 +354,7 @@ private fun SettingsMenuScreen(
                                 }
     }
 
-    val isDialogOpen = uiState.activeDialog !is SettingDialogState.None || showInternalImagePicker || showScreensaverGallery || screensaverPreview
+    val isDialogOpen = uiState.activeDialog !is SettingDialogState.None || showInternalImagePicker || showScreensaverGallery || screensaverPreview || screensaverPlayerPreview
 
     // ダイアログ表示中の戻るキーは「ダイアログを閉じる」に割り当てる。
     // ここで消費しないと MainRoot 側の BackHandler が動いてホームへ戻ってしまう。
@@ -996,13 +1001,20 @@ private fun SettingsMenuScreen(
                             { viewModel.toggleHideSubChannels() },
                             screensaverEnabled,
                             screensaverTimeout,
+                            screensaverPlayerTimeout,
+                            screensaverPlayerStyle,
+                            playerEndSleepMinutes,
                             screensaverInterval,
                             screensaverTransition,
                             screensaverImages.size,
                             itemFocusRequesters[8][4], itemFocusRequesters[8][5], itemFocusRequesters[8][6],
                             itemFocusRequesters[8][7], itemFocusRequesters[8][8], itemFocusRequesters[8][9],
+                            itemFocusRequesters[8][10], itemFocusRequesters[8][11], itemFocusRequesters[8][12],
                             { viewModel.setScreensaverEnabled(!screensaverEnabled) },
                             { viewModel.setScreensaverTimeoutMinutes(when (screensaverTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
+                            { viewModel.setScreensaverPlayerTimeoutMinutes(when (screensaverPlayerTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
+                            { viewModel.setScreensaverPlayerStyle(if (screensaverPlayerStyle == "PLAYER") "SLIDESHOW" else "PLAYER") },
+                            { viewModel.setPlayerEndSleepMinutes(when (playerEndSleepMinutes) { 0 -> 15; 15 -> 30; 30 -> 60; 60 -> 120; else -> 0 }) },
                             { viewModel.setScreensaverIntervalSeconds(when (screensaverInterval) { 5 -> 15; 15 -> 30; 30 -> 60; else -> 5 }) },
                             { viewModel.setScreensaverTransition(when (screensaverTransition) { "FADE" -> "SLIDE"; "SLIDE" -> "NONE"; else -> "FADE" }) },
                             {
@@ -1013,6 +1025,8 @@ private fun SettingsMenuScreen(
                             },
                             { screensaverPreview = true },
                             onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 },
+                            screensaverPlayerPreviewR = screensaverPlayerPreviewR,
+                            onPreviewScreensaverPlayer = { screensaverPlayerPreview = true },
                             screensaverShowUpcoming = screensaverShowUpcoming,
                             screensaverUpcomingR = screensaverUpcomingR,
                             onToggleScreensaverUpcoming = { viewModel.setScreensaverShowUpcoming(!screensaverShowUpcoming) },
@@ -1421,26 +1435,44 @@ private fun SettingsMenuScreen(
                 onDismiss = { showScreensaverGallery = false; closeDialog() },
             )
         }
-        if (screensaverPreview) {
+        if (screensaverPreview || screensaverPlayerPreview) {
+            val isPlayerPreview = screensaverPlayerPreview
             val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
-                enabled = screensaverShowUpcoming, visible = true,
+                enabled = screensaverShowUpcoming && !(isPlayerPreview && screensaverPlayerStyle == "PLAYER"), visible = true,
             )
             androidx.compose.ui.window.Dialog(
-                onDismissRequest = { screensaverPreview = false },
+                onDismissRequest = {
+                    screensaverPreview = false
+                    screensaverPlayerPreview = false
+                    closeDialog()
+                },
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {
                 androidx.compose.foundation.layout.Box(
                     Modifier.fillMaxSize().onKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown && event.key == androidx.compose.ui.input.key.Key.Back) {
                             screensaverPreview = false
+                            screensaverPlayerPreview = false
+                            closeDialog()
                             true
                         } else false
-                    }.clickable { screensaverPreview = false }
+                    }.clickable {
+                        screensaverPreview = false
+                        screensaverPlayerPreview = false
+                        closeDialog()
+                    }
                 ) {
-                    com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
-                        imageUris = screensaverImages, intervalSeconds = 5,
-                        transition = screensaverTransition, upcomingRecordings = upcoming
-                    )
+                    if (isPlayerPreview && screensaverPlayerStyle == "PLAYER") {
+                        com.beeregg2001.komorebi.ui.screensaver.PlayerScreensaverContent(
+                            title = "プレビュー",
+                            modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)
+                        )
+                    } else {
+                        com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
+                            imageUris = screensaverImages, intervalSeconds = 5,
+                            transition = screensaverTransition, upcomingRecordings = upcoming
+                        )
+                    }
                 }
             }
         }

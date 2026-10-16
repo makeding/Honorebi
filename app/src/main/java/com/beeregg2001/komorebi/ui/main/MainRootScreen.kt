@@ -412,6 +412,14 @@ fun MainRootScreen(
     val reserves by reserveViewModel.reserves.collectAsState()
     val screensaverEnabled by settingsViewModel.screensaverEnabled.collectAsState()
     val screensaverTimeout by settingsViewModel.screensaverTimeoutMinutes.collectAsState()
+    val playerTimeout by settingsViewModel.screensaverPlayerTimeoutMinutes.collectAsState()
+    val playerStyle by settingsViewModel.screensaverPlayerStyle.collectAsState()
+    val endedHoldMinutes by settingsViewModel.playerEndSleepMinutes.collectAsState()
+    val pausedPlayback by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.pausedPlayback.collectAsState()
+    val playbackEnded by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.playbackEnded.collectAsState()
+    val systemSleepAllowed by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
+    val usePlayerSaver = pausedPlayback != null && playerStyle == "PLAYER"
+    com.beeregg2001.komorebi.ui.screensaver.EndedPlaybackScreenHold(endedHoldMinutes, appWakeState)
     val screensaverInterval by settingsViewModel.screensaverIntervalSeconds.collectAsState()
     val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
     val screensaverImages by settingsViewModel.screensaverImageUris.collectAsState()
@@ -421,6 +429,7 @@ fun MainRootScreen(
         timeoutMinutes = screensaverTimeout,
         hasImages = screensaverImages.isNotEmpty(),
         wakeState = appWakeState,
+        playerTimeoutMinutes = playerTimeout,
     )
     val defaultSystemChannel = remember(groupedChannels) {
         val channels = groupedChannels.values.flatten()
@@ -758,6 +767,7 @@ fun MainRootScreen(
                     if (state.playbackState.isPlaybackActive) {
                         MainRootPlaybackHost(
                             state = state,
+                            suppressChrome = screensaverState.isVisible && usePlayerSaver,
                             data = MainRootPlaybackHostData(
                                 groupedChannels = groupedChannels,
                                 watchHistory = watchHistory,
@@ -863,28 +873,39 @@ fun MainRootScreen(
             if (showExitDialog) {
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
             }
-            if (appWakeState.isAwake && screensaverState.isVisible && screensaverImages.isNotEmpty()) {
+            if (appWakeState.isAwake && screensaverState.isVisible && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
                 val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
-                    enabled = screensaverShowUpcoming,
+                    enabled = screensaverShowUpcoming && !usePlayerSaver,
                     visible = true,
                 )
                 androidx.compose.ui.window.Dialog(
                     onDismissRequest = screensaverState::dismiss,
                     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                 ) {
+                    // Preserve the paused video rather than dimming the whole player window.
+                    val dialogView = androidx.compose.ui.platform.LocalView.current
+                    SideEffect {
+                        dialogView.keepScreenOn = pausedPlayback != null || (playbackEnded && !systemSleepAllowed)
+                    }
+                    DisposableEffect(dialogView, usePlayerSaver) {
+                        val window = (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+                        val previousDim = window?.attributes?.dimAmount ?: 0f
+                        if (usePlayerSaver) window?.setDimAmount(0f)
+                        onDispose { window?.setDimAmount(previousDim) }
+                    }
                     androidx.compose.foundation.layout.Box(
                         Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && !event.key.nativeKeyCode.let { code ->
-                                    code in setOf(android.view.KeyEvent.KEYCODE_MEDIA_PLAY, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
-                                        android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, android.view.KeyEvent.KEYCODE_MEDIA_STOP,
-                                        android.view.KeyEvent.KEYCODE_MEDIA_NEXT, android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
-                                        android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, android.view.KeyEvent.KEYCODE_MEDIA_REWIND,
-                                        android.view.KeyEvent.KEYCODE_MEDIA_RECORD)
-                                }) screensaverState.dismiss()
-                            false
+                            com.beeregg2001.komorebi.ui.screensaver.handleScreensaverKey(
+                                event.nativeKeyEvent, screensaverState::dismiss,
+                            ) { key -> context.getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(key) }
                         }.clickable { screensaverState.dismiss() }
                     ) {
-                        com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
+                        if (usePlayerSaver) {
+                            com.beeregg2001.komorebi.ui.screensaver.PlayerScreensaverContent(
+                                title = pausedPlayback?.title.orEmpty(),
+                                subtitle = pausedPlayback?.subtitle.orEmpty(),
+                            )
+                        } else com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent(
                             imageUris = screensaverImages,
                             intervalSeconds = screensaverInterval,
                             transition = screensaverTransition,

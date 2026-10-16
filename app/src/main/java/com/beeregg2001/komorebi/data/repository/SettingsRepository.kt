@@ -121,6 +121,9 @@ class SettingsRepository @Inject constructor(
 
         val SCREENSAVER_ENABLED = booleanPreferencesKey("screensaver_enabled")
         val SCREENSAVER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_timeout_minutes")
+        val SCREENSAVER_PLAYER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_player_timeout_minutes")
+        val SCREENSAVER_PLAYER_STYLE = stringPreferencesKey("screensaver_player_style")
+        val PLAYER_END_SLEEP_MINUTES = intPreferencesKey("player_end_sleep_minutes")
         val SCREENSAVER_INTERVAL_SECONDS = intPreferencesKey("screensaver_interval_seconds")
         val SCREENSAVER_TRANSITION = stringPreferencesKey("screensaver_transition")
         val SCREENSAVER_IMAGE_URIS = stringPreferencesKey("screensaver_image_uris")
@@ -249,6 +252,12 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[SCREENSAVER_ENABLED] ?: false }
     val screensaverTimeoutMinutes: Flow<Int> =
         context.dataStore.data.map { it[SCREENSAVER_TIMEOUT_MINUTES] ?: 5 }
+    val screensaverPlayerTimeoutMinutes: Flow<Int> =
+        context.dataStore.data.map { it[SCREENSAVER_PLAYER_TIMEOUT_MINUTES] ?: 10 }
+    val screensaverPlayerStyle: Flow<String> =
+        context.dataStore.data.map { it[SCREENSAVER_PLAYER_STYLE] ?: "SLIDESHOW" }
+    val playerEndSleepMinutes: Flow<Int> =
+        context.dataStore.data.map { it[PLAYER_END_SLEEP_MINUTES] ?: 60 }
     val screensaverIntervalSeconds: Flow<Int> =
         context.dataStore.data.map { it[SCREENSAVER_INTERVAL_SECONDS] ?: 30 }
     val screensaverTransition: Flow<String> =

@@ -1,6 +1,8 @@
 package com.beeregg2001.komorebi.ui.player
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
@@ -16,12 +18,13 @@ fun PlayerSurface(
     onViewCreated: (PlayerView) -> Unit = {},
     onViewUpdated: (PlayerView) -> Unit = {}
 ) {
+    val systemSleepAllowed by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
                 this.player = player
                 useController = false
-                keepScreenOn = true
+                keepScreenOn = !systemSleepAllowed
                 this.resizeMode = resizeMode
                 onViewCreated(this)
             }
@@ -29,7 +32,7 @@ fun PlayerSurface(
         update = { view ->
             if (view.player !== player) view.player = player
             if (view.resizeMode != resizeMode) view.resizeMode = resizeMode
-            view.keepScreenOn = true
+            view.keepScreenOn = !systemSleepAllowed
             onViewUpdated(view)
         },
         onRelease = { view ->

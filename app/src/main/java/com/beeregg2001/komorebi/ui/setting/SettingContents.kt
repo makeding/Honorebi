@@ -662,22 +662,33 @@ fun DisplaySettingsContent(
     onToggleHideSubChannels: () -> Unit,
     screensaverEnabled: Boolean,
     screensaverTimeoutMinutes: Int,
+    screensaverPlayerTimeoutMinutes: Int,
+    screensaverPlayerStyle: String,
+    playerEndSleepMinutes: Int,
     screensaverIntervalSeconds: Int,
     screensaverTransition: String,
     screensaverImageCount: Int,
     screensaverEnabledR: FocusRequester,
     screensaverTimeoutR: FocusRequester,
+    screensaverPlayerTimeoutR: FocusRequester,
+    screensaverPlayerStyleR: FocusRequester,
+    playerEndSleepR: FocusRequester,
     screensaverIntervalR: FocusRequester,
     screensaverTransitionR: FocusRequester,
     screensaverImagesR: FocusRequester,
     screensaverPreviewR: FocusRequester,
     onToggleScreensaver: () -> Unit,
     onCycleScreensaverTimeout: () -> Unit,
+    onCycleScreensaverPlayerTimeout: () -> Unit,
+    onCycleScreensaverPlayerStyle: () -> Unit,
+    onCyclePlayerEndSleep: () -> Unit,
     onCycleScreensaverInterval: () -> Unit,
     onCycleScreensaverTransition: () -> Unit,
     onPickScreensaverImages: () -> Unit,
     onPreviewScreensaver: () -> Unit,
     onClick: (FocusRequester) -> Unit,
+    screensaverPlayerPreviewR: FocusRequester? = null,
+    onPreviewScreensaverPlayer: () -> Unit = {},
     screensaverShowUpcoming: Boolean = false,
     screensaverUpcomingR: FocusRequester? = null,
     onToggleScreensaverUpcoming: () -> Unit = {},
@@ -687,6 +698,7 @@ fun DisplaySettingsContent(
     val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
     val upcomingR = screensaverUpcomingR ?: remember { FocusRequester() }
     val galleryR = screensaverGalleryR ?: remember { FocusRequester() }
+    val playerPreviewR = screensaverPlayerPreviewR ?: remember { FocusRequester() }
     val baseThemeLabel =
         if (isTimeLinked) "時間連動テーマ" else if (!isDarkMode) AppStrings.SETTINGS_VALUE_THEME_DARK else AppStrings.SETTINGS_VALUE_THEME_LIGHT
 
@@ -818,20 +830,52 @@ fun DisplaySettingsContent(
                 onClick = { onClick(screensaverEnabledR); onToggleScreensaver() }
             )
             SettingItem(
-                "開始までの待ち時間",
+                "通常の待ち時間",
                 "$screensaverTimeoutMinutes 分",
                 Icons.Default.Timer,
                 modifier = Modifier.focusRequester(screensaverTimeoutR).focusProperties {
-                    left = sidebarR; up = screensaverEnabledR; down = screensaverIntervalR
+                    left = sidebarR; up = screensaverEnabledR; down = screensaverPlayerTimeoutR
                 },
                 onClick = { onClick(screensaverTimeoutR); onCycleScreensaverTimeout() }
+            )
+            SettingItem(
+                "一時停止中の待ち時間",
+                "$screensaverPlayerTimeoutMinutes 分",
+                Icons.Default.PauseCircle,
+                modifier = Modifier.focusRequester(screensaverPlayerTimeoutR).focusProperties {
+                    left = sidebarR; up = screensaverTimeoutR; down = screensaverPlayerStyleR
+                },
+                onClick = { onClick(screensaverPlayerTimeoutR); onCycleScreensaverPlayerTimeout() }
+            )
+            SettingItem(
+                "一時停止中のスタイル",
+                if (screensaverPlayerStyle == "PLAYER") "プレーヤーと時計" else "スクリーンセーバー",
+                Icons.Default.PictureInPicture,
+                modifier = Modifier.focusRequester(screensaverPlayerStyleR).focusProperties {
+                    left = sidebarR; up = screensaverPlayerTimeoutR; down = playerEndSleepR
+                },
+                onClick = { onClick(screensaverPlayerStyleR); onCycleScreensaverPlayerStyle() }
+            )
+            SettingItem(
+                "再生終了後の画面保持",
+                if (playerEndSleepMinutes == 0) "保持しない" else "$playerEndSleepMinutes 分",
+                Icons.Default.Bedtime,
+                modifier = Modifier.focusRequester(playerEndSleepR).focusProperties {
+                    left = sidebarR; up = screensaverPlayerStyleR; down = screensaverIntervalR
+                },
+                onClick = { onClick(playerEndSleepR); onCyclePlayerEndSleep() }
+            )
+            Text(
+                "再生終了後、保持時間を過ぎるとテレビのスリープ設定に従います。",
+                style = MaterialTheme.typography.bodySmall,
+                color = KomorebiTheme.colors.textSecondary,
             )
             SettingItem(
                 "画像の切り替え間隔",
                 "$screensaverIntervalSeconds 秒",
                 Icons.Default.Slideshow,
                 modifier = Modifier.focusRequester(screensaverIntervalR).focusProperties {
-                    left = sidebarR; up = screensaverTimeoutR; down = screensaverTransitionR
+                    left = sidebarR; up = playerEndSleepR; down = screensaverTransitionR
                 },
                 onClick = { onClick(screensaverIntervalR); onCycleScreensaverInterval() }
             )
@@ -876,9 +920,18 @@ fun DisplaySettingsContent(
                 "5 秒ごとに切り替え",
                 Icons.Default.Preview,
                 modifier = Modifier.focusRequester(screensaverPreviewR).focusProperties {
-                    left = sidebarR; up = upcomingR; down = FocusRequester.Cancel
+                    left = sidebarR; up = upcomingR; down = playerPreviewR
                 },
                 onClick = { onClick(screensaverPreviewR); onPreviewScreensaver() }
+            )
+            SettingItem(
+                "一時停止中のプレビュー",
+                if (screensaverPlayerStyle == "PLAYER") "プレーヤーと時計" else "スクリーンセーバー",
+                Icons.Default.PauseCircle,
+                modifier = Modifier.focusRequester(playerPreviewR).focusProperties {
+                    left = sidebarR; up = screensaverPreviewR; down = FocusRequester.Cancel
+                },
+                onClick = { onClick(playerPreviewR); onPreviewScreensaverPlayer() }
             )
         }
     }
