@@ -10,7 +10,9 @@ import kotlinx.coroutines.delay
  */
 fun FocusRequester.safeRequestFocus(tag: String = "KomorebiFocus") {
     try {
-        if (!this.requestFocus()) {
+        val result = this.requestFocus()
+        Log.i("PlayerInputTrace", "request focus tag=$tag result=$result")
+        if (!result) {
             Log.w(tag, "Focus request was rejected by the current focus tree.")
         }
     } catch (e: IllegalStateException) {
