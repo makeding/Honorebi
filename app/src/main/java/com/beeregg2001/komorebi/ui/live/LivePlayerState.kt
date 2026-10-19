@@ -278,7 +278,14 @@ class LivePlayerState(
                     scope.launch { scrollState.animateScrollTo(scrollState.value - 200) }
                     return true
                 }
-                if (!showOverlay && !isPinnedOverlay && !isMiniListOpen) {
+                if (!isDualDisplayMode && repeatCount > 0) return true
+                if (!isDualDisplayMode && !showOverlay && !isPinnedOverlay) {
+                    onManualOverlayChange(false)
+                    onShowOverlayChange(true)
+                    return true
+                }
+                if (!isDualDisplayMode || (!showOverlay && !isPinnedOverlay)) {
+                    onShowOverlayChange(false)
                     onSubMenuToggle(true)
                     return true
                 }
@@ -289,7 +296,14 @@ class LivePlayerState(
                     scope.launch { scrollState.animateScrollTo(scrollState.value + 200) }
                     return true
                 }
-                if (!showOverlay && !isPinnedOverlay && !isMiniListOpen) {
+                if (!isDualDisplayMode && repeatCount > 0) return true
+                if (!isDualDisplayMode && !showOverlay && !isPinnedOverlay) {
+                    onManualOverlayChange(false)
+                    onShowOverlayChange(true)
+                    return true
+                }
+                if (!isDualDisplayMode || (!showOverlay && !isPinnedOverlay)) {
+                    onShowOverlayChange(false)
                     onMiniListToggle(true)
                     return true
                 }

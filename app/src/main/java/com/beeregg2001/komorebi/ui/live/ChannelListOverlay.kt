@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +83,7 @@ fun ChannelListOverlay(
     focusRequester: FocusRequester,
     onFirstDraw: () -> Unit = {},
     onInitialFocus: () -> Unit = {},
+    isActive: Boolean = true,
 ) {
     val colors = KomorebiTheme.colors
     val channelTypeOrder = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY")
@@ -102,9 +104,11 @@ fun ChannelListOverlay(
     val columnState = rememberLazyListState()
     val secondSectionFocusRequester = remember { FocusRequester() }
     var isTwoRowsVisible by remember { mutableStateOf(false) }
+    var isPlaced by remember(isActive) { mutableStateOf(false) }
+    var hasInitialFocus by remember(isActive, firstSection, currentChannelId) { mutableStateOf(false) }
 
-    LaunchedEffect(firstSection, currentChannelId) {
-        if (firstSection == null) return@LaunchedEffect
+    LaunchedEffect(isActive, isPlaced, firstSection, currentChannelId) {
+        if (!isActive || !isPlaced || hasInitialFocus || firstSection == null) return@LaunchedEffect
         isTwoRowsVisible = false
         if (columnState.firstVisibleItemIndex != 0 || columnState.firstVisibleItemScrollOffset != 0) {
             columnState.scrollToItem(0)
@@ -114,11 +118,14 @@ fun ChannelListOverlay(
             maxRetries = 8,
             delayMillis = 40
         )
-        if (focused) onInitialFocus()
+        if (focused) {
+            hasInitialFocus = true
+            onInitialFocus()
+        }
     }
 
-    LaunchedEffect(isTwoRowsVisible, secondSection) {
-        if (isTwoRowsVisible && secondSection != null) {
+    LaunchedEffect(isActive, isTwoRowsVisible, secondSection) {
+        if (isActive && isTwoRowsVisible && secondSection != null) {
             delay(60)
             secondSectionFocusRequester.safeRequestFocusWithRetry(
                 tag = "ChannelBrowserSecondRowFocus",
@@ -130,7 +137,8 @@ fun ChannelListOverlay(
 
     Box(
         modifier = Modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            .onGloballyPositioned { isPlaced = isActive },
         contentAlignment = Alignment.BottomCenter
     ) {
         LazyColumn(
@@ -139,7 +147,7 @@ fun ChannelListOverlay(
                 .fillMaxWidth()
                 .drawWithContent {
                     drawContent()
-                    onFirstDraw()
+                    if (isActive) onFirstDraw()
                 }
                 .height(if (isTwoRowsVisible) 336.dp else 180.dp)
                 .background(
@@ -154,8 +162,12 @@ fun ChannelListOverlay(
                     )
                 )
                 .onPreviewKeyEvent { event ->
+                    if (isActive && event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionDown && event.nativeKeyEvent.repeatCount > 0
+                    ) return@onPreviewKeyEvent true
                     if (
-                        event.type == KeyEventType.KeyDown &&
+                        isActive && event.type == KeyEventType.KeyDown &&
+                        event.nativeKeyEvent.repeatCount == 0 &&
                         event.key == Key.DirectionDown &&
                         !isTwoRowsVisible &&
                         secondSection != null

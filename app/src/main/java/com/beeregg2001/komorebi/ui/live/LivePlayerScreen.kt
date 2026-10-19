@@ -52,6 +52,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionOverlay
 import com.beeregg2001.komorebi.ui.subtitle.rememberNativeCaptionCue
 import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlayerSurface
+import com.beeregg2001.komorebi.ui.player.PreparedPlayerPanel
 import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
 import com.beeregg2001.komorebi.ui.player.B60MediaPlane
 import com.beeregg2001.komorebi.ui.player.B60_INITIAL_MEDIA_PLANE
@@ -1079,14 +1080,16 @@ fun LivePlayerScreen(
             )
         }
 
-        androidx.compose.animation.AnimatedVisibility(
+        PreparedPlayerPanel(
             visible = !isPiPMode && isMiniListOpen && ps.playerError == null,
-            enter = EnterTransition.None,
-            exit = ExitTransition.None,
+            contentKey = currentChannelItem.id,
+            prepare = !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
+                showOverlay && !isManualOverlay && !isSubMenuOpen &&
+                ps.crop.mode == PlayerCropMode.HIDDEN,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxSize()
-        ) {
+        ) { isActive ->
             ChannelListOverlay(
                 groupedChannels = groupedChannels,
                 recentChannels = displayLastWatchedChannels,
@@ -1124,6 +1127,7 @@ fun LivePlayerScreen(
                 focusRequester = listFocusRequester,
                 onFirstDraw = channelBrowserOpenTrace::firstDraw,
                 onInitialFocus = channelBrowserOpenTrace::initialFocus,
+                isActive = isActive,
             )
         }
 

@@ -9,6 +9,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,10 +20,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -31,6 +35,7 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.media.CastRouteDiscovery
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
 import com.beeregg2001.komorebi.ui.video.player.RecordedProgramSelectionReason
 import com.beeregg2001.komorebi.ui.video.player.VideoPlayerScreen
@@ -75,6 +80,13 @@ fun MainRootPlaybackHost(
     // but must not make Cast targets disappear while the next episode starts.
     CastRouteDiscovery()
 
+    val playbackFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(state.remotePlaybackFocusTick) {
+        if (state.remotePlaybackFocusTick == 0) return@LaunchedEffect
+        withFrameNanos { }
+        playbackFocusRequester.safeRequestFocusWithRetry("RemotePlaybackFocus")
+    }
+
     val playerWidth by animateDpAsState(
         targetValue = if (state.playbackState.isMiniPlayerMode) 320.dp else 1920.dp,
         label = "width",
@@ -107,6 +119,8 @@ fun MainRootPlaybackHost(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .focusRequester(playbackFocusRequester)
+            .focusGroup()
             .zIndex(1f)
             .let {
                 if (state.playbackState.isMiniPlayerMode) it

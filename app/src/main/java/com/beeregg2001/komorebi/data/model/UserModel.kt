@@ -17,6 +17,12 @@ data class HistoryPlaybackProgress(
     val duration: Double,
 )
 
+/** A live media wall-clock; HonomiTV resolves the matching recording itself. */
+data class LiveHistoryPlaybackProgress(
+    val channel_id: String,
+    val playback_time: Double,
+)
+
 data class UserAccessToken(
     @com.google.gson.annotations.SerializedName("access_token") val accessToken: String,
     @com.google.gson.annotations.SerializedName("token_type") val tokenType: String,
@@ -32,6 +38,7 @@ data class WatchedHistoryItem(
 data class WatchedHistoryPayload(
     val items: List<WatchedHistoryItem>,
     val playback_progress: HistoryPlaybackProgress? = null,
+    val live_playback_progress: LiveHistoryPlaybackProgress? = null,
 )
 
 data class DeviceAuthCreateRequest(

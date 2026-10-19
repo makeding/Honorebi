@@ -15,6 +15,35 @@ import org.junit.Test
 class MainRootStateTest {
 
     @Test
+    fun remotePlaybackClosesSettingsAndRestoresFullscreenWithoutResettingSession() {
+        val state = MainRootState()
+        state.playbackState.enterRecorded(recording())
+        state.playbackState.enterMiniPlayer()
+        state.isSettingsOpen = true
+        state.settingsInitialCategoryIndex = 3
+        state.settingsInitialFocusItemIndex = 2
+        state.settingsOpenDeviceCapabilities = true
+        state.isDataReady = true
+        state.isUiReady = true
+        val session = state.playbackState.playbackSession
+
+        state.bringRemotePlaybackToFront()
+
+        assertFalse(state.isSettingsOpen)
+        assertFalse(state.settingsOpenDeviceCapabilities)
+        assertNull(state.settingsInitialFocusItemIndex)
+        assertEquals(0, state.settingsInitialCategoryIndex)
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertEquals(session, state.playbackState.playbackSession)
+        assertTrue(state.isDataReady)
+        assertTrue(state.isUiReady)
+        assertEquals(1, state.remotePlaybackFocusTick)
+        assertTrue(state.playbackState.beginRecordedSwitch(recording(43), reason = PlaybackSwitchReason.RemoteOpen))
+        assertFalse(state.playbackState.isMiniPlayerMode)
+        assertEquals(session, state.playbackState.playbackSession)
+    }
+
+    @Test
     fun playbackTarget_startsNone_andEachEnterOperationReplacesThePreviousKind() {
         val state = MainRootState()
         val channel = channel()

@@ -25,6 +25,9 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
 
     fun current(): HonomiSession? = cachedSession
 
+    /** A background request is only valid for the exact authenticated session that queued it. */
+    fun isCurrent(session: HonomiSession): Boolean = cachedSession == session
+
     /** HonomiTV 側で複数台のテレビを区別する、インストール単位の固定 ID。 */
     fun remoteDeviceId(): String {
         preferences.getString(KEY_REMOTE_DEVICE_ID, null)?.let { return it }

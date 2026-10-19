@@ -67,6 +67,8 @@ class MainRootState {
     var settingsInitialCategoryIndex by mutableIntStateOf(0)
     var settingsInitialFocusItemIndex by mutableStateOf<Int?>(null)
     var settingsOpenDeviceCapabilities by mutableStateOf(false)
+    var remotePlaybackFocusTick by mutableIntStateOf(0)
+        private set
 
     var isRecordListOpen by mutableStateOf(false)
     var isSeriesListOpen by mutableStateOf(false)
@@ -89,6 +91,16 @@ class MainRootState {
 
     var editingCondition by mutableStateOf<ReservationCondition?>(null)
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
+
+    /** Called only after the latest remote open has resolved to an allowed target. */
+    fun bringRemotePlaybackToFront() {
+        isSettingsOpen = false
+        settingsInitialCategoryIndex = 0
+        settingsInitialFocusItemIndex = null
+        settingsOpenDeviceCapabilities = false
+        playbackState.exitMiniPlayer()
+        remotePlaybackFocusTick++
+    }
 
     /** The playback portion of a system Home reset. Root destinations are reset by their owner. */
     fun resetForLauncherHome(startupTab: String = "ホーム", hideAppsTab: Boolean = false) {

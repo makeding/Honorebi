@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.data.api.interceptor
 
 import com.beeregg2001.komorebi.data.api.LiveSessionBackendTarget
+import com.beeregg2001.komorebi.data.api.HistorySyncBackendTarget
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -10,7 +11,8 @@ class BackendOriginInterceptor(private val configuration: () -> CloudflareAccess
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val snapshot = configuration()
-        val base = (request.tag(LiveSessionBackendTarget::class.java)?.baseUrl
+        val base = (request.tag(HistorySyncBackendTarget::class.java)?.baseUrl
+            ?: request.tag(LiveSessionBackendTarget::class.java)?.baseUrl
             ?: snapshot.backendBaseUrl).toHttpUrlOrNull() ?: request.url
         val url = request.url.newBuilder().scheme(base.scheme).host(base.host).port(base.port).build()
         return chain.proceed(request.newBuilder().url(url)

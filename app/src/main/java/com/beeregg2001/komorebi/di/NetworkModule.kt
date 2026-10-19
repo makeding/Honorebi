@@ -5,6 +5,7 @@ import com.beeregg2001.komorebi.data.api.interceptor.BackendApiResponseIntercept
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.api.KonomiApi
+import com.beeregg2001.komorebi.data.api.HistorySyncBackendTarget
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
@@ -48,6 +49,12 @@ object NetworkModule {
             })
             .addInterceptor(Interceptor { chain ->
                 val request = chain.request()
+                val pinnedHistory = request.tag(HistorySyncBackendTarget::class.java)
+                if (pinnedHistory != null) {
+                    return@Interceptor chain.proceed(
+                        request.newBuilder().header("Authorization", pinnedHistory.authorization).build()
+                    )
+                }
                 val session = sessionStore.current()
                 val requestOrigin = "${request.url.scheme}://${request.url.host}:${request.url.port}"
                 val authenticated = if (session != null && session.origin == requestOrigin) {

@@ -125,6 +125,7 @@ fun MainRootScreen(
                             }
                         }
                         if (channel != null && !nhkExclusionRepository.isExcluded(channel) && state.playbackState.completePlaybackOpenIntent(intent)) {
+                            state.bringRemotePlaybackToFront()
                             onRemotePlaybackOpened()
                             state.playbackState.enterLive(channel)
                             homeViewModel.saveLastChannel(channel)
@@ -138,6 +139,7 @@ fun MainRootScreen(
                     scope.launch {
                         val program = recordViewModel.getRemoteProgram(command.recordedProgramId)
                         if (program != null && !nhkExclusionRepository.isExcluded(program) && state.playbackState.completePlaybackOpenIntent(intent)) {
+                            state.bringRemotePlaybackToFront()
                             onRemotePlaybackOpened()
                             val positionMs = (command.positionSeconds * 1_000).toLong()
                             if (!state.playbackState.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {

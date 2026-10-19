@@ -25,6 +25,7 @@ import com.beeregg2001.komorebi.data.model.LivePlayerConstants
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.data.repository.ChannelLogoCache
+import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.CaptionDecodeRouter
 import com.beeregg2001.komorebi.ui.player.CaptionGenerationFence
@@ -33,6 +34,8 @@ import com.beeregg2001.komorebi.ui.player.PlayerRuntimeState
 import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
 import com.beeregg2001.komorebi.ui.player.live.LivePlaybackSourceResolver
 import com.beeregg2001.komorebi.ui.player.live.livePlayerProfile
+import com.beeregg2001.komorebi.ui.live.LiveHistoryTracker
+import com.beeregg2001.komorebi.data.model.LiveHistoryPlaybackProgress
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionDecoder
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
@@ -107,12 +110,14 @@ class LivePlayerViewModel @Inject constructor(
     private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val liveJikkyoManager: LiveJikkyoManager,
     private val nhkExclusionRepository: com.beeregg2001.komorebi.data.repository.NHKExclusionRepository,
+    private val watchHistoryRepository: WatchHistoryRepository,
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "LivePlayerViewModel"
         private const val MAX_AUTO_RETRY = 2
         private const val CHANNEL_SWITCH_STREAM_DEBOUNCE_MS = 100L
+        private const val LIVE_HISTORY_CHECKPOINT_MS = 10_000L
     }
 
     private val _mainPlayer = MutableStateFlow<ExoPlayer?>(null)
@@ -295,6 +300,9 @@ class LivePlayerViewModel @Inject constructor(
     private var mainCurrentQuality: StreamQuality? = null
     private var mainAutoRetryCount = 0
     private val mainPlaybackHealth = LivePlaybackHealth()
+    private val mainLiveHistoryTracker = LiveHistoryTracker()
+    private var mainLiveHistorySaver: ((LiveHistoryPlaybackProgress) -> Unit)? = null
+    private var lastMainLiveHistoryCheckpointAt = 0L
     private var mainIntent: LiveSlotIntent? = null
 
     private var dualCurrentSource = StreamSource.KONOMITV
@@ -441,6 +449,7 @@ class LivePlayerViewModel @Inject constructor(
         releaseSlot: Boolean = true,
         preserveTerminalStatus: Boolean = false,
     ) {
+        saveMainLiveHistory(final = true)
         Log.w(
             TAG,
             "Stopping main playback: reason=$reason, " +
@@ -507,22 +516,11 @@ class LivePlayerViewModel @Inject constructor(
                 "main=${_mainPlayer.value != null}, dual=${_dualPlayer.value != null}, " +
                 "mainChannel=${mainCurrentChannel?.displayChannelId}, dualChannel=${dualCurrentChannel?.displayChannelId}"
         )
+        liveAudioFocus.release()
+        stopMainPlaybackSafely(reason, endSession = false)
+        stopDualPlaybackSafely(reason, endSession = false)
         endChannelSession(LivePlaybackSlot.MAIN)
         endChannelSession(LivePlaybackSlot.DUAL)
-        liveAudioFocus.release()
-        mainSlot.stop(reason); dualSlot.stop(reason)
-        mainCaptionFence.reset(); dualCaptionFence.reset()
-
-        _mainPlayer.value = null
-        clearMainRuntimeState()
-        mainRawMmtsLayerController.reset()
-
-        _dualPlayer.value = null
-        clearDualRuntimeState()
-        dualRawMmtsLayerController.reset()
-
-        _mainSseStatus.value = "Standby"; _dualSseStatus.value = "Standby"
-        liveJikkyoManager.stopJikkyo()
     }
 
     /** Called by the root's connectivity state, which owns the process-wide network callback. */
@@ -817,6 +815,9 @@ class LivePlayerViewModel @Inject constructor(
     ) {
         if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
+        // Save the old main pane before its channel/player is replaced. Dual playback is
+        // intentionally not reported: the focused main pane is the live watch contract.
+        saveMainLiveHistory(final = true)
         if (!isAutoRetry) mainIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.MAIN, channel.id)
         Log.i(TAG, "main request channel=${channel.id} source=$source quality=${quality.value} token=${token.epoch} retry=$isAutoRetry")
@@ -1060,12 +1061,11 @@ class LivePlayerViewModel @Inject constructor(
     }
 
     fun stopAllPlayers() {
+        liveAudioFocus.release()
+        stopMainPlaybackSafely("stop_all", endSession = false)
+        stopDualPlaybackSafely("stop_all", endSession = false)
         endChannelSession(LivePlaybackSlot.MAIN)
         endChannelSession(LivePlaybackSlot.DUAL)
-        liveAudioFocus.release()
-        mainSlot.stop("stop_all"); dualSlot.stop("stop_all")
-        stopMainPlaybackSafely("stop_all", endSession = false, releaseSlot = false)
-        stopDualPlaybackSafely("stop_all", endSession = false, releaseSlot = false)
     }
 
     fun setHdrRenderMode(uiContext: Context, mode: String) {
@@ -1326,7 +1326,12 @@ class LivePlayerViewModel @Inject constructor(
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (channelSessions.isCurrent(token)) Log.i(TAG, "main playing=$isPlaying token=${token.epoch} position=${runtime.player.currentPosition}")
-                if (channelSessions.isCurrent(token) && !isPlaying) mainPlaybackHealth.reset()
+                if (channelSessions.isCurrent(token) && !isPlaying) {
+                    mainPlaybackHealth.reset()
+                    // A pause/buffer checkpoint must retain the media anchor. Clearing it here
+                    // would re-anchor on resume to device wall-clock and count the stall.
+                    saveMainLiveHistory(final = false)
+                }
             }
 
             override fun onMetadata(metadata: Metadata) {
@@ -1533,6 +1538,11 @@ class LivePlayerViewModel @Inject constructor(
                         Log.i(TAG, "main recovery stable token=${_mainSessionToken.value?.epoch} position=${player.currentPosition}")
                         mainAutoRetryCount = 0
                     }
+                    val advanced = observeMainLiveHistory(player)
+                    if (advanced && now - lastMainLiveHistoryCheckpointAt >= LIVE_HISTORY_CHECKPOINT_MS) {
+                        saveMainLiveHistory(final = false)
+                        lastMainLiveHistoryCheckpointAt = now
+                    }
                 }
                 dualSlot.currentRuntime()?.player?.let { player ->
                     if (dualPlaybackHealth.observe(now, player.isPlaying, player.currentPosition) && dualAutoRetryCount > 0) {
@@ -1579,6 +1589,32 @@ class LivePlayerViewModel @Inject constructor(
                 }
                 delay(1000)
             }
+        }
+    }
+
+    private fun observeMainLiveHistory(player: ExoPlayer): Boolean {
+        if (!player.isPlaying) return false
+        val channel = mainCurrentChannel ?: return false
+        if (mainCurrentSource != StreamSource.KONOMITV) return false
+        if (!mainLiveHistoryTracker.hasObservation()) {
+            mainLiveHistorySaver = watchHistoryRepository.createLiveWatchHistorySaver()
+        }
+        return mainLiveHistoryTracker.observe(
+            channelId = channel.id,
+            mediaPositionMs = player.currentPosition,
+            bufferedPositionMs = player.bufferedPosition,
+            nowEpochMs = System.currentTimeMillis(),
+        )
+    }
+
+    /** Uses only the last media-derived observation; final saves never use exit wall-clock. */
+    private fun saveMainLiveHistory(final: Boolean) {
+        if (mainCurrentSource != StreamSource.KONOMITV) return
+        val progress = if (final) mainLiveHistoryTracker.clear() else mainLiveHistoryTracker.latest()
+        progress?.let { mainLiveHistorySaver?.invoke(it) }
+        if (final) {
+            mainLiveHistorySaver = null
+            lastMainLiveHistoryCheckpointAt = 0L
         }
     }
 

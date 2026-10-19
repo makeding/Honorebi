@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.data.repository
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.beeregg2001.komorebi.data.api.KonomiApi
+import com.beeregg2001.komorebi.data.api.HistorySyncBackendTarget
 import com.beeregg2001.komorebi.data.local.dao.LastChannelDao
 import com.beeregg2001.komorebi.data.local.dao.WatchHistoryDao
 import com.beeregg2001.komorebi.data.local.entity.WatchHistoryEntity
@@ -12,7 +13,9 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.WatchedHistoryItem
 import com.beeregg2001.komorebi.data.model.WatchedHistoryPayload
 import com.beeregg2001.komorebi.data.model.HistoryPlaybackProgress
+import com.beeregg2001.komorebi.data.model.LiveHistoryPlaybackProgress
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
+import com.beeregg2001.komorebi.data.auth.HonomiSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,10 @@ class WatchHistoryRepository @Inject constructor(
 ) {
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingSaveJobs = ConcurrentHashMap<Int, Job>()
+    private val pendingLiveSaveJobs = ConcurrentHashMap<String, Job>()
+
+    private fun target(session: HonomiSession) =
+        HistorySyncBackendTarget(session.origin, "Bearer ${session.token}")
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun getWatchHistoryFlow(): Flow<List<KonomiHistoryProgram>> {
@@ -45,8 +52,10 @@ class WatchHistoryRepository @Inject constructor(
 
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun refreshHistoryFromApi() {
-        if (sessionStore.current() == null) return
-        runCatching { apiService.getSyncedWatchHistory() }.onSuccess { applyRemoteHistory(it.items) }
+        val session = sessionStore.current() ?: return
+        runCatching { apiService.getSyncedWatchHistory(target(session)) }.onSuccess {
+            if (sessionStore.isCurrent(session)) applyRemoteHistory(it.items)
+        }
     }
 
     suspend fun saveWatchHistory(program: RecordedProgram, positionSeconds: Double, durationSeconds: Double? = null) {
@@ -54,16 +63,18 @@ class WatchHistoryRepository @Inject constructor(
         val entity = KonomiDataMapper.toEntity(program, positionSeconds)
         watchHistoryDao.insertOrUpdate(entity)
 
-        if (sessionStore.current() != null) {
+        val session = sessionStore.current()
+        if (session != null) {
             val now = entity.watchedAt / 1000.0
             val duration = durationSeconds ?: program.recordedVideo.duration.takeUnless { program.requiresRawMmtsPlayback }
             val progress = duration?.takeIf { it.isFinite() && it > 0.0 && !program.isRecording && program.recordedVideo.status == "Recorded" }
                 ?.let { HistoryPlaybackProgress(program.id, positionSeconds, it) }
             runCatching {
                 apiService.updateSyncedWatchHistory(
-                    WatchedHistoryPayload(listOf(WatchedHistoryItem(program.id, positionSeconds, now, now)), progress)
+                    WatchedHistoryPayload(listOf(WatchedHistoryItem(program.id, positionSeconds, now, now)), progress),
+                    target(session),
                 )
-            }
+            }.onSuccess { response -> if (sessionStore.isCurrent(session)) applyRemoteHistory(response.items) }
         }
     }
 
@@ -71,7 +82,8 @@ class WatchHistoryRepository @Inject constructor(
         val session = sessionStore.current() ?: return
         val previousOwner = sessionStore.historyOwner()
         if (previousOwner != null && !sessionStore.isHistoryOwner(session)) {
-            val remoteItems = apiService.getSyncedWatchHistory().items
+            val remoteItems = apiService.getSyncedWatchHistory(target(session)).items
+            if (!sessionStore.isCurrent(session)) return
             watchHistoryDao.clearAll()
             applyRemoteHistory(remoteItems)
             sessionStore.markHistoryOwner(session)
@@ -85,7 +97,8 @@ class WatchHistoryRepository @Inject constructor(
                 updatedAt = it.watchedAt / 1000.0,
             )
         }
-        val merged = apiService.updateSyncedWatchHistory(WatchedHistoryPayload(localItems))
+        val merged = apiService.updateSyncedWatchHistory(WatchedHistoryPayload(localItems), target(session))
+        if (!sessionStore.isCurrent(session)) return
         applyRemoteHistory(merged.items)
         sessionStore.markHistoryOwner(session)
     }
@@ -120,6 +133,34 @@ class WatchHistoryRepository @Inject constructor(
         }
         pendingSaveJobs.put(programId, job)?.cancel()
         job.invokeOnCompletion { pendingSaveJobs.remove(programId, job) }
+        job.start()
+    }
+
+    /**
+     * Sends one observed live media wall-clock through the ordinary history endpoint.
+     * The captured session also pins the request to its original backend, so a delayed
+     * lifecycle save cannot be authenticated as a later account or sent to a new server.
+     */
+    fun createLiveWatchHistorySaver(): ((LiveHistoryPlaybackProgress) -> Unit)? {
+        val session = sessionStore.current() ?: return null
+        return { progress -> enqueueLiveWatchHistorySave(session, progress) }
+    }
+
+    private fun enqueueLiveWatchHistorySave(session: HonomiSession, progress: LiveHistoryPlaybackProgress) {
+        val key = "${session.origin}|${session.userId}|${progress.channel_id}"
+        val job = saveScope.launch(start = CoroutineStart.LAZY) {
+            if (!sessionStore.isCurrent(session)) return@launch
+            runCatching {
+                apiService.updateSyncedWatchHistory(
+                    WatchedHistoryPayload(items = emptyList(), live_playback_progress = progress),
+                    target(session),
+                )
+            }.onSuccess { response ->
+                if (sessionStore.isCurrent(session)) applyRemoteHistory(response.items)
+            }
+        }
+        pendingLiveSaveJobs.put(key, job)?.cancel()
+        job.invokeOnCompletion { pendingLiveSaveJobs.remove(key, job) }
         job.start()
     }
 
