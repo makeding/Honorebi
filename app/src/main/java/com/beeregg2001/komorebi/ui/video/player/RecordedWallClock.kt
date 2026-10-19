@@ -5,9 +5,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.beeregg2001.komorebi.ui.player.PlayerWallClock
-import com.beeregg2001.komorebi.ui.player.formatPlayerWallClock
+import com.beeregg2001.komorebi.ui.player.formatPlayerEndTime
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 
 internal fun recordedEndTimeLabel(
     now: ZonedDateTime, timeFormat: String, positionMs: Long, durationMs: Long,
@@ -18,12 +17,7 @@ internal fun recordedEndTimeLabel(
     val remainingMs = (durationMs - positionMs.coerceAtLeast(0)).toDouble() / speed
     if (remainingMs > Long.MAX_VALUE / 1_000_000.0) return "終了時刻未定"
     val end = now.plusNanos((remainingMs * 1_000_000).toLong())
-    val day = when (end.toLocalDate()) {
-        now.toLocalDate() -> ""
-        now.toLocalDate().plusDays(1) -> "翌日 "
-        else -> end.format(DateTimeFormatter.ofPattern("M/d "))
-    }
-    return "$day${formatPlayerWallClock(end, timeFormat)} 終了予定"
+    return formatPlayerEndTime(now, end, timeFormat)
 }
 
 @Composable

@@ -28,6 +28,15 @@ private val wallClock24HourFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.
 fun formatPlayerWallClock(now: ZonedDateTime, timeFormat: String): String =
     now.format(if (timeFormat == "12H") wallClock12HourFormat else wallClock24HourFormat)
 
+fun formatPlayerEndTime(now: ZonedDateTime, end: ZonedDateTime, timeFormat: String): String {
+    val day = when (end.toLocalDate()) {
+        now.toLocalDate() -> ""
+        now.toLocalDate().plusDays(1) -> "翌日 "
+        else -> end.format(DateTimeFormatter.ofPattern("M/d "))
+    }
+    return "$day${formatPlayerWallClock(end, timeFormat)} 終了予定"
+}
+
 /** Composed only while visible; each read resolves the current system time zone. */
 @Composable
 fun PlayerWallClock(
@@ -36,6 +45,7 @@ fun PlayerWallClock(
     now: () -> ZonedDateTime = { ZonedDateTime.now() },
     secondaryText: (ZonedDateTime) -> String = { "" },
     secondaryModifier: Modifier = Modifier,
+    showCurrentTime: Boolean = true,
 ) {
     val currentNow by rememberUpdatedState(now)
     val currentSecondaryText by rememberUpdatedState(secondaryText)
@@ -56,10 +66,14 @@ fun PlayerWallClock(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.Start,
     ) {
-        Text(display.first, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold,
-            maxLines = 1, modifier = Modifier.height(34.dp),
-            style = TextStyle(fontFeatureSettings = "tnum",
-                shadow = Shadow(Color.Black.copy(alpha = 0.85f), Offset(1f, 2f), 4f)))
+        if (showCurrentTime) {
+            Text(display.first, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, modifier = Modifier.height(34.dp),
+                style = TextStyle(fontFeatureSettings = "tnum",
+                    shadow = Shadow(Color.Black.copy(alpha = 0.85f), Offset(1f, 2f), 4f)))
+        } else {
+            Spacer(Modifier.height(34.dp))
+        }
         Text(display.second, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp,
             maxLines = 1, modifier = secondaryModifier.height(22.dp),
             style = TextStyle(fontFeatureSettings = "tnum",

@@ -9,12 +9,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,7 +35,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
-import com.beeregg2001.komorebi.ui.subtitle.rememberCaptionTextBounds
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -61,6 +58,9 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingHorizontal
+import com.beeregg2001.komorebi.ui.player.PlayerTimelineTitle
+import com.beeregg2001.komorebi.ui.player.PlayerTimelineRow
+import com.beeregg2001.komorebi.ui.player.PlayerTimelineTrack
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingVertical
 import com.beeregg2001.komorebi.ui.player.formatPlayerDurationMillis
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -234,22 +234,9 @@ fun PlayerControls(
                         vertical = PlayerOverlayEdgePaddingVertical
                     )
             ) {
-                val titleBounds = rememberCaptionTextBounds { recordTextBounds("title", it) }
-                Text(
-                    text = mediaInfo.title.ifBlank { "タイトルなし" },
-                    fontSize = 18.sp,
-                    lineHeight = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .fillMaxWidth().height(24.dp).testTag("recorded-title")
-                        .onGloballyPositioned(titleBounds::onPositioned)
-                        .basicMarquee(
-                            iterations = if (isVisible) Int.MAX_VALUE else 0,
-                            initialDelayMillis = 2000,
-                        ),
-                    onTextLayout = titleBounds::onTextLayout,
+                PlayerTimelineTitle(
+                    mediaInfo.title, Modifier.testTag("recorded-title"), isVisible,
+                    onBoundsChanged = { recordTextBounds("title", it) },
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -490,41 +477,44 @@ private fun RecordedControlsProgressRow(
     val displayPositionMs = displayProgress.value.positionMs
     val bufferedPositionMs = displayProgress.value.bufferedPositionMs
     val colors = KomorebiTheme.colors
-    val elapsedBounds = rememberCaptionTextBounds(onElapsedTimeBoundsChanged)
-    val durationBounds = rememberCaptionTextBounds(onDurationBoundsChanged)
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = formatPlayerDurationMillis(displayPositionMs),
-            color = Color.White.copy(alpha = 0.9f),
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(64.dp).testTag("playback-time")
-                .onGloballyPositioned(elapsedBounds::onPositioned),
-            onTextLayout = elapsedBounds::onTextLayout,
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Box(
-            modifier = Modifier.weight(1f).height(graphHeight).testTag("playback-track")
-                .onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
-                .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
-                .focusable(isModernUi),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            if (allComments.isNotEmpty() && totalDurationMs > 0) {
-                CommentMomentumGraph(
-                    comments = allComments,
-                    totalDurationMs = totalDurationMs,
-                    currentPositionMs = displayPositionMs,
-                    playedColor = colors.accent.copy(alpha = 0.6f),
-                    unplayedColor = Color.White.copy(alpha = 0.2f),
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight().align(Alignment.BottomStart)
-                        .onGloballyPositioned { coordinates -> onHeatmapBoundsChanged(coordinates.boundsInRoot()) },
-                )
+    PlayerTimelineRow(
+        positionMs = displayPositionMs,
+        durationMs = totalDurationMs,
+        trackHeight = graphHeight,
+        trackModifier = Modifier.onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
+            .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
+            .focusable(isModernUi),
+        onElapsedBoundsChanged = onElapsedTimeBoundsChanged,
+        onDurationBoundsChanged = onDurationBoundsChanged,
+        speedContent = {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = playbackSpeed != 1.0f,
+                enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
+            ) {
+                Text("${playbackSpeed}x", color = colors.accent, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("playback-speed"))
             }
-            Box(
-                modifier = Modifier.fillMaxWidth().height(trackHeight).align(Alignment.BottomStart)
-                    .onGloballyPositioned { coordinates -> onProgressBoundsChanged(coordinates.boundsInRoot()) }
-                    .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp)),
+        },
+    ) {
+        if (allComments.isNotEmpty() && totalDurationMs > 0) {
+            CommentMomentumGraph(
+                comments = allComments,
+                totalDurationMs = totalDurationMs,
+                currentPositionMs = displayPositionMs,
+                playedColor = colors.accent.copy(alpha = 0.6f),
+                unplayedColor = Color.White.copy(alpha = 0.2f),
+                modifier = Modifier.fillMaxWidth().fillMaxHeight().align(Alignment.BottomStart)
+                    .onGloballyPositioned { coordinates -> onHeatmapBoundsChanged(coordinates.boundsInRoot()) },
             )
+        }
+        PlayerTimelineTrack(
+            positionMs = displayPositionMs, durationMs = totalDurationMs,
+            bufferedPositionMs = bufferedPositionMs, focused = isSeekBarFocused,
+            trackHeight = trackHeight, playHeadSize = playHeadSize,
+            playHeadVerticalOffset = playHeadVerticalOffset,
+            onTrackBoundsChanged = onProgressBoundsChanged,
+            onPlayHeadBoundsChanged = onPlayHeadBoundsChanged,
+        ) {
             if (hasChapters && totalDurationMs > 0L) {
                 val apiCmSections = mediaInfo.cmSections
                 val renderSections = if (apiCmSections.isNotEmpty()) {
@@ -542,70 +532,11 @@ private fun RecordedControlsProgressRow(
                     }
                 }
             }
-            val duration = totalDurationMs.coerceAtLeast(1L)
-            val bufferedProgress = (bufferedPositionMs.toFloat() / duration).coerceIn(0f, 1f)
-            if (bufferedProgress > 0f) {
-                Box(
-                    modifier = Modifier.fillMaxWidth(bufferedProgress).height(trackHeight).align(Alignment.BottomStart)
-                        .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(4.dp)),
-                )
-            }
-            val playProgress = if (totalDurationMs > 0) {
-                (displayPositionMs.toFloat() / totalDurationMs).coerceIn(0f, 1f)
-            } else 0f
-            if (playProgress > 0f) {
-                Box(
-                    modifier = Modifier.fillMaxWidth(playProgress).height(trackHeight).align(Alignment.BottomStart)
-                        .background(
-                            if (isSeekBarFocused) colors.accent else colors.accent.copy(alpha = 0.8f),
-                            RoundedCornerShape(4.dp),
-                        ),
-                )
-            }
-            Box(
-                modifier = Modifier.fillMaxWidth(playProgress).fillMaxHeight(),
-                contentAlignment = Alignment.BottomEnd,
-            ) {
-                Box(
-                    modifier = Modifier.offset(x = playHeadSize / 2, y = playHeadVerticalOffset)
-                        .size(playHeadSize)
-                        .onGloballyPositioned { onPlayHeadBoundsChanged(it.boundsInRoot()) }
-                        .background(if (isSeekBarFocused) colors.accent else Color.White, CircleShape),
-                )
-            }
         }
-        Spacer(modifier = Modifier.width(16.dp))
-        // 速度表示は固定幅スロットに入れて、挿入/削除で行サイズが変わらないようにする
-        Box(
-            modifier = Modifier.width(44.dp),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            // RowScope 拡張を避けるためトップレベルの AnimatedVisibility を明示的に呼ぶ
-            androidx.compose.animation.AnimatedVisibility(
-                visible = playbackSpeed != 1.0f,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
-            ) {
-                Text(
-                    text = "${playbackSpeed}x",
-                    color = colors.accent,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("playback-speed"),
-                )
-            }
-        }
-        Text(
-            text = formatPlayerDurationMillis(totalDurationMs),
-            color = Color.White.copy(alpha = 0.9f),
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(64.dp).testTag("playback-duration")
-                .onGloballyPositioned(durationBounds::onPositioned),
-            onTextLayout = durationBounds::onTextLayout,
-        )
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+
 @Composable
 fun OsdIconButton(
     icon: ImageVector,

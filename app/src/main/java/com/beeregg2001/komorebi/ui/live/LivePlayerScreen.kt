@@ -1053,7 +1053,8 @@ fun LivePlayerScreen(
                 channel = currentChannelItem,
                 logoUrl = sharedCurrentLogoUrl,
                 shouldCropLogo = shouldCropLogo,
-                timeFormatSetting = timeFormat
+                timeFormatSetting = timeFormat,
+                isRecording = isRecording,
             )
         }
 
