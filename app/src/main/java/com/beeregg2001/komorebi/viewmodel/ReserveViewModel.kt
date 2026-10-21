@@ -195,6 +195,7 @@ class ReserveViewModel @Inject constructor(
                         onResult(SingleReservationResult.Success)
                     },
                     onFailure = { error ->
+                        if (error is CancellationException) throw error
                         Log.e(TAG, "Single reservation operation failed", error)
                         onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
                     },
@@ -203,7 +204,7 @@ class ReserveViewModel @Inject constructor(
                 onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Throwable) {
+            } catch (error: Exception) {
                 Log.e(TAG, "Single reservation operation failed", error)
                 onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
             } finally {

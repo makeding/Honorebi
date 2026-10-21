@@ -25,6 +25,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -98,7 +100,7 @@ fun ReserveSettingsDialog(
                 if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
                     if (isBatSelectionOpen) {
                         isBatSelectionOpen = false
-                    } else {
+                    } else if (!isSubmitting) {
                         onDismiss()
                     }
                     true
@@ -159,8 +161,9 @@ fun ReserveSettingsDialog(
                     color = if (failure != null) MaterialTheme.colorScheme.error else Color.Transparent,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp)
+                        .height(64.dp)
                         .padding(horizontal = 8.dp),
+                    maxLines = 3,
                 )
 
                 SettingRow(label = "予約を有効にする") {
@@ -240,7 +243,11 @@ fun ReserveSettingsDialog(
                         .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
                 ) {
-                    DialogActionButton(DialogActionRole.Secondary, onDismiss, enabled = !isSubmitting) {
+                    DialogActionButton(
+                        DialogActionRole.Secondary,
+                        { if (!isSubmitting) onDismiss() },
+                        modifier = Modifier.semantics { if (isSubmitting) disabled() },
+                    ) {
                         Text("キャンセル", fontWeight = FontWeight.Bold)
                     }
 
@@ -252,8 +259,8 @@ fun ReserveSettingsDialog(
                                 postRecordingBatFilePath = selectedBatPath,
                                 isEventRelayFollowEnabled = isEventRelay
                             )
-                            onConfirm(newSettings)
-                        }, enabled = !isSubmitting
+                            if (!isSubmitting) onConfirm(newSettings)
+                        }, modifier = Modifier.semantics { if (isSubmitting) disabled() }
                     ) {
                         Text(
                             if (isSubmitting) "処理中…" else if (isNewReservation) "録画予約" else "設定を更新",

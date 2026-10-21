@@ -179,8 +179,11 @@ fun LivePlayerScreen(
     val isRecording = activeReserve != null || currentRecordingProgram != null
     var isChasePlaybackResolving by remember { mutableStateOf(false) }
     var chasePlaybackMessage by remember { mutableStateOf<String?>(null) }
-    var chaseLookupGeneration by remember { mutableIntStateOf(0) }
+    val chasePlaybackFence = remember { ChasePlaybackRequestFence() }
     var chaseLookupJob by remember { mutableStateOf<Job?>(null) }
+    var recordActionMessage by remember { mutableStateOf<String?>(null) }
+    var recordActionGeneration by remember { mutableIntStateOf(0) }
+    var isRecordActionPending by remember { mutableStateOf(false) }
     val latestCurrentChannelId by rememberUpdatedState(currentChannelItem.id)
     val isRecordActionSubmitting by reserveViewModel.isSingleReservationSubmitting.collectAsState()
 
@@ -599,12 +602,17 @@ fun LivePlayerScreen(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                chaseLookupGeneration++
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                chasePlaybackFence.invalidate()
                 chaseLookupJob?.cancel()
                 chaseLookupJob = null
                 isChasePlaybackResolving = false
                 chasePlaybackMessage = null
+                recordActionGeneration++
+                isRecordActionPending = false
+                recordActionMessage = null
+            }
+            if (event == Lifecycle.Event.ON_STOP) {
                 Log.w(
                     TAG,
                     "Live screen lifecycle ON_STOP: channel=${currentChannelItem.displayChannelId}, " +
@@ -631,17 +639,21 @@ fun LivePlayerScreen(
     }
 
     LaunchedEffect(currentChannelItem.id) {
-        chaseLookupGeneration++
+        chasePlaybackFence.invalidate()
         chaseLookupJob?.cancel()
         chaseLookupJob = null
         isChasePlaybackResolving = false
         chasePlaybackMessage = null
+        recordActionGeneration++
+        isRecordActionPending = false
+        recordActionMessage = null
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            chaseLookupGeneration++
+            chasePlaybackFence.invalidate()
             chaseLookupJob?.cancel()
+            recordActionGeneration++
         }
     }
 
@@ -1140,7 +1152,8 @@ fun LivePlayerScreen(
                 canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
                 isChasePlaybackResolving = isChasePlaybackResolving,
                 chasePlaybackMessage = chasePlaybackMessage,
-                isRecordActionSubmitting = isRecordActionSubmitting,
+                isRecordActionSubmitting = isRecordActionSubmitting || isRecordActionPending,
+                recordActionMessage = recordActionMessage,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
                 hdrRenderMode = hdrRenderMode,
                 isHdrToSdrToneMappingSupported = isHdrToSdrToneMappingSupported && isHlgContent,
@@ -1194,60 +1207,70 @@ fun LivePlayerScreen(
                 },
                 onChasePlayback = {
                     if (!isChasePlaybackResolving) {
-                        scope.launch {
-                            val requestGeneration = ++chaseLookupGeneration
-                            val requestedChannelId = currentChannelItem.id
-                            isChasePlaybackResolving = true
-                            chasePlaybackMessage = "録画を確認中…"
-                            val result = currentRecordingProgram?.let(ChaseRecordingLookupResult::Found)
-                                ?: recordViewModel.fetchCurrentRecordingForChannel(currentChannelItem)
-                            if (requestGeneration != chaseLookupGeneration ||
-                                requestedChannelId != latestCurrentChannelId
-                            ) return@launch
-                            isChasePlaybackResolving = false
-                            when (result) {
-                                is ChaseRecordingLookupResult.Found -> {
-                                    chasePlaybackMessage = null
-                                    onSubMenuToggle(false)
-                                    onChasePlaybackSelect(result.program)
+                        val request = chasePlaybackFence.begin(currentChannelItem.id)
+                        isChasePlaybackResolving = true
+                        chasePlaybackMessage = "録画を確認中…"
+                        recordActionMessage = null
+                        chaseLookupJob = scope.launch {
+                            try {
+                                val result = currentRecordingProgram?.let(ChaseRecordingLookupResult::Found)
+                                    ?: recordViewModel.fetchCurrentRecordingForChannel(currentChannelItem)
+                                if (!chasePlaybackFence.isCurrent(request, latestCurrentChannelId)) return@launch
+                                when (result) {
+                                    is ChaseRecordingLookupResult.Found -> {
+                                        chasePlaybackMessage = null
+                                        onSubMenuToggle(false)
+                                        onChasePlaybackSelect(result.program)
+                                    }
+                                    ChaseRecordingLookupResult.Unavailable -> {
+                                        chasePlaybackMessage = "再生できる録画がまだありません。再試行できます"
+                                    }
+                                    is ChaseRecordingLookupResult.Failure -> {
+                                        chasePlaybackMessage = "${result.failure.message} [${result.failure.code}]"
+                                    }
                                 }
-                                ChaseRecordingLookupResult.Unavailable -> {
-                                    chasePlaybackMessage = "再生できる録画がまだありません。再試行できます"
-                                }
-                                is ChaseRecordingLookupResult.Failure -> {
-                                    chasePlaybackMessage = "${result.failure.message} [${result.failure.code}]"
+                            } finally {
+                                if (chasePlaybackFence.isCurrent(request, latestCurrentChannelId)) {
+                                    isChasePlaybackResolving = false
+                                    chaseLookupJob = null
                                 }
                             }
-                            chaseLookupJob = null
                         }
                     }
                 },
                 onRecordToggle = {
+                    if (isRecordActionPending || reserveViewModel.isSingleReservationSubmitting.value) return@LiveTopSubMenuUI
+                    chasePlaybackMessage = null
+                    if (isRecording && activeReserve == null) {
+                        recordActionMessage = "この録画はここから停止できません。 [RECORDING_MANAGED_EXTERNALLY]"
+                        return@LiveTopSubMenuUI
+                    }
+                    val presentProgramId = currentChannelItem.programPresent?.id
+                    if (!isRecording && presentProgramId == null) {
+                        recordActionMessage = "現在の番組情報を取得できないため、録画予約できません。 [PROGRAM_UNAVAILABLE]"
+                        return@LiveTopSubMenuUI
+                    }
+                    val requestGeneration = ++recordActionGeneration
+                    val requestedChannelId = currentChannelItem.id
+                    isRecordActionPending = true
+                    recordActionMessage = "録画予約を処理中…"
+                    fun handleResult(result: SingleReservationResult) {
+                        if (requestGeneration != recordActionGeneration ||
+                            requestedChannelId != latestCurrentChannelId
+                        ) return
+                        isRecordActionPending = false
+                        recordActionMessage = when (result) {
+                            SingleReservationResult.Success ->
+                                if (isRecording) "録画予約を取り消しました" else "録画予約を追加しました"
+                            is SingleReservationResult.Failure ->
+                                "${result.failure.message} [${result.failure.code}]"
+                            SingleReservationResult.AlreadySubmitting -> "録画予約を処理中…"
+                        }
+                    }
                     if (isRecording) {
-                        if (activeReserve != null) {
-                            reserveViewModel.deleteReservation(activeReserve.id) { result ->
-                                when (result) {
-                                    SingleReservationResult.Success -> onShowToast("録画予約を取り消しました")
-                                    is SingleReservationResult.Failure ->
-                                        onShowToast("${result.failure.message} [${result.failure.code}]")
-                                    SingleReservationResult.AlreadySubmitting -> Unit
-                                }
-                            }
-                        }
+                        reserveViewModel.deleteReservation(activeReserve!!.id, ::handleResult)
                     } else {
-                        val presentProgramId = currentChannelItem.programPresent?.id
-                        if (presentProgramId == null) {
-                            onShowToast("現在の番組情報を取得できないため、録画予約できません")
-                        } else {
-                            reserveViewModel.addReserve(presentProgramId) { result ->
-                                when (result) {
-                                    SingleReservationResult.Success -> onShowToast("録画予約を追加しました")
-                                    is SingleReservationResult.Failure ->
-                                        onShowToast("${result.failure.message} [${result.failure.code}]")
-                                    SingleReservationResult.AlreadySubmitting -> Unit
-                                }
-                            }
-                        }
+                        reserveViewModel.addReserve(presentProgramId!!, ::handleResult)
                     }
                 },
                 onSignalInfoToggle = {

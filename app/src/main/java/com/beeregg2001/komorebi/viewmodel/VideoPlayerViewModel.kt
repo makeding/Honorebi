@@ -209,7 +209,7 @@ class VideoPlayerViewModel @Inject constructor(
         val source = withContext(Dispatchers.IO) {
             playbackSourceResolver.resolve(videoId, quality, sessionId, offsetSeconds, isRecording)
         }
-        _isLiveStream.value = source.usesTranscodingLiveWindow
+        if (source.url.isNotBlank()) _isLiveStream.value = source.usesTranscodingLiveWindow
         return source
     }
 

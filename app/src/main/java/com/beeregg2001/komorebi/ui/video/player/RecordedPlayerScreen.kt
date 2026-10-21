@@ -154,7 +154,7 @@ internal fun RecordedPlayerScreen(
     settingsViewModel: SettingsViewModel
 ) {
     val initialProgram = program
-    val recordedPlaybackFence = remember(recordedPlaybackToken) {
+    val recordedPlaybackFence = remember(recordedPlaybackToken, initialProgram.id) {
         RecordedPlaybackFence(
             token = recordedPlaybackToken,
             isCurrent = isCurrentRecordedPlayback,
@@ -1034,6 +1034,7 @@ internal fun RecordedPlayerScreen(
         onDispose {
             pendingRawMmtsSeekJob?.cancel()
             pendingRawMmtsSeekJob = null
+            seekResolveJob?.cancel()
             rawMmtsSeekCoordinator.reset()
         }
     }
@@ -1107,6 +1108,7 @@ internal fun RecordedPlayerScreen(
     val performSeek: (Long) -> Unit = seek@ { targetMs: Long ->
         if (!currentPlaybackFence.accepts()) return@seek
         if (usesExtractorByteSeek && !exoPlayer.isCurrentMediaItemSeekable) {
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@seek
             deferredSeek.request(targetMs.coerceIn(0L,
                 if (totalDurationForControls > 0L) totalDurationForControls else Long.MAX_VALUE))
             return@seek
@@ -1574,7 +1576,12 @@ internal fun RecordedPlayerScreen(
     ) {
         if (isPiPMode) return@LaunchedEffect
         delay(150)
-        if (sourceRequest != RecordedSourceRequest.Ready) return@LaunchedEffect
+        if (sourceRequest != RecordedSourceRequest.Ready) {
+            // The retry surface owns focus until it disappears. Re-entering modern
+            // controls must restore focus even if they were already visible before it.
+            ui.wasControlsVisible = false
+            return@LaunchedEffect
+        }
 
         if (isSubMenuOpen) {
             ui.subMenuFocusRequester.safeRequestFocus(TAG)

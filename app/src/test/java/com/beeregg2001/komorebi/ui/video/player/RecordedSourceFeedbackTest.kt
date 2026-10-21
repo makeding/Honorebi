@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.beeregg2001.komorebi.common.UserFacingFailure
@@ -35,11 +36,10 @@ class RecordedSourceFeedbackTest {
         val retry = compose.onNodeWithTag("recorded-source-retry")
         retry.assertIsFocused()
         compose.onNodeWithText("${failure.message}（${failure.code}）").assertIsDisplayed()
-        retry.performClick()
+        retry.performKeyInput { pressKey(Key.DirectionCenter) }
         retry.assertIsFocused().assertIsNotEnabled()
         assertEquals(bounds, compose.onNodeWithTag("recorded-source-feedback").getUnclippedBoundsInRoot())
-        // Directly trigger the click callback too: pending requests must be guarded in code.
-        retry.performClick()
+        retry.performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(1, retries); state.value = RecordedSourceRequest.Failed(failure) }
         retry.assertIsFocused().assertIsEnabled()
         assertEquals(bounds, compose.onNodeWithTag("recorded-source-feedback").getUnclippedBoundsInRoot())

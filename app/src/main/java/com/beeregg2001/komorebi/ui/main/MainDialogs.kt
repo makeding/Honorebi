@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
@@ -68,7 +70,8 @@ fun DeleteConfirmationDialog(
                     text = failure?.let { "${it.message} [${it.code}]" } ?: " ",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (failure != null) MaterialTheme.colorScheme.error else Color.Transparent,
-                    modifier = Modifier.height(40.dp),
+                    modifier = Modifier.height(64.dp),
+                    maxLines = 3,
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 Row(
@@ -77,17 +80,16 @@ fun DeleteConfirmationDialog(
                 ) {
                     DialogActionButton(
                         role = DialogActionRole.Secondary,
-                        onClick = onCancel,
-                        enabled = !isSubmitting,
-                        modifier = Modifier.weight(1f),
+                        onClick = { if (!isSubmitting) onCancel() },
+                        modifier = Modifier.weight(1f).semantics { if (isSubmitting) disabled() },
                     ) { Text(AppStrings.BUTTON_CANCEL) }
                     DialogActionButton(
                         role = DialogActionRole.Destructive,
-                        onClick = onConfirm,
-                        enabled = !isSubmitting,
+                        onClick = { if (!isSubmitting) onConfirm() },
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester)
+                            .semantics { if (isSubmitting) disabled() }
                     ) { Text(if (isSubmitting) "処理中…" else AppStrings.BUTTON_DELETE) }
                 }
             }

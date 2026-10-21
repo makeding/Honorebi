@@ -24,6 +24,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +33,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.model.EpgProgram
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
+import com.beeregg2001.komorebi.common.UserFacingFailure
 import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -58,6 +61,8 @@ fun ProgramDetailScreen(
     isReadOnly: Boolean = false,
     onPlayClick: (EpgProgram) -> Unit = {},
     onRecordClick: (EpgProgram) -> Unit = {},
+    recordFailure: UserFacingFailure? = null,
+    isRecordSubmitting: Boolean = false,
     onRecordDetailClick: (EpgProgram) -> Unit = {},
     onEpgReserveClick: (
         program: EpgProgram, keyword: String, daysOfWeek: Set<Int>, startHour: Int, startMin: Int, endHour: Int, endMin: Int,
@@ -168,6 +173,14 @@ fun ProgramDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.Start
             ) {
+                if (mode == ProgramDetailMode.EPG && !isReadOnly) {
+                    Text(
+                        text = recordFailure?.let { "${it.message} [${it.code}]" } ?: " ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().height(80.dp),
+                    )
+                }
                 if (!isReadOnly) {
                     if (mode == ProgramDetailMode.RESERVE) {
                         Button(
@@ -251,15 +264,16 @@ fun ProgramDetailScreen(
                                 }
                             } else {
                                 Button(
-                                    onClick = { if (isClickEnabled) onRecordClick(safeProgram) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = { if (isClickEnabled && !isRecordSubmitting) onRecordClick(safeProgram) },
+                                    modifier = Modifier.fillMaxWidth()
+                                        .semantics { if (isRecordSubmitting) disabled() },
                                     colors = ButtonDefaults.colors(
                                         containerColor = recordRed,
                                         contentColor = Color.White
                                     )
                                 ) {
                                     Text(
-                                        "録画する",
+                                        if (isRecordSubmitting) "処理中…" else "録画する",
                                         fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -324,17 +338,18 @@ fun ProgramDetailScreen(
                                 }
                             } else {
                                 Button(
-                                    onClick = { if (isClickEnabled) onRecordClick(safeProgram) },
+                                    onClick = { if (isClickEnabled && !isRecordSubmitting) onRecordClick(safeProgram) },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .focusRequester(initialFocusRequester),
+                                        .focusRequester(initialFocusRequester)
+                                        .semantics { if (isRecordSubmitting) disabled() },
                                     colors = ButtonDefaults.colors(
                                         containerColor = recordRed,
                                         contentColor = Color.White
                                     )
                                 ) {
                                     Text(
-                                        "録画予約する",
+                                        if (isRecordSubmitting) "処理中…" else "録画予約する",
                                         fontFamily = SystemFontFamily,
                                         fontWeight = FontWeight.Bold
                                     )

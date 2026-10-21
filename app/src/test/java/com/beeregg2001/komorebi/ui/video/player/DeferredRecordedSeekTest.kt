@@ -10,7 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.Player
-import androidx.media3.common.util.FlagSet
+import androidx.media3.common.FlagSet
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test

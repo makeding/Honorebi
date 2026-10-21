@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -70,6 +72,7 @@ fun LiveTopSubMenuUI(
     isChasePlaybackResolving: Boolean,
     chasePlaybackMessage: String? = null,
     isRecordActionSubmitting: Boolean,
+    recordActionMessage: String? = null,
     isSignalInfoVisible: Boolean,
     hdrRenderMode: String,
     isHdrToSdrToneMappingSupported: Boolean,
@@ -275,7 +278,9 @@ fun LiveTopSubMenuUI(
                             title = "字幕言語", icon = Icons.Default.Translate,
                             subtitle = "第${currentSubtitleLanguage.id}言語・${currentSubtitleLanguage.displayName}",
                             onClick = onSubtitleLanguageToggle,
-                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                            modifier = Modifier
+                                .focusProperties { down = FocusRequester.Cancel }
+                                .semantics { if (isChasePlaybackResolving) disabled() },
                             contentColor = colors.textPrimary
                         )
                     }
@@ -300,12 +305,13 @@ fun LiveTopSubMenuUI(
                         LiveMenuTileItem(
                             title = "追いかけ再生",
                             icon = Icons.Default.PlayCircle,
-                            subtitle = chasePlaybackMessage
-                                ?: if (isChasePlaybackResolving) "録画を確認中…"
+                            subtitle = if (isChasePlaybackResolving) "録画を確認中…"
                                 else if (canStartChasePlayback) "録画中番組を再生" else "録画を確認",
-                            onClick = onChasePlayback,
-                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                            enabled = !isChasePlaybackResolving,
+                            onClick = { if (!isChasePlaybackResolving) onChasePlayback() },
+                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel }
+                                .semantics { if (isChasePlaybackResolving) disabled() },
+                            // Keep the focused tile usable while the click guard prevents a duplicate request.
+                            enabled = true,
                             contentColor = if (isChasePlaybackResolving) colors.textPrimary.copy(alpha = 0.55f) else colors.accent
                         )
                     }
@@ -314,10 +320,13 @@ fun LiveTopSubMenuUI(
                         title = if (isRecording) "録画停止" else "録画開始",
                         icon = if (isRecording) Icons.Default.StopCircle else Icons.Default.RadioButtonChecked,
                         subtitle = if (isRecordActionSubmitting) "処理中…" else if (isRecording) "録画中" else "番組を録画",
-                        onClick = onRecordToggle,
-                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                        enabled = !isRecordActionSubmitting,
-                        contentColor = if (isRecording) Color(0xFFFF5252) else colors.textPrimary
+                        onClick = { if (!isRecordActionSubmitting) onRecordToggle() },
+                        modifier = Modifier
+                            .focusProperties { down = FocusRequester.Cancel }
+                            .semantics { if (isRecordActionSubmitting) disabled() },
+                        enabled = true,
+                        contentColor = if (isRecordActionSubmitting) colors.textPrimary.copy(alpha = 0.55f)
+                        else if (isRecording) Color(0xFFFF5252) else colors.textPrimary
                     )
 
                     LiveMenuTileItem(
@@ -445,6 +454,22 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
                 }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .padding(horizontal = 32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val feedback = chasePlaybackMessage ?: recordActionMessage
+                Text(
+                    text = feedback ?: " ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (feedback == null) Color.Transparent else colors.textPrimary,
+                    maxLines = 2,
+                )
             }
 
             // --- 展開メニュー: クイック選局 ---

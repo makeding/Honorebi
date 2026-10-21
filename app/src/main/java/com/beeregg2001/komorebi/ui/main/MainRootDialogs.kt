@@ -73,9 +73,10 @@ fun MainRootDialogs(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isSingleReservationSubmitting by reserveViewModel.isSingleReservationSubmitting.collectAsState()
-    var editReservationFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
-    var newReservationFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
-    var deleteReservationFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
+    var editReservationFailure by remember(state.editingReserveItem?.id) { mutableStateOf<UserFacingFailure?>(null) }
+    var newReservationFailure by remember(state.editingNewProgram?.id) { mutableStateOf<UserFacingFailure?>(null) }
+    var deleteReservationFailure by remember(state.reserveToDelete?.id) { mutableStateOf<UserFacingFailure?>(null) }
+    var epgDirectRecordFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
 
     // ========================================================================
     // AIコンシェルジュ 音声入力ロジック
@@ -237,11 +238,14 @@ fun MainRootDialogs(
     }
 
     if (state.epgSelectedProgram != null) {
+        LaunchedEffect(state.epgSelectedProgram!!.id) { epgDirectRecordFailure = null }
         val relatedReserve = reserves.find { it.program.id == state.epgSelectedProgram!!.id }
         ProgramDetailScreen(
             program = state.epgSelectedProgram!!,
             mode = ProgramDetailMode.EPG,
             isReserved = relatedReserve != null,
+            recordFailure = epgDirectRecordFailure,
+            isRecordSubmitting = isSingleReservationSubmitting,
             onPlayClick = {
                 val channel = groupedChannels.values.flatten().find { ch -> ch.id == it.channel_id }
                 if (channel != null) {
@@ -251,18 +255,20 @@ fun MainRootDialogs(
                 }
             },
             onRecordClick = { program ->
+                epgDirectRecordFailure = null
                 if (program.source.equals("Jellyfin", ignoreCase = true)) {
                     state.toastMessage = "ネットテレビは録画予約に対応していません"
                     return@ProgramDetailScreen
                 }
                 reserveViewModel.addReserve(program.id) { result ->
+                    if (state.epgSelectedProgram?.id != program.id) return@addReserve
                     when (result) {
                         SingleReservationResult.Success -> scope.launch {
                             state.epgSelectedProgram = null; delay(300)
                             state.toastMessage = AppStrings.TOAST_RESERVED
                         }
                         is SingleReservationResult.Failure ->
-                            state.toastMessage = "${result.failure.message} [${result.failure.code}]"
+                            epgDirectRecordFailure = result.failure
                         SingleReservationResult.AlreadySubmitting -> Unit
                     }
                 }
