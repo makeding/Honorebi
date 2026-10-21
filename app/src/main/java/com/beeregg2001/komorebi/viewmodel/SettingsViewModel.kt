@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.viewmodel
 
+import com.beeregg2001.komorebi.data.PlayerClockMode
+
 import android.content.Context
 import android.util.Log
 import androidx.annotation.Keep
@@ -294,6 +296,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         "OFF"
+    )
+    val playerClockMode = settingsRepository.playerClockMode.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), PlayerClockMode.ALWAYS_ON
     )
     val timeFormat: StateFlow<String> = settingsRepository.timeFormat.stateIn(
         viewModelScope,
@@ -703,6 +708,10 @@ class SettingsViewModel @Inject constructor(
             SettingsRepository.STARTUP_CHANNEL,
             value
         )
+    }
+
+    fun updatePlayerClockMode(value: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(SettingsRepository.PLAYER_CLOCK_MODE, PlayerClockMode.fromPreference(value).name)
     }
 
     fun updateTimeFormat(value: String) = viewModelScope.launch(Dispatchers.IO) {

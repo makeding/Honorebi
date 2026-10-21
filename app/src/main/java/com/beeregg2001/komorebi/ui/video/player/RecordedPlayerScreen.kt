@@ -342,6 +342,7 @@ internal fun RecordedPlayerScreen(
     val subtitleCommentLayer by settingsViewModel.subtitleCommentLayer.collectAsState()
     val videoSubtitleDefaultStr by settingsViewModel.videoSubtitleDefault.collectAsState()
     val videoPlaybackSpeedStr by settingsViewModel.videoPlaybackSpeed.collectAsState()
+    val playerClockMode by settingsViewModel.playerClockMode.collectAsState()
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
 
     val commentSpeed = commentSpeedStr.toFloatOrNull() ?: 1.0f
@@ -1927,6 +1928,7 @@ internal fun RecordedPlayerScreen(
                 program = currentProgram,
                 mediaInfo = PlaybackMediaInfo.recorded(currentProgram),
                 timeFormat = timeFormat,
+                playerClockMode = playerClockMode,
                 tiledThumbnailUrl = tiledThumbnailUrl,
                 showControls = showControls,
                 isSubOverlayOpen = isSubOverlayOpen,

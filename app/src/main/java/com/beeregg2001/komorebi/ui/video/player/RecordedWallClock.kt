@@ -28,6 +28,7 @@ internal fun RecordedWallClock(
     positionMs: () -> Long = { 0L },
     durationMs: Long = 0L,
     speed: Float = 1f,
+    showCurrentTime: Boolean = true,
 ) {
     val endTime = remember(timeFormat, positionMs, durationMs, speed) {
         { current: ZonedDateTime ->
@@ -36,6 +37,7 @@ internal fun RecordedWallClock(
     }
     PlayerWallClock(
         timeFormat, modifier.testTag("recorded-wall-clock"), now,
+        showCurrentTime = showCurrentTime,
         secondaryText = endTime, secondaryModifier = Modifier.testTag("recorded-end-time"),
     )
 }

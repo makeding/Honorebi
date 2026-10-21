@@ -154,6 +154,23 @@ class LivePlayerDerivedStateTest {
     }
 
     @Test
+    fun bufferingAfterFirstFrameIsVisibleEvenWhenKonomiServerIsOnAir() {
+        fun presentation(source: StreamSource, buffering: Boolean, detail: String = "ライブストリームは ONAir です", error: String? = null) =
+            liveLoadingPresentation(source, false, "ONAir", detail, error, buffering,
+                hasRenderedFirstFrame = true, isPlaybackReady = !buffering, statusLoadingText = "読み込み中")
+        for (source in StreamSource.entries) {
+            assertTrue(presentation(source, true).isVisible)
+            assertEquals("読み込み中", presentation(source, true).message)
+            assertFalse(presentation(source, false).isVisible)
+            assertFalse(presentation(source, true, error = "E-01M").isVisible)
+        }
+        val standby = liveLoadingPresentation(StreamSource.EDCB, false, "Standby", "", null,
+            false, true, false, "読み込み中")
+        assertTrue(standby.isVisible)
+        assertEquals("読み込み中", standby.message)
+    }
+
+    @Test
     fun mediaSessionLoadingIncludesSwitchFirstFrameAndBuffering() {
         assertTrue(isLiveMediaSessionLoading("new", "old", true, false))
         assertTrue(isLiveMediaSessionLoading("same", "same", false, false))

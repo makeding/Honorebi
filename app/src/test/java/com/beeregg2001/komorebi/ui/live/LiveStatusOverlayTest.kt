@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
+import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.Genre
 import com.beeregg2001.komorebi.data.model.Program
@@ -31,50 +32,43 @@ class LiveStatusOverlayTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun currentNewsGenreHidesCurrentClockButKeepsEpgEndTime() {
-        val channel = mutableStateOf(channel(program(listOf(Genre("スポーツ", "スポーツニュース")))))
-        var time = ZonedDateTime.parse("2026-10-13T19:00:00+09:00[Asia/Tokyo]")
-        var reads = 0
+    fun clockModesAndLoadingKeepTheirOwnSlotsAcrossProgramChanges() {
+        val news = program(listOf(Genre("情報・ワイドショー", ""), Genre("ニュース・報道", "定時・総合")))
+        val channel = mutableStateOf(channel(news))
+        val mode = mutableStateOf(PlayerClockMode.ALWAYS_ON)
+        val loading = mutableStateOf(true)
         composeRule.setContent {
             KomorebiTheme {
                 Box(Modifier.size(960.dp, 540.dp)) {
-                    StatusOverlay(channel.value, "", false, now = { reads++; time })
+                    StatusOverlay(channel.value, "", false,
+                        now = { ZonedDateTime.parse("2026-10-13T19:00:00+09:00[Asia/Tokyo]") },
+                        clockMode = mode.value)
+                    LivePlaybackNotice("読み込み中…", loading.value)
                 }
             }
         }
-        composeRule.onNodeWithText("19:00").assertIsDisplayed()
-        val clockBounds = composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot()
-        val cardBounds = composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot()
-        val news = program(listOf(Genre("情報・ワイドショー", ""), Genre("ニュース・報道", "定時・総合")))
-        composeRule.runOnIdle { channel.value = channel.value.copy(programPresent = news) }
-        composeRule.onNodeWithText("19:00").assertDoesNotExist()
-        composeRule.onNodeWithTag("live-end-time").assertTextEquals("20:00 終了予定")
-        assertEquals(clockBounds, composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot())
-        composeRule.onNodeWithTag("live-channel-status").assertIsDisplayed()
-        assertEquals(cardBounds, composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot())
-        val hiddenReads = reads
-        composeRule.mainClock.advanceTimeBy(3_000)
-        org.junit.Assert.assertTrue(reads > hiddenReads)
-
-        // Unknown metadata and non-news genres keep the clock, including news-like titles
-        // and a following news program. Only the current program's major genre owns this rule.
-        for (present in listOf(null, program(null), program(emptyList()), program(listOf(Genre("スポーツ", "スポーツニュース"))))) {
-            composeRule.runOnIdle {
-                time = time.plusMinutes(1)
-                channel.value = channel.value.copy(programPresent = present, programFollowing = news)
+        val clock = composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot()
+        val card = composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot()
+        val end = composeRule.onNodeWithTag("live-end-time").getUnclippedBoundsInRoot()
+        val notice = composeRule.onNodeWithTag("live-playback-notice").getUnclippedBoundsInRoot()
+        assertEquals(16.dp, notice.top - clock.bottom)
+        for (selected in PlayerClockMode.entries) {
+            composeRule.runOnIdle { mode.value = selected }
+            for (present in listOf(news, null, program(null), program(emptyList()), program(listOf(Genre("スポーツ", "スポーツニュース"))))) {
+                composeRule.runOnIdle { channel.value = channel.value.copy(programPresent = present, programFollowing = news) }
+                val show = selected == PlayerClockMode.ALWAYS_ON || (selected == PlayerClockMode.ONLY_NEWS && present == news)
+                if (show) composeRule.onNodeWithText("19:00").assertIsDisplayed()
+                else composeRule.onNodeWithText("19:00").assertDoesNotExist()
+                if (present != null) {
+                    composeRule.onNodeWithTag("live-end-time").assertTextEquals("20:00 終了予定")
+                    assertEquals(end, composeRule.onNodeWithTag("live-end-time").getUnclippedBoundsInRoot())
+                }
+                assertEquals(card, composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot())
+                assertEquals(notice, composeRule.onNodeWithTag("live-playback-notice").getUnclippedBoundsInRoot())
             }
-            composeRule.mainClock.advanceTimeBy(1_100)
-            composeRule.onNodeWithText(time.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")))
-                .assertIsDisplayed()
-            assertEquals(clockBounds, composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot())
-            assertEquals(cardBounds, composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot())
         }
-        // A channel change to news applies the same rule immediately.
-        composeRule.runOnIdle { channel.value = channel(news).copy(id = "2", name = "別チャンネル") }
-        composeRule.onNodeWithText(time.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")))
-            .assertDoesNotExist()
-        composeRule.onNodeWithTag("live-end-time").assertTextEquals("20:00 終了予定")
-        composeRule.onNodeWithTag("live-channel-name").assertTextEquals("別チャンネル").assertIsDisplayed()
+        composeRule.runOnIdle { loading.value = false }
+        assertEquals(notice.top, composeRule.onNodeWithTag("live-playback-notice").getUnclippedBoundsInRoot().top)
     }
 
     @Test

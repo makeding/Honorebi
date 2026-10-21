@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.setting
 
+import com.beeregg2001.komorebi.data.PlayerClockMode
+
 import android.os.Build
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.activity.compose.BackHandler
@@ -242,6 +244,7 @@ private fun SettingsMenuScreen(
             .toMap()
         List(12) { byContent[it] ?: FocusRequester.Default }
     }
+    val playerClockModeRequester = remember { FocusRequester() }
     val homeBackRequester = remember { FocusRequester() }
 
     val batchItemRs =
@@ -1032,6 +1035,14 @@ private fun SettingsMenuScreen(
                             onToggleScreensaverUpcoming = { viewModel.setScreensaverShowUpcoming(!screensaverShowUpcoming) },
                             screensaverGalleryR = screensaverGalleryR,
                             onShowScreensaverGallery = { showScreensaverGallery = true },
+                            playerClockModeR = playerClockModeRequester,
+                            onEditPlayerClockMode = {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    "プレイヤーの時計",
+                                    PlayerClockMode.entries.map { it.label to it.name },
+                                    prefs.playerClockMode.name,
+                                ) { viewModel.updatePlayerClockMode(it) }
+                            },
                         )
 
                         4 -> EpgSettingsContent(

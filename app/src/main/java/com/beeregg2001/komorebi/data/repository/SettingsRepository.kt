@@ -107,6 +107,7 @@ class SettingsRepository @Inject constructor(
         val HOME_PICKUP_TIME = stringPreferencesKey("home_pickup_time")
         val STARTUP_TAB = stringPreferencesKey("startup_tab")
         val STARTUP_CHANNEL = stringPreferencesKey("startup_channel")
+        val PLAYER_CLOCK_MODE = stringPreferencesKey("player_clock_mode")
         val TIME_FORMAT = stringPreferencesKey("time_format")
         val APP_THEME = stringPreferencesKey("app_theme")
         val DEFAULT_RECORD_LIST_VIEW = stringPreferencesKey("default_record_list_view")
@@ -230,6 +231,9 @@ class SettingsRepository @Inject constructor(
         normalizeStartupTab(it[STARTUP_TAB])
     }
     val startupChannel: Flow<String> = context.dataStore.data.map { it[STARTUP_CHANNEL] ?: "OFF" }
+    val playerClockMode: Flow<PlayerClockMode> = context.dataStore.data.map {
+        PlayerClockMode.fromPreference(it[PLAYER_CLOCK_MODE])
+    }
     val timeFormat: Flow<String> = context.dataStore.data.map { it[TIME_FORMAT] ?: "24H" }
     val appTheme: Flow<String> = context.dataStore.data.map { it[APP_THEME] ?: "MONOTONE" }
     val defaultRecordListView: Flow<String> =

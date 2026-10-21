@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.ui.setting
 
+import com.beeregg2001.komorebi.data.PlayerClockMode
+
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
 import com.beeregg2001.komorebi.data.SettingsRepository
@@ -60,7 +62,8 @@ class SettingPreferences(
 // ★ 追加: 番組表設定
     val epgColumnCount: String,
     val epgFontSizeScale: String,
-    val epgVisibleHours: String
+    val epgVisibleHours: String,
+    val playerClockMode: PlayerClockMode = PlayerClockMode.ALWAYS_ON,
 )
 
 @Composable
@@ -125,6 +128,7 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         pickupTime = repository.homePickupTime.collectAsState(initial = "自動").value,
         startupTab = repository.startupTab.collectAsState(initial = "ホーム").value,
         startupChannel = repository.startupChannel.collectAsState(initial = "OFF").value,
+        playerClockMode = repository.playerClockMode.collectAsState(initial = PlayerClockMode.ALWAYS_ON).value,
         timeFormat = repository.timeFormat.collectAsState(initial = "24H").value,
         currentThemeName = repository.appTheme.collectAsState(initial = "MONOTONE").value,
         defaultRecordListView = repository.defaultRecordListView.collectAsState(initial = "LIST").value,

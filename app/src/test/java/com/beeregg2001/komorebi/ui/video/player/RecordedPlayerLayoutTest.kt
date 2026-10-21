@@ -60,6 +60,23 @@ class RecordedPlayerLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun hidingCurrentTimePreservesRecordedEndTimeAndClockBounds() {
+        val show = mutableStateOf(true)
+        composeRule.setContent {
+            KomorebiTheme {
+                RecordedWallClock("24H", now = { java.time.ZonedDateTime.parse("2026-10-21T19:00:00+09:00[Asia/Tokyo]") },
+                    durationMs = 3_600_000, showCurrentTime = show.value)
+            }
+        }
+        val bounds = composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot()
+        composeRule.onNodeWithText("19:00").assertIsDisplayed()
+        composeRule.runOnIdle { show.value = false }
+        composeRule.onNodeWithText("19:00").assertDoesNotExist()
+        composeRule.onNodeWithText("20:00 終了予定").assertIsDisplayed()
+        assertEquals(bounds, composeRule.onNodeWithTag("recorded-wall-clock").getUnclippedBoundsInRoot())
+    }
+
+    @Test
     fun liveStatus_matchesRecordedCornerGeometryAndStopsClockWhenHidden() {
         val visible = mutableStateOf(true)
         val live = mutableStateOf(true)

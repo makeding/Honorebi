@@ -12,7 +12,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import com.beeregg2001.komorebi.ui.player.rememberHlgToneMappingContent
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -124,6 +123,7 @@ fun LivePlayerScreen(
     val displayLastWatchedChannels = channelNavigation.recentChannels
     val currentChannelItem = channelNavigation.currentChannel
 
+    val playerClockMode by settingsViewModel.playerClockMode.collectAsState()
     val mirakurunIp by settingsViewModel.mirakurunIp.collectAsState()
     val mirakurunPort by settingsViewModel.mirakurunPort.collectAsState()
     val edcbIp by settingsViewModel.edcbIp.collectAsState()
@@ -983,55 +983,16 @@ fun LivePlayerScreen(
             )
         }
 
-        // ★ 修正: バッファリング中の黒画面を回避し、スピナーだけを表示する
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && mainLoadingPresentation.isVisible && !isChannelSwitchDebouncing,
+            visible = !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
+                (mainLoadingPresentation.isVisible || isChannelSwitchDebouncing),
             enter = fadeIn(),
-            exit = fadeOut()
+            exit = fadeOut(),
         ) {
-            Box(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(PlayerOverlayEdgePaddingHorizontal)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 3.dp
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Text(
-                        text = mainLoadingPresentation.message,
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && isChannelSwitchDebouncing,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                Text(
-                    text = currentChannelItem.name,
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(PlayerOverlayEdgePaddingHorizontal)
-                        .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 20.dp, vertical = 14.dp)
-                )
-            }
+            LivePlaybackNotice(
+                message = if (isChannelSwitchDebouncing) currentChannelItem.name else mainLoadingPresentation.message,
+                loading = !isChannelSwitchDebouncing,
+            )
         }
 
         androidx.compose.animation.AnimatedVisibility(
@@ -1055,6 +1016,7 @@ fun LivePlayerScreen(
                 shouldCropLogo = shouldCropLogo,
                 timeFormatSetting = timeFormat,
                 isRecording = isRecording,
+                clockMode = playerClockMode,
             )
         }
 

@@ -32,7 +32,8 @@ class PlayerFactoryTest {
             assertTrue(renderer.shouldDropFrame(-2_000_000, 0, false))
             assertFalse(renderer.shouldDropFrame(-2_000_000, 0, true))
             assertFalse(shouldDropToKeyframe(renderer, -500_000, false))
-            assertTrue(shouldDropToKeyframe(renderer, -500_001, false))
+            assertFalse(shouldDropToKeyframe(renderer, -500_001, false))
+            assertFalse(shouldDropToKeyframe(renderer, -2_000_000, false))
             assertFalse(shouldDropToKeyframe(renderer, -2_000_000, true))
         } finally {
             runtime.release()

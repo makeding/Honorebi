@@ -89,16 +89,10 @@ private class LibaribtlvToneMappingVideoRenderer(
         else super.shouldDropOutputBuffer(earlyUs, elapsedRealtimeUs, isLastBuffer)
 
     override fun shouldDropBuffersToKeyframe(earlyUs: Long, elapsedRealtimeUs: Long, isLastBuffer: Boolean): Boolean =
-        if (recoverLateVideoFrames) earlyUs < -500_000L && !isLastBuffer
+        // Keyframe catch-up skips source samples AND flushes all pending codec output.
+        // Keep that queue intact during damage recovery; drop late decoded frames individually.
+        if (recoverLateVideoFrames) false
         else super.shouldDropBuffersToKeyframe(earlyUs, elapsedRealtimeUs, isLastBuffer)
-
-    override fun maybeDropBuffersToKeyframe(positionUs: Long, treatDroppedBuffersAsSkipped: Boolean): Boolean {
-        val caughtUp = super.maybeDropBuffersToKeyframe(positionUs, treatDroppedBuffersAsSkipped)
-        if (recoverLateVideoFrames && caughtUp) {
-            Log.w("RecordedVideoSync", "Keyframe catch-up: clock_us=${positionUs - outputStreamOffsetUs}")
-        }
-        return caughtUp
-    }
 
     override fun processOutputBuffer(
         positionUs: Long,

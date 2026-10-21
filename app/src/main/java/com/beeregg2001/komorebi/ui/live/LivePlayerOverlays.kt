@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.ui.live
 
+import com.beeregg2001.komorebi.data.PlayerClockMode
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -118,6 +120,28 @@ private fun SignalRow(label: String, value: String) {
     }
 }
 
+/** A fixed notice lane below the 24dp + 56dp clock slot, with a 16dp gap. */
+@Composable
+internal fun LivePlaybackNotice(message: String, loading: Boolean) {
+    Box(Modifier.fillMaxSize().padding(start = 24.dp, top = 96.dp, end = 24.dp)) {
+        Row(
+            Modifier.align(Alignment.TopStart).testTag("live-playback-notice")
+                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (loading) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp,
+                )
+                Spacer(Modifier.width(16.dp))
+            }
+            Text(message, color = Color.White, style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 @Composable
 fun StatusOverlay(
     channel: Channel,
@@ -126,11 +150,12 @@ fun StatusOverlay(
     timeFormatSetting: String = "24H",
     now: () -> ZonedDateTime = { ZonedDateTime.now() },
     isRecording: Boolean = false,
+    clockMode: PlayerClockMode = PlayerClockMode.ALWAYS_ON,
 ) {
     Box(Modifier.fillMaxSize().padding(24.dp)) {
         val program = channel.programPresent
         val timeline = remember(program) { LiveProgramTimeline.from(program) }
-        val isNews = program?.genres?.any { it.major == "ニュース・報道" } == true
+        val showCurrentTime = clockMode.showsCurrentTime(program?.genres?.map { it.major })
         val endText = remember(timeline, timeFormatSetting) {
             { current: ZonedDateTime ->
                 when {
@@ -140,13 +165,13 @@ fun StatusOverlay(
                 }
             }
         }
-        if (!isNews || timeline != null) {
+        if (showCurrentTime || timeline != null) {
             PlayerWallClock(
                 timeFormatSetting,
                 Modifier.align(Alignment.TopStart).testTag("live-wall-clock"),
                 now = now, secondaryText = endText,
                 secondaryModifier = Modifier.testTag("live-end-time"),
-                showCurrentTime = !isNews,
+                showCurrentTime = showCurrentTime,
             )
         }
         Column(Modifier.align(Alignment.TopEnd), horizontalAlignment = Alignment.End) {

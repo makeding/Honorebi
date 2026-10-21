@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.video.player
 
+import com.beeregg2001.komorebi.data.PlayerClockMode
+
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -226,6 +228,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     program: RecordedProgram,
     mediaInfo: PlaybackMediaInfo,
     timeFormat: String,
+    playerClockMode: PlayerClockMode,
     tiledThumbnailUrl: String?,
     showControls: Boolean,
     isSubOverlayOpen: Boolean,
@@ -400,6 +403,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
             timeFormat, Modifier.align(Alignment.TopStart).padding(24.dp),
             positionMs = controlsPositionMs, durationMs = totalDurationMs,
             speed = state.currentSpeed,
+            showCurrentTime = playerClockMode.showsCurrentTime(program.genres?.map { it.major }),
         )
     }
 

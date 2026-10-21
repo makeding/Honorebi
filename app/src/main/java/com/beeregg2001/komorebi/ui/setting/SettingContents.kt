@@ -694,8 +694,11 @@ fun DisplaySettingsContent(
     onToggleScreensaverUpcoming: () -> Unit = {},
     screensaverGalleryR: FocusRequester? = null,
     onShowScreensaverGallery: () -> Unit = {},
+    playerClockModeR: FocusRequester? = null,
+    onEditPlayerClockMode: () -> Unit = {},
 ) {
     val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
+    val clockR = playerClockModeR ?: remember { FocusRequester() }
     val upcomingR = screensaverUpcomingR ?: remember { FocusRequester() }
     val galleryR = screensaverGalleryR ?: remember { FocusRequester() }
     val playerPreviewR = screensaverPlayerPreviewR ?: remember { FocusRequester() }
@@ -801,9 +804,17 @@ fun DisplaySettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = colorR
-                        down = hideSubChannelsR
+                        down = clockR
                     },
                 onClick = { onClick(timeFormatR); onEditTimeFormat() })
+
+            SettingItem(
+                "プレイヤーの時計", preferences.playerClockMode.label, Icons.Default.Schedule,
+                modifier = Modifier.focusRequester(clockR).focusProperties {
+                    left = sidebarR; up = timeFormatR; down = hideSubChannelsR
+                },
+                onClick = { onClick(clockR); onEditPlayerClockMode() },
+            )
 
             SettingItem(
                 title = "サブチャンネルを非表示にする",
@@ -813,7 +824,7 @@ fun DisplaySettingsContent(
                     .focusRequester(hideSubChannelsR)
                     .focusProperties {
                         left = sidebarR
-                        up = timeFormatR
+                        up = clockR
                         down = screensaverEnabledR
                     },
                 onClick = { onClick(hideSubChannelsR); onToggleHideSubChannels() }
