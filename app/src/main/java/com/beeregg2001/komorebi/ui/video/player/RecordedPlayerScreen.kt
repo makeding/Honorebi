@@ -1099,7 +1099,6 @@ internal fun RecordedPlayerScreen(
 
     val performSeek: (Long) -> Unit = seek@ { targetMs: Long ->
         if (usesExtractorByteSeek && !exoPlayer.isCurrentMediaItemSeekable) {
-            onShowToast("シーク情報を準備しています")
             return@seek
         }
         recordedCaptions.seek()

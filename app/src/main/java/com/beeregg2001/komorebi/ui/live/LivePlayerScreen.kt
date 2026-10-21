@@ -345,7 +345,6 @@ fun LivePlayerScreen(
         dataBroadcastingRemoteCommand = null
         dataBroadcastingMediaPlane = null
         dataBroadcastingInput.reset()
-        onShowToast("データ放送を終了しました")
     }
     val dispatchDataBroadcastingColorKey: (DataBroadcastingColorKey) -> Unit = { colorKey ->
         onDataBroadcastingColorKey(colorKey)
@@ -1195,9 +1194,6 @@ fun LivePlayerScreen(
                 },
                 onSignalInfoToggle = {
                     ps.isSignalInfoVisible = !ps.isSignalInfoVisible
-                    if (ps.isSignalInfoVisible) {
-                        onShowToast("信号情報を表示します")
-                    }
                 },
                 onHdrRenderModeToggle = {
                     val nextMode = if (hdrRenderMode == "SDR_TONE_MAP") "ORIGINAL" else "SDR_TONE_MAP"

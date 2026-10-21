@@ -178,7 +178,7 @@ fun MainRootPlaybackHost(
                 onShowToast = { state.toastMessage = it },
                 isPiPMode = state.playbackState.isMiniPlayerMode,
                 onPiPRequested = {
-                    if (state.playbackState.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
+                    state.playbackState.enterMiniPlayer()
                 },
                 timeFormat = data.timeFormat,
             )
@@ -250,7 +250,7 @@ fun MainRootPlaybackHost(
                         onShowToast = { state.toastMessage = it },
                         isPiPMode = state.playbackState.isMiniPlayerMode,
                         onPiPRequested = {
-                            if (state.playbackState.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
+                            state.playbackState.enterMiniPlayer()
                         },
                     )
                 }
@@ -276,7 +276,7 @@ fun MainRootPlaybackHost(
                         onShowToast = { state.toastMessage = it },
                         isPiPMode = state.playbackState.isMiniPlayerMode,
                         onPiPRequested = {
-                            if (state.playbackState.enterMiniPlayer()) state.toastMessage = "ミニプレイヤーに変更しました"
+                            state.playbackState.enterMiniPlayer()
                         },
                     )
             }

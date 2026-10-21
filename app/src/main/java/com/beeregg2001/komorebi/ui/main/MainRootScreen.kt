@@ -575,9 +575,7 @@ fun MainRootScreen(
 
             state.showDeleteConfirmDialog -> state.showDeleteConfirmDialog = false
             state.playbackState.isPlaybackActive -> {
-                if (state.playbackState.handleBack() == PlaybackBackResult.RestoredFullscreen) {
-                    state.toastMessage = "フルスクリーンに戻りました"
-                }
+                state.playbackState.handleBack()
             }
 
             state.isSettingsOpen -> closeSettingsAndRefresh()
