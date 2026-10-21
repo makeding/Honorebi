@@ -121,6 +121,8 @@ internal fun SmbPlayerScreen(
         player.prepare()
         player.playWhenReady = true
     }
+    val timeFormat by settingsViewModel.timeFormat.collectAsState()
+    val playerClockMode by settingsViewModel.playerClockMode.collectAsState()
     val videoPlaybackSpeedStr by settingsViewModel.videoPlaybackSpeed.collectAsState()
     val smbSubtitleEnabledStr by settingsViewModel.smbSubtitleEnabled.collectAsState()
     LaunchedEffect(player, videoPlaybackSpeedStr) {
@@ -232,10 +234,16 @@ internal fun SmbPlayerScreen(
             visible = true,
             modifier = Modifier.fillMaxSize(),
         )
+        SmbWallClock(
+            timeFormat = timeFormat, clockMode = playerClockMode,
+            showControls = showControls, isSubMenuOpen = isSubMenuOpen,
+            isProgramInfoOpen = isProgramInfoOpen, cropMode = state.crop.mode,
+            isPiPMode = isPiPMode,
+        )
         PlayerControls(
             mediaInfo = PlaybackMediaInfo.smb(metadata),
             capabilities = PlaybackUiCapabilities.Smb,
-            timeFormat = "24h",
+            timeFormat = timeFormat,
             allComments = emptyList(),
             tiledThumbnailUrl = metadata.thumbnailUrl,
             isVisible = showControls,

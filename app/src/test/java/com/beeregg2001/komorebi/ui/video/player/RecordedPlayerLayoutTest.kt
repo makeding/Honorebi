@@ -60,6 +60,53 @@ class RecordedPlayerLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun smbClockHasNoEtaAndFollowsModesPanelsAndVisibleLifecycle() {
+        val mode = mutableStateOf(com.beeregg2001.komorebi.data.PlayerClockMode.ALWAYS_ON)
+        val surface = mutableStateOf("controls")
+        val format = mutableStateOf("24H")
+        var time = java.time.ZonedDateTime.parse("2026-10-21T19:00:00+09:00[Asia/Tokyo]")
+        var reads = 0
+        composeRule.setContent {
+            KomorebiTheme {
+                Box(Modifier.size(960.dp, 540.dp)) {
+                    SmbWallClock(format.value, mode.value,
+                        showControls = surface.value != "hidden",
+                        isSubMenuOpen = surface.value == "menu",
+                        isProgramInfoOpen = surface.value == "info",
+                        cropMode = if (surface.value == "crop") com.beeregg2001.komorebi.ui.player.PlayerCropMode.MENU
+                            else com.beeregg2001.komorebi.ui.player.PlayerCropMode.HIDDEN,
+                        isPiPMode = surface.value == "pip", now = { reads++; time })
+                }
+            }
+        }
+        composeRule.onNodeWithText("19:00").assertIsDisplayed()
+        composeRule.onNodeWithText("終了時刻未定").assertDoesNotExist()
+        composeRule.onNodeWithText("終了予定", substring = true).assertDoesNotExist()
+        val bounds = composeRule.onNodeWithTag("smb-wall-clock").getUnclippedBoundsInRoot()
+        assertEquals(24.dp, bounds.left)
+        assertEquals(24.dp, bounds.top)
+        for (hidden in listOf("hidden", "menu", "info", "crop", "pip")) {
+            composeRule.runOnIdle { surface.value = hidden }
+            composeRule.onNodeWithTag("smb-wall-clock").assertDoesNotExist()
+            val hiddenReads = reads
+            composeRule.mainClock.advanceTimeBy(2_000)
+            assertEquals(hiddenReads, reads)
+            composeRule.runOnIdle { time = time.plusMinutes(1); surface.value = "controls" }
+            composeRule.onNodeWithText(formatPlayerWallClock(time, "24H")).assertIsDisplayed()
+            assertEquals(bounds, composeRule.onNodeWithTag("smb-wall-clock").getUnclippedBoundsInRoot())
+        }
+        for (selected in com.beeregg2001.komorebi.data.PlayerClockMode.entries) {
+            composeRule.runOnIdle { mode.value = selected }
+            if (selected == com.beeregg2001.komorebi.data.PlayerClockMode.ALWAYS_ON)
+                composeRule.onNodeWithTag("smb-wall-clock").assertIsDisplayed()
+            else composeRule.onNodeWithTag("smb-wall-clock").assertDoesNotExist()
+        }
+        composeRule.runOnIdle { mode.value = com.beeregg2001.komorebi.data.PlayerClockMode.ALWAYS_ON; format.value = "12H" }
+        composeRule.onNodeWithText(formatPlayerWallClock(time, "12H")).assertIsDisplayed()
+        assertEquals(bounds, composeRule.onNodeWithTag("smb-wall-clock").getUnclippedBoundsInRoot())
+    }
+
+    @Test
     fun hidingCurrentTimePreservesRecordedEndTimeAndClockBounds() {
         val show = mutableStateOf(true)
         composeRule.setContent {
