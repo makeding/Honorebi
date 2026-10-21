@@ -87,6 +87,8 @@ class ChannelViewModel @Inject constructor(
         appContentStore.refreshChannels(afterNetworkRecovery)
     }
 
+    fun setNetworkAvailable(available: Boolean) = appContentStore.setNetworkAvailable(available)
+
     fun refreshAfterRecovery() {
         appContentStore.refreshAfterRecovery()
     }

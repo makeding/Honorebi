@@ -197,12 +197,20 @@ class VideoPlayerViewModel @Inject constructor(
         sessionId: String,
         offsetSeconds: Double = 0.0,
         isRecording: Boolean = false
-    ): String {
+    ): String = resolvePlaybackSource(videoId, quality, sessionId, offsetSeconds, isRecording).url
+
+    suspend fun resolvePlaybackSource(
+        videoId: Int,
+        quality: String,
+        sessionId: String,
+        offsetSeconds: Double = 0.0,
+        isRecording: Boolean = false,
+    ): com.beeregg2001.komorebi.ui.player.recorded.RecordedPlaybackSource {
         val source = withContext(Dispatchers.IO) {
             playbackSourceResolver.resolve(videoId, quality, sessionId, offsetSeconds, isRecording)
         }
         _isLiveStream.value = source.usesTranscodingLiveWindow
-        return source.url
+        return source
     }
 
     fun fetchProgramDetail(videoId: Int) {

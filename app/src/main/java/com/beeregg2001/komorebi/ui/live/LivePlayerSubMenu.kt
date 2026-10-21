@@ -67,6 +67,9 @@ fun LiveTopSubMenuUI(
     isLCropEnabled: Boolean,
     isRecording: Boolean,
     canStartChasePlayback: Boolean,
+    isChasePlaybackResolving: Boolean,
+    chasePlaybackMessage: String? = null,
+    isRecordActionSubmitting: Boolean,
     isSignalInfoVisible: Boolean,
     hdrRenderMode: String,
     isHdrToSdrToneMappingSupported: Boolean,
@@ -297,19 +300,23 @@ fun LiveTopSubMenuUI(
                         LiveMenuTileItem(
                             title = "追いかけ再生",
                             icon = Icons.Default.PlayCircle,
-                            subtitle = if (canStartChasePlayback) "録画中番組を再生" else "準備中",
+                            subtitle = chasePlaybackMessage
+                                ?: if (isChasePlaybackResolving) "録画を確認中…"
+                                else if (canStartChasePlayback) "録画中番組を再生" else "録画を確認",
                             onClick = onChasePlayback,
                             modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                            contentColor = if (canStartChasePlayback) colors.accent else colors.textPrimary.copy(alpha = 0.55f)
+                            enabled = !isChasePlaybackResolving,
+                            contentColor = if (isChasePlaybackResolving) colors.textPrimary.copy(alpha = 0.55f) else colors.accent
                         )
                     }
 
                     LiveMenuTileItem(
                         title = if (isRecording) "録画停止" else "録画開始",
                         icon = if (isRecording) Icons.Default.StopCircle else Icons.Default.RadioButtonChecked,
-                        subtitle = if (isRecording) "録画中" else "番組を録画",
+                        subtitle = if (isRecordActionSubmitting) "処理中…" else if (isRecording) "録画中" else "番組を録画",
                         onClick = onRecordToggle,
                         modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        enabled = !isRecordActionSubmitting,
                         contentColor = if (isRecording) Color(0xFFFF5252) else colors.textPrimary
                     )
 

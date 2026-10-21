@@ -339,8 +339,14 @@ fun MainRootScreen(
 
                 is AiConciergeAction.ReserveSingle -> {
                     closeAiConcierge(true)
-                    reserveViewModel.addReserve(action.programId) {
-                        state.toastMessage = "番組の録画予約を完了しました"
+                    reserveViewModel.addReserve(action.programId) { result ->
+                        when (result) {
+                            SingleReservationResult.Success ->
+                                state.toastMessage = "番組の録画予約を完了しました"
+                            is SingleReservationResult.Failure ->
+                                state.toastMessage = "${result.failure.message} [${result.failure.code}]"
+                            SingleReservationResult.AlreadySubmitting -> Unit
+                        }
                     }
                 }
 
@@ -555,6 +561,10 @@ fun MainRootScreen(
         }
     }
 
+    LaunchedEffect(state.isSettingsOpen, state.isSmbLibraryOpen) {
+        if (state.isSettingsOpen || state.isSmbLibraryOpen) state.toastMessage = null
+    }
+
     LaunchedEffect(state.toastMessage) {
         if (state.toastMessage != null) {
             delay(3000); state.toastMessage = null
@@ -607,6 +617,7 @@ fun MainRootScreen(
 
     val reconnectGate = remember { NetworkReconnectGate() }
     LaunchedEffect(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation) {
+        channelViewModel.setNetworkAvailable(isNetworkAvailable)
         if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation)) {
             channelViewModel.refreshAfterRecovery()
             homeViewModel.refreshHomeData()
@@ -622,7 +633,7 @@ fun MainRootScreen(
     }
 
     LaunchedEffect(isChannelLoading, isHomeLoading, isChannelError, isNetworkAvailable, appWakeState.isAwake) {
-        if (appWakeState.isAwake && !isChannelLoading && !isHomeLoading) {
+        if (appWakeState.isAwake && !isChannelLoading && (state.isDataReady || !isHomeLoading)) {
             delay(300)
             when (offlinePresentation(isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady)) {
                 OfflinePresentation.CONNECTION_FAILURE -> {

@@ -36,6 +36,7 @@ import com.beeregg2001.komorebi.ui.theme.SystemFontFamily
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
+import com.beeregg2001.komorebi.common.UserFacingFailure
 import com.beeregg2001.komorebi.viewmodel.PostRecordingBatch
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -48,6 +49,8 @@ fun ReserveSettingsDialog(
     programTitle: String,
     initialSettings: ReserveRecordSettings,
     isNewReservation: Boolean,
+    isSubmitting: Boolean = false,
+    failure: UserFacingFailure? = null,
     onConfirm: (ReserveRecordSettings) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -149,6 +152,17 @@ fun ReserveSettingsDialog(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
+                // Reserve a stable slot so a failed request does not shift the controls or focus.
+                Text(
+                    text = failure?.let { "${it.message} [${it.code}]" } ?: " ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (failure != null) MaterialTheme.colorScheme.error else Color.Transparent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .padding(horizontal = 8.dp),
+                )
+
                 SettingRow(label = "予約を有効にする") {
                     Switch(
                         checked = isEnabled,
@@ -226,7 +240,7 @@ fun ReserveSettingsDialog(
                         .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
                 ) {
-                    DialogActionButton(DialogActionRole.Secondary, onDismiss) {
+                    DialogActionButton(DialogActionRole.Secondary, onDismiss, enabled = !isSubmitting) {
                         Text("キャンセル", fontWeight = FontWeight.Bold)
                     }
 
@@ -239,10 +253,10 @@ fun ReserveSettingsDialog(
                                 isEventRelayFollowEnabled = isEventRelay
                             )
                             onConfirm(newSettings)
-                        }
+                        }, enabled = !isSubmitting
                     ) {
                         Text(
-                            if (isNewReservation) "録画予約" else "設定を更新",
+                            if (isSubmitting) "処理中…" else if (isNewReservation) "録画予約" else "設定を更新",
                             fontWeight = FontWeight.Bold
                         )
                     }

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.common.UserFacingFailure
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.mapper.ReserveMapper
 import com.beeregg2001.komorebi.data.model.Channel
@@ -71,6 +72,10 @@ fun MainRootDialogs(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isSingleReservationSubmitting by reserveViewModel.isSingleReservationSubmitting.collectAsState()
+    var editReservationFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
+    var newReservationFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
+    var deleteReservationFailure by remember { mutableStateOf<UserFacingFailure?>(null) }
 
     // ========================================================================
     // AIコンシェルジュ 音声入力ロジック
@@ -250,10 +255,15 @@ fun MainRootDialogs(
                     state.toastMessage = "ネットテレビは録画予約に対応していません"
                     return@ProgramDetailScreen
                 }
-                reserveViewModel.addReserve(program.id) {
-                    scope.launch {
-                        state.epgSelectedProgram = null; delay(300)
-                        state.toastMessage = AppStrings.TOAST_RESERVED
+                reserveViewModel.addReserve(program.id) { result ->
+                    when (result) {
+                        SingleReservationResult.Success -> scope.launch {
+                            state.epgSelectedProgram = null; delay(300)
+                            state.toastMessage = AppStrings.TOAST_RESERVED
+                        }
+                        is SingleReservationResult.Failure ->
+                            state.toastMessage = "${result.failure.message} [${result.failure.code}]"
+                        SingleReservationResult.AlreadySubmitting -> Unit
                     }
                 }
             },
@@ -333,12 +343,19 @@ fun MainRootDialogs(
             programTitle = state.editingReserveItem!!.program.title,
             initialSettings = state.editingReserveItem!!.recordSettings,
             isNewReservation = false,
+            isSubmitting = isSingleReservationSubmitting,
+            failure = editReservationFailure,
             onConfirm = { newSettings ->
-                reserveViewModel.updateReservation(state.editingReserveItem!!, newSettings) {
-                    scope.launch {
-                        state.editingReserveItem = null; state.toastMessage =
-                        AppStrings.TOAST_RESERVE_UPDATED
-                        delay(200); detailFocusRequester.safeRequestFocus("ProgramDetail")
+                editReservationFailure = null
+                reserveViewModel.updateReservation(state.editingReserveItem!!, newSettings) { result ->
+                    when (result) {
+                        SingleReservationResult.Success -> scope.launch {
+                            state.editingReserveItem = null; state.toastMessage =
+                            AppStrings.TOAST_RESERVE_UPDATED
+                            delay(200); detailFocusRequester.safeRequestFocus("ProgramDetail")
+                        }
+                        is SingleReservationResult.Failure -> editReservationFailure = result.failure
+                        SingleReservationResult.AlreadySubmitting -> Unit
                     }
                 }
             },
@@ -362,11 +379,18 @@ fun MainRootDialogs(
             programTitle = state.editingNewProgram!!.title,
             initialSettings = defaultSettings,
             isNewReservation = true,
+            isSubmitting = isSingleReservationSubmitting,
+            failure = newReservationFailure,
             onConfirm = { newSettings ->
-                reserveViewModel.addReserveWithSettings(state.editingNewProgram!!.id, newSettings) {
-                    scope.launch {
-                        state.editingNewProgram = null; state.epgSelectedProgram = null
-                        delay(300); state.toastMessage = AppStrings.TOAST_RESERVED
+                newReservationFailure = null
+                reserveViewModel.addReserveWithSettings(state.editingNewProgram!!.id, newSettings) { result ->
+                    when (result) {
+                        SingleReservationResult.Success -> scope.launch {
+                            state.editingNewProgram = null; state.epgSelectedProgram = null
+                            delay(300); state.toastMessage = AppStrings.TOAST_RESERVED
+                        }
+                        is SingleReservationResult.Failure -> newReservationFailure = result.failure
+                        SingleReservationResult.AlreadySubmitting -> Unit
                     }
                 }
             },
@@ -384,14 +408,21 @@ fun MainRootDialogs(
                 AppStrings.DIALOG_DELETE_RESERVE_MESSAGE,
                 state.reserveToDelete?.program?.title ?: ""
             ),
+            isSubmitting = isSingleReservationSubmitting,
+            failure = deleteReservationFailure,
             onConfirm = {
                 val id = state.reserveToDelete!!.id
-                reserveViewModel.deleteReservation(id) {
-                    scope.launch {
-                        state.reserveToDelete = null
-                        if (state.selectedReserve != null) state.selectedReserve = null
-                        if (state.epgSelectedProgram != null) state.epgSelectedProgram = null
-                        delay(300); state.toastMessage = AppStrings.TOAST_RESERVE_DELETED
+                deleteReservationFailure = null
+                reserveViewModel.deleteReservation(id) { result ->
+                    when (result) {
+                        SingleReservationResult.Success -> scope.launch {
+                            state.reserveToDelete = null
+                            if (state.selectedReserve != null) state.selectedReserve = null
+                            if (state.epgSelectedProgram != null) state.epgSelectedProgram = null
+                            delay(300); state.toastMessage = AppStrings.TOAST_RESERVE_DELETED
+                        }
+                        is SingleReservationResult.Failure -> deleteReservationFailure = result.failure
+                        SingleReservationResult.AlreadySubmitting -> Unit
                     }
                 }
             },
@@ -460,7 +491,10 @@ fun MainRootDialogs(
         }
     }
 
-    GlobalToast(message = state.toastMessage)
+    // Settings and SMB own their foreground toast surface.
+    if (!state.isSettingsOpen && !state.isSmbLibraryOpen) {
+        GlobalToast(message = state.toastMessage)
+    }
 
     AiConciergePanel(
         isOpen = state.isAiConciergeOpen,

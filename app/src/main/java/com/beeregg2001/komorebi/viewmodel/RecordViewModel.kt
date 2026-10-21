@@ -12,6 +12,8 @@ import androidx.paging.cachedIn
 import androidx.paging.filter
 import androidx.paging.map
 import com.beeregg2001.komorebi.data.SettingsRepository
+import com.beeregg2001.komorebi.common.UserFacingFailure
+import com.beeregg2001.komorebi.common.userFacingFailure
 import com.beeregg2001.komorebi.data.local.dao.ChannelProjection
 import com.beeregg2001.komorebi.data.local.dao.RecordedProgramDao
 import com.beeregg2001.komorebi.data.local.dao.SeriesProjection
@@ -34,6 +36,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -42,6 +45,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import javax.inject.Inject
 
@@ -49,6 +53,13 @@ private const val TAG = "Komorebi_RecordVM"
 private const val PREF_NAME = "search_history_pref"
 private const val KEY_HISTORY = "history_list"
 private const val SERIES_VISIBILITY_PAGE_LIMIT = 8
+private const val CHASE_LOOKUP_TIMEOUT_MS = 15_000L
+
+sealed interface ChaseRecordingLookupResult {
+    data class Found(val program: RecordedProgram) : ChaseRecordingLookupResult
+    data object Unavailable : ChaseRecordingLookupResult
+    data class Failure(val failure: UserFacingFailure) : ChaseRecordingLookupResult
+}
 
 // ★ 追加: 録画リスト用のソート列挙型
 enum class RecordSortType { DATE, TITLE, DURATION }
@@ -258,6 +269,21 @@ class RecordViewModel @Inject constructor(
             _activeSearchQuery.value.isNotEmpty() -> clearSearch()
             _selectedCategory.value != RecordCategory.ALL -> updateCategory(RecordCategory.ALL)
             else -> onExit()
+        }
+    }
+
+    val recoveryVersion = appContentStore.recoveryVersion
+
+    fun refreshIndexesAfterRecovery() {
+        if (channelIndexRequested) {
+            onlineChannelIndexJob?.cancel()
+            onlineChannelIndexJob = null
+            ensureOnlineChannels(forceReload = true)
+        }
+        if (filterIndexesRequested) {
+            onlineFilterIndexJob?.cancel()
+            onlineFilterIndexJob = null
+            loadOnlineFilterIndexes(forceReload = true)
         }
     }
 
@@ -533,20 +559,32 @@ class RecordViewModel @Inject constructor(
         }
     }
 
-    suspend fun fetchCurrentRecordingForChannel(channel: Channel): RecordedProgram? =
+    suspend fun fetchCurrentRecordingForChannel(channel: Channel): ChaseRecordingLookupResult =
         withContext(Dispatchers.IO) {
-            if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return@withContext null
-            findCurrentRecordingForChannel(channel)?.let { return@withContext it }
+            if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) {
+                return@withContext ChaseRecordingLookupResult.Unavailable
+            }
+            findCurrentRecordingForChannel(channel)?.let {
+                return@withContext ChaseRecordingLookupResult.Found(it)
+            }
 
-            runCatching {
-                recordProvider.getRecordedPrograms(page = 1, order = "desc").recordedPrograms
-            }.onSuccess { latest ->
-                if (latest.isNotEmpty()) {
-                    appContentStore.refreshRecentRecordings()
+            try {
+                val latest = withTimeout(CHASE_LOOKUP_TIMEOUT_MS) {
+                    recordProvider.getRecordedPrograms(page = 1, order = "desc").recordedPrograms
                 }
-            }.map { latest ->
+                if (latest.isNotEmpty()) appContentStore.refreshRecentRecordings()
                 findCurrentRecordingForChannel(channel, latest.filterNot(nhkExclusionRepository::isExcluded))
-            }.getOrNull()
+                    ?.let(ChaseRecordingLookupResult::Found)
+                    ?: ChaseRecordingLookupResult.Unavailable
+            } catch (error: TimeoutCancellationException) {
+                Log.e(TAG, "Timed out resolving chase playback recording", error)
+                ChaseRecordingLookupResult.Failure(userFacingFailure(error, "CHASE_LOOKUP_FAILED"))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e(TAG, "Failed to resolve chase playback recording", error)
+                ChaseRecordingLookupResult.Failure(userFacingFailure(error, "CHASE_LOOKUP_FAILED"))
+            }
         }
 
     fun loadNextPage() {}

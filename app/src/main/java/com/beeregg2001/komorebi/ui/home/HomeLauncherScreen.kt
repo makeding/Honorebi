@@ -497,11 +497,6 @@ fun HomeLauncherScreen(
         val previous = previousNetworkAvailable
         previousNetworkAvailable = current
 
-        if (current && (previous == null || !previous) && ui.selectedTabIndex == 0) {
-            homeViewModel.refreshHomeData()
-            channelViewModel.fetchChannels()
-        }
-
         if (previous != null && previous != current && !current &&
             !isReturningFromPlayer && !isFullScreenMode
         ) {

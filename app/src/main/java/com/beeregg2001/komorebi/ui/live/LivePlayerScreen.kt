@@ -69,6 +69,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import org.json.JSONObject
 import master.flame.danmaku.controller.IDanmakuView
 
@@ -177,6 +178,11 @@ fun LivePlayerScreen(
     }
     val isRecording = activeReserve != null || currentRecordingProgram != null
     var isChasePlaybackResolving by remember { mutableStateOf(false) }
+    var chasePlaybackMessage by remember { mutableStateOf<String?>(null) }
+    var chaseLookupGeneration by remember { mutableIntStateOf(0) }
+    var chaseLookupJob by remember { mutableStateOf<Job?>(null) }
+    val latestCurrentChannelId by rememberUpdatedState(currentChannelItem.id)
+    val isRecordActionSubmitting by reserveViewModel.isSingleReservationSubmitting.collectAsState()
 
     val currentIsManualOverlay by rememberUpdatedState(isManualOverlay)
     val currentIsPinnedOverlay by rememberUpdatedState(isPinnedOverlay)
@@ -594,6 +600,11 @@ fun LivePlayerScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
+                chaseLookupGeneration++
+                chaseLookupJob?.cancel()
+                chaseLookupJob = null
+                isChasePlaybackResolving = false
+                chasePlaybackMessage = null
                 Log.w(
                     TAG,
                     "Live screen lifecycle ON_STOP: channel=${currentChannelItem.displayChannelId}, " +
@@ -617,6 +628,21 @@ fun LivePlayerScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(currentChannelItem.id) {
+        chaseLookupGeneration++
+        chaseLookupJob?.cancel()
+        chaseLookupJob = null
+        isChasePlaybackResolving = false
+        chasePlaybackMessage = null
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            chaseLookupGeneration++
+            chaseLookupJob?.cancel()
+        }
     }
 
     LaunchedEffect(currentChannelItem.id, ps.retryKey) {
@@ -1071,7 +1097,7 @@ fun LivePlayerScreen(
                     if (enterMiniPlayer) {
                         onPiPRequested()
                     } else {
-                        scope.launch {
+                        chaseLookupJob = scope.launch {
                             delay(200)
                             mainFocusRequester.safeRequestFocus(TAG)
                         }
@@ -1112,6 +1138,9 @@ fun LivePlayerScreen(
                 isLCropEnabled = ps.crop.isEnabled,
                 isRecording = isRecording,
                 canStartChasePlayback = currentRecordingProgram != null && !isChasePlaybackResolving,
+                isChasePlaybackResolving = isChasePlaybackResolving,
+                chasePlaybackMessage = chasePlaybackMessage,
+                isRecordActionSubmitting = isRecordActionSubmitting,
                 isSignalInfoVisible = ps.isSignalInfoVisible,
                 hdrRenderMode = hdrRenderMode,
                 isHdrToSdrToneMappingSupported = isHdrToSdrToneMappingSupported && isHlgContent,
@@ -1166,31 +1195,60 @@ fun LivePlayerScreen(
                 onChasePlayback = {
                     if (!isChasePlaybackResolving) {
                         scope.launch {
+                            val requestGeneration = ++chaseLookupGeneration
+                            val requestedChannelId = currentChannelItem.id
                             isChasePlaybackResolving = true
-                            val program = currentRecordingProgram
+                            chasePlaybackMessage = "録画を確認中…"
+                            val result = currentRecordingProgram?.let(ChaseRecordingLookupResult::Found)
                                 ?: recordViewModel.fetchCurrentRecordingForChannel(currentChannelItem)
+                            if (requestGeneration != chaseLookupGeneration ||
+                                requestedChannelId != latestCurrentChannelId
+                            ) return@launch
                             isChasePlaybackResolving = false
-
-                            if (program == null) {
-                                onShowToast("追いかけ再生の準備中です")
-                            } else {
-                                onSubMenuToggle(false)
-                                onChasePlaybackSelect(program)
+                            when (result) {
+                                is ChaseRecordingLookupResult.Found -> {
+                                    chasePlaybackMessage = null
+                                    onSubMenuToggle(false)
+                                    onChasePlaybackSelect(result.program)
+                                }
+                                ChaseRecordingLookupResult.Unavailable -> {
+                                    chasePlaybackMessage = "再生できる録画がまだありません。再試行できます"
+                                }
+                                is ChaseRecordingLookupResult.Failure -> {
+                                    chasePlaybackMessage = "${result.failure.message} [${result.failure.code}]"
+                                }
                             }
+                            chaseLookupJob = null
                         }
                     }
                 },
                 onRecordToggle = {
                     if (isRecording) {
                         if (activeReserve != null) {
-                            reserveViewModel.deleteReservation(activeReserve.id) {}
-                            onShowToast("録画を停止しました")
+                            reserveViewModel.deleteReservation(activeReserve.id) { result ->
+                                when (result) {
+                                    SingleReservationResult.Success -> onShowToast("録画予約を取り消しました")
+                                    is SingleReservationResult.Failure ->
+                                        onShowToast("${result.failure.message} [${result.failure.code}]")
+                                    SingleReservationResult.AlreadySubmitting -> Unit
+                                }
+                            }
                         }
                     } else {
-                        reserveViewModel.addReserve(currentChannelItem.id) {}
-                        onShowToast("録画を開始しました")
+                        val presentProgramId = currentChannelItem.programPresent?.id
+                        if (presentProgramId == null) {
+                            onShowToast("現在の番組情報を取得できないため、録画予約できません")
+                        } else {
+                            reserveViewModel.addReserve(presentProgramId) { result ->
+                                when (result) {
+                                    SingleReservationResult.Success -> onShowToast("録画予約を追加しました")
+                                    is SingleReservationResult.Failure ->
+                                        onShowToast("${result.failure.message} [${result.failure.code}]")
+                                    SingleReservationResult.AlreadySubmitting -> Unit
+                                }
+                            }
+                        }
                     }
-                    onSubMenuToggle(false)
                 },
                 onSignalInfoToggle = {
                     ps.isSignalInfoVisible = !ps.isSignalInfoVisible

@@ -163,6 +163,15 @@ fun RecordListScreen(
     }
 
     val pagedRecordings = viewModel.pagedRecordings.collectAsLazyPagingItems()
+    val recoveryVersion by viewModel.recoveryVersion.collectAsState()
+    var observedRecoveryVersion by remember { mutableIntStateOf(recoveryVersion) }
+    LaunchedEffect(recoveryVersion) {
+        if (observedRecoveryVersion != recoveryVersion) {
+            observedRecoveryVersion = recoveryVersion
+            pagedRecordings.refresh()
+            viewModel.refreshIndexesAfterRecovery()
+        }
+    }
     val searchHistory by viewModel.searchHistory.collectAsState()
     val groupedChannels by viewModel.groupedChannels.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()

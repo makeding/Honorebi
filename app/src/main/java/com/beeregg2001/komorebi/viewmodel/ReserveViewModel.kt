@@ -3,6 +3,8 @@ package com.beeregg2001.komorebi.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.beeregg2001.komorebi.common.UserFacingFailure
+import com.beeregg2001.komorebi.common.userFacingFailure
 import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.data.model.ReserveRecordSettings
@@ -10,6 +12,9 @@ import com.beeregg2001.komorebi.data.model.ReserveRequest
 import com.beeregg2001.komorebi.data.repository.ReserveProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +26,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val TAG = "ReserveViewModel"
+private const val SINGLE_RESERVATION_TIMEOUT_MS = 15_000L
+
+sealed interface SingleReservationResult {
+    data object Success : SingleReservationResult
+    data class Failure(val failure: UserFacingFailure) : SingleReservationResult
+    data object AlreadySubmitting : SingleReservationResult
+}
 
 /**
  * 録画予約タブ（Reserve Tab）のUI状態とビジネスロジックを管理するViewModel。
@@ -72,6 +84,9 @@ class ReserveViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _isSingleReservationSubmitting = MutableStateFlow(false)
+    val isSingleReservationSubmitting: StateFlow<Boolean> = _isSingleReservationSubmitting.asStateFlow()
+
     // 🌟 追加: フォーカス復帰用のID記憶（画面破棄対策）
     var lastClickedReserveId: Int? = null
     var lastClickedConditionId: Int? = null
@@ -121,17 +136,12 @@ class ReserveViewModel @Inject constructor(
     /**
      * デフォルト設定で番組を単発予約します（番組表から「録画する」を押した場合など）。
      */
-    fun addReserve(programId: String, onSuccess: () -> Unit) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            val request =
+    fun addReserve(programId: String, onResult: (SingleReservationResult) -> Unit) =
+        submitSingleReservation(onResult) {
+            reserveProvider.addReserve(
                 ReserveRequest(programId = programId, recordSettings = ReserveRecordSettings())
-            reserveProvider.addReserve(request)
-                .onSuccess { fetchReserves(); onSuccess() }
-                .onFailure { e -> Log.e(TAG, "Failed to add reservation", e); onSuccess() }
-            _isLoading.value = false
+            )
         }
-    }
 
     /**
      * 録画マージンや優先度などの詳細設定を指定して、番組を単発予約します。
@@ -139,16 +149,9 @@ class ReserveViewModel @Inject constructor(
     fun addReserveWithSettings(
         programId: String,
         settings: ReserveRecordSettings,
-        onSuccess: () -> Unit
-    ) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            val request = ReserveRequest(programId = programId, recordSettings = settings)
-            reserveProvider.addReserve(request)
-                .onSuccess { fetchReserves(); onSuccess() }
-                .onFailure { e -> Log.e(TAG, "Failed to add reservation", e); onSuccess() }
-            _isLoading.value = false
-        }
+        onResult: (SingleReservationResult) -> Unit
+    ) = submitSingleReservation(onResult) {
+        reserveProvider.addReserve(ReserveRequest(programId = programId, recordSettings = settings))
     }
 
     /**
@@ -157,29 +160,56 @@ class ReserveViewModel @Inject constructor(
     fun updateReservation(
         reserve: ReserveItem,
         newSettings: ReserveRecordSettings,
-        onSuccess: () -> Unit
-    ) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            val request =
-                ReserveRequest(programId = reserve.program.id, recordSettings = newSettings)
-            reserveProvider.updateReserve(reserve.id, request)
-                .onSuccess { fetchReserves(); onSuccess() }
-                .onFailure { e -> Log.e(TAG, "Failed to update reservation", e); onSuccess() }
-            _isLoading.value = false
-        }
+        onResult: (SingleReservationResult) -> Unit
+    ) = submitSingleReservation(onResult) {
+        reserveProvider.updateReserve(
+            reserve.id,
+            ReserveRequest(programId = reserve.program.id, recordSettings = newSettings)
+        )
     }
 
     /**
      * 予約を削除（キャンセル）します。
      */
-    fun deleteReservation(reservationId: Int, onSuccess: () -> Unit) {
+    fun deleteReservation(reservationId: Int, onResult: (SingleReservationResult) -> Unit) =
+        submitSingleReservation(onResult) {
+            reserveProvider.deleteReservation(reservationId)
+        }
+
+    private fun submitSingleReservation(
+        onResult: (SingleReservationResult) -> Unit,
+        request: suspend () -> Result<Unit>,
+    ) {
+        if (_isSingleReservationSubmitting.value) {
+            onResult(SingleReservationResult.AlreadySubmitting)
+            return
+        }
+        _isSingleReservationSubmitting.value = true
         viewModelScope.launch {
             _isLoading.value = true
-            reserveProvider.deleteReservation(reservationId)
-                .onSuccess { fetchReserves(); onSuccess() }
-                .onFailure { e -> Log.e(TAG, "Failed to delete reservation", e); onSuccess() }
-            _isLoading.value = false
+            try {
+                val result = withTimeout(SINGLE_RESERVATION_TIMEOUT_MS) { request() }
+                result.fold(
+                    onSuccess = {
+                        fetchReserves(showLoading = false)
+                        onResult(SingleReservationResult.Success)
+                    },
+                    onFailure = { error ->
+                        Log.e(TAG, "Single reservation operation failed", error)
+                        onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
+                    },
+                )
+            } catch (error: TimeoutCancellationException) {
+                onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.e(TAG, "Single reservation operation failed", error)
+                onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
+            } finally {
+                _isSingleReservationSubmitting.value = false
+                _isLoading.value = false
+            }
         }
     }
 

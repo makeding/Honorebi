@@ -73,18 +73,19 @@ class AppWakeRecoveryTest {
             assertEquals(4, provider.requests)
             assertFalse(store.connectionError.value)
             assertNull(store.channelError.value)
+            assertEquals(2, store.recoveryVersion.value)
             assertEquals(1, provider.maxConcurrent)
         } finally { scope.cancel() }
     }
 
     @Test(timeout = 10_000) fun oldSleepingRequestCannotPublishFailureAndWakeQueuesOneFreshRequest() = runBlocking {
+        val oldRequest = CompletableDeferred<Unit>()
         val provider = FakeLiveProvider().apply {
-            hold = CompletableDeferred()
+            hold = oldRequest
             failuresRemaining = 1
         }
         try {
             val store = store(provider)
-            val oldRequest = provider.hold!!
             store.setAppAwake(false)
             advance(120_000)
             store.setAppAwake(true)

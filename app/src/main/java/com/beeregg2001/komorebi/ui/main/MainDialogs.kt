@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.common.UserFacingFailure
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
@@ -28,6 +29,8 @@ import kotlinx.coroutines.delay
 fun DeleteConfirmationDialog(
     title: String,
     message: String,
+    isSubmitting: Boolean = false,
+    failure: UserFacingFailure? = null,
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -61,6 +64,12 @@ fun DeleteConfirmationDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary
                 )
+                Text(
+                    text = failure?.let { "${it.message} [${it.code}]" } ?: " ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (failure != null) MaterialTheme.colorScheme.error else Color.Transparent,
+                    modifier = Modifier.height(40.dp),
+                )
                 Spacer(modifier = Modifier.height(32.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -69,15 +78,17 @@ fun DeleteConfirmationDialog(
                     DialogActionButton(
                         role = DialogActionRole.Secondary,
                         onClick = onCancel,
+                        enabled = !isSubmitting,
                         modifier = Modifier.weight(1f),
                     ) { Text(AppStrings.BUTTON_CANCEL) }
                     DialogActionButton(
                         role = DialogActionRole.Destructive,
                         onClick = onConfirm,
+                        enabled = !isSubmitting,
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester)
-                    ) { Text(AppStrings.BUTTON_DELETE) }
+                    ) { Text(if (isSubmitting) "処理中…" else AppStrings.BUTTON_DELETE) }
                 }
             }
         }

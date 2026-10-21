@@ -383,6 +383,10 @@ internal fun RecordedPlayerScreen(
     }
     var currentSubtitleLanguageId by remember(recordedPlaybackToken) { mutableIntStateOf(1) }
 
+    var sourceRequest by remember(recordedPlaybackFence.identity, vs.currentQuality.value) {
+        mutableStateOf<RecordedSourceRequest>(RecordedSourceRequest.Ready)
+    }
+    val showSourceFeedback = sourceRequest != RecordedSourceRequest.Ready && !isRecordedSwitching && entryError == null
     val ui = remember { RecordedPlayerUiState() }
     var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
 
@@ -411,7 +415,7 @@ internal fun RecordedPlayerScreen(
     }
 
     val isSubOverlayOpen =
-        isSubMenuOpen || isSceneSearchOpen || ui.isChapterListOpen || ui.isKeyframeGridOpen || ui.isProgramInfoOpen || ui.isModernSettingsOpen
+        isSubMenuOpen || isSceneSearchOpen || ui.isChapterListOpen || ui.isKeyframeGridOpen || ui.isProgramInfoOpen || ui.isModernSettingsOpen || showSourceFeedback
     val subtitleAvoidanceProgress by animateFloatAsState(
         targetValue = if (
             showControls &&
@@ -964,7 +968,10 @@ internal fun RecordedPlayerScreen(
                 )
             } else null
     }
-    val getEffectivePositionMs = { vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
+    val deferredSeek = remember(exoPlayer, recordedPlaybackFence.identity, vs.currentQuality.value) {
+        DeferredRecordedSeek()
+    }
+    val getEffectivePositionMs = { deferredSeek.targetMs ?: vs.pendingSeekPositionMs ?: getCurrentPositionMs() }
 
     val usesSerializedRawMmtsSeek = requiresRawMmtsPlayback && vs.currentQuality.isRawMmts
     val usesMmtServerTimeline = requiresRawMmtsPlayback &&
@@ -1098,9 +1105,13 @@ internal fun RecordedPlayerScreen(
                 totalDurationForControls > 0L
 
     val performSeek: (Long) -> Unit = seek@ { targetMs: Long ->
+        if (!currentPlaybackFence.accepts()) return@seek
         if (usesExtractorByteSeek && !exoPlayer.isCurrentMediaItemSeekable) {
+            deferredSeek.request(targetMs.coerceIn(0L,
+                if (totalDurationForControls > 0L) totalDurationForControls else Long.MAX_VALUE))
             return@seek
         }
+        deferredSeek.cancel()
         recordedCaptions.seek()
         val resumeAfterFailure = tsRecoveryFailure != null || exoPlayer.playerError != null
         tsRecoveryFailure = null
@@ -1122,24 +1133,32 @@ internal fun RecordedPlayerScreen(
         }
 
         if (isLiveStream && !isRecordingChasePlayback) {
-            scope.launch {
+            seekResolveJob?.cancel()
+            sourceRequest = RecordedSourceRequest.Pending()
+            seekResolveJob = scope.launch {
                 isBuffering = true; exoPlayer.pause()
                 vs.playbackOffsetMs = safeTarget
                 val newOffsetSec = safeTarget / 1000.0
-                val newUrl = videoPlayerViewModel.resolveStreamUrl(
+                val source = videoPlayerViewModel.resolvePlaybackSource(
                     currentProgram.id,
                     vs.currentQuality.value,
                     currentSessionId,
                     newOffsetSec,
                     isRecordingChasePlayback
                 )
-                if (newUrl.isNotEmpty()) {
+                if (!currentPlaybackFence.accepts()) return@launch
+                val newUrl = source.url
+                if (newUrl.isNotBlank()) {
+                    sourceRequest = RecordedSourceRequest.Ready
                     currentStreamUrlRef.set(newUrl)
                     exoPlayer.setMediaItem(buildVideoMediaItem(newUrl))
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
                 } else {
-                    if (fetchedDetail != null) onShowToast("シーク先ストリームの取得に失敗しました")
+                    pendingPlayerResumePositionMs = safeTarget
+                    isBuffering = false
+                    sourceRequest = RecordedSourceRequest.Failed(source.failure
+                        ?: com.beeregg2001.komorebi.common.userFacingFailure(null, "RECORDED_SOURCE"))
                 }
             }
         } else {
@@ -1179,6 +1198,14 @@ internal fun RecordedPlayerScreen(
         }
         Unit
     }
+
+    AwaitRecordedSeek(
+        pending = deferredSeek,
+        player = exoPlayer,
+        playbackIdentity = currentSessionId,
+        isCurrent = { currentPlaybackFence.accepts() },
+        commit = performSeek,
+    )
 
     val skipToNextChapter = {
         val basePos = getEffectivePositionMs()
@@ -1282,6 +1309,10 @@ internal fun RecordedPlayerScreen(
                 isQualitiesLoaded, availableQualities, vs.currentQuality)) return@LaunchedEffect
 
         isBuffering = true
+        sourceRequest = RecordedSourceRequest.Pending(
+            (sourceRequest as? RecordedSourceRequest.Failed)?.failure
+                ?: (sourceRequest as? RecordedSourceRequest.Pending)?.previousFailure
+        )
         val resumePositionMs = resolveRecreatedPlayerStartPositionMs(
             explicitResumePositionMs = pendingPlayerResumePositionMs,
             isFirstLoad = isFirstLoad,
@@ -1296,7 +1327,7 @@ internal fun RecordedPlayerScreen(
         val offsetSec = offsetPositionMs / 1000.0
 
         val requestToken = recordedPlaybackToken
-        val url = videoPlayerViewModel.resolveStreamUrl(
+        val source = videoPlayerViewModel.resolvePlaybackSource(
             currentProgram.id,
             vs.currentQuality.value,
             currentSessionId,
@@ -1304,16 +1335,18 @@ internal fun RecordedPlayerScreen(
             isRecordingChasePlayback
         )
 
-                    if (!currentPlaybackFence.accepts()) return@LaunchedEffect
-        if (url.isNotEmpty()) {
+        if (!currentPlaybackFence.accepts()) return@LaunchedEffect
+        val url = source.url
+        if (url.isNotBlank()) {
+            sourceRequest = RecordedSourceRequest.Ready
             isWaitingForNetworkRecovery = false
             currentStreamUrlRef.set(url)
             val mediaItem = buildVideoMediaItem(url)
             val startPositionMs = when {
-                resumePositionMs != null && (!isLiveStream || isRecordingChasePlayback) ->
+                resumePositionMs != null && (!source.usesTranscodingLiveWindow || isRecordingChasePlayback) ->
                     resumePositionMs
                 isFirstLoad && effectiveInitialPositionMs > 0 &&
-                    (!isLiveStream || isRecordingChasePlayback) -> effectiveInitialPositionMs
+                    (!source.usesTranscodingLiveWindow || isRecordingChasePlayback) -> effectiveInitialPositionMs
                 else -> null
             }
             if (startPositionMs != null) {
@@ -1352,7 +1385,11 @@ internal fun RecordedPlayerScreen(
                 is RecordedSwitchFailureDecision.Terminal -> {
                     if (token != null && currentPlaybackFence.accepts()) currentTerminalSwitchFailure(token, decision.failure)
                 }
-                null -> if (fetchedDetail != null) onShowToast("ストリームURLの取得に失敗しました")
+                null -> {
+                    isBuffering = false
+                    sourceRequest = RecordedSourceRequest.Failed(source.failure
+                        ?: com.beeregg2001.komorebi.common.userFacingFailure(null, "RECORDED_SOURCE"))
+                }
                 else -> Unit
             }
         }
@@ -1532,10 +1569,12 @@ internal fun RecordedPlayerScreen(
         ui.isModernSettingsOpen,
         showControls,
         recordedPlaybackFence.identity,
-        vs.crop.mode
+        vs.crop.mode,
+        showSourceFeedback,
     ) {
         if (isPiPMode) return@LaunchedEffect
         delay(150)
+        if (sourceRequest != RecordedSourceRequest.Ready) return@LaunchedEffect
 
         if (isSubMenuOpen) {
             ui.subMenuFocusRequester.safeRequestFocus(TAG)
@@ -1909,7 +1948,7 @@ internal fun RecordedPlayerScreen(
                 infoFocusRequester = ui.infoFocusRequester,
                 presentation = rememberRecordedProgramPresentation(currentProgram, videoPlayerViewModel, backendType),
                 subtitleCommentLayer = subtitleCommentLayer,
-                isBuffering = isBuffering,
+                isBuffering = isBuffering && (sourceRequest == RecordedSourceRequest.Ready || isRecordedSwitching),
                 onLCropClose = {
                     closeRecordedLCrop(vs)
                     scope.launch {
@@ -1994,7 +2033,7 @@ internal fun RecordedPlayerScreen(
                 onCloseKeyframeGrid = { ui.isKeyframeGridOpen = false }
             )
 
-            RecordedPlayerMenus(
+            if (!showSourceFeedback) RecordedPlayerMenus(
                 isModernSettingsOpen = ui.isModernSettingsOpen,
                 program = currentProgram,
                 seriesPrograms = quickMenuSeriesPrograms,
@@ -2084,7 +2123,21 @@ internal fun RecordedPlayerScreen(
                 }
             }
         }
-        if (!isPiPMode && !isSubOverlayOpen && tsRecoveryFailure != null) {
+        if (!isPiPMode && showSourceFeedback) {
+            RecordedSourceFeedback(
+                request = sourceRequest,
+                modifier = Modifier.align(Alignment.Center),
+                onRetry = {
+                    if (sourceRequest is RecordedSourceRequest.Failed && currentPlaybackFence.accepts()) {
+                        sourceRequest = RecordedSourceRequest.Pending((sourceRequest as RecordedSourceRequest.Failed).failure)
+                        preparedPlaybackKey = null
+                        currentSessionId = UUID.randomUUID().toString()
+                        initialUrlRetryNonce++
+                    }
+                },
+            )
+        }
+        if (!isPiPMode && !isSubOverlayOpen && sourceRequest == RecordedSourceRequest.Ready && tsRecoveryFailure != null) {
             RecordedTsFailure(
                 message = tsRecoveryFailure!!,
                 onSeekForward = { performSeek(getCurrentPositionMs() + 30_000L) },

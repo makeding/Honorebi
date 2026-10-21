@@ -70,12 +70,12 @@ class RecentRecordingsRecoveryTest {
         runCurrent()
         assertNotNull(store.recordingError.value)
         assertEquals(listOf(1), store.recentRecordings.value.map { it.id })
-        advanceTimeBy(30_000)
+        advanceTimeBy(500)
         runCurrent()
         assertEquals(2, provider.requests)
         provider.failure = null
         provider.programs = emptyList()
-        store.refreshAfterRecovery()
+        advanceTimeBy(500)
         runCurrent()
         assertEquals(3, provider.requests)
         assertTrue(store.recentRecordings.value.isEmpty())
@@ -91,6 +91,27 @@ class RecentRecordingsRecoveryTest {
         runCurrent()
         assertEquals(2, provider.requests)
         assertEquals(listOf(3), store.recentRecordings.value.map { it.id })
+    }
+
+    @Test fun disconnectDiscardsOldRecordingResultAndRefreshesOnReconnect() = runTest {
+        val (store, provider) = store()
+        store.refreshRecentRecordings()
+        runCurrent()
+        val oldRequest = CompletableDeferred<Unit>()
+        provider.hold = oldRequest
+        provider.programs = listOf(recording(2))
+        store.refreshRecentRecordings()
+        runCurrent()
+        store.setNetworkAvailable(false)
+        oldRequest.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(1), store.recentRecordings.value.map { it.id })
+        provider.programs = listOf(recording(3))
+        store.setNetworkAvailable(true)
+        store.refreshAfterRecovery()
+        runCurrent()
+        assertEquals(listOf(3), store.recentRecordings.value.map { it.id })
+        assertEquals(1, provider.maxConcurrent)
     }
 
     private fun TestScope.store(): Pair<AppContentStore, FakeRecordProvider> {
