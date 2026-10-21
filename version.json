@@ -1,20 +1,20 @@
 {
-  "versionCode": 21,
-  "versionName": "1.1.1-huggy",
-  "releaseNotes": "Honorebi 1.1.1 正式版。スマートフォンからの接続設定、スクリーンセーバーの画像管理、放送中画面、端末別 OTA 更新を追加・改善しました。録画・SMB の長押しシーク、MPEG-TS 再生、スリープ復帰、フォーカスとエラー時の再試行を改善しました。",
-  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-huggy/app-universal-release.apk",
-  "beta": {
-    "versionCode": 27,
-    "versionName": "1.1.2-beta6-huggy",
-    "releaseNotes": "Honorebi 1.1.2 beta6。ライブと録画のプレイヤー表示を共通化し、番組の経過時間・総時間と終了予定を表示します。上下キーの操作画面・選局、設定中のリモート再生、ライブ視聴履歴の同期を改善しました。",
-    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta6-huggy/app-universal-release.apk",
-    "apkUrls": {
-      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta6-huggy/app-arm64-v8a-release.apk",
-      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-beta6-huggy/app-armeabi-v7a-release.apk"
-    }
-  },
+  "versionCode": 28,
+  "versionName": "1.1.2-huggy",
+  "releaseNotes": "Honorebi 1.1.2 正式版。ライブ・録画の共通プレイヤー、時計表示、リモコン操作、アプリ更新とスクリーンセーバーを改善しました。録画予約・追いかけ再生・再生失敗時の結果表示と再試行を改善し、画面変化と重複する通知を削除しました。",
+  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-huggy/app-universal-release.apk",
   "apkUrls": {
-    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-huggy/app-arm64-v8a-release.apk",
-    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.1-huggy/app-armeabi-v7a-release.apk"
+    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-huggy/app-arm64-v8a-release.apk",
+    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-huggy/app-armeabi-v7a-release.apk"
+  },
+  "beta": {
+    "versionCode": 28,
+    "versionName": "1.1.2-huggy",
+    "releaseNotes": "Honorebi 1.1.2 正式版。ライブ・録画の共通プレイヤー、時計表示、リモコン操作、アプリ更新とスクリーンセーバーを改善しました。録画予約・追いかけ再生・再生失敗時の結果表示と再試行を改善し、画面変化と重複する通知を削除しました。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-huggy/app-universal-release.apk",
+    "apkUrls": {
+      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-huggy/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.1.2-huggy/app-armeabi-v7a-release.apk"
+    }
   }
 }
