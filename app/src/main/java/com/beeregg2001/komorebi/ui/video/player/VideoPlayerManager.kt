@@ -400,6 +400,7 @@ fun rememberManagedExoPlayer(
                 ),
                 enableHdrToSdrToneMapping = enableHdrToSdrToneMapping,
                 recoverLateVideoFrames = isOriginalMpegTsPlayback,
+                boostOriginalTsAudio = isOriginalMpegTsPlayback,
             ),
             mediaSourceFactory = mediaSourceFactory,
         )

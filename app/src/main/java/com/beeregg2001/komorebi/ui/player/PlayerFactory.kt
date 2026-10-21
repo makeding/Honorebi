@@ -36,19 +36,21 @@ data class PlayerProfile(
     val configureAudioAttributes: Boolean = true,
     /** Original MPEG-TS must catch up after damaged video falls behind the audio clock. */
     val recoverLateVideoFrames: Boolean = false,
+    /** Only raw TS needs the gain already applied by HonomiTV's transcoder. */
+    val boostOriginalTsAudio: Boolean = false,
 )
 
 internal object PlayerFactory {
     fun create(context: Context, profile: PlayerProfile, mediaSourceFactory: MediaSource.Factory?): ExoPlayer {
         val toneMapping = profile.enableHdrToSdrToneMapping
-        val renderers = if (profile.audioOutputMode == null) {
+        val renderers = if (profile.audioOutputMode == null && !profile.boostOriginalTsAudio) {
             LibaribtlvToneMappingRenderersFactory(context, if (toneMapping) HdrToneMapping.colorLut else null,
                 profile.recoverLateVideoFrames)
         } else {
             object : LibaribtlvToneMappingRenderersFactory(context, if (toneMapping) HdrToneMapping.colorLut else null,
                 profile.recoverLateVideoFrames) {
                 override fun buildAudioSink(ctx: Context, enableFloat: Boolean, enableParams: Boolean): DefaultAudioSink {
-                    val processors = if (profile.audioOutputMode == "PASSTHROUGH") emptyArray<AudioProcessor>() else {
+                    val processors = if (profile.audioOutputMode == null || profile.audioOutputMode == "PASSTHROUGH") emptyArray<AudioProcessor>() else {
                         arrayOf<AudioProcessor>(ChannelMixingAudioProcessor().apply {
                             putChannelMixingMatrix(ChannelMixingMatrix(2, 2, floatArrayOf(1f, 0f, 0f, 1f)))
                             putChannelMixingMatrix(ChannelMixingMatrix(6, 2, floatArrayOf(
@@ -57,7 +59,9 @@ internal object PlayerFactory {
                             )))
                         })
                     }
-                    return DefaultAudioSink.Builder(ctx).setAudioProcessors(processors).build()
+                    val gain = if (profile.boostOriginalTsAudio) arrayOf<AudioProcessor>(originalTsAudioGainProcessor())
+                        else emptyArray()
+                    return DefaultAudioSink.Builder(ctx).setAudioProcessors(gain + processors).build()
                 }
             }
         }

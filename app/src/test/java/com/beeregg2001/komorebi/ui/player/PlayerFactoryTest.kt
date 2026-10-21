@@ -23,6 +23,7 @@ class PlayerFactoryTest {
         val runtime = PlayerRuntime(RuntimeEnvironment.getApplication(), PlayerProfile(
             buffer = PlayerBufferProfile(5_000, 15_000, 500, 1_000),
             recoverLateVideoFrames = true,
+            boostOriginalTsAudio = true,
         ))
         try {
             val renderer = hardwareVideoRenderer(runtime)
