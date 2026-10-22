@@ -26,9 +26,9 @@ class RecordedCardConsistencyTest {
 
     @Test fun focusAndProgressUpdatesKeepEachCardAndItsNeighboursInPlace() {
         var position by mutableStateOf(0.0)
-        val program = RecordedProgram(id = 1, title = "番組", description = "", startTime = "2026-10-13T12:00:00+09:00",
+        var program by mutableStateOf(RecordedProgram(id = 1, title = "番組", description = "", startTime = "2026-10-13T12:00:00+09:00",
             endTime = "2026-10-13T12:30:00+09:00", duration = 1800.0, isPartiallyRecorded = false,
-            recordedVideo = RecordedVideo(1, "Recorded", "/1.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC-LC"))
+            recordedVideo = RecordedVideo(1, "Recorded", "/1.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC-LC")))
         compose.setContent {
             KomorebiTheme {
                 val history = KonomiHistoryProgram(KonomiProgram("1", "番組", "", null,
@@ -50,7 +50,13 @@ class RecordedCardConsistencyTest {
         val bounds = tags.associateWith { compose.onNodeWithTag(it).getUnclippedBoundsInRoot() }
         for (tag in tags) {
             compose.onNodeWithTag(tag).requestFocus().assertIsFocused()
-            compose.runOnIdle { position += 60.0 }
+            compose.runOnIdle {
+                position += 60.0
+                program = program.copy(recordedVideo = program.recordedVideo.copy(
+                    status = if (tag == "grid") "Recorded" else "Recording",
+                    duration = position,
+                ))
+            }
             compose.onNodeWithTag(tag).assertIsFocused()
             for (other in tags) assertEquals(bounds[other], compose.onNodeWithTag(other).getUnclippedBoundsInRoot())
         }

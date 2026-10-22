@@ -1,6 +1,10 @@
 package com.beeregg2001.komorebi.ui.subtitle
 
 import android.graphics.Bitmap
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -94,5 +98,97 @@ class RecordedCaptionTimelineTest {
         timeline.switchQuality()
         timeline.offer(timeline.generation, cue().copy(timelineCommand = NativeCaptionCue.TIMELINE_COMMAND_RESET))
         assertNull(timeline.current(0, 0))
+    }
+
+    @Test fun `empty and paused timelines sleep until invalidated`() {
+        assertNull(timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = true, playbackSpeed = 1f))
+        timeline.offer(timeline.generation, cue(pts = 10_000))
+        timeline.current(0, 0)
+        assertNull(timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = false, playbackSpeed = 1f))
+    }
+
+    @Test fun `running timeline schedules cue boundaries with speed and bounded recalibration`() {
+        timeline.offer(timeline.generation, cue(pts = 500))
+        timeline.current(0, 0)
+        assertEquals(250L, timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = true, playbackSpeed = 2f))
+
+        timeline.clear()
+        timeline.offer(timeline.generation, cue(pts = 10_000))
+        timeline.current(0, 0)
+        assertEquals(1_000L, timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = true, playbackSpeed = 1f))
+    }
+
+    @Test fun `timed cue expiry and independent layers choose earliest boundary`() {
+        val caption = cue(pts = 0, duration = 2_000)
+        val superimpose = cue(type = 1, pts = 0, duration = 500)
+        show(caption)
+        show(superimpose)
+        assertEquals(500L, timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = true, playbackSpeed = 1f))
+        assertNull(timeline.current(1, 500))
+        assertEquals(1_000L, timeline.nextUpdateDelayMs(positionMs = 500, clockRunning = true, playbackSpeed = 1f))
+    }
+
+    @Test fun `quality transition deadline advances while paused`() {
+        show(cue())
+        timeline.switchQuality()
+        now = 1_250
+        timeline.current(0, 0)
+        assertEquals(3_750L, timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = false, playbackSpeed = 1f))
+        now = 5_000
+        assertNull(timeline.current(0, 0))
+        assertNull(timeline.nextUpdateDelayMs(positionMs = 0, clockRunning = false, playbackSpeed = 1f))
+    }
+
+    @Test fun `late cue wakes a scheduler suspended without a deadline`() = runBlocking {
+        timeline.current(0, 0)
+        val lateCue = cue(pts = 0)
+        val wait = async {
+            timeline.awaitInvalidation(timeoutMs = null)
+            true
+        }
+        yield()
+
+        timeline.offer(timeline.generation, lateCue)
+
+        assertTrue(withTimeout(1_000L) { wait.await() })
+        assertSame(lateCue, timeline.current(0, 0))
+    }
+
+    @Test fun `external player event can wake paused scheduler`() = runBlocking {
+        timeline.offer(timeline.generation, cue(pts = 10_000))
+        // Consume the offer signal before modelling a paused scheduler wait.
+        timeline.awaitInvalidation(timeoutMs = 1L)
+        val wait = async {
+            timeline.awaitInvalidation(timeoutMs = null)
+            true
+        }
+        yield()
+
+        timeline.invalidate()
+
+        assertTrue(withTimeout(1_000L) { wait.await() })
+    }
+
+    @Test fun `disabled captions discard late arrivals without suppressing superimpose`() {
+        val state = RecordedCaptionState()
+        val lateCaption = cue(pts = 0)
+        val superimpose = cue(type = NativeCaptionCue.TYPE_SUPERIMPOSE, pts = 0)
+        state.timeline.offer(state.timeline.generation, lateCaption)
+        state.timeline.offer(state.timeline.generation, superimpose)
+
+        state.update(enabled = false, positionMs = 0)
+
+        assertNull(state.caption.value)
+        assertNull(state.timeline.current(NativeCaptionCue.TYPE_CAPTION, 0))
+        assertSame(superimpose, state.superimpose.value)
+        assertNull(state.timeline.nextUpdateDelayMs(0, clockRunning = false, playbackSpeed = 1f))
+    }
+
+    @Test fun `clearing an already empty layer does not wake its suspended scheduler`() = runBlocking {
+        assertFalse(timeline.awaitInvalidation(timeoutMs = 1L))
+        timeline.clear(NativeCaptionCue.TYPE_CAPTION)
+
+        assertFalse(timeline.awaitInvalidation(timeoutMs = 20L))
+        assertNull(timeline.current(NativeCaptionCue.TYPE_CAPTION, 0))
     }
 }

@@ -7,27 +7,41 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+internal object JikkyoNetworkResources {
+    /** Shared only by Jikkyo sessions so permanent sockets cannot consume API/image dispatch slots. */
+    val client: OkHttpClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+    }
+}
+
 /**
  * NX-Jikkyo / ニコニコ実況 とのWebSocket通信を管理するクライアントクラス。
  * ViewModelから渡された watchSessionUrl に接続し、コメントセッションへの接続とPing/Pongを一元管理します。
  */
 class JikkyoClient(
-    private val watchSessionUrl: String
+    private val watchSessionUrl: String,
+    private val webSocketFactory: WebSocket.Factory = JikkyoNetworkResources.client,
 ) {
-    private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS) // WebSocket用にタイムアウト無効化
-        .build()
-
+    private val lock = Any()
     private var watchSocket: WebSocket? = null
     private var commentSocket: WebSocket? = null
     private var job: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    @Volatile
+    private var stopped = false
+
     // コメント受信時のコールバック
+    @Volatile
     private var onCommentReceived: ((String) -> Unit)? = null
 
     fun start(onComment: (String) -> Unit) {
-        this.onCommentReceived = onComment
+        synchronized(lock) {
+            if (stopped) return
+            this.onCommentReceived = onComment
+        }
         connect()
     }
 
@@ -35,18 +49,22 @@ class JikkyoClient(
         job?.cancel()
         scope.cancel()
 
-        // ゾンビメッセージがUIに送られるのを防ぐため即座にnull化
-        onCommentReceived = null
+        val sockets = synchronized(lock) {
+            if (stopped) return
+            stopped = true
+
+            // ゾンビメッセージがUIに送られるのを防ぐため即座にnull化
+            onCommentReceived = null
+            val ownedSockets = watchSocket to commentSocket
+            watchSocket = null
+            commentSocket = null
+            ownedSockets
+        }
 
         // close (1000) ではなく cancel() で即座に強制切断（終了時のモタつき防止）
         // ※これによって内部的に SocketException が発生しますが、onFailure で握りつぶします
-        watchSocket?.cancel()
-        commentSocket?.cancel()
-        watchSocket = null
-        commentSocket = null
-
-        // OkHttpのバックグラウンドスレッドを確実にシャットダウンしてメモリリークを防ぐ
-        client.dispatcher.executorService.shutdown()
+        sockets.first?.cancel()
+        sockets.second?.cancel()
     }
 
     private fun connect() {
@@ -54,22 +72,31 @@ class JikkyoClient(
             try {
                 Log.i("JikkyoClient", "Start Watch Session: $watchSessionUrl")
                 val request = Request.Builder().url(watchSessionUrl).build()
-                watchSocket = client.newWebSocket(request, createWatchListener())
+                synchronized(lock) {
+                    if (stopped) return@launch
+                    watchSocket = webSocketFactory.newWebSocket(request, createWatchListener())
+                }
             } catch (e: Exception) {
-                Log.e("JikkyoClient", "Connection failed", e)
+                if (!stopped) Log.e("JikkyoClient", "Connection failed", e)
             }
         }
     }
 
     private fun createWatchListener() = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            Log.i("JikkyoClient", "Watch Socket Opened")
-            // 接続直後に startWatching を送信
-            val startJson = """{"type":"startWatching","data":{"reconnect":false}}"""
-            webSocket.send(startJson)
+            val accepted = synchronized(lock) {
+                if (stopped) false else {
+                    Log.i("JikkyoClient", "Watch Socket Opened")
+                    // 接続直後に startWatching を送信
+                    webSocket.send("""{"type":"startWatching","data":{"reconnect":false}}""")
+                    true
+                }
+            }
+            if (!accepted) webSocket.cancel()
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (stopped) return
             try {
                 val json = JSONObject(text)
                 val type = json.optString("type")
@@ -103,6 +130,7 @@ class JikkyoClient(
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (stopped) return
             // ★ 修正: cancel() による意図的な強制切断（SocketException等）はエラーとして出力しない
             if (t is java.net.SocketException || t is java.io.EOFException || t.message == "Canceled") {
                 Log.i("JikkyoClient", "Watch Socket closed safely.")
@@ -113,6 +141,7 @@ class JikkyoClient(
     }
 
     private fun connectToCommentServer(uri: String, threadId: String, yourPostKey: String) {
+        if (stopped) return
         val initArray = JSONArray()
         initArray.put(JSONObject().put("ping", JSONObject().put("content", "rs:0")))
         initArray.put(JSONObject().put("ping", JSONObject().put("content", "ps:0")))
@@ -136,18 +165,27 @@ class JikkyoClient(
             .addHeader("Sec-WebSocket-Protocol", "msg.nicovideo.jp#json")
             .build()
 
-        commentSocket = client.newWebSocket(request, object : WebSocketListener() {
+        val listener = object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, resp: Response) {
-                Log.i("JikkyoClient", "Comment Socket Connected! Sending init...")
-                ws.send(initMessage)
+                val accepted = synchronized(lock) {
+                    if (stopped) false else {
+                        Log.i("JikkyoClient", "Comment Socket Connected! Sending init...")
+                        ws.send(initMessage)
+                        true
+                    }
+                }
+                if (!accepted) ws.cancel()
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
                 // 受信した生のJSONデータをViewModelへ流す
-                onCommentReceived?.invoke(text)
+                synchronized(lock) {
+                    if (!stopped) onCommentReceived?.invoke(text)
+                }
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, resp: Response?) {
+                if (stopped) return
                 // ★ 修正: cancel() による意図的な強制切断（SocketException等）はエラーとして出力しない
                 if (t is java.net.SocketException || t is java.io.EOFException || t.message == "Canceled") {
                     Log.i("JikkyoClient", "Comment Socket closed safely.")
@@ -155,6 +193,10 @@ class JikkyoClient(
                 }
                 Log.e("JikkyoClient", "Comment Socket Error", t)
             }
-        })
+        }
+        synchronized(lock) {
+            if (stopped) return
+            commentSocket = webSocketFactory.newWebSocket(request, listener)
+        }
     }
 }

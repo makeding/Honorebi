@@ -84,10 +84,13 @@ fun VideoRecentRecordCard(
     } else null
 
     val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
+    val imageRequest = remember(program.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl, allowNetworkImages) {
         val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
         ImageRequest.Builder(context)
             .data(program.recordedThumbnailModel(currentThumbnailUrl))
+            .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
+            .error(com.beeregg2001.komorebi.R.drawable.dark_image)
+            .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
             .crossfade(true)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)
@@ -252,11 +255,14 @@ fun VideoWatchHistoryCard(
     val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)
 
     val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl, allowNetworkImages) {
+    val imageRequest = remember(matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl, allowNetworkImages) {
         val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
             ?: currentThumbnailUrl
         ImageRequest.Builder(context)
             .data(matchedProgram?.recordedThumbnailModel(currentThumbnailUrl) ?: currentThumbnailUrl)
+            .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
+            .error(com.beeregg2001.komorebi.R.drawable.dark_image)
+            .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
             .crossfade(true)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)

@@ -196,7 +196,7 @@ internal fun SmbPlayerScreen(
         onSeekRelative = { delta -> player.seekTo((currentPositionMs(player, positionMs) + delta).coerceAtLeast(0L)) },
         onStop = onBackPressed,
     )
-    UpdateRecordedCaptionState(captions, state.isSubtitleEnabled, subtitleLanguageId.toInt()) {
+    UpdateRecordedCaptionState(captions, state.isSubtitleEnabled, subtitleLanguageId.toInt(), player) {
         currentPositionMs(player, positionMs)
     }
     RunRecordedDirectionalSeek(

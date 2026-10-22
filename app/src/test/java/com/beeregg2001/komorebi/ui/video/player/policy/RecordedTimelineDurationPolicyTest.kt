@@ -5,6 +5,14 @@ import org.junit.Test
 
 class RecordedTimelineDurationPolicyTest {
     @Test
+    fun chaseTimelineWaitsForMediaAndFollowsItsGrowth() {
+        assertEquals(0L, resolveRecordingChaseTimelineDurationMs(Long.MIN_VALUE))
+        assertEquals(0L, resolveRecordingChaseTimelineDurationMs(0L))
+        assertEquals(60_000L, resolveRecordingChaseTimelineDurationMs(60_000L))
+        assertEquals(320_000L, resolveRecordingChaseTimelineDurationMs(320_000L))
+    }
+
+    @Test
     fun rawMmts_usesLibaribtlvDurationInsteadOfKonomiReportedDuration() {
         assertEquals(
             1_815_065L,

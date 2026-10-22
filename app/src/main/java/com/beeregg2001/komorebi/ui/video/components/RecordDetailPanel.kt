@@ -122,6 +122,9 @@ fun RecordDetailPanel(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(program.recordedThumbnailModel(currentThumbnailUrl))
+                        .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
+                        .error(com.beeregg2001.komorebi.R.drawable.dark_image)
+                        .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
                         .crossfade(true)
                         .memoryCacheKey(thumbnailCacheKey)
                         .diskCacheKey(thumbnailCacheKey)

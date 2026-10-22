@@ -6,16 +6,17 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.api.KonomiApi
 import com.beeregg2001.komorebi.data.api.HistorySyncBackendTarget
-import com.beeregg2001.komorebi.data.model.StreamSource
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
 import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessInterceptor
+import com.beeregg2001.komorebi.data.network.purposeScopedHttpClient
 import com.google.gson.Gson
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import okhttp3.Interceptor
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -30,7 +31,17 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(settingsRepository: SettingsRepository, sessionStore: HonomiSessionStore, cloudflareAccessInterceptor: CloudflareAccessInterceptor): OkHttpClient {
+    @Named("sharedConnectionPool")
+    fun provideSharedConnectionPool(): ConnectionPool = ConnectionPool()
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(
+        settingsRepository: SettingsRepository,
+        sessionStore: HonomiSessionStore,
+        cloudflareAccessInterceptor: CloudflareAccessInterceptor,
+        @Named("sharedConnectionPool") connectionPool: ConnectionPool,
+    ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             redactHeader("Authorization")
             redactHeader(CloudflareAccessConfiguration.CLIENT_ID_HEADER)
@@ -39,15 +50,15 @@ object NetworkModule {
                 if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
         }
 
-        return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+        return purposeScopedHttpClient(connectionPool) {
+            connectTimeout(30, TimeUnit.SECONDS)
+            readTimeout(30, TimeUnit.SECONDS)
+            writeTimeout(30, TimeUnit.SECONDS)
             // ★ 修正: Interceptorを明示的に指定し、SettingsRepositoryから正しくURLを取得する
-            .addInterceptor(BackendOriginInterceptor {
+            addInterceptor(BackendOriginInterceptor {
                 settingsRepository.cloudflareAccessConfiguration.value
             })
-            .addInterceptor(Interceptor { chain ->
+            addInterceptor(Interceptor { chain ->
                 val request = chain.request()
                 val pinnedHistory = request.tag(HistorySyncBackendTarget::class.java)
                 if (pinnedHistory != null) {
@@ -64,20 +75,33 @@ object NetworkModule {
             })
             // WebSocket handshakes execute application interceptors but not network
             // interceptors, so scope the first handshake here as well.
-            .addInterceptor(cloudflareAccessInterceptor)
-            .addInterceptor(logging)
-            .addNetworkInterceptor(cloudflareAccessInterceptor)
-            .build()
+            addInterceptor(cloudflareAccessInterceptor)
+            addInterceptor(logging)
+            addNetworkInterceptor(cloudflareAccessInterceptor)
+        }
     }
 
     @Provides
     @Singleton
     @Named("access")
-    fun provideAccessOkHttpClient(cloudflareAccessInterceptor: CloudflareAccessInterceptor): OkHttpClient =
-        OkHttpClient.Builder()
-            .addInterceptor(cloudflareAccessInterceptor)
-            .addNetworkInterceptor(cloudflareAccessInterceptor)
-            .build()
+    fun provideAccessOkHttpClient(
+        cloudflareAccessInterceptor: CloudflareAccessInterceptor,
+        @Named("sharedConnectionPool") connectionPool: ConnectionPool,
+    ): OkHttpClient = purposeScopedHttpClient(connectionPool) {
+        addInterceptor(cloudflareAccessInterceptor)
+        addNetworkInterceptor(cloudflareAccessInterceptor)
+    }
+
+    @Provides
+    @Singleton
+    @Named("image")
+    fun provideImageOkHttpClient(
+        cloudflareAccessInterceptor: CloudflareAccessInterceptor,
+        @Named("sharedConnectionPool") connectionPool: ConnectionPool,
+    ): OkHttpClient = purposeScopedHttpClient(connectionPool) {
+        // Preserve the existing image policy: Access is evaluated for the actual network URL.
+        addNetworkInterceptor(cloudflareAccessInterceptor)
+    }
 
     @Provides
     @Singleton

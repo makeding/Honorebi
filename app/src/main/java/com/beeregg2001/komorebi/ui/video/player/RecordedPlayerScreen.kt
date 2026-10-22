@@ -59,6 +59,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureBudg
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchFailureDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingAutomationDurationMs
+import com.beeregg2001.komorebi.ui.video.player.policy.resolveRecordingChaseTimelineDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.resolveCompletedRecordingTimelineDurationMs
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDecision
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
@@ -873,6 +874,9 @@ internal fun RecordedPlayerScreen(
     val currentOnProgramReady by rememberUpdatedState(onProgramReady)
     var hasReportedProgramReady by remember(recordedPlaybackToken) { mutableStateOf(false) }
     var renderedFrameGeneration by remember(exoPlayer, recordedPlaybackToken) { mutableIntStateOf(0) }
+    var isActuallyPlaying by remember(exoPlayer, recordedPlaybackToken) {
+        mutableStateOf(exoPlayer.isPlaying)
+    }
     DisposableEffect(exoPlayer, recordedPlaybackToken) {
         fun reportReadyOnce() {
             val token = currentPlaybackFence.tokenOrNull()
@@ -892,14 +896,19 @@ internal fun RecordedPlayerScreen(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) reportReadyOnce()
             }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                isActuallyPlaying = isPlaying
+            }
         }
         exoPlayer.addListener(listener)
+        isActuallyPlaying = exoPlayer.isPlaying
         if (exoPlayer.playbackState == Player.STATE_READY) reportReadyOnce()
         onDispose { exoPlayer.removeListener(listener) }
     }
 
     com.beeregg2001.komorebi.ui.subtitle.UpdateRecordedCaptionState(
-        recordedCaptions, vs.isSubtitleEnabled, currentSubtitleLanguageId,
+        recordedCaptions, vs.isSubtitleEnabled, currentSubtitleLanguageId, exoPlayer,
     ) { exoPlayer.currentPosition }
     val subtitleCue = recordedCaptions.caption
     val superimposeCue = recordedCaptions.superimpose
@@ -1042,12 +1051,7 @@ internal fun RecordedPlayerScreen(
 
     val totalDurationForControls =
         if (isRecordingChasePlayback) {
-            maxOf(
-                currentProgram.chaseElapsedDurationMs(),
-                playbackDurationMs,
-                playbackPositionMs,
-                bufferedPositionMs
-            ).coerceAtLeast(0L)
+            resolveRecordingChaseTimelineDurationMs(playbackDurationMs)
         } else {
             resolveCompletedRecordingTimelineDurationMs(
                 usesNativeMmtDuration = usesSerializedRawMmtsSeek || usesMmtServerTimeline,
@@ -1108,6 +1112,8 @@ internal fun RecordedPlayerScreen(
 
     val performSeek: (Long) -> Unit = seek@ { targetMs: Long ->
         if (!currentPlaybackFence.accepts()) return@seek
+        // プレイリスト未取得時に推測した位置へシークしない。
+        if (isRecordingChasePlayback && totalDurationForControls <= 0L) return@seek
         if (usesExtractorByteSeek && !exoPlayer.isCurrentMediaItemSeekable) {
             if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@seek
             deferredSeek.request(targetMs.coerceIn(0L,
@@ -1231,28 +1237,31 @@ internal fun RecordedPlayerScreen(
         }
     }
 
-    LaunchedEffect(cmSkipMode, chapters) {
-        var hasWarnedEmptyChapters = false
-        while (isActive) {
-            if (cmSkipMode == CmSkipMode.AUTO && exoPlayer.isPlaying) {
-                if (chapters.isNotEmpty()) {
-                    val currentPos = getCurrentPositionMs()
-                    val cmChapter =
-                        chapters.find { it.isCm && currentPos >= it.startTimeMs && currentPos < (it.endTimeMs - 1500) }
-                    if (cmChapter != null) {
-                        performSeek(cmChapter.endTimeMs)
-                        onShowToast("自動CMスキップ: 本編へ移動しました")
-                        delay(3000)
-                    }
-                } else {
-                    if (!hasWarnedEmptyChapters) {
-                        hasWarnedEmptyChapters = true
-                    }
-                }
+    val currentAutoCmSeek by rememberUpdatedState(performSeek)
+    val currentAutoCmToast by rememberUpdatedState(onShowToast)
+    var autoCmSkipCooldownUntilMs by remember(recordedPlaybackToken) { mutableLongStateOf(0L) }
+    LaunchedEffect(
+        exoPlayer,
+        recordedPlaybackToken,
+        cmSkipMode,
+        chapters,
+        isActuallyPlaying,
+    ) {
+        if (!shouldRunAutoCmSkipPolling(cmSkipMode, chapters, isActuallyPlaying)) {
+            return@LaunchedEffect
+        }
+        while (isActive && exoPlayer.isPlaying) {
+            val cooldownRemainingMs = autoCmSkipCooldownUntilMs - SystemClock.elapsedRealtime()
+            if (cooldownRemainingMs > 0L) delay(cooldownRemainingMs)
+            if (!exoPlayer.isPlaying) return@LaunchedEffect
+            val targetMs = autoCmSkipTargetMs(getCurrentPositionMs(), chapters)
+            if (targetMs != null) {
+                currentAutoCmSeek(targetMs)
+                currentAutoCmToast("自動CMスキップ: 本編へ移動しました")
+                autoCmSkipCooldownUntilMs = SystemClock.elapsedRealtime() + 3_500L
             } else {
-                hasWarnedEmptyChapters = false
+                delay(500)
             }
-            delay(500)
         }
     }
 

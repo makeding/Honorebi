@@ -72,13 +72,6 @@ internal fun appendUniqueArchivedComments(
     }
 }
 
-internal fun RecordedProgram.chaseElapsedDurationMs(nowMillis: Long = System.currentTimeMillis()): Long =
-    runCatching {
-        val startMs = OffsetDateTime.parse(startTime).toInstant().toEpochMilli()
-        val endMs = OffsetDateTime.parse(endTime).toInstant().toEpochMilli()
-        (nowMillis.coerceAtMost(endMs) - startMs).coerceAtLeast(0L)
-    }.getOrDefault((duration * 1000.0).toLong().coerceAtLeast(0L))
-
 internal fun RecordedProgram.programStartUnixOrNull(): Long? =
     runCatching { OffsetDateTime.parse(startTime).toEpochSecond() }.getOrNull()
 

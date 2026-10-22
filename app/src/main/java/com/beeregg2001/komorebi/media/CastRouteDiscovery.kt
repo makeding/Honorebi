@@ -1,15 +1,16 @@
 package com.beeregg2001.komorebi.media
 
-import android.content.Context
 import android.media.MediaRoute2Info
 import android.media.MediaRouter2
 import android.media.RouteDiscoveryPreference
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import java.util.concurrent.Executors
+import java.util.concurrent.Executor
 
 /**
  * Keeps the system's [MediaRouter2] provider for the on-device Cast receiver
@@ -43,7 +44,7 @@ fun CastRouteDiscovery() {
             ),
             /* activeScan = */ true,
         ).build()
-        val executor = Executors.newSingleThreadExecutor()
+        val executor = mainLooperExecutor()
         runCatching {
             router.registerRouteCallback(executor, callback, preference)
         }.onFailure { Log.w(TAG, "registerRouteCallback failed", it) }
@@ -52,9 +53,13 @@ fun CastRouteDiscovery() {
             runCatching { router.unregisterRouteCallback(callback) }.onFailure {
                 Log.w(TAG, "unregisterRouteCallback failed", it)
             }
-            executor.shutdown()
         }
     }
+}
+
+internal fun mainLooperExecutor(): Executor {
+    val handler = Handler(Looper.getMainLooper())
+    return Executor { command -> handler.post(command) }
 }
 
 private const val TAG = "CastRouteDiscovery"

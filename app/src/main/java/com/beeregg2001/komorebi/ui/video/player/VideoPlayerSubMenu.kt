@@ -775,6 +775,8 @@ private fun QuickVideoCard(
         ) {
             AsyncImage(
                 model = program.recordedThumbnailModel(thumbnailUrl),
+                placeholder = androidx.compose.ui.res.painterResource(com.beeregg2001.komorebi.R.drawable.dark_image),
+                error = androidx.compose.ui.res.painterResource(com.beeregg2001.komorebi.R.drawable.dark_image),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

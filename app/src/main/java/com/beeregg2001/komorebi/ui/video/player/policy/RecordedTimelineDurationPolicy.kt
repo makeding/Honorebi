@@ -47,3 +47,7 @@ fun resolveCompletedRecordingAutomationDurationMs(
 
     return maxOf(konomiReportedDurationMs, nativePlayerDurationMs).coerceAtLeast(0L)
 }
+
+/** 追いかけ再生では、壁時計ではなく解析済みプレイリストの範囲だけをシーク可能とする。 */
+fun resolveRecordingChaseTimelineDurationMs(nativePlayerDurationMs: Long): Long =
+    nativePlayerDurationMs.coerceAtLeast(0L)

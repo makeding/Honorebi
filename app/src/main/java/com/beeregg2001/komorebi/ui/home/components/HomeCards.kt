@@ -292,11 +292,14 @@ fun WatchHistoryCard(
     }
 
     val context = LocalContext.current
-    val imageRequest = remember(currentThumbnailUrl) {
+    val imageRequest = remember(matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl) {
         val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
             ?: currentThumbnailUrl
         ImageRequest.Builder(context)
             .data(matchedProgram?.recordedThumbnailModel(currentThumbnailUrl) ?: currentThumbnailUrl)
+            .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
+            .error(com.beeregg2001.komorebi.R.drawable.dark_image)
+            .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
             .crossfade(true)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)

@@ -123,10 +123,13 @@ fun RecordedCard(
 
             if (!scrolling) {
                 val context = LocalContext.current
-                val imageRequest = remember(currentThumbnailUrl) {
+                val imageRequest = remember(program.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl) {
                     val thumbnailCacheKey = program.recordedThumbnailCacheKey(currentThumbnailUrl)
                     ImageRequest.Builder(context)
                         .data(program.recordedThumbnailModel(currentThumbnailUrl))
+                        .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
+                        .error(com.beeregg2001.komorebi.R.drawable.dark_image)
+                        .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
                         .size(coil.size.Size(300, 168))
                         .allowRgb565(true)
                         .crossfade(true)

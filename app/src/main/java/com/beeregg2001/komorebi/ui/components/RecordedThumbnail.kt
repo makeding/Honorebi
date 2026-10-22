@@ -1,9 +1,6 @@
 package com.beeregg2001.komorebi.ui.components
 
-import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.data.model.RecordedProgram
-
-private const val RECORDING_THUMBNAIL_CACHE_KEY = "komorebi:recording-thumbnail-placeholder:v1"
 
 fun RecordedProgram.isRecordingInProgress(): Boolean =
     isRecording || recordedVideo.status.equals("Recording", ignoreCase = true)
@@ -16,8 +13,16 @@ fun RecordedProgram.isRecordingInProgress(): Boolean =
 fun RecordedProgram.isPlayableForBrowse(): Boolean =
     isRecordingInProgress() || (recordedVideo.hasKeyFrames ?: true)
 
-fun RecordedProgram.recordedThumbnailModel(thumbnailUrl: String?): Any? =
-    if (isRecordingInProgress()) R.drawable.dark_image else thumbnailUrl
+/** 録画データの更新で未生成サムネイルのキャッシュも更新する。完成済みの URL は維持する。 */
+fun RecordedProgram.recordedThumbnailModel(thumbnailUrl: String?): String? {
+    if (thumbnailUrl == null || !isRecordingInProgress()) return thumbnailUrl
+    val revision = (recordedVideo.duration.coerceAtLeast(0.0) / 30.0).toLong()
+    val fragment = thumbnailUrl.substringAfter('#', "")
+    val base = thumbnailUrl.substringBefore('#')
+    val separator = if ('?' in base) '&' else '?'
+    return "$base${separator}recording_revision=$revision" +
+        if (fragment.isEmpty()) "" else "#$fragment"
+}
 
 fun RecordedProgram.recordedThumbnailCacheKey(thumbnailUrl: String?): String? =
-    if (isRecordingInProgress()) RECORDING_THUMBNAIL_CACHE_KEY else thumbnailUrl
+    recordedThumbnailModel(thumbnailUrl)
