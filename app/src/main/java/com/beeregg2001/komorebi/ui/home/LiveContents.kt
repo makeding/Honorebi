@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -39,6 +40,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,6 +81,7 @@ fun LiveContent(
     timeFormat: String = "24H",
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
+    onContentReady: () -> Unit = {},
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val liveRows by channelViewModel.liveRows.collectAsState()
@@ -137,8 +140,12 @@ fun LiveContent(
     }
 
 
-    LaunchedEffect(isReturningFromPlayer, aiFocusReturnTick, liveRows) {
-        if ((isReturningFromPlayer || aiFocusReturnTick > 0) && liveRows.isNotEmpty()) {
+    var contentEntryReady by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isReturningFromPlayer, aiFocusReturnTick, liveRows, contentEntryReady) {
+        if ((isReturningFromPlayer || aiFocusReturnTick > 0) &&
+            liveRows.isNotEmpty() && contentEntryReady
+        ) {
             val fallback = if (isReturningFromPlayer) topNavFocusRequester else contentFirstItemRequester
             fun consumeReturn() {
                 if (isReturningFromPlayer) onReturnFocusConsumed() else onAiReturnConsumed()
@@ -163,14 +170,12 @@ fun LiveContent(
                     listState.scrollToItem(maxOf(0, rowIndex))
                     val rState = rowStates.getOrPut(genreId) { LazyListState() }
                     rState.scrollToItem(maxOf(0, colIndex - 1))
-                    delay(200)
+                    withFrameNanos { }
                     if (targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")) consumeReturn()
                 } else {
-                    delay(200)
                     if (fallback.safeRequestFocusWithRetry("LiveNavFallback")) consumeReturn()
                 }
             } else {
-                delay(200)
                 if (fallback.safeRequestFocusWithRetry("LiveNavFallback")) consumeReturn()
             }
         }
@@ -178,7 +183,18 @@ fun LiveContent(
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (liveRows.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .focusRequester(contentFirstItemRequester)
+                    .focusProperties { up = topNavFocusRequester }
+                    .onGloballyPositioned {
+                        contentEntryReady = true
+                        onContentReady()
+                    }
+                    .focusable(),
+                contentAlignment = Alignment.Center,
+            ) {
                 CircularProgressIndicator(color = colors.textPrimary.copy(alpha = 0.5f))
             }
         } else {
@@ -238,9 +254,20 @@ fun LiveContent(
                                             .then(
                                                 if (isTarget) Modifier.focusRequester(
                                                     targetChannelFocusRequester
-                                                ) else if (row == liveRows.firstOrNull() && index == 0) Modifier.focusRequester(
+                                                ) else Modifier
+                                            )
+                                            .then(
+                                                if (row == liveRows.firstOrNull() && index == 0) Modifier.focusRequester(
                                                     contentFirstItemRequester
                                                 ) else Modifier
+                                            )
+                                            .then(
+                                                if (row == liveRows.firstOrNull() && index == 0) {
+                                                    Modifier.onGloballyPositioned {
+                                                        contentEntryReady = true
+                                                        onContentReady()
+                                                    }
+                                                } else Modifier
                                             )
                                             .focusProperties {
                                                 if (row.genreId == liveRows.firstOrNull()?.genreId) {

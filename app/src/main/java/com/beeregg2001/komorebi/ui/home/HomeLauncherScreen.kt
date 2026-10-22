@@ -59,6 +59,22 @@ internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
 internal const val NETWORK_STATUS_BUTTON_TEST_TAG = "network-status-button"
 private val RETURN_PLAYER_SLOT_WIDTH = 112.dp
 
+@Composable
+internal fun HomeTabRenderEffect(
+    requestedIndex: Int,
+    requestedContentKey: String,
+    state: HomeTabRenderState,
+) {
+    LaunchedEffect(requestedIndex, requestedContentKey) {
+        if (state.activeIndex != requestedIndex ||
+            state.activeContentKey != requestedContentKey
+        ) {
+            delay(TAB_RENDER_COALESCE_MS)
+            state.commit(requestedIndex, requestedContentKey)
+        }
+    }
+}
+
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun DigitalClock(timeFormat: String, modifier: Modifier = Modifier) {
@@ -244,6 +260,10 @@ fun HomeLauncherScreen(
     val tabs = remember(hideAppsTab) { visibleHomeTabs(hideAppsTab) }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+    val requestedContentKey = tabs.getOrNull(safeTabIndex) ?: "ホーム"
+    val renderState = remember { HomeTabRenderState(safeTabIndex, requestedContentKey) }
+    val activeRenderIndex = renderState.activeIndex
+    val activeRenderGeneration = renderState.generation
 
     suspend fun handleLauncherBack() {
         val defaultIndex = tabs.indexOf(settingsViewModel.getStartupTabOnce()).coerceAtLeast(0)
@@ -260,11 +280,12 @@ fun HomeLauncherScreen(
     fun firstContentRequesterFor(index: Int): FocusRequester =
         ui.contentFirstItemRequesters.getOrNull(index) ?: FocusRequester.Default
 
-    // タブコンテンツの準備完了通知。グローバルな起動準備と、
-    // タブバー直下へのフォーカス移動許可(isCurrentTabContentReady)を両方更新する。
-    val handleUiReady = {
-        onUiReady()
-        ui.isCurrentTabContentReady = true
+    // Only the currently rendered generation can unlock DOWN navigation. A late callback from
+    // a disposed tab cannot make the new tab look ready.
+    val handleUiReady: () -> Unit = remember(activeRenderGeneration) {
+        {
+            if (renderState.markContentReady(activeRenderGeneration)) onUiReady()
+        }
     }
 
     val isFullScreenMode = ui.isFullScreen(
@@ -315,9 +336,7 @@ fun HomeLauncherScreen(
 
     LaunchedEffect(launcherHomeFocusTick) {
         if (launcherHomeFocusTick > 0) {
-            delay(150)
-            ui.tabFocusRequesters.getOrNull(safeTabIndex)
-                ?.safeRequestFocusWithRetry("LauncherHome_TAB_BAR")
+            focusMemory.remember(safeTabIndex)
         }
     }
 
@@ -326,31 +345,12 @@ fun HomeLauncherScreen(
     // 連打中は画面を構築せず、指が止まってから60ms後に初めてコンテンツを描画する。
     // 裏側のタブは完全に破棄するため、フォーカスの迷子や競合は物理的に発生しません。
     // =====================================================================================
-    var activeRenderIndex by remember { mutableIntStateOf(safeTabIndex) }
-
-    LaunchedEffect(safeTabIndex) {
-        if (activeRenderIndex != safeTabIndex) {
-            delay(60) // 連打中はキャンセルされ続け、指が止まった時だけここを通過する
-            activeRenderIndex = safeTabIndex
-        }
-    }
+    HomeTabRenderEffect(safeTabIndex, requestedContentKey, renderState)
 
     var lastHomeRefreshTime by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(activeRenderIndex) {
-        ui.isCurrentTabContentReady = false
-    }
-
-    // ★ 修正: 先頭項目の描画完了を外部に通知しないタブ(ライブ/ビデオ/番組表/録画予約)向けの
-    // 準備完了フォールバック。ホーム/アプリタブはコンテンツ側から描画駆動で通知されるため、
-    // 先に準備が整った場合はここでは何もしない(通知は冪等)。
-    LaunchedEffect(activeRenderIndex) {
-        delay(TAB_CONTENT_READY_FALLBACK_MS)
-        handleUiReady()
-    }
-
     LaunchedEffect(activeRenderIndex, networkConnectionStatus.isAvailable) {
-        val currentLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
+        val currentLabel = renderState.activeContentKey
 
         // Offline mode can still render cached EPG data, so establish the lazy
         // subscription before the network-only polling guard below.
@@ -391,7 +391,6 @@ fun HomeLauncherScreen(
 
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {
-            delay(150)
             val currentTabName = tabs.getOrNull(safeTabIndex)
             when (currentTabName) {
                 "ホーム" -> {
@@ -410,8 +409,7 @@ fun HomeLauncherScreen(
                     if (homeViewModel.lastClickedSection == "apps" && itemId != null) {
                         focusMemory.remember(safeTabIndex, "apps", itemId)
                     } else {
-                        ui.tabFocusRequesters.getOrNull(safeTabIndex)
-                            ?.safeRequestFocusWithRetry("FallbackAiReturn")
+                        focusMemory.remember(safeTabIndex)
                     }
                     onAiReturnConsumed()
                 }
@@ -421,8 +419,7 @@ fun HomeLauncherScreen(
                 }
 
                 else -> {
-                    ui.tabFocusRequesters.getOrNull(safeTabIndex)
-                        ?.safeRequestFocusWithRetry("FallbackAiReturn")
+                    focusMemory.remember(safeTabIndex)
                     onAiReturnConsumed()
                 }
             }
@@ -434,7 +431,6 @@ fun HomeLauncherScreen(
             val currentTabName = tabs.getOrNull(safeTabIndex)
             if (currentTabName != "ライブ" && currentTabName != "ビデオ") {
                 ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
-                delay(150)
                 val section = homeViewModel.lastClickedSection
                 val itemId = homeViewModel.lastClickedItemId
                 when {
@@ -500,6 +496,11 @@ fun HomeLauncherScreen(
         focusMemory,
         tabRequester = { ui.tabFocusRequesters.getOrNull(it) },
         contentRequester = ::firstContentRequesterFor,
+        contentReadyGeneration = renderState.readyGeneration,
+        isContentReady = { index ->
+            index == safeTabIndex &&
+                renderState.isContentReadyFor(index, requestedContentKey)
+        },
     )
 
     LaunchedEffect(focusMemory.completedId) {
@@ -544,7 +545,10 @@ fun HomeLauncherScreen(
                             rightFocusRequester = ui.tabFocusRequesters.getOrNull(0)
                                 ?: FocusRequester.Default,
                             downFocusRequester = firstContentRequesterFor(safeTabIndex),
-                            canMoveDown = ui.isCurrentTabContentReady,
+                            canMoveDown = renderState.isContentReadyFor(
+                                safeTabIndex,
+                                requestedContentKey,
+                            ),
                             onClick = { homeViewModel.launchInputSourcePicker(inputSourceApp) }
                         )
                         Spacer(modifier = Modifier.width(18.dp))
@@ -596,7 +600,9 @@ fun HomeLauncherScreen(
                                     )
                                     .focusProperties {
                                         down =
-                                            if (safeTabIndex == index && ui.isCurrentTabContentReady)
+                                            if (safeTabIndex == index &&
+                                                renderState.isContentReadyFor(index, requestedContentKey)
+                                            )
                                                 firstContentRequesterFor(index)
                                             else FocusRequester.Default
 
@@ -727,11 +733,11 @@ fun HomeLauncherScreen(
             }
 
             Box(modifier = Modifier.weight(1f)) {
-                // ★ 完全に物理的に1つのタブのみを描画する（他はツリーから完全に消去され、フォーカス迷子が100%防がれる）
-                if (activeRenderIndex == safeTabIndex) {
-                    val currentTabLabel = tabs.getOrNull(activeRenderIndex) ?: "ホーム"
+                // Keep the active tree mounted during the 60 ms coalescing window. Repeated
+                // left/right presses replace only the pending target instead of rebuilding each tab.
+                val currentTabLabel = renderState.activeContentKey
 
-                    when (currentTabLabel) {
+                when (currentTabLabel) {
                         "ホーム" -> HomeContents(
                             lastWatchedChannels = translatedLastChannels,
                             watchHistory = ui.watchHistory,
@@ -777,7 +783,8 @@ fun HomeLauncherScreen(
                             onUiReady = handleUiReady,
                             homeViewModel = homeViewModel,
                             timeFormat = timeFormat,
-                            focusMemory = focusMemory
+                            focusMemory = focusMemory,
+                            tabIndex = activeRenderIndex,
                         )
 
                         "ライブ" -> {
@@ -799,7 +806,8 @@ fun HomeLauncherScreen(
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 timeFormat = timeFormat,
                                 aiFocusReturnTick = if (currentTabLabel == "ライブ") aiFocusReturnTick else 0,
-                                onAiReturnConsumed = onAiReturnConsumed
+                                onAiReturnConsumed = onAiReturnConsumed,
+                                onContentReady = handleUiReady,
                             )
                         }
 
@@ -809,7 +817,8 @@ fun HomeLauncherScreen(
                                 tabFocusRequester = ui.tabFocusRequesters[activeRenderIndex],
                                 contentFirstItemRequester = ui.contentFirstItemRequesters[activeRenderIndex],
                                 onUiReady = handleUiReady,
-                                focusMemory = focusMemory
+                                focusMemory = focusMemory,
+                                tabIndex = activeRenderIndex,
                             )
                         }
 
@@ -835,7 +844,8 @@ fun HomeLauncherScreen(
                                 watchHistory = ui.watchHistory,
                                 isNetworkAvailable = networkConnectionStatus.isAvailable,
                                 aiFocusReturnTick = if (currentTabLabel == "ビデオ") aiFocusReturnTick else 0,
-                                onAiReturnConsumed = onAiReturnConsumed
+                                onAiReturnConsumed = onAiReturnConsumed,
+                                onContentReady = handleUiReady,
                             )
                         }
 
@@ -865,7 +875,8 @@ fun HomeLauncherScreen(
                                 searchResults = epgViewModel.searchResults.collectAsState().value,
                                 isSearching = epgViewModel.isSearching.collectAsState().value,
                                 onClearSearch = { epgViewModel.clearSearch() },
-                                timeFormat = timeFormat
+                                timeFormat = timeFormat,
+                                onContentReady = handleUiReady,
                             )
                         }
 
@@ -888,10 +899,10 @@ fun HomeLauncherScreen(
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 timeFormat = timeFormat,
                                 aiFocusReturnTick = if (currentTabLabel == "録画予約") aiFocusReturnTick else 0,
-                                onAiReturnConsumed = onAiReturnConsumed
+                                onAiReturnConsumed = onAiReturnConsumed,
+                                onContentReady = handleUiReady,
                             )
                         }
-                    }
                 }
 
                 HomeConnectionFeedback(

@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.home
 
 import android.util.Log
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -27,6 +28,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -80,6 +82,7 @@ fun AppsTabContent(
     contentFirstItemRequester: FocusRequester,
     onUiReady: () -> Unit,
     focusMemory: FocusMemory,
+    tabIndex: Int = HOME_TAB_TITLES.indexOf("アプリ"),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
@@ -113,7 +116,6 @@ fun AppsTabContent(
 
     // ★ 修正: 固定スリープによる準備完了通知をやめ、先頭アプリが実際に描画された
     // (グリッドに項目が構築された)時点で即座に通知する描画駆動方式に変更。
-    // カタログが空の場合は描画される項目が無いため、タブ側のフォールバックに任せる。
     val isFirstItemRendered =
         remember { derivedStateOf { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() } }
 
@@ -123,6 +125,7 @@ fun AppsTabContent(
 
     LaunchedEffect(focusMemory.requestId, catalogApps) {
         val request = focusMemory.request ?: return@LaunchedEffect
+        if (request.tab != tabIndex) return@LaunchedEffect
         if (request.section != "apps") return@LaunchedEffect
         val index = catalogApps.indexOfFirst { it.stableId == request.itemId }
             .takeIf { it >= 0 } ?: 0
@@ -246,7 +249,15 @@ fun AppsTabContent(
                 .coerceAtLeast(AppsTabLayout.minBannerHeight)
 
             if (totalEntries == 0) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .focusRequester(contentFirstItemRequester)
+                        .focusProperties { up = tabFocusRequester }
+                        .onGloballyPositioned { onUiReady() }
+                        .focusable(),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
                         text = if (isHiddenCatalog) {
                             "非表示のアプリはありません"

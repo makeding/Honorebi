@@ -91,7 +91,6 @@ class HomeResumeFocusTest {
                 .performKeyInput { pressKey(Key.DirectionUp) }
             compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
             compose.waitForIdle()
-            compose.runOnIdle { effects.advanceTimeBy(300); effects.runCurrent() }
             compose.onNodeWithTag("tab-$index").assertIsFocused()
             compose.runOnIdle { assertEquals(index, selected.intValue) }
             // Exercise both directions from each tab, including row edges.
@@ -107,7 +106,7 @@ class HomeResumeFocusTest {
         }
     }
 
-    @Test fun delayedReturnUsesLatestVisibleTabsAndHonorsPlayerOwnership() {
+    @Test fun returnUsesLatestVisibleTabsAndHonorsPlayerOwnership() {
         val hideApps = mutableStateOf(false)
         val selected = mutableIntStateOf(3)
         val returning = mutableStateOf(false)
@@ -125,21 +124,19 @@ class HomeResumeFocusTest {
         }
         compose.runOnIdle {
             owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
             hideApps.value = true
             selected.intValue = 2
         }
         compose.waitForIdle()
-        compose.runOnIdle { effects.advanceTimeBy(300); effects.runCurrent() }
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
         compose.runOnIdle { assertEquals(listOf(2 to "ビデオ"), destinations) }
         compose.runOnIdle {
             destinations.clear()
             owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
             returning.value = true
         }
         compose.waitForIdle()
-        compose.runOnIdle { effects.advanceTimeBy(300); effects.runCurrent() }
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
         compose.runOnIdle { assertTrue(destinations.isEmpty()) }
     }
 
@@ -192,7 +189,6 @@ class HomeResumeFocusTest {
         compose.runOnIdle { focusedTabs.clear() }
         compose.onNodeWithTag("tab-3").performKeyInput { pressKey(Key.Back) }
         compose.waitForIdle()
-        compose.runOnIdle { effects.advanceTimeBy(1000); effects.runCurrent() }
         compose.onNodeWithTag("tab-3").assertIsFocused()
         compose.runOnIdle {
             assertEquals(3, selected.intValue)

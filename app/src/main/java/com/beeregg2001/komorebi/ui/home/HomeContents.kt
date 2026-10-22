@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -71,6 +73,7 @@ fun HomeContents(
     recordViewModel: RecordViewModel = hiltViewModel(),
     timeFormat: String,
     focusMemory: FocusMemory,
+    tabIndex: Int = 0,
 ) {
     val lazyListState = rememberLazyListState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
@@ -147,6 +150,7 @@ fun HomeContents(
 
     LaunchedEffect(focusMemory.requestId, availableSections) {
         val request = focusMemory.request ?: return@LaunchedEffect
+        if (request.tab != tabIndex) return@LaunchedEffect
         val section = request.section ?: return@LaunchedEffect
         val index = availableSections.indexOf(section)
         if (index < 0) {
@@ -211,6 +215,24 @@ fun HomeContents(
                 contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
+                if (availableSections.isEmpty()) {
+                    item(key = "home_empty") {
+                        Box(
+                            modifier = Modifier
+                                .fillParentMaxSize()
+                                .focusRequester(externalFocusRequester)
+                                .focusProperties { up = tabFocusRequester }
+                                .focusable(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "表示できるコンテンツがありません",
+                                color = colors.textSecondary,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
+                }
                 if (lastWatchedChannels.isNotEmpty()) {
                     item(key = "section_last_watched") {
                         LastWatchedSection(

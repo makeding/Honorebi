@@ -88,7 +88,8 @@ fun EpgNavigationContainer(
     searchResults: List<UiSearchResultItem>,
     isSearching: Boolean,
     onClearSearch: () -> Unit,
-    timeFormat: String
+    timeFormat: String,
+    onContentReady: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val colors = KomorebiTheme.colors
@@ -240,6 +241,7 @@ fun EpgNavigationContainer(
                     availableTypes = availableTypes,
                     onEpgJumpMenuStateChanged = onJumpMenuStateChanged,
                     onSearchClick = { isSearchBarVisible = true },
+                    onContentReady = onContentReady,
                     restoreChannelId = restoreChannelId,
                     reserves = reserves,
                     onUpdateTargetTime = onUpdateTargetTime,

@@ -10,7 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
-import kotlinx.coroutines.delay
 
 /** A one-shot focus command; click identities remain in HomeViewModel. */
 data class HomeFocusRequest(
@@ -71,7 +70,6 @@ internal fun HomeOverlayReturnFocusEffect(
         if (isFullScreen || currentReturning || (previous == null && enteredWithReturn)) {
             return@LaunchedEffect
         }
-        delay(300)
         if (!currentReturning) restore()
     }
 }
@@ -81,10 +79,13 @@ internal fun HomeEntryFocusEffect(
     memory: FocusMemory,
     tabRequester: (Int) -> FocusRequester?,
     contentRequester: (Int) -> FocusRequester,
+    contentReadyGeneration: Long = 0L,
+    isContentReady: (Int) -> Boolean = { true },
 ) {
-    LaunchedEffect(memory.requestId) {
+    LaunchedEffect(memory.requestId, contentReadyGeneration) {
         val request = memory.request ?: return@LaunchedEffect
         if (request.section != null) return@LaunchedEffect
+        if (request.contentTop && !isContentReady(request.tab)) return@LaunchedEffect
         val requester = if (request.contentTop) contentRequester(request.tab) else tabRequester(request.tab)
         if (requester?.safeRequestFocusWithRetry("HomeFocus_Entry") == true) {
             memory.consume(request.id)

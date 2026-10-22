@@ -24,13 +24,41 @@ internal val HOME_TAB_TITLES = listOf("ホーム", "ライブ", "アプリ", "�
 internal fun visibleHomeTabs(hideAppsTab: Boolean): List<String> =
     if (hideAppsTab) HOME_TAB_TITLES.filterNot { it == "アプリ" } else HOME_TAB_TITLES
 
-/**
- * 先頭項目の描画完了を外部に通知しないタブコンテンツ(ライブ/ビデオ/番組表/録画予約)向けの
- * 準備完了フォールバック。コンテンツ側から構築を検知できないため、短い一律の猶予で
- * 準備完了とする。ホーム/アプリタブは各コンテンツが描画駆動で通知するため、
- * 先に準備が整った場合はこの値は使われない。
- */
-internal const val TAB_CONTENT_READY_FALLBACK_MS = 300L
+/** Rapid D-pad tab changes share one render; only the latest quiet target is committed. */
+internal const val TAB_RENDER_COALESCE_MS = 60L
+
+@Stable
+internal class HomeTabRenderState(initialIndex: Int, initialContentKey: String) {
+    var activeIndex by mutableIntStateOf(initialIndex)
+        private set
+
+    var activeContentKey by mutableStateOf(initialContentKey)
+        private set
+
+    var generation by mutableLongStateOf(0L)
+        private set
+
+    var readyGeneration by mutableLongStateOf(-1L)
+        private set
+
+    fun commit(index: Int, contentKey: String) {
+        if (activeIndex == index && activeContentKey == contentKey) return
+        activeIndex = index
+        activeContentKey = contentKey
+        generation += 1L
+        readyGeneration = -1L
+    }
+
+    fun markContentReady(generation: Long): Boolean {
+        if (generation != this.generation) return false
+        if (readyGeneration == generation) return false
+        readyGeneration = generation
+        return true
+    }
+
+    fun isContentReadyFor(index: Int, contentKey: String = activeContentKey): Boolean =
+        activeIndex == index && activeContentKey == contentKey && readyGeneration == generation
+}
 
 /**
  * HomeLauncherScreen の UI状態とビジネスロジックを管理する State Holder
@@ -44,7 +72,6 @@ class HomeLauncherState(
     var internalLastPlayerChannelId by mutableStateOf<String?>(null)
     var isEpgJumping by mutableStateOf(false)
     var topNavHasFocus by mutableStateOf(false)
-    var isCurrentTabContentReady by mutableStateOf(false)
 
     // --- データ保持 ---
     var watchHistory by mutableStateOf<List<KonomiHistoryProgram>>(emptyList())
@@ -85,7 +112,6 @@ class HomeLauncherState(
         homeViewModel: HomeViewModel,
     ) {
         onTabChange(index)
-        isCurrentTabContentReady = false
         homeViewModel.clearFocusMemory()
     }
 

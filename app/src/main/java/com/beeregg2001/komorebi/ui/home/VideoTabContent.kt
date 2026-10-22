@@ -28,6 +28,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -77,6 +78,7 @@ fun VideoTabContent(
     isNetworkAvailable: Boolean = true,
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
+    onContentReady: () -> Unit = {},
     onShowSmbLibrary: () -> Unit = {}, // ★ 追加: SMBライブラリ画面への遷移
     onShowOnAir: () -> Unit = {} // ★ 追加: 放送中画面への遷移
 ) {
@@ -369,6 +371,7 @@ fun VideoTabContent(
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(onAirRequester)
+                                .onGloballyPositioned { onContentReady() }
                                 .onPreviewKeyEvent { event ->
                                     if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                                         recentFocus.requestEntryFocus() || historyFocus.requestEntryFocus()

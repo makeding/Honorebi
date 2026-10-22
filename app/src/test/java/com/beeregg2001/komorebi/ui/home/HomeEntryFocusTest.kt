@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -80,19 +82,16 @@ class HomeEntryFocusTest {
         }
         compose.onNodeWithTag("card").requestFocus()
         compose.runOnIdle { returning.value = false }
-        effects.advanceTimeBy(1000)
-        effects.runCurrent()
         compose.onNodeWithTag("card").assertIsFocused()
 
         compose.runOnIdle { fullScreen.value = true }
         compose.waitForIdle()
         compose.runOnIdle { fullScreen.value = false }
         compose.waitForIdle()
-        compose.runOnIdle { effects.advanceTimeBy(1000); effects.runCurrent() }
         compose.onNodeWithTag("tab").assertIsFocused()
     }
 
-    @Test fun playerReturnCancelsAnAlreadyWaitingInitialTabRestore() {
+    @Test fun playerReturnDoesNotTriggerASecondInitialTabRestore() {
         val returning = mutableStateOf(false)
         val tab = FocusRequester()
         val card = FocusRequester()
@@ -107,7 +106,6 @@ class HomeEntryFocusTest {
         compose.onNodeWithTag("card").assertIsFocused()
         compose.runOnIdle { returning.value = true }
         compose.waitForIdle()
-        compose.runOnIdle { effects.advanceTimeBy(1000); effects.runCurrent() }
         compose.onNodeWithTag("card").assertIsFocused()
     }
 
@@ -131,5 +129,65 @@ class HomeEntryFocusTest {
         compose.runOnIdle { memory.requestContent(0) }
         compose.onNodeWithTag("content").assertIsFocused()
         compose.runOnIdle { assertNull(memory.request) }
+    }
+
+    @Test fun contentEntryWaitsForRealTargetAndFocusesImmediatelyWhenReady() {
+        val memory = FocusMemory()
+        val ready = mutableStateOf(false)
+        val tab = FocusRequester()
+        val content = FocusRequester()
+        compose.setContent {
+            HomeEntryFocusEffect(
+                memory = memory,
+                tabRequester = { tab },
+                contentRequester = { content },
+                contentReadyGeneration = if (ready.value) 1L else -1L,
+                isContentReady = { ready.value },
+            )
+            Row {
+                Box(Modifier.size(48.dp).testTag("ready-tab").focusRequester(tab).focusable())
+                Box(Modifier.size(48.dp).testTag("ready-content").focusRequester(content).focusable())
+            }
+        }
+        compose.onNodeWithTag("ready-tab").requestFocus().assertIsFocused()
+        compose.runOnIdle { memory.requestContent(0) }
+        compose.onNodeWithTag("ready-tab").assertIsFocused()
+        compose.runOnIdle { assertTrue(memory.request?.contentTop == true) }
+
+        compose.runOnIdle { ready.value = true }
+        compose.onNodeWithTag("ready-content").assertIsFocused()
+        compose.runOnIdle { assertNull(memory.request) }
+    }
+
+    @Test fun rapidTabChangesCancelIntermediateRenderAndSameIndexKeyChangeResetsReady() {
+        val requestedIndex = mutableIntStateOf(0)
+        val requestedKey = mutableStateOf("home")
+        lateinit var render: HomeTabRenderState
+        compose.setContent {
+            render = remember { HomeTabRenderState(0, "home") }
+            HomeTabRenderEffect(requestedIndex.intValue, requestedKey.value, render)
+        }
+        compose.runOnIdle { assertTrue(render.markContentReady(render.generation)) }
+        compose.runOnIdle {
+            requestedIndex.intValue = 1
+            requestedKey.value = "live"
+        }
+        compose.runOnIdle { effects.advanceTimeBy(30); effects.runCurrent() }
+        compose.runOnIdle {
+            requestedIndex.intValue = 2
+            requestedKey.value = "apps"
+        }
+        compose.runOnIdle { effects.advanceTimeBy(TAB_RENDER_COALESCE_MS - 1); effects.runCurrent() }
+        compose.runOnIdle { assertEquals("home", render.activeContentKey) }
+        compose.runOnIdle { effects.advanceTimeBy(1); effects.runCurrent() }
+        compose.runOnIdle {
+            assertEquals(2, render.activeIndex)
+            assertEquals("apps", render.activeContentKey)
+            assertFalse(render.isContentReadyFor(2, "apps"))
+            assertFalse(render.markContentReady(0L))
+            assertTrue(render.markContentReady(render.generation))
+            render.commit(2, "video")
+            assertFalse(render.isContentReadyFor(2, "video"))
+        }
     }
 }

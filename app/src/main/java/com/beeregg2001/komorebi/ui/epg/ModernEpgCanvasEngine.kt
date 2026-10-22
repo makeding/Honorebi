@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -70,6 +71,7 @@ fun ModernEpgCanvasEngine_Smooth(
     onRequestJumpToNow: () -> Unit,
     searchButtonFocusRequester: FocusRequester,
     onSearchClick: () -> Unit,
+    onContentReady: () -> Unit = {},
     timeFormat: String,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -263,7 +265,8 @@ fun ModernEpgCanvasEngine_Smooth(
                     onEpgJumpMenuStateChanged = onEpgJumpMenuStateChanged,
                     onSearchClick = onSearchClick,
                     onTypeChanged = onTypeChanged,
-                    currentType = currentType
+                    currentType = currentType,
+                    onContentReady = onContentReady,
                 )
             }
 
@@ -451,7 +454,8 @@ fun EpgHeaderSection(
     onEpgJumpMenuStateChanged: (Boolean) -> Unit,
     onSearchClick: () -> Unit,
     onTypeChanged: (String) -> Unit,
-    currentType: String
+    currentType: String,
+    onContentReady: () -> Unit,
 ) {
     val colors = KomorebiTheme.colors
     val currentTypeIndex = remember(
@@ -480,6 +484,7 @@ fun EpgHeaderSection(
                         .fillMaxHeight()
                         .onFocusChanged { isTabFocused = it.isFocused }
                         .then(if (isTarget) Modifier.focusRequester(headerFocusRequester) else Modifier)
+                        .then(if (isTarget) Modifier.onGloballyPositioned { onContentReady() } else Modifier)
                         .focusRequester(requester)
                         .focusProperties {
                             left =
@@ -585,6 +590,13 @@ fun EpgHeaderSection(
                 .width(110.dp)
                 .fillMaxHeight()
                 .onFocusChanged { isJumpBtnFocused = it.isFocused }
+                .then(
+                    if (availableBroadcastingTypes.isEmpty()) {
+                        Modifier
+                            .focusRequester(headerFocusRequester)
+                            .onGloballyPositioned { onContentReady() }
+                    } else Modifier
+                )
                 .focusRequester(jumpMenuFocusRequester)
                 .focusProperties {
                     right =

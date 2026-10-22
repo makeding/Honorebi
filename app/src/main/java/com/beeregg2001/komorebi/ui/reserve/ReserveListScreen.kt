@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
@@ -36,7 +37,6 @@ import com.beeregg2001.komorebi.viewmodel.ReserveViewModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "ReserveListScreen"
@@ -107,7 +107,8 @@ fun ReserveListScreen(
     timeFormat: String = "24H",
     // ★ 追加(Step3): AIコンシェルジュからの復帰シグナル
     aiFocusReturnTick: Int = 0,
-    onAiReturnConsumed: () -> Unit = {}
+    onAiReturnConsumed: () -> Unit = {},
+    onContentReady: () -> Unit = {},
 ) {
     val reserves by viewModel.reserves.collectAsState()
     val normalReserves by viewModel.normalReserves.collectAsState()
@@ -141,7 +142,6 @@ fun ReserveListScreen(
     LaunchedEffect(aiFocusReturnTick) {
         if (aiFocusReturnTick > 0) {
             Log.i("KomorebiFocus", "[ReserveList] AIコンシェルジュから復帰。チケットを発行します。")
-            delay(150) // パネルが閉じるアニメーションを待つ
             val conditionId = viewModel.lastClickedConditionId
             val reserveId = viewModel.lastClickedReserveId
             if (conditionId != null) {
@@ -158,7 +158,6 @@ fun ReserveListScreen(
     LaunchedEffect(isReturningFromPlayer) {
         if (isReturningFromPlayer) {
             Log.i("KomorebiFocus", "[ReserveList] プレイヤーから復帰しました。チケットを発行します。")
-            delay(150)
             val conditionId = viewModel.lastClickedConditionId
             val reserveId = viewModel.lastClickedReserveId
             if (conditionId != null) {
@@ -175,7 +174,6 @@ fun ReserveListScreen(
     LaunchedEffect(isReserveOverlayOpen) {
         if (previousOverlayOpen && !isReserveOverlayOpen) {
             Log.i("KomorebiFocus", "[ReserveList] オーバーレイが閉じました。チケットを発行します。")
-            delay(150)
             val conditionId = viewModel.lastClickedConditionId
             val reserveId = viewModel.lastClickedReserveId
             if (conditionId != null) {
@@ -224,7 +222,6 @@ fun ReserveListScreen(
                     "KomorebiFocus",
                     "[ReserveList] リロード完了。退避していたIDでチケットを発行します。"
                 )
-                delay(200)
                 if (restoreConditionId != null) {
                     ticketManager.issueForCondition(restoreConditionId!!)
                     restoreConditionId = null
@@ -313,7 +310,7 @@ fun ReserveListScreen(
                     1 -> normalListState.scrollToItem(0)
                     2 -> conditionListState.scrollToItem(0)
                 }
-                delay(150)
+                withFrameNanos { }
                 listFocusRequester.safeRequestFocusWithRetry("ReserveContentTop")
                 ticketManager.consume(ReserveFocusTicket.CONTENT_TOP)
                 viewModel.clearFocusMemory()
@@ -412,6 +409,11 @@ fun ReserveListScreen(
                         },
                         modifier = Modifier
                             .focusRequester(tabFocusRequesters[index])
+                            .then(
+                                if (index == selectedTabIndex) {
+                                    Modifier.onGloballyPositioned { onContentReady() }
+                                } else Modifier
+                            )
                             .focusProperties {
                                 down = listFocusRequester
                                 up = topNavFocusRequester ?: FocusRequester.Default
@@ -484,7 +486,7 @@ fun ReserveListScreen(
                                         ticketManager.issueTime
                                     ) {
                                         if (ticketManager.currentTicket == ReserveFocusTicket.TARGET_RESERVE_ID && program.id == ticketManager.targetReserveId) {
-                                            delay(150)
+                                            withFrameNanos { }
                                             specificRequester.safeRequestFocusWithRetry("TargetReserve_All")
                                             ticketManager.consume(ReserveFocusTicket.TARGET_RESERVE_ID)
                                         }
@@ -548,7 +550,7 @@ fun ReserveListScreen(
                                         ticketManager.issueTime
                                     ) {
                                         if (ticketManager.currentTicket == ReserveFocusTicket.TARGET_RESERVE_ID && program.id == ticketManager.targetReserveId) {
-                                            delay(150)
+                                            withFrameNanos { }
                                             specificRequester.safeRequestFocusWithRetry("TargetReserve_Normal")
                                             ticketManager.consume(ReserveFocusTicket.TARGET_RESERVE_ID)
                                         }
@@ -612,7 +614,7 @@ fun ReserveListScreen(
                                         ticketManager.issueTime
                                     ) {
                                         if (ticketManager.currentTicket == ReserveFocusTicket.TARGET_CONDITION_ID && condition.id == ticketManager.targetConditionId) {
-                                            delay(150)
+                                            withFrameNanos { }
                                             specificRequester.safeRequestFocusWithRetry("TargetCondition_Tab2")
                                             ticketManager.consume(ReserveFocusTicket.TARGET_CONDITION_ID)
                                         }
