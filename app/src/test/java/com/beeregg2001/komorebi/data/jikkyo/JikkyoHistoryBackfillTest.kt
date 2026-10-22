@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 class JikkyoHistoryBackfillTest {
     @Test
     fun requestUsesBoundedCountAndInitialCursor() {

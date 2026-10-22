@@ -63,7 +63,7 @@ internal fun rememberRecordedComments(
             onFailure = { error ->
                 Log.w("RecordedComments", "Archive request failed: video=$videoId", error)
                 if (!reportedFailure) {
-                    currentToast("実況コメントを取得できませんでした。接続を確認してください。自動で再試行します。")
+                    currentToast((error.message ?: "実況コメントを取得できませんでした。接続を確認してください。") + " 自動で再試行します。")
                     reportedFailure = true
                 }
             },
@@ -103,7 +103,7 @@ internal fun rememberRecordedComments(
             awaitCancellation()
         } finally {
             // Release a socket callback blocked by backpressure before cancelling its connection.
-            pending.close()
+            pending.cancel()
             client.stop()
             consumer.cancel()
         }

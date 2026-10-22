@@ -121,6 +121,11 @@ class JikkyoClient(
                 val json = JSONObject(text)
                 val type = json.optString("type")
 
+                if (chase != null && type in setOf("disconnect", "reconnect", "error")) {
+                    scheduleReconnect(chase)
+                    return
+                }
+
                 // Ping/Pong (接続維持)
                 if (type == "ping") {
                     webSocket.send("""{"type":"pong"}""")
@@ -280,18 +285,29 @@ class JikkyoClient(
     }
 
     private fun scheduleReconnect(chase: ChaseConfig) {
-        val previousSockets = synchronized(lock) {
-            if (stopped || reconnectJob?.isActive == true) return
+        val reservation = synchronized(lock) {
+            if (stopped || reconnectJob != null) return
             ++generation
             val sockets = listOfNotNull(watchSocket, commentSocket, historySocket)
             watchSocket = null; commentSocket = null; historySocket = null
-            sockets
+            // Reserve the one reconnect before releasing [lock], so concurrent failures cannot
+            // schedule duplicate reconnects. It starts only after stale sockets are cancelled.
+            val job = scope.launch(start = CoroutineStart.LAZY) {
+                delayForRetry(reconnectDelayMillis)
+                val accepted = synchronized(lock) {
+                    if (stopped || reconnectJob !== coroutineContext[Job]) false
+                    else {
+                        reconnectJob = null
+                        true
+                    }
+                }
+                if (accepted) connect(chase)
+            }
+            reconnectJob = job
+            sockets to job
         }
-        previousSockets.forEach(WebSocket::cancel)
-        reconnectJob = scope.launch {
-            delayForRetry(reconnectDelayMillis)
-            if (!stopped) connect(chase)
-        }
+        reservation.first.forEach(WebSocket::cancel)
+        reservation.second.start()
     }
 
     private fun isHistoryBatchEnd(text: String): Boolean = try {

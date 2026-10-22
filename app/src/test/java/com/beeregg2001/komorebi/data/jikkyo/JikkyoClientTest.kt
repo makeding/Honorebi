@@ -80,6 +80,28 @@ class JikkyoClientTest {
     }
 
     @Test
+    fun chaseWatchDisconnectEventReservesOneReconnect() {
+        val factory = FakeWebSocketFactory()
+        val client = JikkyoClient(
+            "wss://jikkyo.example.test/watch",
+            factory,
+            reconnectDelayMillis = 0,
+            delayForRetry = {},
+        )
+        client.startChase(100.0) {}
+        factory.awaitCount(1)
+        val watch = factory.entries.single()
+
+        watch.listener.onMessage(watch.socket, """{"type":"disconnect"}""")
+        watch.listener.onMessage(watch.socket, """{"type":"error"}""")
+        factory.awaitCount(2)
+
+        assertTrue(watch.socket.cancelled)
+        assertEquals(2, factory.entries.size)
+        client.stop()
+    }
+
+    @Test
     fun chaseOpensLiveAndBoundedHistoryThenPagesAtRfBoundary() {
         val factory = FakeWebSocketFactory()
         val received = mutableListOf<String>()
