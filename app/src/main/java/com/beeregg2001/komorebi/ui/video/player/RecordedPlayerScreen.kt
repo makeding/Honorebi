@@ -28,13 +28,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import com.beeregg2001.komorebi.data.jikkyo.JikkyoClient
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.common.safeRequestFocus
-import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
@@ -66,10 +64,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGa
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedTsRecoveryPolicy
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel as CommentChannel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -362,16 +357,9 @@ internal fun RecordedPlayerScreen(
     }
 
 
-    val allComments = remember { mutableStateListOf<ArchivedComment>() }
-    val commentKeys = remember(recordedPlaybackToken) {
-        HashSet<String>()
-    }
-    val pendingWebSocketComments = remember(recordedPlaybackToken) {
-        CommentChannel<ArchivedComment>(
-            capacity = CHASE_COMMENT_QUEUE_CAPACITY,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST
-        )
-    }
+    val allComments = rememberRecordedComments(
+        currentProgram, recordedPlaybackFence, videoPlayerViewModel, onShowToast
+    )
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") }
     var currentSessionId by remember(recordedPlaybackToken, vs.currentQuality.value, isRecordingChasePlayback) {
@@ -464,108 +452,6 @@ internal fun RecordedPlayerScreen(
         isSeekingPreviewVisible = true
         seekingPreviewJob?.cancel()
         seekingPreviewJob = scope.launch { delay(2000); isSeekingPreviewVisible = false }
-    }
-
-    LaunchedEffect(currentProgram.recordedVideo.id, isRecordingChasePlayback, recordedPlaybackToken) {
-
-        if (isRecordingChasePlayback) {
-            allComments.clear()
-            commentKeys.clear()
-            Log.i(
-                TAG,
-                "Reset chase comments for new video. [video=${currentProgram.recordedVideo.id}]"
-            )
-        }
-
-        val fetchedComments = if (isRecordingChasePlayback) {
-            videoPlayerViewModel.getChaseArchivedComments(currentProgram)
-        } else {
-            videoPlayerViewModel.getArchivedComments(currentProgram.recordedVideo.id)
-        }
-        if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
-        if (!isRecordingChasePlayback) {
-            allComments.clear()
-            commentKeys.clear()
-            allComments.addAll(fetchedComments)
-            commentKeys.addAll(fetchedComments.map { it.stableCommentKey() })
-        } else {
-            // 追いかけ再生はここで A-B の過去ログだけを取得し、B 以降は WebSocket で埋める。
-            appendUniqueArchivedComments(allComments, commentKeys, fetchedComments)
-        }
-        Log.i(
-            TAG,
-            "Loaded archived comments. [video=${currentProgram.recordedVideo.id}, chase=$isRecordingChasePlayback, total=${allComments.size}]"
-        )
-    }
-
-    LaunchedEffect(pendingWebSocketComments, recordedPlaybackToken) {
-        try {
-            while (isActive) {
-                val firstComment = pendingWebSocketComments.receiveCatching().getOrNull()
-                    ?: return@LaunchedEffect
-                val batch = ArrayList<ArchivedComment>(32)
-                batch.add(firstComment)
-                delay(250L)
-                while (true) {
-                    val nextComment = pendingWebSocketComments.tryReceive().getOrNull() ?: break
-                    batch.add(nextComment)
-                }
-
-                if (!recordedPlaybackFence.accepts()) continue
-                val oldSize = allComments.size
-                appendUniqueArchivedComments(allComments, commentKeys, batch)
-                val addedCount = allComments.size - oldSize
-                if (addedCount > 0) {
-                    Log.i(
-                        TAG,
-                        "Merged chase websocket batch. [video=${currentProgram.recordedVideo.id}, " +
-                            "received=${batch.size}, added=$addedCount, total=${allComments.size}]"
-                    )
-                }
-            }
-        } finally {
-            pendingWebSocketComments.close()
-        }
-    }
-
-    LaunchedEffect(currentProgram.id, isRecordingChasePlayback, recordedPlaybackToken) {
-        if (!isRecordingChasePlayback) return@LaunchedEffect
-        val programStartUnix = currentProgram.programStartUnixOrNull() ?: return@LaunchedEffect
-        val watchSessionUrl = videoPlayerViewModel.getChaseJikkyoWatchSessionUrl(currentProgram)
-            ?: return@LaunchedEffect
-        if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
-        val processedCommentKeys = mutableSetOf<String>()
-        var receivedCommentCount = 0
-        val client = JikkyoClient(watchSessionUrl)
-
-        try {
-            client.start { jsonText ->
-                if (!recordedPlaybackFence.accepts()) return@start
-                val comment = parseChaseWsArchivedComment(jsonText, programStartUnix) ?: return@start
-                receivedCommentCount++
-                val key = comment.stableCommentKey()
-                if (!processedCommentKeys.add(key)) return@start
-                if (processedCommentKeys.size > 4000) processedCommentKeys.clear()
-
-                if (pendingWebSocketComments.trySend(comment).isFailure) {
-                    Log.w(
-                        TAG,
-                        "Dropped chase websocket comment because the queue is closed. [video=${currentProgram.recordedVideo.id}]"
-                    )
-                } else if (receivedCommentCount <= 3 || receivedCommentCount % 50 == 0) {
-                    Log.i(
-                        TAG,
-                        "Queued chase websocket comment. [video=${currentProgram.recordedVideo.id}, " +
-                            "received=$receivedCommentCount, time=${comment.time}]"
-                    )
-                }
-            }
-            Log.i(TAG, "Started chase jikkyo websocket. [video=${currentProgram.recordedVideo.id}]")
-            awaitCancellation()
-        } finally {
-            client.stop()
-            Log.i(TAG, "Stopped chase jikkyo websocket. [video=${currentProgram.recordedVideo.id}]")
-        }
     }
 
     val isBackground = remember { mutableStateOf(false) }

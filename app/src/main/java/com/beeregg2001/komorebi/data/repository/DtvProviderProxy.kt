@@ -151,9 +151,6 @@ class DtvProviderProxy @Inject constructor(
     override suspend fun getArchivedJikkyo(videoId: Int) =
         getRecordProvider().getArchivedJikkyo(videoId)
 
-    override suspend fun getChaseArchivedJikkyo(program: RecordedProgram) =
-        getRecordProvider().getChaseArchivedJikkyo(program)
-
     override suspend fun getChaseJikkyoWatchSessionUrl(program: RecordedProgram) =
         getRecordProvider().getChaseJikkyoWatchSessionUrl(program)
 

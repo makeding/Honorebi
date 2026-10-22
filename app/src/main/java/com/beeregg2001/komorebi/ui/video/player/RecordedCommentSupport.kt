@@ -15,7 +15,6 @@ internal const val CHASE_PLAYBACK_MAX_LIVE_OFFSET_MS = 60_000L
 internal const val CHASE_PLAYBACK_PLAYLIST_REFRESH_INTERVAL_MS = 45_000L
 internal const val CHASE_PLAYBACK_REFRESH_BUFFER_THRESHOLD_MS = 6_000L
 internal const val QUICK_MENU_REFRESH_DEBOUNCE_MS = 2_500L
-internal const val CHASE_COMMENT_QUEUE_CAPACITY = 256
 internal const val ACTIVE_PLAYBACK_STATE_POLL_MS = 250L
 internal const val IDLE_PLAYBACK_STATE_POLL_MS = 1_000L
 internal const val WATCH_HISTORY_CHECKPOINT_INTERVAL_MS = 15_000L
@@ -72,10 +71,10 @@ internal fun appendUniqueArchivedComments(
     }
 }
 
-internal fun RecordedProgram.programStartUnixOrNull(): Long? =
-    runCatching { OffsetDateTime.parse(startTime).toEpochSecond() }.getOrNull()
+internal fun RecordedProgram.recordingStartUnixOrNull(): Long? =
+    runCatching { OffsetDateTime.parse(recordedVideo.recordingStartTime).toEpochSecond() }.getOrNull()
 
-internal fun parseChaseWsArchivedComment(jsonText: String, programStartUnix: Long): ArchivedComment? =
+internal fun parseChaseWsArchivedComment(jsonText: String, recordingStartUnix: Long): ArchivedComment? =
     runCatching {
         val chat = JSONObject(jsonText).optJSONObject("chat") ?: return null
         val content = chat.optString("content", "")
@@ -100,7 +99,7 @@ internal fun parseChaseWsArchivedComment(jsonText: String, programStartUnix: Lon
             }
         val chatDate = chat.optString("date").toDoubleOrNull() ?: return null
         val chatDateUsec = chat.optString("date_usec", "0").toDoubleOrNull() ?: return null
-        val commentTime = (chatDate - programStartUnix) + (chatDateUsec / 1_000_000.0)
+        val commentTime = (chatDate - recordingStartUnix) + (chatDateUsec / 1_000_000.0)
         if (commentTime < -5.0) return null
         ArchivedComment(
             time = commentTime.coerceAtLeast(0.0),

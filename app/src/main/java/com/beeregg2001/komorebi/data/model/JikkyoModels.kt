@@ -12,7 +12,8 @@ data class JikkyoResponse(
 // ★追加: アーカイブコメント用データモデル
 data class ArchivedJikkyoResponse(
     val is_success: Boolean,
-    val comments: List<ArchivedComment>
+    val comments: List<ArchivedComment>,
+    val detail: String? = null
 )
 
 data class ArchivedComment(

@@ -546,12 +546,6 @@ class VideoPlayerViewModel @Inject constructor(
         return list
     }
 
-    suspend fun getArchivedComments(videoId: Int): List<ArchivedComment> {
-        return withContext(Dispatchers.IO) {
-            recordProvider.getArchivedJikkyo(videoId).getOrDefault(emptyList()).sortedBy { it.time }
-        }
-    }
-
     /**
      * HonomiTV ローカル拡張: 録画ファイル内の指定時刻直前のキーフレーム位置を解決する。
      * 失敗時は null を返し、呼び出し側は従来のファイルサイズ比例シークにフォールバックする。
@@ -567,18 +561,8 @@ class VideoPlayerViewModel @Inject constructor(
         }
     }
 
-    suspend fun getChaseArchivedComments(program: RecordedProgram): List<ArchivedComment> {
-        return withContext(Dispatchers.IO) {
-            val result = recordProvider.getChaseArchivedJikkyo(program)
-            val comments = result.getOrDefault(emptyList()).sortedBy { it.time }
-            Log.i(
-                TAG,
-                "Chase archived comments result. [video=${program.id}, success=${result.isSuccess}, " +
-                    "count=${comments.size}, error=${result.exceptionOrNull()?.message}]"
-            )
-            comments
-        }
-    }
+    suspend fun fetchRecordedComments(videoId: Int): Result<List<ArchivedComment>> =
+        withContext(Dispatchers.IO) { recordProvider.getArchivedJikkyo(videoId) }
 
     suspend fun getChaseJikkyoWatchSessionUrl(program: RecordedProgram): String? {
         return withContext(Dispatchers.IO) {
