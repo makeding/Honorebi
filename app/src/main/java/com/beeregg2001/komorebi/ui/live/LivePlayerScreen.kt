@@ -954,12 +954,12 @@ fun LivePlayerScreen(
                         opacity = commentOpacity,
                         maxLines = commentMaxLines,
                         sessionKey = mainSessionToken,
-                        running = ps.isPlayerPlaying && isCommentEnabled && isHeavyUiReady && !dualDisplay,
-                        onViewCreated = { view ->
-                            if (mainSessionToken != null) danmakuViewRef.value = view
+                        running = ps.isPlayerPlaying && isCommentEnabled && isHeavyUiReady && !ps.isDualDisplayMode,
+                        onViewCreated = { handle ->
+                            if (mainSessionToken != null) danmakuViewRef.value = handle.view
                         },
-                        onViewReleased = { view ->
-                            if (danmakuViewRef.value === view) danmakuViewRef.value = null
+                        onViewReleased = { handle ->
+                            if (danmakuViewRef.value === handle.view) danmakuViewRef.value = null
                         },
                     )
                 }

@@ -1952,6 +1952,7 @@ internal fun RecordedPlayerScreen(
                 commentFontSizeScale = commentFontSizeScale,
                 commentOpacity = commentOpacity,
                 commentMaxLines = commentMaxLines,
+                isCommentPlaybackActive = isActuallyPlaying,
                 isEmulator = isEmulator,
                 recordedPlaybackFence = recordedPlaybackFence,
                 subtitleCue = subtitleCue.value,

@@ -40,6 +40,20 @@ class DanmakuViewLifecycleTest {
     }
 
     @Test
+    fun runningUpdatesOnlyApplyPreparedStateTransitions() {
+        val lifecycle = DanmakuViewLifecycle()
+        val events = mutableListOf<String>()
+
+        assertFalse(lifecycle.updateRunning(true, false, { events += "resume" }, { events += "pause" }))
+        lifecycle.prepared(false, { events += "start" }, { events += "pause" })
+        assertFalse(lifecycle.updateRunning(false, true, { events += "resume" }, { events += "pause" }))
+        assertTrue(lifecycle.updateRunning(true, true, { events += "resume" }, { events += "pause" }))
+        assertFalse(lifecycle.updateRunning(true, true, { events += "resume" }, { events += "pause" }))
+
+        assertEquals(listOf("start", "pause", "resume"), events)
+    }
+
+    @Test
     fun releasePreventsLatePrepareCallback() {
         val lifecycle = DanmakuViewLifecycle()
         val events = mutableListOf<String>()

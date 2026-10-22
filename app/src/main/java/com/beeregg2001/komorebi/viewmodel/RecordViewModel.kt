@@ -188,7 +188,15 @@ class RecordViewModel @Inject constructor(
     private val _programDetail = MutableStateFlow<RecordedProgram?>(null)
     val programDetail: StateFlow<RecordedProgram?> = _programDetail.asStateFlow()
 
-    private var detailFetchJob: Job? = null
+    private val detailRequestCoordinator = ProgramDetailRequestCoordinator(
+        scope = viewModelScope,
+        load = recordProvider::getRecordedProgram,
+        onRequestAccepted = { _programDetail.value = null },
+        onSuccess = { program ->
+            _programDetail.value = program.takeUnless(nhkExclusionRepository::isExcluded)
+        },
+        onFailure = { error -> Log.e(TAG, "Failed to fetch program detail", error) },
+    )
 
     fun clearSyncError() {
         syncEngine.clearError()
@@ -196,20 +204,14 @@ class RecordViewModel @Inject constructor(
 
     fun fetchProgramDetail(videoId: Int) {
         if (!nhkExclusionRepository.state.value.isLoaded) {
-            _programDetail.value = null
+            clearProgramDetail()
             return
         }
-        detailFetchJob?.cancel()
-        detailFetchJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(300)
-            recordProvider.getRecordedProgram(videoId).onSuccess {
-                _programDetail.value = it.takeUnless(nhkExclusionRepository::isExcluded)
-            }.onFailure { Log.e(TAG, "Failed to fetch program detail", it) }
-        }
+        detailRequestCoordinator.request(videoId)
     }
 
     fun clearProgramDetail() {
-        _programDetail.value = null
+        detailRequestCoordinator.cancel { _programDetail.value = null }
     }
 
     /** HonomiTV のリモート操作で指定された録画番組を、そのまま再生開始できる形で取得する。 */
@@ -236,8 +238,9 @@ class RecordViewModel @Inject constructor(
         loadSearchHistory()
         viewModelScope.launch {
             nhkExclusionRepository.state.collect { exclusion ->
-                detailFetchJob?.cancel()
-                _programDetail.value = _programDetail.value?.takeUnless(nhkExclusionRepository::isExcluded)
+                detailRequestCoordinator.cancel {
+                    _programDetail.value = _programDetail.value?.takeUnless(nhkExclusionRepository::isExcluded)
+                }
                 collapseSeries()
                 onlineChannelIndexJob?.cancel()
                 onlineFilterIndexJob?.cancel()

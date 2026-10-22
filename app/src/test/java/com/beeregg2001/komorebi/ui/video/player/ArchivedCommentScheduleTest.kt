@@ -15,6 +15,34 @@ class ArchivedCommentScheduleTest {
     private fun comment(time: Double, text: String = "$time") =
         ArchivedComment(time, text, "#ffffff", "user", "right", "medium")
 
+    @Test fun `polling requires playback comments active fence and a prepared view`() {
+        assertTrue(shouldPollArchivedComments(true, true, true, true))
+        assertFalse(shouldPollArchivedComments(false, true, true, true))
+        assertFalse(shouldPollArchivedComments(true, false, true, true))
+        assertFalse(shouldPollArchivedComments(true, true, false, true))
+        assertFalse(shouldPollArchivedComments(true, true, true, false))
+    }
+
+    @Test fun `pause and resume preserve schedule without duplicating lookahead`() {
+        val schedule = ArchivedCommentSchedule()
+        val initial = listOf(comment(10.0), comment(11.0), comment(12.0))
+        assertEquals(initial, schedule.next(initial, 10.0).comments)
+
+        // A paused overlay makes no scheduler calls. Resuming at the same media
+        // position must retain existing reservations while accepting late chase data.
+        val resumed = (initial + comment(10.5, "late")).sortedBy { it.time }
+        assertEquals(listOf(comment(10.5, "late")), schedule.next(resumed, 10.0).comments)
+    }
+
+    @Test fun `replacement view receives a fresh schedule for its empty surface`() {
+        val comments = listOf(comment(10.0), comment(11.0), comment(12.0))
+        val releasedViewSchedule = ArchivedCommentSchedule()
+        releasedViewSchedule.next(comments, 10.0)
+
+        val replacementViewSchedule = ArchivedCommentSchedule()
+        assertEquals(comments, replacementViewSchedule.next(comments, 10.0).comments)
+    }
+
     @Test fun `late initial load and chase insertion deliver new comments without requeueing lookahead`() {
         val schedule = ArchivedCommentSchedule()
         assertTrue(schedule.next(emptyList(), 10.0).comments.isEmpty())

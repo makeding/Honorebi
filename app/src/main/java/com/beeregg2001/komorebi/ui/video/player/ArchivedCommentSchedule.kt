@@ -20,6 +20,13 @@ internal class ArchivedCommentSnapshots(private val source: SnapshotStateList<Ar
 
 internal data class ArchivedCommentBatch(val reset: Boolean, val comments: List<ArchivedComment>)
 
+internal fun shouldPollArchivedComments(
+    isPlaying: Boolean,
+    isCommentEnabled: Boolean,
+    fenceActive: Boolean,
+    hasPreparedView: Boolean,
+): Boolean = isPlaying && isCommentEnabled && fenceActive && hasPreparedView
+
 /** Cursor over immutable, time-sorted snapshots. Deduplication retains only the scheduling window. */
 internal class ArchivedCommentSchedule {
     private var previousSnapshot: List<ArchivedComment>? = null

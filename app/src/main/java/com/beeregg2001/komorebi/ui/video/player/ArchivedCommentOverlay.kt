@@ -7,8 +7,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import master.flame.danmaku.controller.IDanmakuView
 import master.flame.danmaku.danmaku.model.BaseDanmaku
 import android.graphics.Color as AndroidColor
@@ -29,8 +32,8 @@ fun ArchivedCommentOverlay(
     useSoftwareRendering: Boolean = false,
     recordedPlaybackFence: RecordedPlaybackFence,
 ) {
-    val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
-    val preparedDanmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
+    val danmakuViewRef = remember { mutableStateOf<DanmakuViewHandle?>(null) }
+    val preparedDanmakuViewRef = remember { mutableStateOf<DanmakuViewHandle?>(null) }
 
     // UIスレッドでしか取得できない画面密度(density)を事前に計算しておく
     val context = LocalContext.current
@@ -40,7 +43,11 @@ fun ArchivedCommentOverlay(
     val latestPositionProvider by rememberUpdatedState(currentPositionProvider)
     val latestFontScale by rememberUpdatedState(commentFontSizeScale)
     val snapshots = remember(comments, recordedPlaybackFence.identity) { ArchivedCommentSnapshots(comments) }
-    val schedule = remember(snapshots, recordedPlaybackFence.identity) { ArchivedCommentSchedule() }
+    val schedule = remember(
+        snapshots,
+        recordedPlaybackFence.identity,
+        preparedDanmakuViewRef.value?.view,
+    ) { ArchivedCommentSchedule() }
     LaunchedEffect(snapshots, recordedPlaybackFence.identity) { snapshots.observe(recordedPlaybackFence) }
 
     // Chase playback may populate/merge the list after this coroutine starts.
@@ -52,26 +59,38 @@ fun ArchivedCommentOverlay(
         isCommentEnabled,
         recordedPlaybackFence.identity,
     ) {
-        if (!isPlaying || !isCommentEnabled || !recordedPlaybackFence.accepts()) {
+        val view = preparedDanmakuViewRef.value ?: return@LaunchedEffect
+        if (!shouldPollArchivedComments(
+                isPlaying = isPlaying,
+                isCommentEnabled = isCommentEnabled,
+                fenceActive = recordedPlaybackFence.accepts(),
+                hasPreparedView = true,
+            )
+        ) {
             return@LaunchedEffect
         }
-        val view = preparedDanmakuViewRef.value ?: return@LaunchedEffect
         while (isActive) {
-            if (recordedPlaybackFence.accepts() && preparedDanmakuViewRef.value === view) {
-                val currentSec = latestPositionProvider() / 1000.0 // ExoPlayer access stays on Main.
-                val commentsSnapshot = snapshots.current
-                val fontScale = latestFontScale
-                val batch = schedule.next(commentsSnapshot, currentSec)
-                if (batch.reset) {
-                    if (!recordedPlaybackFence.accepts()) return@LaunchedEffect
-                    view.removeAllDanmakus(true)
-                    Log.i(TAG, "Comment overlay seek reset. [current_sec=$currentSec, comments=${commentsSnapshot.size}]")
-                }
-                batch.comments.forEach { comment ->
-                    val danmaku = createDanmaku(view, comment, fontScale, density, colorCache)
-                    if (danmaku != null && recordedPlaybackFence.accepts() && preparedDanmakuViewRef.value === view) {
-                        danmaku.setTime(view.currentTime + ((comment.time - currentSec) * 1000).toLong())
-                        view.addDanmaku(danmaku)
+            if (!recordedPlaybackFence.accepts() || preparedDanmakuViewRef.value !== view) {
+                return@LaunchedEffect
+            }
+            val currentSec = latestPositionProvider() / 1000.0 // ExoPlayer access stays on Main.
+            val commentsSnapshot = snapshots.current
+            val fontScale = latestFontScale
+            withContext(Dispatchers.Default) {
+                view.ifActive { activeView ->
+                    if (!recordedPlaybackFence.accepts()) return@ifActive
+                    val batch = schedule.next(commentsSnapshot, currentSec)
+                    if (batch.reset) {
+                        if (!recordedPlaybackFence.accepts()) return@ifActive
+                        activeView.removeAllDanmakus(true)
+                        Log.i(TAG, "Comment overlay seek reset. [current_sec=$currentSec, comments=${commentsSnapshot.size}]")
+                    }
+                    batch.comments.forEach { comment ->
+                        val danmaku = createDanmaku(activeView, comment, fontScale, density, colorCache)
+                        if (danmaku != null && recordedPlaybackFence.accepts()) {
+                            danmaku.setTime(activeView.currentTime + ((comment.time - currentSec) * 1000).toLong())
+                            activeView.addDanmaku(danmaku)
+                        }
                     }
                 }
             }
@@ -87,27 +106,27 @@ fun ArchivedCommentOverlay(
         maxLines = commentMaxLines,
         sessionKey = recordedPlaybackFence.identity,
         running = isPlaying && isCommentEnabled && recordedPlaybackFence.accepts(),
-        onViewCreated = { view ->
+        onViewCreated = { handle ->
             if (recordedPlaybackFence.accepts()) {
-                danmakuViewRef.value = view
+                danmakuViewRef.value = handle
                 preparedDanmakuViewRef.value = null
             }
         },
-        onViewPrepared = { view ->
-            if (recordedPlaybackFence.accepts() && danmakuViewRef.value === view) {
-                preparedDanmakuViewRef.value = view
+        onViewPrepared = { handle ->
+            if (recordedPlaybackFence.accepts() && danmakuViewRef.value === handle) {
+                preparedDanmakuViewRef.value = handle
             }
         },
-        onViewReleased = { view ->
-            if (preparedDanmakuViewRef.value === view) preparedDanmakuViewRef.value = null
-            if (danmakuViewRef.value === view) danmakuViewRef.value = null
+        onViewReleased = { handle ->
+            if (preparedDanmakuViewRef.value?.view === handle.view) preparedDanmakuViewRef.value = null
+            if (danmakuViewRef.value?.view === handle.view) danmakuViewRef.value = null
         },
     )
 }
 
 /**
  * コメントのインスタンスを作成する
- * View の release と直列化するため UI スレッドから呼び、事前計算した density を使う。
+ * View の release と直列化したバックグラウンド処理から呼び、事前計算した density を使う。
  */
 private fun createDanmaku(
     view: IDanmakuView,

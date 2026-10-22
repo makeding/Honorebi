@@ -9,8 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import master.flame.danmaku.controller.DrawHandler
@@ -25,6 +23,7 @@ import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.ui.widget.DanmakuSurfaceView
 import master.flame.danmaku.ui.widget.DanmakuView
 import java.util.IdentityHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import android.graphics.Color as AndroidColor
 
 private const val MAX_VISIBLE_DANMAKU = 80
@@ -39,17 +38,14 @@ fun DanmakuOverlay(
     maxLines: Int = 0,
     sessionKey: Any? = null,
     running: Boolean,
-    onViewCreated: (IDanmakuView) -> Unit,
-    onViewPrepared: (IDanmakuView) -> Unit = {},
-    onViewReleased: (IDanmakuView) -> Unit = {},
+    onViewCreated: (DanmakuViewHandle) -> Unit,
+    onViewPrepared: (DanmakuViewHandle) -> Unit = {},
+    onViewReleased: (DanmakuViewHandle) -> Unit = {},
 ) {
     val latestRunning by rememberUpdatedState(running)
     val latestOnViewCreated by rememberUpdatedState(onViewCreated)
     val latestOnViewPrepared by rememberUpdatedState(onViewPrepared)
     val latestOnViewReleased by rememberUpdatedState(onViewReleased)
-    var activeView by remember(sessionKey, useSoftwareRendering) {
-        mutableStateOf<ActiveDanmakuView?>(null)
-    }
     val viewLifecycles = remember { IdentityHashMap<IDanmakuView, DanmakuViewLifecycle>() }
     val danmakuContext = remember(sessionKey) {
         DanmakuContext.create().apply {
@@ -85,23 +81,13 @@ fun DanmakuOverlay(
         )
     }
 
-    LaunchedEffect(activeView, running) {
-        activeView?.let { active ->
-            active.lifecycle.ifActive {
-                if (active.view.isPrepared) {
-                    if (running) active.view.resume() else active.view.pause()
-                }
-            }
-        }
-    }
-
     key(sessionKey, useSoftwareRendering) {
         AndroidView(
             modifier = modifier,
             factory = { context ->
                 fun <T> setup(view: T): T where T : View, T : IDanmakuView = view.apply {
                     val lifecycle = DanmakuViewLifecycle()
-                    val active = ActiveDanmakuView(this, lifecycle)
+                    val handle = DanmakuViewHandle(this, lifecycle)
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -111,12 +97,19 @@ fun DanmakuOverlay(
                     enableDanmakuDrawingCache(false)
                     setCallback(object : DrawHandler.Callback {
                         override fun prepared() {
-                            val accepted = lifecycle.prepared(
-                                running = latestRunning,
-                                start = { start() },
-                                pause = { pause() },
-                            )
-                            if (accepted) latestOnViewPrepared(this@apply)
+                            // DrawHandler may call this from its drawing thread. Queue the whole
+                            // check/start/pause transition on the View thread so AndroidView
+                            // release and a late prepared callback cannot interleave.
+                            post {
+                                val accepted = lifecycle.prepared(
+                                    running = latestRunning,
+                                    start = { start() },
+                                    pause = { pause() },
+                                )
+                                if (accepted) {
+                                    latestOnViewPrepared(handle)
+                                }
+                            }
                         }
                         override fun updateTimer(timer: DanmakuTimer?) = Unit
                         override fun danmakuShown(danmaku: BaseDanmaku?) = Unit
@@ -128,8 +121,7 @@ fun DanmakuOverlay(
                         }
                     }
                     viewLifecycles[this] = lifecycle
-                    activeView = active
-                    latestOnViewCreated(this)
+                    latestOnViewCreated(handle)
                 }
                 if (useSoftwareRendering) {
                     setup(DanmakuView(context)).apply {
@@ -148,6 +140,14 @@ fun DanmakuOverlay(
                 }
             },
             update = { view ->
+                (view as? IDanmakuView)?.let { danmakuView ->
+                    viewLifecycles[danmakuView]?.updateRunning(
+                        running = running,
+                        isPrepared = danmakuView.isPrepared,
+                        resume = { danmakuView.resume() },
+                        pause = { danmakuView.pause() },
+                    )
+                }
                 if (view is DanmakuView) {
                     val layerType = if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
                     if (view.layerType != layerType) view.setLayerType(layerType, null)
@@ -156,35 +156,48 @@ fun DanmakuOverlay(
             onRelease = { view ->
                 (view as? IDanmakuView)?.let {
                     val lifecycle = viewLifecycles.remove(it)
-                    val active = activeView?.takeIf { active -> active.view === it }
-                    if (active != null) activeView = null
                     if (lifecycle != null) {
-                        lifecycle.release {
-                            it.stop()
-                            it.release()
+                        val handle = DanmakuViewHandle(it, lifecycle)
+                        try {
+                            lifecycle.release {
+                                try {
+                                    it.stop()
+                                } finally {
+                                    it.release()
+                                }
+                            }
+                        } finally {
+                            latestOnViewReleased(handle)
                         }
                     } else {
-                        it.stop()
-                        it.release()
+                        try {
+                            it.stop()
+                        } finally {
+                            it.release()
+                        }
                     }
-                    latestOnViewReleased(it)
                 }
             },
         )
     }
 }
 
-private data class ActiveDanmakuView(
+class DanmakuViewHandle internal constructor(
     val view: IDanmakuView,
-    val lifecycle: DanmakuViewLifecycle,
-)
+    private val lifecycle: DanmakuViewLifecycle,
+) {
+    fun ifActive(block: (IDanmakuView) -> Unit): Boolean = lifecycle.ifActive {
+        block(view)
+    }
+}
 
-/** Serializes asynchronous prepare callbacks against view release. */
+/** Serializes prepare, background scheduling, state updates, and release for one view. */
 internal class DanmakuViewLifecycle {
-    private var released = false
+    private val released = AtomicBoolean(false)
+    private var appliedRunning: Boolean? = null
 
     fun ifActive(block: () -> Unit): Boolean = synchronized(this) {
-        if (released) return@synchronized false
+        if (released.get()) return@synchronized false
         block()
         true
     }
@@ -196,11 +209,28 @@ internal class DanmakuViewLifecycle {
     ): Boolean = ifActive {
         start()
         if (!running) pause()
+        appliedRunning = running
+    }
+
+    fun updateRunning(
+        running: Boolean,
+        isPrepared: Boolean,
+        resume: () -> Unit,
+        pause: () -> Unit,
+    ): Boolean {
+        var changed = false
+        ifActive {
+            if (isPrepared && appliedRunning != running) {
+                if (running) resume() else pause()
+                appliedRunning = running
+                changed = true
+            }
+        }
+        return changed
     }
 
     fun release(block: () -> Unit): Boolean = synchronized(this) {
-        if (released) return@synchronized false
-        released = true
+        if (!released.compareAndSet(false, true)) return@synchronized false
         block()
         true
     }
