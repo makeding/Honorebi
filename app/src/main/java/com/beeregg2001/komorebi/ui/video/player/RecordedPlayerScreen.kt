@@ -48,6 +48,8 @@ import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.player.rememberDataBroadcastingInputState
 import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
+import com.beeregg2001.komorebi.ui.player.PlaybackSourceFeedback
+import com.beeregg2001.komorebi.ui.player.PlaybackSourceRequest
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionCue
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.video.player.policy.NEXT_EPISODE_COUNTDOWN_WINDOW_MS
@@ -180,7 +182,8 @@ internal fun RecordedPlayerScreen(
     val preferOriginalMpegTs by settingsViewModel.preferOriginalMpegTs.collectAsState()
     val backendType by settingsViewModel.backendType.collectAsState()
 
-    val isModern = false
+    val playerUiMode by settingsViewModel.playerUiMode.collectAsState()
+    val isModern = playerUiMode == "MODERN"
     var isBuffering by remember { mutableStateOf(true) }
 
     LaunchedEffect(initialProgram.id, recordedPlaybackToken, backendType) {
@@ -384,9 +387,9 @@ internal fun RecordedPlayerScreen(
     var currentSubtitleLanguageId by remember(recordedPlaybackToken) { mutableIntStateOf(1) }
 
     var sourceRequest by remember(recordedPlaybackFence.identity, vs.currentQuality.value) {
-        mutableStateOf<RecordedSourceRequest>(RecordedSourceRequest.Ready)
+        mutableStateOf<PlaybackSourceRequest>(PlaybackSourceRequest.Ready)
     }
-    val showSourceFeedback = sourceRequest != RecordedSourceRequest.Ready && !isRecordedSwitching && entryError == null
+    val showSourceFeedback = sourceRequest != PlaybackSourceRequest.Ready && !isRecordedSwitching && entryError == null
     val ui = remember { RecordedPlayerUiState() }
     var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
 
@@ -1136,7 +1139,7 @@ internal fun RecordedPlayerScreen(
 
         if (isLiveStream && !isRecordingChasePlayback) {
             seekResolveJob?.cancel()
-            sourceRequest = RecordedSourceRequest.Pending()
+            sourceRequest = PlaybackSourceRequest.Pending()
             seekResolveJob = scope.launch {
                 isBuffering = true; exoPlayer.pause()
                 vs.playbackOffsetMs = safeTarget
@@ -1151,7 +1154,7 @@ internal fun RecordedPlayerScreen(
                 if (!currentPlaybackFence.accepts()) return@launch
                 val newUrl = source.url
                 if (newUrl.isNotBlank()) {
-                    sourceRequest = RecordedSourceRequest.Ready
+                    sourceRequest = PlaybackSourceRequest.Ready
                     currentStreamUrlRef.set(newUrl)
                     exoPlayer.setMediaItem(buildVideoMediaItem(newUrl))
                     exoPlayer.prepare()
@@ -1159,7 +1162,7 @@ internal fun RecordedPlayerScreen(
                 } else {
                     pendingPlayerResumePositionMs = safeTarget
                     isBuffering = false
-                    sourceRequest = RecordedSourceRequest.Failed(source.failure
+                    sourceRequest = PlaybackSourceRequest.Failed(source.failure
                         ?: com.beeregg2001.komorebi.common.userFacingFailure(null, "RECORDED_SOURCE"))
                 }
             }
@@ -1311,9 +1314,9 @@ internal fun RecordedPlayerScreen(
                 isQualitiesLoaded, availableQualities, vs.currentQuality)) return@LaunchedEffect
 
         isBuffering = true
-        sourceRequest = RecordedSourceRequest.Pending(
-            (sourceRequest as? RecordedSourceRequest.Failed)?.failure
-                ?: (sourceRequest as? RecordedSourceRequest.Pending)?.previousFailure
+        sourceRequest = PlaybackSourceRequest.Pending(
+            (sourceRequest as? PlaybackSourceRequest.Failed)?.failure
+                ?: (sourceRequest as? PlaybackSourceRequest.Pending)?.previousFailure
         )
         val resumePositionMs = resolveRecreatedPlayerStartPositionMs(
             explicitResumePositionMs = pendingPlayerResumePositionMs,
@@ -1340,7 +1343,7 @@ internal fun RecordedPlayerScreen(
         if (!currentPlaybackFence.accepts()) return@LaunchedEffect
         val url = source.url
         if (url.isNotBlank()) {
-            sourceRequest = RecordedSourceRequest.Ready
+            sourceRequest = PlaybackSourceRequest.Ready
             isWaitingForNetworkRecovery = false
             currentStreamUrlRef.set(url)
             val mediaItem = buildVideoMediaItem(url)
@@ -1389,7 +1392,7 @@ internal fun RecordedPlayerScreen(
                 }
                 null -> {
                     isBuffering = false
-                    sourceRequest = RecordedSourceRequest.Failed(source.failure
+                    sourceRequest = PlaybackSourceRequest.Failed(source.failure
                         ?: com.beeregg2001.komorebi.common.userFacingFailure(null, "RECORDED_SOURCE"))
                 }
                 else -> Unit
@@ -1576,7 +1579,7 @@ internal fun RecordedPlayerScreen(
     ) {
         if (isPiPMode) return@LaunchedEffect
         delay(150)
-        if (sourceRequest != RecordedSourceRequest.Ready) {
+        if (sourceRequest != PlaybackSourceRequest.Ready) {
             // The retry surface owns focus until it disappears. Re-entering modern
             // controls must restore focus even if they were already visible before it.
             ui.wasControlsVisible = false
@@ -1955,7 +1958,7 @@ internal fun RecordedPlayerScreen(
                 infoFocusRequester = ui.infoFocusRequester,
                 presentation = rememberRecordedProgramPresentation(currentProgram, videoPlayerViewModel, backendType),
                 subtitleCommentLayer = subtitleCommentLayer,
-                isBuffering = isBuffering && (sourceRequest == RecordedSourceRequest.Ready || isRecordedSwitching),
+                isBuffering = isBuffering && (sourceRequest == PlaybackSourceRequest.Ready || isRecordedSwitching),
                 onLCropClose = {
                     closeRecordedLCrop(vs)
                     scope.launch {
@@ -2131,12 +2134,12 @@ internal fun RecordedPlayerScreen(
             }
         }
         if (!isPiPMode && showSourceFeedback) {
-            RecordedSourceFeedback(
+            PlaybackSourceFeedback(
                 request = sourceRequest,
                 modifier = Modifier.align(Alignment.Center),
                 onRetry = {
-                    if (sourceRequest is RecordedSourceRequest.Failed && currentPlaybackFence.accepts()) {
-                        sourceRequest = RecordedSourceRequest.Pending((sourceRequest as RecordedSourceRequest.Failed).failure)
+                    if (sourceRequest is PlaybackSourceRequest.Failed && currentPlaybackFence.accepts()) {
+                        sourceRequest = PlaybackSourceRequest.Pending((sourceRequest as PlaybackSourceRequest.Failed).failure)
                         preparedPlaybackKey = null
                         currentSessionId = UUID.randomUUID().toString()
                         initialUrlRetryNonce++
@@ -2144,7 +2147,7 @@ internal fun RecordedPlayerScreen(
                 },
             )
         }
-        if (!isPiPMode && !isSubOverlayOpen && sourceRequest == RecordedSourceRequest.Ready && tsRecoveryFailure != null) {
+        if (!isPiPMode && !isSubOverlayOpen && sourceRequest == PlaybackSourceRequest.Ready && tsRecoveryFailure != null) {
             RecordedTsFailure(
                 message = tsRecoveryFailure!!,
                 onSeekForward = { performSeek(getCurrentPositionMs() + 30_000L) },

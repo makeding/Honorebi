@@ -76,4 +76,26 @@ class UnifiedPlayerArchitectureTest {
         assertTrue("SMB must enter without a RecordedProgram", Regex("program\\s*=\\s*null").containsMatchIn(smbBranch))
         assertFalse("SMB must not use a synthetic base program", Regex("\\b(baseProgram|dummyProgram)\\b").containsMatchIn(smbBranch))
     }
+
+    @Test
+    fun smbPlayback_usesSharedFeedbackRuntimeAndConfiguredControlStyle() {
+        val entry = read("java/com/beeregg2001/komorebi/ui/video/player/VideoPlayerEntry.kt")
+        val smb = read("java/com/beeregg2001/komorebi/ui/video/player/SmbPlayerScreen.kt")
+        val recorded = read("java/com/beeregg2001/komorebi/ui/video/player/RecordedPlayerScreen.kt")
+
+        assertTrue("SMB source identity must key the player scene", entry.contains("key(metadata.stableId)"))
+        assertTrue("SMB must use shared source feedback", smb.contains("PlaybackSourceFeedback("))
+        assertTrue("Recorded playback must use the same feedback", recorded.contains("PlaybackSourceFeedback("))
+        assertTrue("SMB must read the configured player style", smb.contains("settingsViewModel.playerUiMode"))
+        assertTrue("SMB controls must receive the configured style", smb.contains("isModernUi = isModern"))
+        assertTrue("SMB modern settings must use the shared overlay", smb.contains("ModernVideoSettingsOverlay("))
+        assertFalse(
+            "The recorded-only feedback owner must be removed",
+            File(sourceRoot, "java/com/beeregg2001/komorebi/ui/video/player/RecordedSourceFeedback.kt").exists(),
+        )
+        assertTrue(
+            "Shared feedback must be owned by ui.player",
+            File(sourceRoot, "java/com/beeregg2001/komorebi/ui/player/PlaybackSourceFeedback.kt").exists(),
+        )
+    }
 }

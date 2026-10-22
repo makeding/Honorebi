@@ -5,6 +5,7 @@ package com.beeregg2001.komorebi.ui.video.player
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.RecordedPlaybackToken
@@ -33,6 +34,9 @@ fun VideoPlayerScreen(
     videoPlayerViewModel: VideoPlayerViewModel, settingsViewModel: SettingsViewModel,
 ) {
     if (program == null) {
-        SmbPlayerScreen(requireNotNull(smbItem), requireNotNull(smbMetadata), initialPositionMs, showControls, onShowControlsChange, isSubMenuOpen, onSubMenuToggle, onBackPressed, onShowToast, isPiPMode, onPiPRequested, settingsViewModel)
+        val metadata = requireNotNull(smbMetadata)
+        key(metadata.stableId) {
+            SmbPlayerScreen(requireNotNull(smbItem), metadata, initialPositionMs, showControls, onShowControlsChange, isSubMenuOpen, onSubMenuToggle, onBackPressed, onShowToast, isPiPMode, onPiPRequested, settingsViewModel)
+        }
     } else RecordedPlayerScreen(program, initialPositionMs, initialQuality, isNetworkAvailable, showControls, onShowControlsChange, isSubMenuOpen, onSubMenuToggle, isSceneSearchOpen, onSceneSearchToggle, recentRecordings, animeChannels, onProgramSelect, recordedPlaybackToken, isCurrentRecordedPlayback, isRecordedSwitching, onProgramReady, onRecordedSwitchTerminalFailure, shouldPersistWatchHistory, onChannelSelect, onPlaybackEnded, onBackPressed, onShowToast, isPiPMode, onPiPRequested, videoPlayerViewModel, settingsViewModel)
 }

@@ -46,6 +46,8 @@ import com.beeregg2001.komorebi.ui.player.CaptionDecodeRouter
 import com.beeregg2001.komorebi.ui.player.CaptionGenerationFence
 import com.beeregg2001.komorebi.ui.player.PlayerBufferProfile
 import com.beeregg2001.komorebi.ui.player.PlayerProfile
+import com.beeregg2001.komorebi.ui.player.PlayerRecoveryLifecycleGate
+import com.beeregg2001.komorebi.ui.player.PlayerRecoveryResumeDecision
 import com.beeregg2001.komorebi.ui.player.PlayerRuntime
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadDataType
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedLoadRetryDecision
@@ -322,6 +324,17 @@ fun rememberManagedExoPlayer(
         }
     }
 
+    val recoveryLifecycleGate = remember(
+        recordedPlaybackFence.identity,
+        constructionKey,
+        captionQuality,
+        smbServerList,
+        dataBroadcastingCallback,
+    ) {
+        PlayerRecoveryLifecycleGate(
+            initiallyForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        )
+    }
     val playerRuntime = remember(
         recordedPlaybackFence.identity,
         constructionKey,
@@ -472,6 +485,7 @@ fun rememberManagedExoPlayer(
                         if (!isPlaybackRecoveryRunning.compareAndSet(false, true)) {
                             return
                         }
+                        val recoveryGeneration = recoveryLifecycleGate.beginRecovery()
                         scope.launch {
                             try {
                                 if (!recordedPlaybackFence.accepts() || !captionFence.accepts()) return@launch
@@ -489,8 +503,15 @@ fun rememberManagedExoPlayer(
                                 }
                                 currentOnBufferingChanged.value(true)
                                 delay(3000L)
-                                if (!recordedPlaybackFence.accepts() || !captionFence.accepts()) return@launch
-                                runtime.reprepare(playWhenReady = true)
+                                when (recoveryLifecycleGate.finishDelay(
+                                    token = recoveryGeneration,
+                                    stillCurrent = recordedPlaybackFence.accepts() && captionFence.accepts(),
+                                )) {
+                                    PlayerRecoveryResumeDecision.ResumeNow ->
+                                        runtime.reprepare(playWhenReady = true)
+                                    PlayerRecoveryResumeDecision.ResumeOnStart,
+                                    PlayerRecoveryResumeDecision.Drop -> Unit
+                                }
                             } finally {
                                 isPlaybackRecoveryRunning.set(false)
                             }
@@ -531,13 +552,23 @@ fun rememberManagedExoPlayer(
 
     DisposableEffect(lifecycleOwner, playerRuntime) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                playerRuntime.pause()
-                currentOnStopOrDispose.value(exoPlayer)
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    if (recordedPlaybackFence.accepts() && recoveryLifecycleGate.onStart()) {
+                        playerRuntime.reprepare(playWhenReady = true)
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    recoveryLifecycleGate.onStop()
+                    playerRuntime.pause()
+                    currentOnStopOrDispose.value(exoPlayer)
+                }
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            recoveryLifecycleGate.retire()
             try {
                 currentOnStopOrDispose.value(exoPlayer)
             } finally {
