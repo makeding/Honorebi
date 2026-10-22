@@ -49,15 +49,45 @@ class LivePlayerInputTest {
         assertEquals(0, channelSelections)
     }
 
-    @Test fun upUsesTheSameTwoStepsForMenu() {
-        assertTrue(key(AndroidKeyEvent.KEYCODE_DPAD_UP))
-        assertTrue(overlay)
-        assertFalse(menu)
+    @Test fun upOpensMenuImmediatelyFromEveryInformationStateAndDisplayMode() {
+        for (dualDisplay in listOf(false, true)) {
+            for ((showOverlay, isManual, isPinned) in listOf(
+                Triple(false, false, false),
+                Triple(true, false, false),
+                Triple(true, true, false),
+                Triple(true, false, true),
+                Triple(false, false, true),
+            )) {
+                state.isDualDisplayMode = dualDisplay
+                overlay = showOverlay
+                manual = isManual
+                pinned = isPinned
+                menu = false
+                assertTrue(key(AndroidKeyEvent.KEYCODE_DPAD_UP))
+                assertTrue(menu)
+                assertFalse(overlay)
+                assertFalse(manual)
+                assertFalse(pinned)
+                assertFalse(browser)
+                assertEquals(0, channelSelections)
+            }
+        }
+    }
+
+    @Test fun upDoesNotStealPanelInputOrReopenMenuOnRepeatOrKeyUp() {
+        menu = true
+        assertFalse(key(AndroidKeyEvent.KEYCODE_DPAD_UP))
+        menu = false
+        browser = true
+        assertFalse(key(AndroidKeyEvent.KEYCODE_DPAD_UP))
+        browser = false
+        state.playerError = "Error"
+        assertFalse(key(AndroidKeyEvent.KEYCODE_DPAD_UP))
+        state.playerError = null
         assertTrue(key(AndroidKeyEvent.KEYCODE_DPAD_UP, repeat = 1))
         assertFalse(menu)
-        assertTrue(key(AndroidKeyEvent.KEYCODE_DPAD_UP))
-        assertTrue(menu)
-        assertFalse(overlay)
+        assertFalse(key(AndroidKeyEvent.KEYCODE_DPAD_UP, action = AndroidKeyEvent.ACTION_UP))
+        assertFalse(menu)
     }
 
     @Test fun backClosesFirstFeedbackWithoutExitingPlayback() {

@@ -241,7 +241,7 @@ fun LiveOverlayUI(
                     PlayerTimelineRow(positionMs, durationMs) {
                         PlayerTimelineTrack(positionMs ?: 0, durationMs ?: 0)
                     }
-                    Text("上下キーでスクロール  ·  戻るで閉じる", color = Color.White.copy(0.7f),
+                    Text("下キーでスクロール  ·  上キーでメニュー  ·  戻るで閉じる", color = Color.White.copy(0.7f),
                         modifier = Modifier.padding(top = 8.dp))
                 }
             }

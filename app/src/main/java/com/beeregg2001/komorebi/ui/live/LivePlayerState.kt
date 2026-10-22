@@ -274,21 +274,12 @@ class LivePlayerState(
 
         when (keyCode) {
             android.view.KeyEvent.KEYCODE_DPAD_UP -> {
-                if (showOverlay && isManualOverlay) {
-                    scope.launch { scrollState.animateScrollTo(scrollState.value - 200) }
-                    return true
-                }
-                if (!isDualDisplayMode && repeatCount > 0) return true
-                if (!isDualDisplayMode && !showOverlay && !isPinnedOverlay) {
-                    onManualOverlayChange(false)
-                    onShowOverlayChange(true)
-                    return true
-                }
-                if (!isDualDisplayMode || (!showOverlay && !isPinnedOverlay)) {
-                    onShowOverlayChange(false)
-                    onSubMenuToggle(true)
-                    return true
-                }
+                if (repeatCount > 0) return true
+                onShowOverlayChange(false)
+                onManualOverlayChange(false)
+                onPinnedOverlayChange(false)
+                onSubMenuToggle(true)
+                return true
             }
 
             android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
