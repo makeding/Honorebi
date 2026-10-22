@@ -17,13 +17,18 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.awaitCancellation
 
-/** Prepares an unplaced panel after the foreground UI has had a frame to draw. */
+private suspend fun awaitPlayerPanelFrame(operation: () -> Unit) {
+    withFrameNanos { operation() }
+}
+
+/** Prepares an unplaced panel in later frames after the foreground UI has drawn. */
 @Composable
 internal fun PreparedPlayerPanel(
     visible: Boolean,
     prepare: Boolean,
     contentKey: Any? = Unit,
     modifier: Modifier = Modifier,
+    awaitPreparationFrame: suspend (() -> Unit) -> Unit = ::awaitPlayerPanelFrame,
     content: @Composable (isActive: Boolean) -> Unit,
 ) {
     val layoutState = remember(contentKey) { SubcomposeLayoutState() }
@@ -53,12 +58,16 @@ internal fun PreparedPlayerPanel(
 
     LaunchedEffect(layoutState, prepare, visible, size, foregroundDrawn) {
         if (!prepare || visible || !foregroundDrawn || size == IntSize.Zero) return@LaunchedEffect
-        // Preparation follows a real draw, then yields to the next frame.
-        withFrameNanos { }
+        // Preparation follows a real draw, then starts on a later frame.
+        awaitPreparationFrame { }
         val handle = layoutState.precompose(slot, panelContent)
         try {
+            // Keep composition and measurement off the same frame. If a panel
+            // exposes multiple root placeables, measure at most one per frame.
             repeat(handle.placeablesCount) { index ->
-                handle.premeasure(index, Constraints.fixed(size.width, size.height))
+                awaitPreparationFrame {
+                    handle.premeasure(index, Constraints.fixed(size.width, size.height))
+                }
             }
             awaitCancellation()
         } finally {
