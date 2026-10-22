@@ -43,7 +43,6 @@ internal class JikkyoHistoryBackfill(
         if (pageCount < pageSize || oldest <= lowerBoundUnixSeconds) return false
         // NX-Jikkyo queries `date < when`, so the next cursor is the oldest timestamp
         // itself. Subtracting one microsecond would skip the immediately preceding chat.
-        if (oldest <= lowerBoundUnixSeconds) return false
         whenUnixSeconds = oldest
         pageCount = 0
         oldestUnixSeconds = null
