@@ -15,6 +15,7 @@ internal class NetworkReconnectGate {
 }
 
 internal enum class OfflinePresentation { CONNECTED, CACHED, CONNECTION_FAILURE }
+internal enum class OfflineUiAction { SHOW_CONNECTED, SHOW_CACHED, SHOW_CONNECTION_GUIDE, KEEP_CONNECTION_GUIDE }
 
 /** Called only after the current request (including a queued reconnect) has finished. */
 internal fun offlinePresentation(
@@ -27,4 +28,18 @@ internal fun offlinePresentation(
     !channelError -> OfflinePresentation.CONNECTED
     offlineMode || dataReady -> OfflinePresentation.CACHED
     else -> OfflinePresentation.CONNECTION_FAILURE
+}
+
+/** A shown failure guide is retired only by success or an explicit user action. */
+internal fun offlineUiAction(
+    presentation: OfflinePresentation,
+    connectionGuideVisible: Boolean,
+): OfflineUiAction = when (presentation) {
+    OfflinePresentation.CONNECTED -> OfflineUiAction.SHOW_CONNECTED
+    OfflinePresentation.CONNECTION_FAILURE -> OfflineUiAction.SHOW_CONNECTION_GUIDE
+    OfflinePresentation.CACHED -> if (connectionGuideVisible) {
+        OfflineUiAction.KEEP_CONNECTION_GUIDE
+    } else {
+        OfflineUiAction.SHOW_CACHED
+    }
 }

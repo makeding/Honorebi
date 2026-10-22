@@ -6,7 +6,6 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -161,36 +159,6 @@ internal fun NetworkStatusButton(
     }
 }
 
-/**
- * オフライン時にコンテンツへ重ねて表示する通知ピル。
- * レイアウトフローに乗らないため、接続状態が変わっても下のコンテンツが動かない。
- */
-@Composable
-private fun OfflineNoticeBanner(modifier: Modifier = Modifier) {
-    val colors = KomorebiTheme.colors
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(colors.background.copy(alpha = 0.96f))
-            .padding(horizontal = 14.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Default.WifiOff,
-            contentDescription = null,
-            tint = colors.accent,
-            modifier = Modifier.size(18.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = "オフライン — キャッシュ済みの情報を表示しています",
-            color = colors.textPrimary,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-        )
-    }
-}
-
 @OptIn(ExperimentalComposeUiApi::class)
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -238,6 +206,10 @@ fun HomeLauncherScreen(
     onReturnFocusConsumed: () -> Unit = {},
     timeFormat: String = "24H",
     networkConnectionStatus: NetworkConnectionStatus = NetworkConnectionStatus.Disconnected,
+    hasBackendFailure: Boolean = false,
+    backendFailureReason: String? = null,
+    isBackendRecoveryInProgress: Boolean = false,
+    onRetryBackendConnection: () -> Unit = {},
     hasActivePlayer: Boolean = false,
     onReturnToPlayerClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
@@ -485,22 +457,6 @@ fun HomeLauncherScreen(
                     }
                 }
             }
-        }
-    }
-
-    // ★ 修正: ネットワーク状態の変化を「前回値との比較」で判定する小さなステートマシン。
-    // 初回は状態を記録するだけで何もしない。オフラインへ遷移した時だけフォーカスを
-    // 安全な位置(タブバー)へ戻す。オンライン復帰時や通常の閲覧中はフォーカスを奪わない。
-    var previousNetworkAvailable by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(networkConnectionStatus.isAvailable) {
-        val current = networkConnectionStatus.isAvailable
-        val previous = previousNetworkAvailable
-        previousNetworkAvailable = current
-
-        if (previous != null && previous != current && !current &&
-            !isReturningFromPlayer && !isFullScreenMode
-        ) {
-            focusMemory.remember(safeTabIndex)
         }
     }
 
@@ -938,15 +894,29 @@ fun HomeLauncherScreen(
                     }
                 }
 
-                // オフライン通知はレイアウトの流れから外し、コンテンツに重ねて表示する。
-                // 接続状態が変わってもコンテンツが上下にリフローしない。
-                if (!networkConnectionStatus.isAvailable) {
-                    OfflineNoticeBanner(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
-                    )
-                }
+                HomeConnectionFeedback(
+                    state = homeConnectionFeedbackState(
+                        networkAvailable = networkConnectionStatus.isAvailable,
+                        hasBackendFailure = hasBackendFailure,
+                        backendFailureReason = backendFailureReason,
+                        recoveryInProgress = isBackendRecoveryInProgress,
+                    ),
+                    onOpenConnectionSettings = onConnectionSettings,
+                    onRetryBackendConnection = onRetryBackendConnection,
+                    onRecoveryFocus = {
+                        scope.launch {
+                            if (!firstContentRequesterFor(safeTabIndex)
+                                    .safeRequestFocusWithRetry("HomeConnectionRecovered")
+                            ) {
+                                ui.tabFocusRequesters.getOrNull(safeTabIndex)
+                                    ?.safeRequestFocusWithRetry("HomeConnectionRecoveredFallback")
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp, start = 48.dp, end = 48.dp),
+                )
             }
         }
     }

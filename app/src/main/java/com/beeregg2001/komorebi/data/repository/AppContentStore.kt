@@ -29,6 +29,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import com.beeregg2001.komorebi.data.api.interceptor.BackendRetryGate
 import com.beeregg2001.komorebi.data.api.interceptor.backendApiFailure
+import com.beeregg2001.komorebi.common.userFacingFailure
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -332,7 +333,11 @@ class AppContentStore internal constructor(
             Log.e(TAG, "Error fetching channels", e)
             if (!appAwake || !networkAvailable || generation != wakeGeneration.value) return null
             _connectionError.value = true
-            _channelError.value = e.backendApiFailure()?.displayText ?: e.message ?: "チャンネルを取得できませんでした。接続を確認して再試行してください。"
+            _channelError.value = e.backendApiFailure()?.let { failure ->
+                "${failure.reason}（${failure.safeCode} / HTTP ${failure.status}）接続設定を確認するか、再試行してください。"
+            } ?: userFacingFailure(e, "CHANNELS_LOAD_FAILED").let { failure ->
+                "${failure.message}（${failure.code}）"
+            }
             channelRetry.failed(e)
             return e
         } finally {

@@ -25,7 +25,10 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -33,6 +36,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +48,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.ui.components.ConnectionFailureDetailsDialog
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
 
@@ -54,21 +60,31 @@ fun OfflineGuideScreen(
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    reason: String? = null
+    reason: String? = null,
+    isRetrying: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val primaryFocusRequester = remember { FocusRequester() }
+    val reasonFocusRequester = remember { FocusRequester() }
+    var showReasonDetails by remember { mutableStateOf(false) }
+    var hasOpenedReasonDetails by remember { mutableStateOf(false) }
 
     LaunchedEffect(hasOfflineCache) {
         delay(250)
         primaryFocusRequester.safeRequestFocus("OfflineGuide")
     }
 
+    LaunchedEffect(showReasonDetails) {
+        if (!showReasonDetails && hasOpenedReasonDetails) {
+            reasonFocusRequester.safeRequestFocus("OfflineGuideReasonReturn")
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = if (colors.isDark) 0.26f else 0.08f))
-            .padding(horizontal = 72.dp, vertical = 56.dp),
+            .padding(horizontal = 72.dp, vertical = 24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -78,7 +94,7 @@ fun OfflineGuideScreen(
         ) {
             Box(
                 modifier = Modifier
-                    .size(124.dp)
+                    .size(80.dp)
                     .background(colors.surface.copy(alpha = 0.72f), CircleShape)
                     .border(1.dp, colors.textPrimary.copy(alpha = 0.16f), CircleShape),
                 contentAlignment = Alignment.Center
@@ -87,11 +103,11 @@ fun OfflineGuideScreen(
                     imageVector = Icons.Default.CloudOff,
                     contentDescription = null,
                     tint = colors.textPrimary.copy(alpha = 0.92f),
-                    modifier = Modifier.size(60.dp)
+                    modifier = Modifier.size(40.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = if (isDeviceOffline) "ネットワークに接続されていません" else "サーバーに接続できません",
@@ -114,32 +130,53 @@ fun OfflineGuideScreen(
                 textAlign = TextAlign.Center
             )
 
-            // Fixed-height, non-shifting slot for the safe failure reason (code / HTTP status
-            // first).  A single ellipsized line keeps the action buttons below from moving.
+            // The preview and its detail affordance always own the same space, so a changing
+            // error cannot move the actions. The full safe reason remains available by remote.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(28.dp)
+                    .height(64.dp)
                     .padding(top = 4.dp)
                     .testTag("offline-guide-reason"),
                 contentAlignment = Alignment.Center
             ) {
                 if (!reason.isNullOrBlank()) {
-                    Text(
-                        text = reason,
-                        color = colors.textPrimary.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Button(
+                        onClick = {
+                            hasOpenedReasonDetails = true
+                            showReasonDetails = true
+                        },
+                        shape = ButtonDefaults.shape(shape = RoundedCornerShape(8.dp)),
+                        colors = ButtonDefaults.colors(
+                            containerColor = colors.textPrimary.copy(alpha = 0.08f),
+                            contentColor = colors.textSecondary,
+                            focusedContainerColor = colors.textPrimary.copy(alpha = 0.18f),
+                            focusedContentColor = colors.textPrimary,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                            .focusRequester(reasonFocusRequester)
+                            .testTag("offline-guide-reason-open"),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = reason,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text("詳細を表示", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.width(360.dp)
             ) {
@@ -154,9 +191,15 @@ fun OfflineGuideScreen(
                 }
 
                 OfflineGuideButton(
-                    text = "再試行",
+                    text = when {
+                        isDeviceOffline -> "ネットワーク接続待ち"
+                        isRetrying -> "接続中…"
+                        else -> "再試行"
+                    },
                     icon = Icons.Default.Refresh,
                     isPrimary = !hasOfflineCache,
+                    pending = isRetrying || isDeviceOffline,
+                    pendingStateDescription = if (isDeviceOffline) "ネットワーク接続待ち" else "接続中",
                     modifier = if (!hasOfflineCache) Modifier.focusRequester(primaryFocusRequester) else Modifier,
                     onClick = onRetry
                 )
@@ -170,6 +213,15 @@ fun OfflineGuideScreen(
             }
         }
     }
+
+    if (showReasonDetails && !reason.isNullOrBlank()) {
+        ConnectionFailureDetailsDialog(
+            reason = reason,
+            onDismiss = { showReasonDetails = false },
+            detailTestTag = "offline-guide-reason-details",
+            closeTestTag = "offline-guide-reason-close",
+        )
+    }
 }
 
 @Composable
@@ -177,12 +229,14 @@ private fun OfflineGuideButton(
     text: String,
     icon: ImageVector,
     isPrimary: Boolean,
+    pending: Boolean = false,
+    pendingStateDescription: String = "接続中",
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val colors = KomorebiTheme.colors
     Button(
-        onClick = onClick,
+        onClick = { if (!pending) onClick() },
         shape = ButtonDefaults.shape(shape = RoundedCornerShape(8.dp)),
         colors = ButtonDefaults.colors(
             containerColor = if (isPrimary) colors.accent else colors.textPrimary.copy(alpha = 0.12f),
@@ -190,7 +244,11 @@ private fun OfflineGuideButton(
             focusedContainerColor = colors.textPrimary,
             focusedContentColor = if (colors.isDark) Color.Black else Color.White
         ),
-        modifier = modifier.width(360.dp)
+        modifier = modifier
+            .width(360.dp)
+            .semantics {
+                stateDescription = if (pending) pendingStateDescription else "実行できます"
+            }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

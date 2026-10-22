@@ -55,6 +55,10 @@ fun MainRootBackground(
     networkConnectionStatus: NetworkConnectionStatus,
     safeTabIndex: Int,
     isSyncingInitial: Boolean,
+    hasBackendFailure: Boolean,
+    backendFailureReason: String?,
+    isBackendRecoveryInProgress: Boolean,
+    onRetryBackendConnection: () -> Unit,
     backgroundBrush: Brush,
     onExitApp: () -> Unit
 ) {
@@ -287,6 +291,10 @@ fun MainRootBackground(
                         settingsViewModel = settingsViewModel,
                         timeFormat = timeFormat,
                         networkConnectionStatus = networkConnectionStatus,
+                        hasBackendFailure = hasBackendFailure,
+                        backendFailureReason = backendFailureReason,
+                        isBackendRecoveryInProgress = isBackendRecoveryInProgress,
+                        onRetryBackendConnection = onRetryBackendConnection,
                         hasActivePlayer = state.playbackState.isMiniPlayerMode,
                         onReturnToPlayerClick = { state.playbackState.isMiniPlayerMode = false },
                         aiFocusReturnTick = state.aiFocusReturnTick,

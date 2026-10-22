@@ -517,6 +517,14 @@ fun MainRootScreen(
 
     LaunchedEffect(state.isRecordListOpen) { if (state.isRecordListOpen) recordViewModel.triggerSmartSync() }
 
+    val retryBackendConnection = {
+        if (isNetworkAvailable && !state.isConnectionRetryPending) {
+            state.isConnectionRetryPending = true
+            channelViewModel.refreshAfterRecovery()
+            homeViewModel.refreshHomeData()
+        }
+    }
+
     val closeSettingsAndRefresh = {
         state.isSettingsOpen = false; state.isDataReady = false; state.isUiReady =
         false; state.showConnectionErrorDialog = false
@@ -619,35 +627,48 @@ fun MainRootScreen(
     LaunchedEffect(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation) {
         channelViewModel.setNetworkAvailable(isNetworkAvailable)
         if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation)) {
+            if (state.showConnectionErrorDialog) state.isConnectionRetryPending = true
             channelViewModel.refreshAfterRecovery()
             homeViewModel.refreshHomeData()
         }
-        if (appWakeState.isAwake && isSettingsInitialized && !isNetworkAvailable && !state.isOfflineMode) {
-            state.showConnectionErrorDialog = false
+        if (appWakeState.isAwake && isSettingsInitialized && !isNetworkAvailable &&
+            !state.isOfflineMode && !state.showConnectionErrorDialog
+        ) {
             state.isOfflineMode = true
             state.isDataReady = true
             state.isSplashFinished = true
             state.isUiReady = true
             state.hasAppliedStartupChannel = true
         }
+        if (!isNetworkAvailable && state.showConnectionErrorDialog) {
+            state.isConnectionRetryPending = false
+        }
     }
 
     LaunchedEffect(isChannelLoading, isHomeLoading, isChannelError, isNetworkAvailable, appWakeState.isAwake) {
         if (appWakeState.isAwake && !isChannelLoading && (state.isDataReady || !isHomeLoading)) {
             delay(300)
-            when (offlinePresentation(isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady)) {
-                OfflinePresentation.CONNECTION_FAILURE -> {
+            val presentation = offlinePresentation(
+                isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady,
+            )
+            when (offlineUiAction(presentation, state.showConnectionErrorDialog)) {
+                OfflineUiAction.SHOW_CONNECTION_GUIDE -> {
+                    state.isConnectionRetryPending = false
                     state.showConnectionErrorDialog = true; state.isDataReady = false
                 }
-                OfflinePresentation.CACHED -> {
-                    state.showConnectionErrorDialog = false
+                OfflineUiAction.KEEP_CONNECTION_GUIDE -> {
+                    state.isConnectionRetryPending = false
+                }
+                OfflineUiAction.SHOW_CACHED -> {
+                    state.isConnectionRetryPending = false
                     state.isOfflineMode = true
                     state.isDataReady = true
                     state.isSplashFinished = true
                     state.isUiReady = true
                     state.hasAppliedStartupChannel = true
                 }
-                OfflinePresentation.CONNECTED -> {
+                OfflineUiAction.SHOW_CONNECTED -> {
+                    state.isConnectionRetryPending = false
                     state.showConnectionErrorDialog = false; state.isDataReady = true
                     state.isOfflineMode = false
                 }
@@ -771,6 +792,11 @@ fun MainRootScreen(
                         networkConnectionStatus = networkConnectionStatus,
                         safeTabIndex = safeTabIndex,
                         isSyncingInitial = isSyncingInitial,
+                        hasBackendFailure = isChannelError,
+                        backendFailureReason = channelErrorReason,
+                        isBackendRecoveryInProgress = isNetworkAvailable && state.isOfflineMode &&
+                                (isChannelLoading || state.isConnectionRetryPending),
+                        onRetryBackendConnection = retryBackendConnection,
                         backgroundBrush = backgroundBrush,
                         onExitApp = { showExitDialog = true }
                     )
@@ -828,6 +854,7 @@ fun MainRootScreen(
                     hasOfflineCache = hasOfflineCache,
                     isDeviceOffline = !isNetworkAvailable,
                     onContinueOffline = {
+                        state.isConnectionRetryPending = false
                         state.showConnectionErrorDialog = false
                         state.isOfflineMode = true
                         state.isDataReady = true
@@ -835,23 +862,19 @@ fun MainRootScreen(
                         state.isUiReady = true
                         state.hasAppliedStartupChannel = true
                     },
-                    onRetry = {
-                        state.showConnectionErrorDialog = false
-                        state.isOfflineMode = false
-                        state.isDataReady = false
-                        state.isUiReady = false
-                        channelViewModel.fetchChannels()
-                        recordViewModel.fetchRecentRecordings(forceRefresh = true)
-                        homeViewModel.refreshHomeData()
-                    },
+                    onRetry = retryBackendConnection,
                     onOpenSettings = {
+                        state.isConnectionRetryPending = false
                         state.showConnectionErrorDialog = false
                         state.settingsInitialCategoryIndex = 1
                         state.settingsInitialFocusItemIndex = null
                         state.isSettingsOpen = true
                     },
                     modifier = Modifier.zIndex(6f),
-                    reason = channelErrorReason
+                    reason = if (!isNetworkAvailable) {
+                        "ネットワーク接続がありません。接続設定を開き、再接続後に再試行してください。（DEVICE_OFFLINE）"
+                    } else channelErrorReason,
+                    isRetrying = state.isConnectionRetryPending,
                 )
             }
 

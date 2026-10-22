@@ -56,4 +56,23 @@ class NetworkReconnectGateTest {
         assertEquals(OfflinePresentation.CONNECTION_FAILURE, offlinePresentation(true, true, false, false))
         assertEquals(OfflinePresentation.CACHED, offlinePresentation(true, true, false, true))
     }
+
+    @Test fun shownConnectionGuideSurvivesADeviceDisconnectUntilTheUserChoosesCache() {
+        val disconnected = offlinePresentation(false, true, false, false)
+
+        assertEquals(OfflinePresentation.CACHED, disconnected)
+        assertEquals(OfflineUiAction.KEEP_CONNECTION_GUIDE, offlineUiAction(disconnected, connectionGuideVisible = true))
+        assertEquals(OfflineUiAction.SHOW_CACHED, offlineUiAction(disconnected, connectionGuideVisible = false))
+    }
+
+    @Test fun retryCompletionOnlyRetiresTheGuideAfterBackendSuccess() {
+        assertEquals(
+            OfflineUiAction.SHOW_CONNECTION_GUIDE,
+            offlineUiAction(OfflinePresentation.CONNECTION_FAILURE, connectionGuideVisible = true),
+        )
+        assertEquals(
+            OfflineUiAction.SHOW_CONNECTED,
+            offlineUiAction(OfflinePresentation.CONNECTED, connectionGuideVisible = true),
+        )
+    }
 }

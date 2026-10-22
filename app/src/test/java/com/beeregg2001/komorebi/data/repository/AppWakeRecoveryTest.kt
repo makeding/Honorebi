@@ -110,7 +110,11 @@ class AppWakeRecoveryTest {
             assertEquals(7, provider.requests) // initial failure + six recovery attempts
             assertFalse(store.isChannelsLoading.value)
             assertTrue(store.connectionError.value)
-            assertEquals("network not ready", store.channelError.value)
+            assertEquals(
+                "サーバーと通信できませんでした。接続を確認して再試行してください。（CHANNELS_LOAD_FAILED_NETWORK）",
+                store.channelError.value,
+            )
+            assertFalse(store.channelError.value!!.contains("network not ready"))
             advance(30_000)
             assertEquals(7, provider.requests)
             store.refreshAfterRecovery()
