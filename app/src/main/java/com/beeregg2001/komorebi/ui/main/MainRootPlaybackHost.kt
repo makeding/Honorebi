@@ -6,28 +6,18 @@ import com.beeregg2001.komorebi.ui.player.*
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
@@ -87,21 +77,6 @@ fun MainRootPlaybackHost(
         playbackFocusRequester.safeRequestFocusWithRetry("RemotePlaybackFocus")
     }
 
-    val playerWidth by animateDpAsState(
-        targetValue = if (state.playbackState.isMiniPlayerMode) 320.dp else 1920.dp,
-        label = "width",
-        animationSpec = tween(400),
-    )
-    val playerHeight by animateDpAsState(
-        targetValue = if (state.playbackState.isMiniPlayerMode) 180.dp else 1080.dp,
-        label = "height",
-        animationSpec = tween(400),
-    )
-    val playerPadding by animateDpAsState(
-        targetValue = if (state.playbackState.isMiniPlayerMode) 32.dp else 0.dp,
-        label = "padding",
-        animationSpec = tween(400),
-    )
     val animeChannels = remember(data.groupedChannels) {
         data.groupedChannels.values
             .flatten()
@@ -116,20 +91,13 @@ fun MainRootPlaybackHost(
             .take(20)
     }
 
-    Box(
+    MiniPlayerTransformLayout(
+        isMiniPlayerMode = state.playbackState.isMiniPlayerMode,
         modifier = Modifier
             .fillMaxSize()
             .focusRequester(playbackFocusRequester)
             .focusGroup()
-            .zIndex(1f)
-            .let {
-                if (state.playbackState.isMiniPlayerMode) it
-                    .padding(bottom = playerPadding, end = playerPadding)
-                    .wrapContentSize(Alignment.BottomEnd)
-                else it
-            }
-            .size(playerWidth, playerHeight)
-            .clip(RoundedCornerShape(if (state.playbackState.isMiniPlayerMode) 12.dp else 0.dp)),
+            .zIndex(1f),
     ) {
         // Switching retains the committed target for the session/Cast lease,
         // while the host materializes the incoming recording until READY.

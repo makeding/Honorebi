@@ -78,6 +78,17 @@ class UnifiedPlayerArchitectureTest {
     }
 
     @Test
+    fun miniPlayerAnimation_doesNotDriveRootPlayerConstraintsOnEveryFrame() {
+        val source = read("java/com/beeregg2001/komorebi/ui/main/MainRootPlaybackHost.kt")
+
+        assertTrue(source.contains("MiniPlayerTransformLayout("))
+        assertFalse(source.contains("animateDpAsState"))
+        assertFalse(source.contains("playerWidth"))
+        assertFalse(source.contains("playerHeight"))
+        assertFalse(source.contains("playerPadding"))
+    }
+
+    @Test
     fun smbPlayback_usesSharedFeedbackRuntimeAndConfiguredControlStyle() {
         val entry = read("java/com/beeregg2001/komorebi/ui/video/player/VideoPlayerEntry.kt")
         val smb = read("java/com/beeregg2001/komorebi/ui/video/player/SmbPlayerScreen.kt")
