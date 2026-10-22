@@ -17,7 +17,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
+import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -264,17 +264,17 @@ internal fun LiveSlotStatus(
     LaunchedEffect(error, focusRetry) {
         if (error != null && focusRetry) retryFocus.requestFocus()
     }
-    if (error != null || loading) {
+    if (error == null && loading) {
+        PlaybackLoadingNotice(message.ifBlank { AppStrings.STATUS_LOADING }, modifier = modifier)
+    }
+    if (error != null) {
         Column(
             modifier = modifier.widthIn(max = 360.dp).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (error == null) {
-                CircularProgressIndicator(modifier = Modifier.size(32.dp), color = Color.White)
-            }
             Text(
-                text = error ?: message.ifBlank { AppStrings.STATUS_LOADING },
+                text = error,
                 color = Color.White,
                 style = MaterialTheme.typography.bodyLarge
             )
@@ -361,22 +361,7 @@ fun DualDisplayMock(
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CircularProgressIndicator(
-                        color = colors.textPrimary,
-                        modifier = Modifier.size(32.dp),
-                        strokeWidth = 3.dp
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = state.sseDetail,
-                        color = colors.textPrimary,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                PlaybackLoadingNotice(state.sseDetail)
             }
 
             androidx.compose.animation.AnimatedVisibility(
@@ -422,22 +407,7 @@ fun DualDisplayMock(
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    CircularProgressIndicator(
-                        color = colors.textPrimary,
-                        modifier = Modifier.size(32.dp),
-                        strokeWidth = 3.dp
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = state.dualSseDetail,
-                        color = colors.textPrimary,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                PlaybackLoadingNotice(state.dualSseDetail)
             }
 
             if (state.dualRightChannel != null) {

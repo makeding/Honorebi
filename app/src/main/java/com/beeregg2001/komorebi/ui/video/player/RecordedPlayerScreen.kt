@@ -360,8 +360,6 @@ internal fun RecordedPlayerScreen(
         vs.isSubtitleEnabled = videoSubtitleDefaultStr == "ON"
     }
 
-    var isHeavyUiReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(800); isHeavyUiReady = true }
 
     val allComments = remember { mutableStateListOf<ArchivedComment>() }
     val commentKeys = remember(recordedPlaybackToken) {
@@ -1937,7 +1935,6 @@ internal fun RecordedPlayerScreen(
 
         if (!isPiPMode) {
             RecordedPlaybackOverlays(
-                isHeavyUiReady = isHeavyUiReady,
                 state = vs,
                 comments = allComments,
                 currentPositionMs = getEffectivePositionMs,

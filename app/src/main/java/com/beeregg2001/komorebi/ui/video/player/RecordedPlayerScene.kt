@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
+import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -197,7 +197,6 @@ internal fun BoxScope.RecordedMediaSurface(
 
 @Composable
 internal fun BoxScope.RecordedPlaybackOverlays(
-    isHeavyUiReady: Boolean,
     state: VideoPlayerState,
     comments: SnapshotStateList<ArchivedComment>,
     currentPositionMs: () -> Long,
@@ -310,8 +309,9 @@ internal fun BoxScope.RecordedPlaybackOverlays(
             state.manualCmSkipPromptRestartUntilMs = 0L
         }
     }
+    val commentLayerReady = rememberRecordedCommentLayerReady(recordedPlaybackFence, comments.isNotEmpty())
     val commentLayer = @Composable {
-        if (isHeavyUiReady && state.isCommentEnabled) {
+        if (commentLayerReady && state.isCommentEnabled) {
             ArchivedCommentOverlay(
                 modifier = Modifier.fillMaxSize(),
                 comments = comments,
@@ -328,15 +328,13 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         }
     }
     val subtitleLayer = @Composable {
-        if (isHeavyUiReady) {
-            NativeCaptionOverlay(
-                cue = subtitleCue,
-                visible = state.isSubtitleEnabled,
-                modifier = Modifier.fillMaxSize(),
-                avoidanceObstacles = subtitleAvoidanceObstacles,
-                avoidanceProgress = subtitleAvoidanceProgress,
-            )
-        }
+        NativeCaptionOverlay(
+            cue = subtitleCue,
+            visible = state.isSubtitleEnabled,
+            modifier = Modifier.fillMaxSize(),
+            avoidanceObstacles = subtitleAvoidanceObstacles,
+            avoidanceProgress = subtitleAvoidanceProgress,
+        )
     }
 
     // コメントは DanmakuSurfaceView (SurfaceView) で描画されるため、Compose 上で後に置いても
@@ -350,18 +348,13 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         commentLayer()
         subtitleLayer()
     }
-    if (isHeavyUiReady) {
-        NativeCaptionOverlay(
-            cue = superimposeCue,
-            visible = true,
-            modifier = Modifier.fillMaxSize()
-        )
-    }
+    NativeCaptionOverlay(
+        cue = superimposeCue,
+        visible = true,
+        modifier = Modifier.fillMaxSize()
+    )
     if (isBuffering) {
-        CircularProgressIndicator(
-            modifier = Modifier.align(Alignment.Center),
-            color = Color.White
-        )
+        PlaybackLoadingNotice()
     }
 
     AnimatedVisibility(

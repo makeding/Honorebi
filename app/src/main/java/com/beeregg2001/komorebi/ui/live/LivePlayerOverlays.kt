@@ -120,27 +120,6 @@ private fun SignalRow(label: String, value: String) {
     }
 }
 
-/** A fixed notice lane below the 24dp + 56dp clock slot, with a 16dp gap. */
-@Composable
-internal fun LivePlaybackNotice(message: String, loading: Boolean) {
-    Box(Modifier.fillMaxSize().padding(start = 24.dp, top = 96.dp, end = 24.dp)) {
-        Row(
-            Modifier.align(Alignment.TopStart).testTag("live-playback-notice")
-                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (loading) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp,
-                )
-                Spacer(Modifier.width(16.dp))
-            }
-            Text(message, color = Color.White, style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold)
-        }
-    }
-}
 
 @Composable
 fun StatusOverlay(

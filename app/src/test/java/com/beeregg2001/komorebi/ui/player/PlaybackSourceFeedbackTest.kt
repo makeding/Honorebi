@@ -6,7 +6,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -39,9 +38,11 @@ class PlaybackSourceFeedbackTest {
                 })
             }
         }
-        val bounds = compose.onNodeWithTag("playback-source-feedback").getUnclippedBoundsInRoot()
-        compose.onNodeWithTag("playback-source-retry").assertIsNotEnabled()
+        compose.onNodeWithTag("playback-loading-notice").assertIsDisplayed()
+        compose.onNodeWithTag("playback-source-feedback").assertDoesNotExist()
         compose.runOnIdle { state.value = PlaybackSourceRequest.Failed(failure) }
+        compose.onNodeWithTag("playback-loading-notice").assertDoesNotExist()
+        val bounds = compose.onNodeWithTag("playback-source-feedback").getUnclippedBoundsInRoot()
         val retry = compose.onNodeWithTag("playback-source-retry")
         retry.assertIsFocused()
         compose.onNodeWithText("${failure.message}（${failure.code}）").assertIsDisplayed()
@@ -56,7 +57,7 @@ class PlaybackSourceFeedbackTest {
         compose.onNodeWithTag("playback-source-feedback").assertDoesNotExist()
     }
 
-    @Test fun initialPendingDoesNotStealFocusFromExistingPlayerControl() {
+    @Test fun initialPendingUsesPassiveClockLaneWithoutRetryButtons() {
         compose.setContent {
             KomorebiTheme {
                 PlaybackSourceFeedback(
@@ -66,9 +67,10 @@ class PlaybackSourceFeedbackTest {
                 )
             }
         }
-        compose.onNodeWithTag("playback-source-retry").assertIsNotEnabled()
-        compose.onNodeWithTag("playback-source-back").assertIsDisplayed()
-        compose.onNodeWithTag("playback-source-retry").assertIsNotFocused()
-        compose.onNodeWithTag("playback-source-back").assertIsNotFocused()
+        compose.onNodeWithTag("playback-source-retry").assertDoesNotExist()
+        compose.onNodeWithTag("playback-source-back").assertDoesNotExist()
+        val bounds = compose.onNodeWithTag("playback-loading-notice").getUnclippedBoundsInRoot()
+        assertEquals(24f, bounds.left.value)
+        assertEquals(96f, bounds.top.value)
     }
 }

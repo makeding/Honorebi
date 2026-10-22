@@ -36,7 +36,7 @@ sealed interface PlaybackSourceRequest {
     data class Failed(val failure: UserFacingFailure) : PlaybackSourceRequest
 }
 
-/** One stable player slot for initial loading, buffering, failure and retry. */
+/** Passive loading lane, or a stable interactive failure/retry panel. */
 @Composable
 fun PlaybackSourceFeedback(
     request: PlaybackSourceRequest,
@@ -52,6 +52,10 @@ fun PlaybackSourceFeedback(
         is PlaybackSourceRequest.Failed -> request.failure
         is PlaybackSourceRequest.Pending -> request.previousFailure
         PlaybackSourceRequest.Ready -> null
+    }
+    if (pending && failure == null) {
+        PlaybackLoadingNotice(message = loadingText, modifier = modifier)
+        return
     }
     val retryFocus = remember { FocusRequester() }
     val hasFailure = failure != null

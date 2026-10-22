@@ -8,12 +8,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.CircularProgressIndicator
+import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -298,17 +297,7 @@ internal fun SmbPlayerScreen(
             buffering && sourceRequest == PlaybackSourceRequest.Ready &&
             !isSubMenuOpen && !isModernSettingsOpen && !isProgramInfoOpen
         ) {
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.align(Alignment.Center),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    color = Color.White,
-                )
-                androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
-                Text("読み込み中…", color = Color.White)
-            }
+            PlaybackLoadingNotice()
         }
         SmbWallClock(
             timeFormat = timeFormat, clockMode = playerClockMode,

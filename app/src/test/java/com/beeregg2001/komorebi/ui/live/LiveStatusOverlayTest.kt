@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.ui.live
 
+import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -43,14 +45,14 @@ class LiveStatusOverlayTest {
                     StatusOverlay(channel.value, "", false,
                         now = { ZonedDateTime.parse("2026-10-13T19:00:00+09:00[Asia/Tokyo]") },
                         clockMode = mode.value)
-                    LivePlaybackNotice("読み込み中…", loading.value)
+                    PlaybackLoadingNotice("読み込み中…", loading.value)
                 }
             }
         }
         val clock = composeRule.onNodeWithTag("live-wall-clock").getUnclippedBoundsInRoot()
         val card = composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot()
         val end = composeRule.onNodeWithTag("live-end-time").getUnclippedBoundsInRoot()
-        val notice = composeRule.onNodeWithTag("live-playback-notice").getUnclippedBoundsInRoot()
+        val notice = composeRule.onNodeWithTag("playback-loading-notice").getUnclippedBoundsInRoot()
         assertEquals(16.dp, notice.top - clock.bottom)
         for (selected in PlayerClockMode.entries) {
             composeRule.runOnIdle { mode.value = selected }
@@ -64,11 +66,29 @@ class LiveStatusOverlayTest {
                     assertEquals(end, composeRule.onNodeWithTag("live-end-time").getUnclippedBoundsInRoot())
                 }
                 assertEquals(card, composeRule.onNodeWithTag("live-channel-status").getUnclippedBoundsInRoot())
-                assertEquals(notice, composeRule.onNodeWithTag("live-playback-notice").getUnclippedBoundsInRoot())
+                assertEquals(notice, composeRule.onNodeWithTag("playback-loading-notice").getUnclippedBoundsInRoot())
             }
         }
         composeRule.runOnIdle { loading.value = false }
-        assertEquals(notice.top, composeRule.onNodeWithTag("live-playback-notice").getUnclippedBoundsInRoot().top)
+        assertEquals(notice.top, composeRule.onNodeWithTag("playback-loading-notice").getUnclippedBoundsInRoot().top)
+    }
+
+    @Test
+    fun dualSlotLoadingUsesSameLaneAndFailureReplacesIt() {
+        val error = mutableStateOf<String?>(null)
+        composeRule.setContent {
+            KomorebiTheme {
+                Box(Modifier.size(480.dp, 270.dp)) {
+                    LiveSlotStatus(error.value, true, "信号を待っています…", {})
+                }
+            }
+        }
+        val notice = composeRule.onNodeWithTag("playback-loading-notice").getUnclippedBoundsInRoot()
+        assertEquals(24.dp, notice.left)
+        assertEquals(96.dp, notice.top)
+        composeRule.runOnIdle { error.value = "接続に失敗しました。再試行してください。" }
+        composeRule.onNodeWithTag("playback-loading-notice").assertDoesNotExist()
+        composeRule.onNodeWithText(error.value!!).assertIsDisplayed()
     }
 
     @Test

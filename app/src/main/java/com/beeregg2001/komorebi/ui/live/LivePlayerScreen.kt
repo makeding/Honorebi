@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.live
 
+import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
+
 import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
@@ -1026,7 +1028,7 @@ fun LivePlayerScreen(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            LivePlaybackNotice(
+            PlaybackLoadingNotice(
                 message = if (isChannelSwitchDebouncing) currentChannelItem.name else mainLoadingPresentation.message,
                 loading = !isChannelSwitchDebouncing,
             )
