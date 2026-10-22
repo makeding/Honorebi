@@ -85,10 +85,9 @@ internal fun rememberNetworkConnectionStatus(awake: Boolean, wakeGeneration: Int
     }
 
     DisposableEffect(connectivityManager, mainHandler, awake, wakeGeneration) {
-        if (!awake) {
-            state.value = NetworkConnectionStatus.Disconnected
-            return@DisposableEffect onDispose { }
-        }
+        // Activity pause (including TV settings/input overlays) is not a network loss.
+        // Keep observing actual connectivity while content polling is suspended;
+        // wake still rebuilds the OS snapshot in case sleep dropped callbacks.
         var disposed = false
         val knownTransports = linkedMapOf<Network, NetworkTransport>()
 
