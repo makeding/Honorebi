@@ -5,8 +5,12 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import master.flame.danmaku.controller.DrawHandler
@@ -20,6 +24,7 @@ import master.flame.danmaku.danmaku.model.android.SimpleTextCacheStuffer
 import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.ui.widget.DanmakuSurfaceView
 import master.flame.danmaku.ui.widget.DanmakuView
+import java.util.IdentityHashMap
 import android.graphics.Color as AndroidColor
 
 private const val MAX_VISIBLE_DANMAKU = 80
@@ -33,8 +38,19 @@ fun DanmakuOverlay(
     opacity: Float = 1.0f,
     maxLines: Int = 0,
     sessionKey: Any? = null,
+    running: Boolean,
     onViewCreated: (IDanmakuView) -> Unit,
+    onViewPrepared: (IDanmakuView) -> Unit = {},
+    onViewReleased: (IDanmakuView) -> Unit = {},
 ) {
+    val latestRunning by rememberUpdatedState(running)
+    val latestOnViewCreated by rememberUpdatedState(onViewCreated)
+    val latestOnViewPrepared by rememberUpdatedState(onViewPrepared)
+    val latestOnViewReleased by rememberUpdatedState(onViewReleased)
+    var activeView by remember(sessionKey, useSoftwareRendering) {
+        mutableStateOf<ActiveDanmakuView?>(null)
+    }
+    val viewLifecycles = remember { IdentityHashMap<IDanmakuView, DanmakuViewLifecycle>() }
     val danmakuContext = remember(sessionKey) {
         DanmakuContext.create().apply {
             setDanmakuStyle(1, 8.0f)
@@ -69,11 +85,23 @@ fun DanmakuOverlay(
         )
     }
 
-    key(sessionKey) {
+    LaunchedEffect(activeView, running) {
+        activeView?.let { active ->
+            active.lifecycle.ifActive {
+                if (active.view.isPrepared) {
+                    if (running) active.view.resume() else active.view.pause()
+                }
+            }
+        }
+    }
+
+    key(sessionKey, useSoftwareRendering) {
         AndroidView(
             modifier = modifier,
             factory = { context ->
                 fun <T> setup(view: T): T where T : View, T : IDanmakuView = view.apply {
+                    val lifecycle = DanmakuViewLifecycle()
+                    val active = ActiveDanmakuView(this, lifecycle)
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -82,13 +110,26 @@ fun DanmakuOverlay(
                     // library bitmap cache disabled avoids competing with video/caption memory.
                     enableDanmakuDrawingCache(false)
                     setCallback(object : DrawHandler.Callback {
-                        override fun prepared() = start()
+                        override fun prepared() {
+                            val accepted = lifecycle.prepared(
+                                running = latestRunning,
+                                start = { start() },
+                                pause = { pause() },
+                            )
+                            if (accepted) latestOnViewPrepared(this@apply)
+                        }
                         override fun updateTimer(timer: DanmakuTimer?) = Unit
                         override fun danmakuShown(danmaku: BaseDanmaku?) = Unit
                         override fun drawingFinished() = Unit
                     })
-                    post { if (isAttachedToWindow) prepare(parser, danmakuContext) }
-                    onViewCreated(this)
+                    post {
+                        lifecycle.ifActive {
+                            if (isAttachedToWindow) prepare(parser, danmakuContext)
+                        }
+                    }
+                    viewLifecycles[this] = lifecycle
+                    activeView = active
+                    latestOnViewCreated(this)
                 }
                 if (useSoftwareRendering) {
                     setup(DanmakuView(context)).apply {
@@ -114,10 +155,53 @@ fun DanmakuOverlay(
             },
             onRelease = { view ->
                 (view as? IDanmakuView)?.let {
-                    it.stop()
-                    it.release()
+                    val lifecycle = viewLifecycles.remove(it)
+                    val active = activeView?.takeIf { active -> active.view === it }
+                    if (active != null) activeView = null
+                    if (lifecycle != null) {
+                        lifecycle.release {
+                            it.stop()
+                            it.release()
+                        }
+                    } else {
+                        it.stop()
+                        it.release()
+                    }
+                    latestOnViewReleased(it)
                 }
             },
         )
+    }
+}
+
+private data class ActiveDanmakuView(
+    val view: IDanmakuView,
+    val lifecycle: DanmakuViewLifecycle,
+)
+
+/** Serializes asynchronous prepare callbacks against view release. */
+internal class DanmakuViewLifecycle {
+    private var released = false
+
+    fun ifActive(block: () -> Unit): Boolean = synchronized(this) {
+        if (released) return@synchronized false
+        block()
+        true
+    }
+
+    fun prepared(
+        running: Boolean,
+        start: () -> Unit,
+        pause: () -> Unit,
+    ): Boolean = ifActive {
+        start()
+        if (!running) pause()
+    }
+
+    fun release(block: () -> Unit): Boolean = synchronized(this) {
+        if (released) return@synchronized false
+        released = true
+        block()
+        true
     }
 }
