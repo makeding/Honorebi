@@ -24,7 +24,7 @@
             buildToolsVersions = [ "36.0.0" "37.0.0" ];
             platformVersions = [ "37" ];
             includeCmake = true;
-            cmakeVersions = [ "3.22.1" ];
+            cmakeVersions = [ "3.31.6" ];
             includeNDK = true;
             ndkVersion = "28.2.13676358";
             abiVersions = [ "armeabi-v7a" "arm64-v8a" ];
@@ -53,7 +53,7 @@
               # Keep an inherited system SDK from conflicting with this project's SDK.
               unset ANDROID_SDK_ROOT
               export JAVA_HOME="${pkgs.jdk21}"
-              export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmake/3.22.1/bin:$PATH"
+              export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmake/3.31.6/bin:$PATH"
             '';
           };
         });

@@ -104,6 +104,7 @@ android {
     // --- C++ ビルド設定 (2/2): CMakeLists.txt のパス指定 ---
     externalNativeBuild {
         cmake {
+            version = "3.31.6"
             path = file("src/main/cpp/CMakeLists.txt")
         }
     }

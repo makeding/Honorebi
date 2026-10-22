@@ -53,9 +53,11 @@ struct CaptionRegionGeometry {
     int height;
 };
 
+// Background images remain separate from merged text. Allow one full-frame
+// background plus one full-frame text plane, while keeping allocation bounded.
 constexpr size_t MAX_B62_BITMAP_BYTES_PER_CUE =
     static_cast<size_t>(ARIBCC_RENDER_FRAME_WIDTH) *
-    static_cast<size_t>(ARIBCC_RENDER_FRAME_HEIGHT) * 4;
+    static_cast<size_t>(ARIBCC_RENDER_FRAME_HEIGHT) * 4 * 2;
 
 bool isB62RenderResultWithinBudget(const aribcaption::RenderResult& result) {
     size_t total = 0;
@@ -217,10 +219,18 @@ jobject createAndroidBitmapFromRgba(
 
     auto* destination = static_cast<uint8_t*>(pixels);
     for (int row = 0; row < height; ++row) {
-        std::memcpy(
-            destination + static_cast<size_t>(row) * info.stride,
-            source + static_cast<size_t>(row) * static_cast<size_t>(sourceStride),
-            rowBytes);
+        auto* output = destination + static_cast<size_t>(row) * info.stride;
+        const auto* input = source + static_cast<size_t>(row) * sourceStride;
+        // libaribcaption exposes straight RGBA; Android Canvas consumes premultiplied pixels.
+        for (int column = 0; column < width; ++column) {
+            const unsigned alpha = input[3];
+            output[0] = static_cast<uint8_t>((input[0] * alpha + 127) / 255);
+            output[1] = static_cast<uint8_t>((input[1] * alpha + 127) / 255);
+            output[2] = static_cast<uint8_t>((input[2] * alpha + 127) / 255);
+            output[3] = static_cast<uint8_t>(alpha);
+            input += 4;
+            output += 4;
+        }
     }
     AndroidBitmap_unlockPixels(env, bitmap);
     return bitmap;
@@ -245,7 +255,8 @@ jobject renderImagesToCue(
     ImageProvider imageProvider,
     int64_t fallbackPtsMs,
     const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr,
-    int captionType = 0
+    int captionType = 0,
+    uint32_t backgroundImageCount = 0
 ) {
     pts = pts < 0 ? fallbackPtsMs : pts;
 
@@ -276,7 +287,9 @@ jobject renderImagesToCue(
             arrayListClass,
             arrayListCtor,
             static_cast<jint>(regionGeometries == nullptr ? 0 : regionGeometries->size()));
-        if (regionGeometries != nullptr) {
+        // Backgrounds occupy their complete image bounds. Attaching the text
+        // rectangles would clip them when the controller avoidance moves a cue.
+        if (regionGeometries != nullptr && i >= backgroundImageCount) {
             for (const CaptionRegionGeometry& region : *regionGeometries) {
                 jobject captionRegion = env->NewObject(
                     regionClass,
@@ -360,7 +373,8 @@ jobject renderB62ResultToCue(
     aribcaption::RenderResult& result,
     int64_t fallbackPtsMs,
     const std::vector<CaptionRegionGeometry>* regionGeometries = nullptr,
-    int captionType = 0
+    int captionType = 0,
+    uint32_t backgroundImageCount = 0
 ) {
     const int64_t duration = result.duration == aribcaption::DURATION_INDEFINITE
         ? -1
@@ -383,7 +397,8 @@ jobject renderB62ResultToCue(
         },
         fallbackPtsMs,
         regionGeometries,
-        captionType);
+        captionType,
+        backgroundImageCount);
 }
 
 } // namespace
@@ -1634,39 +1649,50 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
                 int64_t pts;
                 int64_t duration;
                 std::vector<CaptionRegionGeometry> regions;
-                bool hasRegions;
+                uint32_t backgroundImageCount;
             };
             std::vector<RenderPlan> plans;
             plans.reserve(decoded.captions.size());
             for (const aribcaption::Caption& caption : decoded.captions) {
+                const int64_t renderPts = caption.pts == aribcaption::PTS_NOPTS
+                    ? static_cast<int64_t>(ptsMs) : caption.pts;
+                uint32_t backgroundImageCount = 0;
+                if (decoded.sidecar) {
+                    for (const auto& image : decoded.sidecar->background_images()) {
+                        if (image.begin_pts != aribcaption::PTS_NOPTS &&
+                            image.begin_pts <= renderPts &&
+                            (!image.end_pts || renderPts < *image.end_pts) &&
+                            image.source.resolved) {
+                            ++backgroundImageCount;
+                        }
+                    }
+                }
                 plans.push_back(RenderPlan{
                     caption.pts,
                     caption.wait_duration,
                     mapCaptionContentBoundsToRenderFrame(caption),
-                    !caption.regions.empty()});
+                    backgroundImageCount});
             }
             if (!ctx->b62Renderer->AppendB62Document(std::move(decoded))) {
                 throw std::runtime_error("Failed to append B62 document");
             }
             for (RenderPlan& plan : plans) {
                 aribcaption::RenderResult result;
-                if (!plan.hasRegions) {
+                const int64_t renderPts = plan.pts == aribcaption::PTS_NOPTS
+                    ? static_cast<int64_t>(ptsMs)
+                    : plan.pts;
+                const auto renderStatus = ctx->b62Renderer->Render(renderPts, result);
+                if (renderStatus == aribcaption::RenderStatus::kNoImage) {
+                    // Empty text regions may still have a B62 background image. Only
+                    // the renderer can distinguish that image from an actual clear cue.
                     result.pts = plan.pts;
                     result.duration = plan.duration;
-                } else {
-                    const int64_t renderPts = plan.pts == aribcaption::PTS_NOPTS
-                        ? static_cast<int64_t>(ptsMs)
-                        : plan.pts;
-                    const auto renderStatus = ctx->b62Renderer->Render(renderPts, result);
-                    if (renderStatus != aribcaption::RenderStatus::kGotImage &&
-                        renderStatus != aribcaption::RenderStatus::kGotImageUnchanged) {
-                        continue;
-                    }
-                    // The renderer is configured to merge regions, so one cue must never
-                    // retain more RGBA storage than a complete 1080p frame. Reject malformed
-                    // or unexpectedly large results before allocating the Java Bitmap copy.
-                    if (!isB62RenderResultWithinBudget(result)) continue;
+                } else if (renderStatus != aribcaption::RenderStatus::kGotImage &&
+                           renderStatus != aribcaption::RenderStatus::kGotImageUnchanged) {
+                    continue;
                 }
+                // Apply the bounded background + text budget to every document.
+                if (!isB62RenderResultWithinBudget(result)) continue;
 
                 // Convert one result at a time. Keeping every native RenderResult until the
                 // whole document finished temporarily retained all RGBA buffers alongside
@@ -1676,7 +1702,8 @@ Java_com_beeregg2001_komorebi_NativeLib_decodeB62Captions(
                     result,
                     ptsMs,
                     &plan.regions,
-                    ctx->captionType);
+                    ctx->captionType,
+                    plan.backgroundImageCount);
                 if (cue != nullptr) cues.push_back(cue);
             }
         }
