@@ -225,7 +225,6 @@ fun HomeLauncherScreen(
     hasBackendFailure: Boolean = false,
     backendFailureReason: String? = null,
     isBackendRecoveryInProgress: Boolean = false,
-    onRetryBackendConnection: () -> Unit = {},
     hasActivePlayer: Boolean = false,
     onReturnToPlayerClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
@@ -913,7 +912,6 @@ fun HomeLauncherScreen(
                         recoveryInProgress = isBackendRecoveryInProgress,
                     ),
                     onOpenConnectionSettings = onConnectionSettings,
-                    onRetryBackendConnection = onRetryBackendConnection,
                     onRecoveryFocus = {
                         scope.launch {
                             if (!firstContentRequesterFor(safeTabIndex)

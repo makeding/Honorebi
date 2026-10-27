@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
@@ -40,83 +38,63 @@ class OfflineGuideScreenTest {
                 hasOfflineCache = false,
                 isDeviceOffline = false,
                 onContinueOffline = {},
-                onRetry = {},
                 onOpenSettings = {},
                 reason = reason.value,
             )
         }
         val slotWithoutReason = compose.onNodeWithTag("offline-guide-reason").getUnclippedBoundsInRoot()
-        val retryWithoutReason = compose.onNodeWithText("再試行").getUnclippedBoundsInRoot()
+        val settingsWithoutReason = compose.onNodeWithText("接続設定を開く").getUnclippedBoundsInRoot()
 
         reason.value = "サーバーが要求を処理できませんでした。 [BACKEND_HTTP_503; HTTP 503] 接続設定を確認するか、再試行してください。"
         compose.waitForIdle()
 
         assertEquals(slotWithoutReason, compose.onNodeWithTag("offline-guide-reason").getUnclippedBoundsInRoot())
-        assertEquals(retryWithoutReason, compose.onNodeWithText("再試行").getUnclippedBoundsInRoot())
+        assertEquals(settingsWithoutReason, compose.onNodeWithText("接続設定を開く").getUnclippedBoundsInRoot())
         compose.onNodeWithText("BACKEND_HTTP_503", substring = true, useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
-    fun longReasonOpensScrollableDetailsAndReturnsFocusToTheEntry() {
-        val reason = buildString {
-            repeat(18) { append("サーバーが要求を処理できませんでした。接続設定を確認して再試行してください。 ") }
-            append("（BACKEND_HTTP_503 / HTTP 503）")
+    fun reasonIsInlineAndOnlyUsefulActionsRemain() {
+        var settingsOpens = 0
+        compose.setContent {
+            OfflineGuideScreen(
+                hasOfflineCache = false,
+                isDeviceOffline = true,
+                onContinueOffline = {},
+                onOpenSettings = { settingsOpens++ },
+                reason = "接続がありません。（DEVICE_OFFLINE）",
+            )
         }
+        compose.onNodeWithText("DEVICE_OFFLINE", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("詳細を表示").assertDoesNotExist()
+        compose.onNodeWithTag("offline-guide-reason-open").assertDoesNotExist()
+        compose.onNodeWithText("再試行").assertDoesNotExist()
+        compose.onNodeWithText("接続設定を開く").requestFocus()
+            .performKeyInput { pressKey(Key.DirectionCenter) }
+        assertEquals(1, settingsOpens)
+    }
+
+    @Test
+    fun longReasonScrollsInPlaceWithTheRemote() {
+        val reason = "サーバーが応答しません。（HTTP_503）\n".repeat(24)
         compose.setContent {
             OfflineGuideScreen(
                 hasOfflineCache = false,
                 isDeviceOffline = false,
                 onContinueOffline = {},
-                onRetry = {},
                 onOpenSettings = {},
                 reason = reason,
             )
         }
-
-        val entry = compose.onNodeWithTag("offline-guide-reason-open")
         compose.mainClock.advanceTimeBy(300)
         compose.waitForIdle()
-        entry.requestFocus().assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag("offline-guide-reason-details").assertIsDisplayed().assertIsFocused()
-        compose.onNode(hasText(reason) and hasAnyAncestor(hasTestTag("offline-guide-reason-details")), useUnmergedTree = true).assertExists()
-
-        compose.onNodeWithTag("offline-guide-reason-close").requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag("offline-guide-reason-details").assertDoesNotExist()
-        entry.assertIsFocused()
-    }
-
-    @Test
-    fun pendingRetryKeepsItsBoundsAndRejectsDuplicateClicks() {
-        val retrying = mutableStateOf(false)
-        var retries = 0
-        compose.setContent {
-            OfflineGuideScreen(
-                hasOfflineCache = false,
-                isDeviceOffline = false,
-                onContinueOffline = {},
-                onRetry = { retries++; retrying.value = true },
-                onOpenSettings = {},
-                reason = "接続できませんでした。（CHANNELS_LOAD_FAILED_NETWORK）",
-                isRetrying = retrying.value,
-            )
-        }
-
-        val retry = compose.onNodeWithText("再試行")
-        val idleBounds = retry.getUnclippedBoundsInRoot()
-        retry.requestFocus().assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
-
-        val pending = compose.onNodeWithText("接続中…")
-        pending.assertIsFocused()
-        assertEquals(idleBounds, pending.getUnclippedBoundsInRoot())
-        pending.performKeyInput { pressKey(Key.DirectionCenter) }
-        assertEquals(1, retries)
-
-        retrying.value = false
+        val settingsBounds = compose.onNodeWithText("接続設定を開く").getUnclippedBoundsInRoot()
+        val scroll = compose.onNode(hasScrollAction())
+        scroll.requestFocus().performKeyInput { pressKey(Key.DirectionDown) }
         compose.waitForIdle()
-        compose.onNodeWithText("再試行").assertIsFocused()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        assertEquals(2, retries)
+        assertTrue(scroll.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f)
+        assertEquals(settingsBounds, compose.onNodeWithText("接続設定を開く").getUnclippedBoundsInRoot())
+        compose.onNodeWithText("詳細を表示").assertDoesNotExist()
     }
 
     @Test
@@ -127,7 +105,6 @@ class OfflineGuideScreenTest {
                     hasOfflineCache = true,
                     isDeviceOffline = false,
                     onContinueOffline = {},
-                    onRetry = {},
                     onOpenSettings = {},
                     reason = "サーバーが要求を処理できませんでした。（BACKEND_HTTP_503 / HTTP 503）",
                 )
@@ -135,7 +112,7 @@ class OfflineGuideScreenTest {
         }
 
         compose.onNodeWithText("キャッシュで続行").assertIsDisplayed()
-        compose.onNodeWithText("再試行").assertIsDisplayed()
+        compose.onNodeWithText("再試行").assertDoesNotExist()
         val settings = compose.onNodeWithText("接続設定を開く").assertIsDisplayed().getUnclippedBoundsInRoot()
         assertTrue("settings action must fit the TV viewport: $settings", settings.bottom <= 540.dp)
     }

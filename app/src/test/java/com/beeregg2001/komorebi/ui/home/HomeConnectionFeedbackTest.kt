@@ -15,7 +15,6 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
@@ -47,7 +46,6 @@ class HomeConnectionFeedbackTest {
                     HomeConnectionFeedback(
                         state = state.value,
                         onOpenConnectionSettings = {},
-                        onRetryBackendConnection = {},
                         onRecoveryFocus = {},
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
@@ -76,59 +74,38 @@ class HomeConnectionFeedbackTest {
     }
 
     @Test
-    fun deviceOfflineAndBackendFailureExposeDifferentActionsAndReason() {
+    fun failureAndRecoveryKeepInlineReasonAndSettingsWithoutDetailsOrRefresh() {
         val state = mutableStateOf(HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline))
-        val longReason = List(18) { "[BACKEND_HTTP_503 / HTTP 503] Access header あり" }.joinToString(" ")
         var settingsOpens = 0
-        var retries = 0
         compose.setContent {
             KomorebiTheme {
                 HomeConnectionFeedback(
                     state = state.value,
                     onOpenConnectionSettings = { settingsOpens++ },
-                    onRetryBackendConnection = {
-                        retries++
-                        state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering)
-                    },
                     onRecoveryFocus = {},
                 )
             }
         }
-
-        compose.onNodeWithText("ネットワークに接続されていません").assertExists()
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG)
-            .assertTextContains("接続設定")
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.runOnIdle { assertEquals(1, settingsOpens) }
-
-        compose.runOnIdle {
-            state.value = HomeConnectionFeedbackState(
-                HomeConnectionFeedbackKind.BackendFailure,
-                longReason,
-            )
+        val action = compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG)
+        val bounds = action.getUnclippedBoundsInRoot()
+        listOf(
+            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline),
+            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
+            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering, "HTTP 503"),
+        ).forEach { next ->
+            compose.runOnIdle { state.value = next }
+            action.assertTextContains("接続設定").requestFocus()
+                .performKeyInput { pressKey(Key.DirectionCenter) }
+            assertEquals(bounds, action.getUnclippedBoundsInRoot())
+            compose.onNodeWithText("詳細").assertDoesNotExist()
+            compose.onNodeWithText("再試行").assertDoesNotExist()
+            if (next.reason != null) compose.onNodeWithText(next.reason).assertExists()
         }
-        compose.onNodeWithText("サーバーに接続できません").assertExists()
-        compose.onNodeWithText(longReason).assertDoesNotExist()
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_ACTION_TAG)
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_TAG).assertExists()
-        compose.onNodeWithText(longReason).assertExists()
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_CLOSE_TAG)
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_ACTION_TAG).assertIsFocused()
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG)
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG).assertIsFocused().assertTextContains("確認中…")
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.runOnIdle { assertEquals(1, retries) }
+        assertEquals(3, settingsOpens)
     }
 
     @Test
-    fun focusedRetryReturnsToContentAfterSuccessfulRecovery() {
+    fun focusedSettingsReturnsToContentAfterSuccessfulRecovery() {
         val state = mutableStateOf(
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
         )
@@ -138,98 +115,21 @@ class HomeConnectionFeedbackTest {
                 Box(Modifier.fillMaxSize()) {
                     Button(
                         onClick = {},
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .focusRequester(retainedContentRequester)
-                            .testTag("recovery-content"),
+                        modifier = Modifier.align(Alignment.Center)
+                            .focusRequester(retainedContentRequester).testTag("recovery-content"),
                     ) { Text("番組") }
                     HomeConnectionFeedback(
                         state = state.value,
                         onOpenConnectionSettings = {},
-                        onRetryBackendConnection = {
-                            state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering)
-                        },
                         onRecoveryFocus = { retainedContentRequester.requestFocus() },
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                 }
             }
         }
-
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG).requestFocus().performClick()
-            .assertIsFocused()
+        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG).requestFocus().assertIsFocused()
         compose.runOnIdle { state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Hidden) }
         compose.onNodeWithTag("recovery-content").assertIsFocused()
-    }
-
-    @Test
-    fun closingDetailsReturnsOnceAndLaterStateChangesDoNotStealContentFocus() {
-        val state = mutableStateOf(
-            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
-        )
-        compose.setContent {
-            KomorebiTheme {
-                Box(Modifier.fillMaxSize()) {
-                    Button(
-                        onClick = {},
-                        modifier = Modifier.align(Alignment.Center).testTag("details-content"),
-                    ) { Text("番組") }
-                    HomeConnectionFeedback(
-                        state = state.value,
-                        onOpenConnectionSettings = {},
-                        onRetryBackendConnection = {},
-                        onRecoveryFocus = {},
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                }
-            }
-        }
-
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_ACTION_TAG)
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_CLOSE_TAG)
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_ACTION_TAG).assertIsFocused()
-        compose.onNodeWithTag("details-content").requestFocus().assertIsFocused()
-        compose.runOnIdle {
-            state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering, "HTTP 503")
-        }
-        compose.onNodeWithTag("details-content").assertIsFocused()
-        compose.runOnIdle {
-            state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503")
-        }
-        compose.onNodeWithTag("details-content").assertIsFocused()
-    }
-
-    @Test
-    fun deviceOfflineClosesOpenDetailsAndFocusesConnectionSettings() {
-        val state = mutableStateOf(
-            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
-        )
-        compose.setContent {
-            KomorebiTheme {
-                HomeConnectionFeedback(
-                    state = state.value,
-                    onOpenConnectionSettings = {},
-                    onRetryBackendConnection = {},
-                    onRecoveryFocus = {},
-                )
-            }
-        }
-
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_ACTION_TAG)
-            .requestFocus()
-            .performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_TAG).assertExists()
-        compose.runOnIdle {
-            state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline)
-        }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_DETAILS_TAG).assertDoesNotExist()
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG)
-            .assertTextContains("接続設定")
-            .assertIsFocused()
     }
 
     @Test

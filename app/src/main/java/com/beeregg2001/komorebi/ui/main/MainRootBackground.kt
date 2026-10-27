@@ -58,7 +58,6 @@ fun MainRootBackground(
     hasBackendFailure: Boolean,
     backendFailureReason: String?,
     isBackendRecoveryInProgress: Boolean,
-    onRetryBackendConnection: () -> Unit,
     backgroundBrush: Brush,
     onExitApp: () -> Unit
 ) {
@@ -294,7 +293,6 @@ fun MainRootBackground(
                         hasBackendFailure = hasBackendFailure,
                         backendFailureReason = backendFailureReason,
                         isBackendRecoveryInProgress = isBackendRecoveryInProgress,
-                        onRetryBackendConnection = onRetryBackendConnection,
                         hasActivePlayer = state.playbackState.isMiniPlayerMode,
                         onReturnToPlayerClick = { state.playbackState.isMiniPlayerMode = false },
                         aiFocusReturnTick = state.aiFocusReturnTick,

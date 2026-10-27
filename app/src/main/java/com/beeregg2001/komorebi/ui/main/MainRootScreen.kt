@@ -517,14 +517,6 @@ fun MainRootScreen(
 
     LaunchedEffect(state.isRecordListOpen) { if (state.isRecordListOpen) recordViewModel.triggerSmartSync() }
 
-    val retryBackendConnection = {
-        if (isNetworkAvailable && !state.isConnectionRetryPending) {
-            state.isConnectionRetryPending = true
-            channelViewModel.refreshAfterRecovery()
-            homeViewModel.refreshHomeData()
-        }
-    }
-
     val closeSettingsAndRefresh = {
         state.isSettingsOpen = false; state.isDataReady = false; state.isUiReady =
         false; state.showConnectionErrorDialog = false
@@ -796,7 +788,6 @@ fun MainRootScreen(
                         backendFailureReason = channelErrorReason,
                         isBackendRecoveryInProgress = isNetworkAvailable && state.isOfflineMode &&
                                 (isChannelLoading || state.isConnectionRetryPending),
-                        onRetryBackendConnection = retryBackendConnection,
                         backgroundBrush = backgroundBrush,
                         onExitApp = { showExitDialog = true }
                     )
@@ -862,7 +853,6 @@ fun MainRootScreen(
                         state.isUiReady = true
                         state.hasAppliedStartupChannel = true
                     },
-                    onRetry = retryBackendConnection,
                     onOpenSettings = {
                         state.isConnectionRetryPending = false
                         state.showConnectionErrorDialog = false
@@ -872,9 +862,8 @@ fun MainRootScreen(
                     },
                     modifier = Modifier.zIndex(6f),
                     reason = if (!isNetworkAvailable) {
-                        "ネットワーク接続がありません。接続設定を開き、再接続後に再試行してください。（DEVICE_OFFLINE）"
+                        "ネットワーク接続がありません。接続設定を確認してください。接続が戻ると自動で更新します。（DEVICE_OFFLINE）"
                     } else channelErrorReason,
-                    isRetrying = state.isConnectionRetryPending,
                 )
             }
 
