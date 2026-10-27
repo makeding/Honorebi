@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.ui.live
 import android.app.Application
 import android.content.Context
 import android.media.AudioManager
+import android.os.Build
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,7 +37,11 @@ class LiveAudioFocusTest {
         assertTrue(focus.playbackAllowed)
         assertEquals(listOf(false, true), changes)
         focus.release()
-        assertNotNull(shadow.lastAbandonedAudioFocusRequest)
+        if (Build.VERSION.SDK_INT >= 26) {
+            assertNotNull(shadow.lastAbandonedAudioFocusRequest)
+        } else {
+            assertNotNull(shadow.lastAbandonedAudioFocusListener)
+        }
         focus.onFocusChange(AudioManager.AUDIOFOCUS_GAIN)
         assertFalse(focus.playbackAllowed)
     }
