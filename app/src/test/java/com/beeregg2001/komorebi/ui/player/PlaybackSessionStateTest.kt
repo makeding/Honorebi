@@ -17,6 +17,58 @@ import org.junit.Test
 
 class PlaybackSessionStateTest {
 
+    @Test fun leavingReleasesThePlayerBeforeItsTargetAndHostDisappear() {
+        val state = PlaybackSessionState()
+        state.enterLive(channel())
+        val previous = state.renderPlaybackTarget
+        val released = mutableListOf<PlaybackTarget>()
+        state.registerBeforePlayerRemoval {
+            assertTrue(state.isPlaybackActive)
+            assertEquals(previous, state.renderPlaybackTarget)
+            released += it
+        }
+        state.playerShowOverlay = false
+        state.handleBack()
+        assertEquals(listOf(previous), released)
+        assertEquals(PlaybackTarget.None, state.renderPlaybackTarget)
+        state.leavePlayback()
+        assertEquals(1, released.size)
+    }
+
+    @Test fun chromeMiniAndLiveSwitchKeepThePlayerButChangingSourceReleasesIt() {
+        val state = PlaybackSessionState()
+        state.enterLive(channel())
+        val released = mutableListOf<PlaybackTarget>()
+        state.registerBeforePlayerRemoval { released += it }
+        state.enterMiniPlayer()
+        state.handleBack()
+        state.handleBack() // Hide the information overlay.
+        state.enterLive(channel())
+        assertTrue(released.isEmpty())
+        val previous = state.renderPlaybackTarget
+        state.enterRecorded(recording())
+        assertEquals(listOf(previous), released)
+        assertTrue(state.renderPlaybackTarget is PlaybackTarget.Recorded)
+    }
+
+    @Test fun resetReleasesBeforeRemovalAndAnOldHostCannotUnregisterTheCurrentHost() {
+        val state = PlaybackSessionState()
+        state.enterLive(channel())
+        val unregisterOld = state.registerBeforePlayerRemoval { error("Old host") }
+        var releases = 0
+        val unregisterCurrent = state.registerBeforePlayerRemoval {
+            assertTrue(state.renderPlaybackTarget is PlaybackTarget.Live)
+            releases++
+        }
+        unregisterOld()
+        state.resetPlayback()
+        assertEquals(1, releases)
+        unregisterCurrent()
+        state.enterLive(channel())
+        state.leavePlayback()
+        assertEquals(1, releases)
+    }
+
     @Test
     fun backClosesOneSurfaceBeforeLeavingPlayback() {
         val state = PlaybackSessionState()

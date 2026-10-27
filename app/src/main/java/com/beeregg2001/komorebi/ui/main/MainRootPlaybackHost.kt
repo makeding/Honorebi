@@ -9,6 +9,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -58,6 +59,15 @@ fun MainRootPlaybackHost(
     suppressChrome: Boolean = false,
 ) {
     val settingsViewModel: com.beeregg2001.komorebi.viewmodel.SettingsViewModel = hiltViewModel()
+    val livePlayerViewModel: com.beeregg2001.komorebi.ui.live.LivePlayerViewModel = hiltViewModel()
+    DisposableEffect(state.playbackState, livePlayerViewModel) {
+        val unregister = state.playbackState.registerBeforePlayerRemoval { previous ->
+            if (previous is PlaybackTarget.Live) {
+                livePlayerViewModel.releasePlayers("before_player_removal")
+            }
+        }
+        onDispose { unregister() }
+    }
     val exclusion by settingsViewModel.nhkExclusionState.collectAsState()
     val target = state.playbackState.renderPlaybackTarget
     if (!exclusion.isLoaded || when (target) {
@@ -107,7 +117,7 @@ fun MainRootPlaybackHost(
                 reserveViewModel = hiltViewModel(),
                 recordViewModel = hiltViewModel(),
                 settingsViewModel = hiltViewModel(),
-                livePlayerViewModel = hiltViewModel(),
+                livePlayerViewModel = livePlayerViewModel,
                 channel = target.channel,
                 initialQuality = data.defaultLiveQuality,
                 isNetworkAvailable = data.isNetworkAvailable,

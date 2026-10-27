@@ -111,6 +111,13 @@ class PlaybackSessionState {
     @Volatile private var activeRecordedPlaybackToken: RecordedPlaybackToken? = null
     @Volatile private var currentPlaybackOpenIntent: PlaybackOpenIntentToken? = null
     private var nextPlaybackOpenIntentId = 0L
+    private var beforePlayerRemoval: ((PlaybackTarget) -> Unit)? = null
+
+    /** Runs while the old Surface is still attached, before navigation removes its host. */
+    internal fun registerBeforePlayerRemoval(action: (PlaybackTarget) -> Unit): () -> Unit {
+        beforePlayerRemoval = action
+        return { if (beforePlayerRemoval === action) beforePlayerRemoval = null }
+    }
 
     // Player overlays
     var isPlayerMiniListOpen by mutableStateOf(false)
@@ -314,6 +321,10 @@ class PlaybackSessionState {
 
     /** The token fence is always published before UI state exposes its target. */
     private fun startPlayback(target: PlaybackTarget, initialPositionMs: Long = 0L) {
+        val previous = renderPlaybackTarget
+        if (previous != PlaybackTarget.None && previous::class != target::class) {
+            beforePlayerRemoval?.invoke(previous)
+        }
         if (playbackSession == null) {
             playbackSession = PlaybackSession(epoch = ++nextPlaybackSessionEpoch)
         }
@@ -357,6 +368,9 @@ class PlaybackSessionState {
 
     private fun endPlaybackSession() {
         activeRecordedPlaybackToken = null
+        if (renderPlaybackTarget != PlaybackTarget.None) {
+            beforePlayerRemoval?.invoke(renderPlaybackTarget)
+        }
         playbackTarget = PlaybackTarget.None
         playbackPhase = PlaybackPhase.Idle
         playbackSession = null
