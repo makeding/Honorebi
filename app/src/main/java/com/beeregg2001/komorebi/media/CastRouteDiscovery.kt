@@ -1,11 +1,14 @@
 package com.beeregg2001.komorebi.media
 
+import android.content.Context
 import android.media.MediaRoute2Info
 import android.media.MediaRouter2
 import android.media.RouteDiscoveryPreference
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -31,27 +34,38 @@ import java.util.concurrent.Executor
  */
 @Composable
 fun CastRouteDiscovery() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
     val context = LocalContext.current.applicationContext
-    val router = remember { runCatching { MediaRouter2.getInstance(context) }.getOrNull() } ?: return
+    CastRouteDiscoveryApi30.Content(context)
+}
 
-    DisposableEffect(router) {
-        val callback = object : MediaRouter2.RouteCallback() {}
-        val preference = RouteDiscoveryPreference.Builder(
-            listOf(
-                MediaRoute2Info.FEATURE_REMOTE_PLAYBACK,
-                MediaRoute2Info.FEATURE_LIVE_AUDIO,
-                MediaRoute2Info.FEATURE_LIVE_VIDEO,
-            ),
-            /* activeScan = */ true,
-        ).build()
-        val executor = mainLooperExecutor()
-        runCatching {
-            router.registerRouteCallback(executor, callback, preference)
-        }.onFailure { Log.w(TAG, "registerRouteCallback failed", it) }
+// Keep unavailable framework types out of the entry point loaded on API 24–29.
+// Catching getInstance failures alone does not protect generated casts/type resolution.
+@RequiresApi(Build.VERSION_CODES.R)
+private object CastRouteDiscoveryApi30 {
+    @Composable
+    fun Content(context: Context) {
+        val router = remember(context) { runCatching { MediaRouter2.getInstance(context) }.getOrNull() } ?: return
 
-        onDispose {
-            runCatching { router.unregisterRouteCallback(callback) }.onFailure {
-                Log.w(TAG, "unregisterRouteCallback failed", it)
+        DisposableEffect(router) {
+            val callback = object : MediaRouter2.RouteCallback() {}
+            val preference = RouteDiscoveryPreference.Builder(
+                listOf(
+                    MediaRoute2Info.FEATURE_REMOTE_PLAYBACK,
+                    MediaRoute2Info.FEATURE_LIVE_AUDIO,
+                    MediaRoute2Info.FEATURE_LIVE_VIDEO,
+                ),
+                /* activeScan = */ true,
+            ).build()
+            val executor = mainLooperExecutor()
+            runCatching {
+                router.registerRouteCallback(executor, callback, preference)
+            }.onFailure { Log.w(TAG, "registerRouteCallback failed", it) }
+
+            onDispose {
+                runCatching { router.unregisterRouteCallback(callback) }.onFailure {
+                    Log.w(TAG, "unregisterRouteCallback failed", it)
+                }
             }
         }
     }

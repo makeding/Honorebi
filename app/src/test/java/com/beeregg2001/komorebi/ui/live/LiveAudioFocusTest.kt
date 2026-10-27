@@ -12,7 +12,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [28])
+@Config(application = Application::class, sdk = [24, 25, 26, 28, 34])
 class LiveAudioFocusTest {
     @Test
     fun secondSlotDoesNotStealFirstSlotsFocusAndExternalLossPausesTheGroup() {
