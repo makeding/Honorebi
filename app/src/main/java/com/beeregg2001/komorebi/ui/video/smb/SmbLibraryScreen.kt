@@ -269,7 +269,7 @@ fun SmbLibraryScreen(
                             }
                         }
                 ) {
-                    Box(Modifier.fillMaxSize().padding(bottom = LibraryFeedbackHeight)) {
+                    Box(Modifier.fillMaxSize()) {
                         if (isListView) {
                             SmbListContent(
                                 items = fileList,

@@ -34,7 +34,7 @@ class LibraryFeedbackTest {
         compose.setContent {
             KomorebiTheme {
                 Box(Modifier.size(800.dp, 450.dp)) {
-                    Box(Modifier.fillMaxSize().padding(bottom = LibraryFeedbackHeight)
+                    Box(Modifier.fillMaxSize()
                         .testTag("content").focusRequester(content).focusable())
                     LibraryFeedback(true, loading, error, "録画一覧を読み込めませんでした", "録画番組がありません",
                         remember { FocusRequester() },
@@ -43,6 +43,7 @@ class LibraryFeedbackTest {
                 }
             }
         }
+        compose.onNodeWithTag("content").assertHeightIsEqualTo(450.dp)
         val bounds = compose.onNodeWithTag("content").getUnclippedBoundsInRoot()
         compose.onNodeWithText("録画番組がありません").assertDoesNotExist()
         compose.onNodeWithTag("library-retry").requestFocus().press(Key.DirectionCenter)

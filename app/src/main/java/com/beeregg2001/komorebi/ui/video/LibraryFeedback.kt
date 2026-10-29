@@ -22,8 +22,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import java.io.IOException
 import java.net.SocketTimeoutException
 
-/** Fixed feedback space keeps retained content stationary during refresh/retry. */
-val LibraryFeedbackHeight = 112.dp
+private val LibraryFeedbackHeight = 112.dp
 
 fun libraryFailureMessage(error: Throwable): String = when (error) {
     is SocketTimeoutException, is kotlinx.coroutines.TimeoutCancellationException ->

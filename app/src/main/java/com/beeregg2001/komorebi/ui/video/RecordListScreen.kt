@@ -562,7 +562,7 @@ fun RecordListScreen(
                         }
                     }) {
 
-                Box(Modifier.fillMaxSize().padding(bottom = LibraryFeedbackHeight)) {
+                Box(Modifier.fillMaxSize()) {
                     key(stateKey, isListView) {
                         if (isListView) {
                             when (selectedCategory) {
