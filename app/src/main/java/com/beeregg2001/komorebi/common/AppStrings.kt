@@ -7,9 +7,6 @@ object AppStrings {
         "サーバーへの接続情報が設定されていません。\n設定画面から接続先を入力してください。"
     const val GO_TO_SETTINGS = "設定画面へ移動"
     const val GO_TO_SETTINGS_SHORT = "設定画面へ"
-    const val CONNECTION_ERROR_TITLE = "接続エラー"
-    const val CONNECTION_ERROR_MESSAGE =
-        "サーバーへの接続に失敗しました。\n設定を確認するか、サーバーの状態を確認してください。"
     const val EXIT_APP = "アプリ終了"
     const val EXIT_APP_FULL = "アプリを終了する"
 

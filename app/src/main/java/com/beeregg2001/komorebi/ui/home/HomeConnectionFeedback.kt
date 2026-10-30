@@ -12,23 +12,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -36,12 +28,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.ui.components.ConnectionFailureReason
-import com.beeregg2001.komorebi.ui.components.DialogActionButton
-import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
 internal const val HOME_CONNECTION_FEEDBACK_SLOT_TAG = "home-connection-feedback-slot"
-internal const val HOME_CONNECTION_FEEDBACK_ACTION_TAG = "home-connection-feedback-action"
 internal const val HOME_CONNECTION_FEEDBACK_SLOT_HEIGHT_DP = 72
 
 internal enum class HomeConnectionFeedbackKind {
@@ -80,31 +69,15 @@ internal fun homeConnectionFeedbackState(
 }
 
 /**
- * Permanent overlay slot: connection changes never reflow retained home content or take focus.
+ * Permanent overlay slot: connection changes never reflow retained home content.
+ * Purely informational — none of it takes focus or accepts clicks.
  */
 @Composable
 internal fun HomeConnectionFeedback(
     state: HomeConnectionFeedbackState,
-    onOpenConnectionSettings: () -> Unit,
-    onRecoveryFocus: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
-    var feedbackHasFocus by remember { mutableStateOf(false) }
-    var previousKind by remember { mutableStateOf(state.kind) }
-    val shouldRestoreAfterHide = remember(state.kind) {
-        state.kind == HomeConnectionFeedbackKind.Hidden &&
-            previousKind != HomeConnectionFeedbackKind.Hidden &&
-            feedbackHasFocus
-    }
-
-    LaunchedEffect(state.kind, shouldRestoreAfterHide) {
-        if (shouldRestoreAfterHide) {
-            onRecoveryFocus()
-        }
-        previousKind = state.kind
-    }
-
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -122,9 +95,7 @@ internal fun HomeConnectionFeedback(
                 .height(HOME_CONNECTION_FEEDBACK_SLOT_HEIGHT_DP.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(colors.background.copy(alpha = 0.96f))
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-                .focusGroup()
-                .onFocusChanged { feedbackHasFocus = it.hasFocus },
+                .padding(horizontal = 18.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -146,11 +117,6 @@ internal fun HomeConnectionFeedback(
                     modifier = Modifier.fillMaxWidth().height(32.dp),
                 )
             }
-            DialogActionButton(
-                role = DialogActionRole.Secondary,
-                onClick = onOpenConnectionSettings,
-                modifier = Modifier.width(140.dp).testTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG),
-            ) { Text("接続設定") }
         }
     }
 }

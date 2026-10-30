@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import com.beeregg2001.komorebi.common.UserFacingFailure
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
@@ -43,15 +44,15 @@ class PlaybackSourceFeedbackTest {
         compose.runOnIdle { state.value = PlaybackSourceRequest.Failed(failure) }
         compose.onNodeWithTag("playback-loading-notice").assertDoesNotExist()
         val bounds = compose.onNodeWithTag("playback-source-feedback").getUnclippedBoundsInRoot()
-        val retry = compose.onNodeWithTag("playback-source-retry")
-        retry.assertIsFocused()
+        val retryNode = compose.onNodeWithTag("playback-source-retry").requestFocus()
+        retryNode.assertIsFocused()
         compose.onNodeWithText("${failure.message}（${failure.code}）").assertIsDisplayed()
-        retry.performKeyInput { pressKey(Key.DirectionCenter) }
-        retry.assertIsFocused().assertIsNotEnabled()
+        retryNode.performKeyInput { pressKey(Key.DirectionCenter) }
+        retryNode.assertIsFocused().assertIsNotEnabled()
         assertEquals(bounds, compose.onNodeWithTag("playback-source-feedback").getUnclippedBoundsInRoot())
-        retry.performKeyInput { pressKey(Key.DirectionCenter) }
+        retryNode.performKeyInput { pressKey(Key.DirectionCenter) }
         compose.runOnIdle { assertEquals(1, retries); state.value = PlaybackSourceRequest.Failed(failure) }
-        retry.assertIsFocused().assertIsEnabled()
+        retryNode.assertIsFocused().assertIsEnabled()
         assertEquals(bounds, compose.onNodeWithTag("playback-source-feedback").getUnclippedBoundsInRoot())
         compose.runOnIdle { state.value = PlaybackSourceRequest.Ready }
         compose.onNodeWithTag("playback-source-feedback").assertDoesNotExist()

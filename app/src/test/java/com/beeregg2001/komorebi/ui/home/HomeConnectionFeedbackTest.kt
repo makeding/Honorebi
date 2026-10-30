@@ -5,18 +5,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
@@ -45,8 +39,6 @@ class HomeConnectionFeedbackTest {
                     ) { Text("番組") }
                     HomeConnectionFeedback(
                         state = state.value,
-                        onOpenConnectionSettings = {},
-                        onRecoveryFocus = {},
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                 }
@@ -56,7 +48,7 @@ class HomeConnectionFeedbackTest {
         val retainedContent = compose.onNodeWithTag("retained-content").requestFocus().assertIsFocused()
         val initialBounds = compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_SLOT_TAG)
             .getUnclippedBoundsInRoot()
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG).assertDoesNotExist()
+        compose.onNodeWithText("接続設定").assertDoesNotExist()
 
         listOf(
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline),
@@ -74,62 +66,24 @@ class HomeConnectionFeedbackTest {
     }
 
     @Test
-    fun failureAndRecoveryKeepInlineReasonAndSettingsWithoutDetailsOrRefresh() {
+    fun failureAndRecoveryAreInformationalOnlyWithoutButtonsOrFocus() {
         val state = mutableStateOf(HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline))
-        var settingsOpens = 0
         compose.setContent {
             KomorebiTheme {
-                HomeConnectionFeedback(
-                    state = state.value,
-                    onOpenConnectionSettings = { settingsOpens++ },
-                    onRecoveryFocus = {},
-                )
+                HomeConnectionFeedback(state = state.value)
             }
         }
-        val action = compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG)
-        val bounds = action.getUnclippedBoundsInRoot()
         listOf(
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering, "HTTP 503"),
         ).forEach { next ->
             compose.runOnIdle { state.value = next }
-            action.assertTextContains("接続設定").requestFocus()
-                .performKeyInput { pressKey(Key.DirectionCenter) }
-            assertEquals(bounds, action.getUnclippedBoundsInRoot())
-            compose.onNodeWithText("詳細").assertDoesNotExist()
+            compose.onNodeWithText("接続設定").assertDoesNotExist()
             compose.onNodeWithText("再試行").assertDoesNotExist()
+            compose.onNodeWithText("詳細").assertDoesNotExist()
             if (next.reason != null) compose.onNodeWithText(next.reason).assertExists()
         }
-        assertEquals(3, settingsOpens)
-    }
-
-    @Test
-    fun focusedSettingsReturnsToContentAfterSuccessfulRecovery() {
-        val state = mutableStateOf(
-            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
-        )
-        val retainedContentRequester = FocusRequester()
-        compose.setContent {
-            KomorebiTheme {
-                Box(Modifier.fillMaxSize()) {
-                    Button(
-                        onClick = {},
-                        modifier = Modifier.align(Alignment.Center)
-                            .focusRequester(retainedContentRequester).testTag("recovery-content"),
-                    ) { Text("番組") }
-                    HomeConnectionFeedback(
-                        state = state.value,
-                        onOpenConnectionSettings = {},
-                        onRecoveryFocus = { retainedContentRequester.requestFocus() },
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                }
-            }
-        }
-        compose.onNodeWithTag(HOME_CONNECTION_FEEDBACK_ACTION_TAG).requestFocus().assertIsFocused()
-        compose.runOnIdle { state.value = HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Hidden) }
-        compose.onNodeWithTag("recovery-content").assertIsFocused()
     }
 
     @Test

@@ -556,6 +556,31 @@ onBeforeUnmount(stopPolling);
             </div>
           </article>
         </div>
+        <section class="settings-block">
+          <h2>Cloudflare Access</h2>
+          <p>
+            Cloudflare トンネル経由で接続する場合は、テレビ側の Access 認証トークンを入力します。
+          </p>
+          <label
+            >Client ID<input
+              v-model="snapshot.cloudflareAccess.clientId"
+              :disabled="controlsLocked"
+              autocomplete="off" /></label
+          ><label
+            >Client Secret<input
+              v-model="snapshot.cloudflareAccess.clientSecret"
+              :disabled="controlsLocked"
+              type="password"
+              :placeholder="
+                snapshot.cloudflareAccess.secretConfigured
+                  ? '設定済み（変更する場合のみ入力）'
+                  : ''
+              "
+              autocomplete="new-password"
+          /></label>
+          <p class="field-error field-feedback">{{ !validAccess(snapshot.cloudflareAccess) ? "Client ID と Client Secret を両方入力するか、両方消去してください。" : "" }}</p>
+          <button class="secondary" type="button" :disabled="controlsLocked" @click="snapshot.cloudflareAccess.clientId = ''; snapshot.cloudflareAccess.clientSecret = ''">トークンを消去</button>
+        </section>
         <section class="main-picker" :class="{ disabled: !canChooseMain }">
           <div>
             <h2>メインシステム</h2>
@@ -592,28 +617,6 @@ onBeforeUnmount(stopPolling);
               }}
             </option>
           </select>
-        </section>
-        <section class="settings-block">
-          <h2>Cloudflare Access</h2>
-          <label
-            >Client ID<input
-              v-model="snapshot.cloudflareAccess.clientId"
-              :disabled="controlsLocked"
-              autocomplete="off" /></label
-          ><label
-            >Client Secret<input
-              v-model="snapshot.cloudflareAccess.clientSecret"
-              :disabled="controlsLocked"
-              type="password"
-              :placeholder="
-                snapshot.cloudflareAccess.secretConfigured
-                  ? '設定済み（変更する場合のみ入力）'
-                  : ''
-              "
-              autocomplete="new-password"
-          /></label>
-          <p class="field-error field-feedback">{{ !validAccess(snapshot.cloudflareAccess) ? "Client ID と Client Secret を両方入力するか、両方消去してください。" : "" }}</p>
-          <button class="secondary" type="button" :disabled="controlsLocked" @click="snapshot.cloudflareAccess.clientId = ''; snapshot.cloudflareAccess.clientSecret = ''">トークンを消去</button>
         </section>
         <section class="settings-block">
           <div class="block-title">

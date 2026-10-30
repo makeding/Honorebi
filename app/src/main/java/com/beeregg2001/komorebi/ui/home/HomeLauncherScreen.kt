@@ -211,7 +211,6 @@ fun HomeLauncherScreen(
     lastPlayerProgramId: String? = null,
     isSettingsOpen: Boolean = false,
     onSettingsToggle: (Boolean) -> Unit = {},
-    onConnectionSettings: () -> Unit = { onSettingsToggle(true) },
     isRecordListOpen: Boolean = false,
     onShowAllRecordings: () -> Unit = {},
     onCloseRecordList: () -> Unit = {},
@@ -911,17 +910,6 @@ fun HomeLauncherScreen(
                         backendFailureReason = backendFailureReason,
                         recoveryInProgress = isBackendRecoveryInProgress,
                     ),
-                    onOpenConnectionSettings = onConnectionSettings,
-                    onRecoveryFocus = {
-                        scope.launch {
-                            if (!firstContentRequesterFor(safeTabIndex)
-                                    .safeRequestFocusWithRetry("HomeConnectionRecovered")
-                            ) {
-                                ui.tabFocusRequesters.getOrNull(safeTabIndex)
-                                    ?.safeRequestFocusWithRetry("HomeConnectionRecoveredFallback")
-                            }
-                        }
-                    },
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 8.dp, start = 48.dp, end = 48.dp),

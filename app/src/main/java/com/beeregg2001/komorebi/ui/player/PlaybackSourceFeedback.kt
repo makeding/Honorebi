@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.UserFacingFailure
-import com.beeregg2001.komorebi.common.safeRequestFocus
 
 sealed interface PlaybackSourceRequest {
     data object Ready : PlaybackSourceRequest
@@ -59,9 +57,6 @@ fun PlaybackSourceFeedback(
     }
     val retryFocus = remember { FocusRequester() }
     val hasFailure = failure != null
-    LaunchedEffect(hasFailure) {
-        if (hasFailure) retryFocus.safeRequestFocus("PlaybackSource")
-    }
     Column(
         modifier.width(640.dp).height(272.dp)
             .background(Color.Black.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
