@@ -22,7 +22,7 @@
             platformToolsVersion = "37.0.1";
             # AGP also requires 36.0.0 for release desugaring; the SDK is read-only.
             buildToolsVersions = [ "36.0.0" "37.0.0" ];
-            platformVersions = [ "37" ];
+            platformVersions = [ "36" "37" ];
             includeCmake = true;
             cmakeVersions = [ "3.31.6" ];
             includeNDK = true;
