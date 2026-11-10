@@ -377,16 +377,15 @@ fun LiveTopSubMenuUI(
                         )
                     }
 
-                    if (isDataBroadcastingAvailable) {
-                        LiveMenuTileItem(
-                            title = "データ放送",
-                            icon = ImageVector.vectorResource(R.drawable.ic_data_broadcasting),
-                            subtitle = "開く",
-                            onClick = onDataBroadcastingToggle,
-                            modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                            contentColor = colors.textPrimary
-                        )
-                    }
+                    LiveMenuTileItem(
+                        title = "データ放送",
+                        icon = ImageVector.vectorResource(R.drawable.ic_data_broadcasting),
+                        subtitle = if (isDataBroadcastingAvailable) "開く" else "4K のみ",
+                        onClick = onDataBroadcastingToggle,
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        enabled = isDataBroadcastingAvailable,
+                        contentColor = colors.textPrimary
+                    )
 
                     LiveMenuTileItem(
                         title = "字幕", icon = Icons.Default.Subtitles,

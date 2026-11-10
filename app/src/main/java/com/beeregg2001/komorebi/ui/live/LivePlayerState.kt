@@ -148,6 +148,29 @@ class LivePlayerState(
             this.lastInteractionTime = System.currentTimeMillis()
         }
 
+        // Physical CH+/CH− keys are the only channel navigation controls on some TV remotes.
+        // Recorded playback assigns them to speed, but Live must move within the current group.
+        if (keyCode == android.view.KeyEvent.KEYCODE_CHANNEL_UP ||
+            keyCode == android.view.KeyEvent.KEYCODE_CHANNEL_DOWN
+        ) {
+            if (!isActionDown || repeatCount > 0 || isDualDisplayMode) return true
+            val group = groupedChannels.values.firstOrNull { list ->
+                list.any { it.id == currentChannelItem.id }
+            } ?: return true
+            val index = group.indexOfFirst { it.id == currentChannelItem.id }
+            if (index < 0 || group.isEmpty()) return true
+            val nextIndex = if (keyCode == android.view.KeyEvent.KEYCODE_CHANNEL_UP) {
+                (index + 1) % group.size
+            } else {
+                (index - 1 + group.size) % group.size
+            }
+            onManualOverlayChange(false)
+            onPinnedOverlayChange(false)
+            onShowOverlayChange(false)
+            onChannelSelect(group[nextIndex])
+            return true
+        }
+
         if (keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
             if (isActionDown) {
                 if (keyEvent.nativeKeyEvent.repeatCount > 0 && !isCenterLongPressHandled) {

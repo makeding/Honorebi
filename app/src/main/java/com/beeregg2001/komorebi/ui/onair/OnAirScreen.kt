@@ -167,7 +167,7 @@ fun OnAirScreen(
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
 
-    val initialDay = remember(byWeekday) {
+    val initialDay = remember(byWeekday, state.selectedWeekday) {
         val preferred = state.selectedWeekday
         if (byWeekday.getOrNull(preferred)?.isNotEmpty() == true) preferred
         else byWeekday.indexOfFirst { it.isNotEmpty() }
@@ -213,8 +213,8 @@ fun OnAirScreen(
         else FocusRequester.Cancel
 
     // Keep the focused card visible while preserving the current viewport whenever it already fits.
-    fun scrollToCard(day: Int, index: Int) {
-        scope.launch {
+    suspend fun scrollToCard(day: Int, index: Int, animate: Boolean = true) {
+            withFrameNanos { }
             val columnStart = focusGutterPx + day * (columnWidthPx + columnSpacingPx)
             val visibleWidth = hScroll.viewportSize.takeIf { it > 0 } ?: columnWidthPx
             val horizontalTarget = when {
@@ -235,9 +235,12 @@ fun OnAirScreen(
                 else -> vScroll.value
             }.coerceIn(0, vScroll.maxValue)
 
-            if (horizontalTarget != hScroll.value) hScroll.animateScrollTo(horizontalTarget)
-            if (verticalTarget != vScroll.value) vScroll.animateScrollTo(verticalTarget)
-        }
+            if (horizontalTarget != hScroll.value) {
+                if (animate) hScroll.animateScrollTo(horizontalTarget) else hScroll.scrollTo(horizontalTarget)
+            }
+            if (verticalTarget != vScroll.value) {
+                if (animate) vScroll.animateScrollTo(verticalTarget) else vScroll.scrollTo(verticalTarget)
+            }
     }
 
     // フォーカスがカードへ移るたびに、その列・行が見える位置へスクロールする。
@@ -262,6 +265,7 @@ fun OnAirScreen(
     }
 
     DisposableEffect(viewModel) {
+        if (!isReturningFromPlayer) viewModel.resetForFreshEntry()
         viewModel.onEnterPage()
         onDispose { viewModel.onLeavePage() }
     }
@@ -271,7 +275,7 @@ fun OnAirScreen(
         val day = initialDay
         if (day in 0..6 && initialSeriesId != null) {
             initialFocusPlaced = true
-            scrollToCard(day, 0)
+            scrollToCard(day, 0, animate = false)
             withFrameNanos { }
             if (!pageFocused) cardFocus[initialSeriesId]?.safeRequestFocus("OnAirInitialFocus")
         } else {
@@ -285,7 +289,7 @@ fun OnAirScreen(
         if (day >= 0) {
             val index = byWeekday[day].indexOfFirst { it.id == id }
             viewModel.selectWeekday(day)
-            scrollToCard(day, index)
+            scrollToCard(day, index, animate = false)
             if (cardFocus[id]?.safeRequestFocusWithRetry("OnAirCardRestore") != true) return@LaunchedEffect
         } else {
             if (!topFocusRequester.safeRequestFocusWithRetry("OnAirCardRestoreFallback")) return@LaunchedEffect
@@ -443,7 +447,7 @@ fun OnAirScreen(
                                                 targets = headerTargets,
                                                 onFocus = {
                                                     viewModel.selectWeekday(day)
-                                                    scrollToCard(day, 0)
+                                                    scope.launch { scrollToCard(day, 0) }
                                                 },
                                                 onClick = {
                                                     requesterAt(day, 0)?.let { requester ->

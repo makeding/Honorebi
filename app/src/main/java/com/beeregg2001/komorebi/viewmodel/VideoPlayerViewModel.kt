@@ -418,7 +418,10 @@ class VideoPlayerViewModel @Inject constructor(
                 val response = recordProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
                 total = response.total
                 if (response.recordedPrograms.isEmpty()) break
-                programs += response.recordedPrograms
+                val knownIds = programs.asSequence().map { it.id }.toHashSet()
+                val fresh = response.recordedPrograms.filter { it.id !in knownIds }
+                if (fresh.isEmpty()) break
+                programs += fresh
                 page++
             }
             return programs
@@ -436,15 +439,24 @@ class VideoPlayerViewModel @Inject constructor(
 
         val fetched = mutableListOf<RecordedProgram>()
         for (keyword in keywords.take(3)) {
-            val result = recordProvider.searchRecordedPrograms(
-                keyword = keyword,
-                page = 1,
-                order = "desc"
-            ).recordedPrograms
-            fetched += result
-            if (buildSeriesProgramList(program, fetched, seriesKey, seriesTitle).size >= QUICK_VIDEO_LIMIT) {
-                break
+            val keywordPrograms = mutableListOf<RecordedProgram>()
+            var page = 1
+            var total = Int.MAX_VALUE
+            while (keywordPrograms.size < total) {
+                val response = recordProvider.searchRecordedPrograms(
+                    keyword = keyword,
+                    page = page,
+                    order = "desc"
+                )
+                total = response.total
+                if (response.recordedPrograms.isEmpty()) break
+                val knownIds = keywordPrograms.asSequence().map { it.id }.toHashSet()
+                val fresh = response.recordedPrograms.filter { it.id !in knownIds }
+                if (fresh.isEmpty()) break
+                keywordPrograms += fresh
+                page++
             }
+            fetched += keywordPrograms
         }
         return fetched
     }
@@ -469,7 +481,6 @@ class VideoPlayerViewModel @Inject constructor(
             },
             preferredChannelId = preferredQuickSeriesChannelId,
         )
-            .take(QUICK_VIDEO_LIMIT)
 
     private fun buildRecentProgramList(
         program: RecordedProgram,

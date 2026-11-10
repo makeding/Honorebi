@@ -971,7 +971,11 @@ fun LivePlayerScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(
-                                if (showOverlay || isPinnedOverlay || isMiniListOpen) 3f else 0f
+                                when {
+                                    isDataBroadcastingActive -> 4f
+                                    showOverlay || isPinnedOverlay || isMiniListOpen -> 3f
+                                    else -> 0f
+                                }
                             ),
                         avoidanceObstacles = subtitleAvoidanceObstacles,
                         avoidanceProgress = subtitleAvoidanceProgress,
@@ -981,7 +985,7 @@ fun LivePlayerScreen(
                     NativeCaptionOverlay(
                         cue = mainSuperimposeCue.value,
                         visible = true,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().zIndex(if (isDataBroadcastingActive) 4f else 0f)
                     )
                 }
             }

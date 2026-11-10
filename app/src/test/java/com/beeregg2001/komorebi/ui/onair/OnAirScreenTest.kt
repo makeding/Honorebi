@@ -21,6 +21,7 @@ import com.beeregg2001.komorebi.data.repository.OnAirProvider
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.OnAirBackendConfiguration
 import com.beeregg2001.komorebi.viewmodel.OnAirViewModel
+import com.beeregg2001.komorebi.viewmodel.currentJapanWeekday
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.Test
@@ -56,6 +57,16 @@ class OnAirScreenTest {
         // Back は常に一覧へ戻り、確認前のカードへフォーカスを復元する。
         compose.onNodeWithTag("onair-summary").performKeyInput { keyDown(Key.Back); keyUp(Key.Back) }
         compose.onNodeWithTag("onair-series-2").assertIsFocused()
+    }
+
+    @Test fun freshEntryResetsCalendarToTodayAndPlacesFocusAfterScroll() {
+        val vm = viewModel()
+        vm.selectWeekday((currentJapanWeekday() + 3) % 7)
+        compose.setContent { screen(vm) }
+        val day = currentJapanWeekday()
+        assertEquals(day, vm.uiState.value.selectedWeekday)
+        val expected = if (day == 0) 1 else 2
+        compose.onNodeWithTag("onair-series-$expected").assertIsDisplayed().assertIsFocused()
     }
 
     @Test fun detailSummaryDownJumpsToNewestPlayableEpisodeCell() {

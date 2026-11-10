@@ -157,6 +157,22 @@ class OnAirViewModel private constructor(
         }
     }
 
+    /** A fresh menu entry starts from today's calendar column; player return keeps its saved place. */
+    fun resetForFreshEntry() {
+        val today = currentJapanWeekday()
+        _uiState.value = _uiState.value.copy(
+            selectedWeekday = today,
+            expanded = null,
+            focusedSeriesId = null,
+            focusedEpisodeCellKey = null,
+            gridFirstVisibleIndex = 0,
+            gridFirstVisibleOffset = 0,
+            matrixHorizontalScroll = 0,
+            matrixVerticalScroll = 0,
+            summaryExpanded = false,
+        )
+    }
+
     private fun applyBackendConfiguration(configuration: OnAirBackendConfiguration) {
         // A changed backend, host, port, or auth setting makes all in-flight data stale.
         cancelRequests()

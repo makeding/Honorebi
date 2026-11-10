@@ -25,13 +25,14 @@ class LivePlayerInputTest {
     private var menu = false
     private var browser = false
     private var channelSelections = 0
+    private var selectedChannel: Channel? = null
     private var exits = 0
 
     private fun key(code: Int, repeat: Int = 0, action: Int = AndroidKeyEvent.ACTION_DOWN): Boolean =
         state.handleKeyEvent(
             KeyEvent(AndroidKeyEvent(0, 0, action, code, repeat)), menu, browser, overlay, manual, pinned,
             channel, mapOf("GR" to listOf(channel)), ScrollState(0), CoroutineScope(Job().apply { cancel() }),
-            { channelSelections++ }, { overlay = it }, { manual = it }, { pinned = it },
+            { selectedChannel = it; channelSelections++ }, { overlay = it }, { manual = it }, { pinned = it },
             { menu = it }, { browser = it }, {}, {}, { exits++ },
         )
 
@@ -96,6 +97,25 @@ class LivePlayerInputTest {
         key(AndroidKeyEvent.KEYCODE_BACK, action = AndroidKeyEvent.ACTION_UP)
         assertFalse(overlay)
         assertEquals(0, exits)
+    }
+
+    @Test fun channelPlusMinusNavigateLiveGroupAndIgnoreKeyRepeat() {
+        val second = channel.copy(id = "gr2", displayChannelId = "gr012", channelNumber = "012")
+        val group = mapOf("GR" to listOf(channel, second))
+        fun press(code: Int, repeat: Int = 0) = state.handleKeyEvent(
+            KeyEvent(AndroidKeyEvent(0, 0, AndroidKeyEvent.ACTION_DOWN, code, repeat)),
+            menu, browser, overlay, manual, pinned, channel, group, ScrollState(0),
+            CoroutineScope(Job().apply { cancel() }), { selectedChannel = it; channelSelections++ },
+            { overlay = it }, { manual = it }, { pinned = it }, { menu = it }, { browser = it },
+            {}, {}, { exits++ },
+        )
+
+        assertTrue(press(AndroidKeyEvent.KEYCODE_CHANNEL_UP))
+        assertEquals(second.id, selectedChannel?.id)
+        assertTrue(press(AndroidKeyEvent.KEYCODE_CHANNEL_DOWN))
+        assertEquals(channel.id, selectedChannel?.id)
+        assertTrue(press(AndroidKeyEvent.KEYCODE_CHANNEL_DOWN, repeat = 1))
+        assertEquals(2, channelSelections)
     }
 
     @Test fun manualDetailsAndSpecialModesKeepTheirInputOwnership() {
