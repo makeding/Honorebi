@@ -166,6 +166,7 @@ fun OnAirScreen(
     }
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
+    var freshEntryPrepared by remember(viewModel) { mutableStateOf(isReturningFromPlayer) }
 
     val initialDay = remember(byWeekday, state.selectedWeekday) {
         val preferred = state.selectedWeekday
@@ -264,20 +265,23 @@ fun OnAirScreen(
         }
     }
 
-    DisposableEffect(viewModel) {
+    LaunchedEffect(viewModel) {
         if (!isReturningFromPlayer) viewModel.resetForFreshEntry()
+        freshEntryPrepared = true
+    }
+
+    DisposableEffect(viewModel) {
         viewModel.onEnterPage()
         onDispose { viewModel.onLeavePage() }
     }
 
-    LaunchedEffect(initialSeriesId, isReturningFromPlayer) {
-        if (isReturningFromPlayer || expanded != null || initialFocusPlaced || pageFocused) return@LaunchedEffect
+    LaunchedEffect(initialSeriesId, isReturningFromPlayer, freshEntryPrepared, expanded?.seriesId) {
+        if (!freshEntryPrepared || isReturningFromPlayer || expanded != null || initialFocusPlaced) return@LaunchedEffect
         val day = initialDay
         if (day in 0..6 && initialSeriesId != null) {
-            initialFocusPlaced = true
             scrollToCard(day, 0, animate = false)
             withFrameNanos { }
-            if (!pageFocused) cardFocus[initialSeriesId]?.safeRequestFocus("OnAirInitialFocus")
+            initialFocusPlaced = cardFocus[initialSeriesId]?.safeRequestFocusWithRetry("OnAirInitialFocus") == true
         } else {
             if (topFocusRequester != FocusRequester.Default) topFocusRequester.safeRequestFocus("OnAirInitialFallback")
         }

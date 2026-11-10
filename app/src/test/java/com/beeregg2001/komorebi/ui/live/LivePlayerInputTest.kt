@@ -102,13 +102,16 @@ class LivePlayerInputTest {
     @Test fun channelPlusMinusNavigateLiveGroupAndIgnoreKeyRepeat() {
         val second = channel.copy(id = "gr2", displayChannelId = "gr012", channelNumber = "012")
         val group = mapOf("GR" to listOf(channel, second))
-        fun press(code: Int, repeat: Int = 0) = state.handleKeyEvent(
+        fun press(code: Int, repeat: Int = 0): Boolean {
+            val current = selectedChannel ?: channel
+            return state.handleKeyEvent(
             KeyEvent(AndroidKeyEvent(0, 0, AndroidKeyEvent.ACTION_DOWN, code, repeat)),
-            menu, browser, overlay, manual, pinned, channel, group, ScrollState(0),
+            menu, browser, overlay, manual, pinned, current, group, ScrollState(0),
             CoroutineScope(Job().apply { cancel() }), { selectedChannel = it; channelSelections++ },
             { overlay = it }, { manual = it }, { pinned = it }, { menu = it }, { browser = it },
             {}, {}, { exits++ },
         )
+        }
 
         assertTrue(press(AndroidKeyEvent.KEYCODE_CHANNEL_UP))
         assertEquals(second.id, selectedChannel?.id)
