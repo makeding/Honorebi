@@ -424,6 +424,12 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun checkForUpdatesAutomatically() {
+        viewModelScope.launch {
+            appUpdater.checkForUpdates(settingsRepository.receiveBetaUpdates.first())
+        }
+    }
+
     fun dismissUpdate() {
         appUpdater.resetState()
     }

@@ -49,6 +49,7 @@ class InAppScreensaverStateTest {
     private val playerTimeout = mutableStateOf(10)
     private val endedHold = mutableStateOf(1)
     private lateinit var state: InAppScreensaverState
+    private lateinit var appWakeState: com.beeregg2001.komorebi.ui.main.AppWakeState
 
     @Before fun grantManifestReceiverPermission() {
         shadowOf(context).grantPermissions("${context.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
@@ -64,6 +65,7 @@ class InAppScreensaverStateTest {
             if (mounted.value) {
                 CompositionLocalProvider(LocalLifecycleOwner provides owner) {
                     val wake = com.beeregg2001.komorebi.ui.main.rememberAppWakeState()
+                    appWakeState = wake
                     state = rememberInAppScreensaverState(enabled.value, 1, hasImages.value,
                         wake, playerTimeout.value)
                     EndedPlaybackScreenHold(endedHold.value, wake)
@@ -109,6 +111,26 @@ class InAppScreensaverStateTest {
 
     private fun hidden() = compose.onNodeWithTag("saver").assertDoesNotExist()
     private fun shown() = compose.onNodeWithTag("saver").assertExists()
+
+    @Test fun appWakeGenerationAdvancesOnceWhenTheScreenWakes() {
+        start()
+        compose.runOnIdle { assertEquals(0, appWakeState.generation) }
+
+        screen(interactive = false)
+        compose.runOnIdle {
+            assertFalse(appWakeState.isAwake)
+            assertEquals(0, appWakeState.generation)
+        }
+
+        screen(interactive = true)
+        compose.runOnIdle {
+            assertTrue(appWakeState.isAwake)
+            assertEquals(1, appWakeState.generation)
+        }
+
+        screen(interactive = true)
+        compose.runOnIdle { assertEquals(1, appWakeState.generation) }
+    }
 
     @Test fun pausedPlayerUsesItsOwnLongerDeadlineAndResumeCancelsIt() {
         val player = Any()

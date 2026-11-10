@@ -41,31 +41,42 @@ sealed class UpdateState {
     object Installing : UpdateState()
     object Cancelled : UpdateState()
     object UpToDate : UpdateState()
-    data class Error(val message: String) : UpdateState()
+    data class Error(
+        val message: String,
+        val installationFailure: Boolean = false
+    ) : UpdateState()
 }
 
 @Singleton
 class AppUpdater @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    internal constructor(context: Context, versionJsonUrl: String) : this(context) {
+        this.versionJsonUrl = versionJsonUrl
+    }
+
     private val installPreferences = context.getSharedPreferences("update_install", Context.MODE_PRIVATE)
     private val downloadMutex = Mutex()
+    private val checkMutex = Mutex()
     private val _updateState = MutableStateFlow(restoreInstallState())
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
     private val client = OkHttpClient()
 
-    private val versionJsonUrl =
-        "https://raw.githubusercontent.com/makeding/Honorebi/main/version.json"
+    private var versionJsonUrl = VERSION_JSON_URL
 
     // ★ 修正: 引数に receiveBetaUpdates フラグを追加し、デフォルトは false (Stable) とする
     suspend fun checkForUpdates(receiveBetaUpdates: Boolean = false, userInitiated: Boolean = false) = withContext(Dispatchers.IO) {
-        if (isInstallPending()) return@withContext
-        if (!userInitiated && _updateState.value is UpdateState.Error) return@withContext
-        if (_updateState.value is UpdateState.Error) clearFailedInstall()
-        installPreferences.edit().remove("error").remove("result").apply()
-        _updateState.value = UpdateState.Checking
+        if (!checkMutex.tryLock()) return@withContext
         try {
+            if (isInstallPending()) return@withContext
+            val previousState = _updateState.value
+            if (!userInitiated && previousState is UpdateState.Error && previousState.installationFailure) {
+                return@withContext
+            }
+            if (userInitiated && previousState is UpdateState.Error) clearFailedInstall()
+            installPreferences.edit().remove("error").remove("result").apply()
+            _updateState.value = UpdateState.Checking
             val request = Request.Builder().url(versionJsonUrl).build()
             val response = client.newCall(request).execute()
 
@@ -106,6 +117,8 @@ class AppUpdater @Inject constructor(
         } catch (e: Exception) {
             Log.e("AppUpdater", "Update check failed", e)
             _updateState.value = UpdateState.Error("ネットワークエラーが発生しました")
+        } finally {
+            checkMutex.unlock()
         }
     }
 
@@ -190,12 +203,15 @@ class AppUpdater @Inject constructor(
     }
 
     private fun restoreInstallState(): UpdateState {
-        installPreferences.getString("error", null)?.let { return UpdateState.Error(it) }
+        installPreferences.getString("error", null)?.let { return UpdateState.Error(it, installationFailure = true) }
         installPreferences.getString("confirmation", null)?.let {
             return try {
                 UpdateState.AwaitingInstallConfirmation(Intent.parseUri(it, 0))
             } catch (e: Exception) {
-                UpdateState.Error("更新の確認画面を復元できませんでした。更新を再確認してください [INSTALL_RESTORE]")
+                UpdateState.Error(
+                    "更新の確認画面を復元できませんでした。更新を再確認してください [INSTALL_RESTORE]",
+                    installationFailure = true
+                )
             }
         }
         val sessionId = installPreferences.getInt("session_id", -1)
@@ -208,7 +224,7 @@ class AppUpdater @Inject constructor(
             // A missing session alone never establishes success. A late callback may still replace this error.
             val error = "更新が完了したことを確認できませんでした。更新を再確認してください [INSTALL_INTERRUPTED]"
             installPreferences.edit().putString("error", error).commit()
-            return UpdateState.Error(error)
+            return UpdateState.Error(error, installationFailure = true)
         }
         return when (installPreferences.getString("result", null)) {
             "success" -> UpdateState.UpToDate
@@ -288,7 +304,7 @@ class AppUpdater @Inject constructor(
 
     private fun setInstallError(message: String) {
         installPreferences.edit().putString("error", message).remove("result").commit()
-        _updateState.value = UpdateState.Error(message)
+        _updateState.value = UpdateState.Error(message, installationFailure = true)
     }
 
     private fun clearFailedInstall() {
@@ -321,5 +337,6 @@ class AppUpdater @Inject constructor(
 
     internal companion object {
         const val INSTALL_RESULT_ACTION = "com.beeregg2001.komorebi.UPDATE_INSTALL_RESULT"
+        private const val VERSION_JSON_URL = "https://raw.githubusercontent.com/makeding/Honorebi/main/version.json"
     }
 }

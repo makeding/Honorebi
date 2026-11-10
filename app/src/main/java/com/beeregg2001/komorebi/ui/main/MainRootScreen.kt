@@ -191,6 +191,7 @@ fun MainRootScreen(
     LaunchedEffect(appWakeState.isAwake, appWakeState.generation) {
         if (appWakeState.isAwake) {
             nhkExclusionRepository.refreshExpiry()
+            homeViewModel.checkForUpdatesAutomatically()
             if (appWakeState.generation > 0) homeViewModel.refreshLauncherApps()
         }
     }
