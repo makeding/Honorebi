@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -63,6 +64,7 @@ fun PlayerProgramPanel(
     metadata: List<Pair<String, String>>,
     scrollState: ScrollState,
     modifier: Modifier = Modifier,
+    feedbackHeight: Dp = 64.dp,
     channelAdornment: @Composable RowScope.() -> Unit = {},
     feedback: @Composable RowScope.() -> Unit = {
         Text("番組情報  ·  上下キーでスクロール  ·  戻るで閉じる", color = Color.White.copy(0.7f))
@@ -105,7 +107,7 @@ fun PlayerProgramPanel(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().height(64.dp).testTag("program-feedback"),
+            Row(Modifier.fillMaxWidth().height(feedbackHeight).testTag("program-feedback"),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp), content = feedback)
         }

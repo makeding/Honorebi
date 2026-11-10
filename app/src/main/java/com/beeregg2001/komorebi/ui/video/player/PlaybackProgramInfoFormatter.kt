@@ -84,8 +84,8 @@ internal fun formatBroadcastTime(
 }
 
 private fun parseDateTime(value: String, zoneId: ZoneId): java.time.temporal.TemporalAccessor? =
-    runCatching { ZonedDateTime.parse(value) }.getOrNull()
-        ?: runCatching { OffsetDateTime.parse(value) }.getOrNull()
+    runCatching { ZonedDateTime.parse(value).withZoneSameInstant(zoneId) }.getOrNull()
+        ?: runCatching { OffsetDateTime.parse(value).atZoneSameInstant(zoneId) }.getOrNull()
         ?: runCatching { LocalDateTime.parse(value) }.getOrNull()
         ?: runCatching { Instant.parse(value).atZone(zoneId) }.getOrNull()
 

@@ -235,6 +235,7 @@ fun LiveOverlayUI(
             metadata = listOf("放送日時" to (program?.let {
                 com.beeregg2001.komorebi.ui.video.player.formatBroadcastTime(it.startTime, it.endTime, timeFormatSetting)
             } ?: "番組情報なし")), scrollState = scrollState,
+            feedbackHeight = 88.dp,
             channelAdornment = { if (isRecording) RecordingIndicator() },
             feedback = {
                 Column(Modifier.fillMaxWidth()) {

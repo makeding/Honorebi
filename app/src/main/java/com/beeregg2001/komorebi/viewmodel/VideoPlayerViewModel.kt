@@ -15,6 +15,7 @@ import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.CmSection
+import com.beeregg2001.komorebi.data.model.RecordedApiResponse
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.data.repository.KonomiRepository
@@ -411,20 +412,9 @@ class VideoPlayerViewModel @Inject constructor(
         seriesKey: String
     ): List<RecordedProgram> {
         program.seriesId?.let { seriesId ->
-            val programs = mutableListOf<RecordedProgram>()
-            var page = 1
-            var total = Int.MAX_VALUE
-            while (programs.size < total) {
-                val response = recordProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
-                total = response.total
-                if (response.recordedPrograms.isEmpty()) break
-                val knownIds = programs.asSequence().map { it.id }.toHashSet()
-                val fresh = response.recordedPrograms.filter { it.id !in knownIds }
-                if (fresh.isEmpty()) break
-                programs += fresh
-                page++
+            return fetchAllUniqueRecordedPrograms { page ->
+                recordProvider.getRecordedProgramsBySeries(seriesId, page, "asc")
             }
-            return programs
         }
 
         val keywords = listOf(
@@ -439,24 +429,9 @@ class VideoPlayerViewModel @Inject constructor(
 
         val fetched = mutableListOf<RecordedProgram>()
         for (keyword in keywords.take(3)) {
-            val keywordPrograms = mutableListOf<RecordedProgram>()
-            var page = 1
-            var total = Int.MAX_VALUE
-            while (keywordPrograms.size < total) {
-                val response = recordProvider.searchRecordedPrograms(
-                    keyword = keyword,
-                    page = page,
-                    order = "desc"
-                )
-                total = response.total
-                if (response.recordedPrograms.isEmpty()) break
-                val knownIds = keywordPrograms.asSequence().map { it.id }.toHashSet()
-                val fresh = response.recordedPrograms.filter { it.id !in knownIds }
-                if (fresh.isEmpty()) break
-                keywordPrograms += fresh
-                page++
+            fetched += fetchAllUniqueRecordedPrograms { page ->
+                recordProvider.searchRecordedPrograms(keyword = keyword, page = page, order = "desc")
             }
-            fetched += keywordPrograms
         }
         return fetched
     }
@@ -693,4 +668,23 @@ class VideoPlayerViewModel @Inject constructor(
         detailFetchJob?.cancel()
         quickVideoFetchJob?.cancel()
     }
+}
+
+internal suspend fun fetchAllUniqueRecordedPrograms(
+    fetchPage: suspend (page: Int) -> RecordedApiResponse,
+): List<RecordedProgram> {
+    val programs = mutableListOf<RecordedProgram>()
+    var page = 1
+    var total = Int.MAX_VALUE
+    while (programs.size < total) {
+        val response = fetchPage(page)
+        total = response.total
+        if (response.recordedPrograms.isEmpty()) break
+        val knownIds = programs.asSequence().map { it.id }.toHashSet()
+        val fresh = response.recordedPrograms.filter { it.id !in knownIds }
+        if (fresh.isEmpty()) break
+        programs += fresh
+        page++
+    }
+    return programs
 }

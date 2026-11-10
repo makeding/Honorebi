@@ -99,7 +99,7 @@ object ProgramTimeFormatter {
         if (format == TWENTY_EIGHT_HOUR && time.hour < 4) date.minusDays(1) else date
 
     private fun parse(value: String, zoneId: ZoneId): ZonedDateTime? =
-        runCatching { ZonedDateTime.parse(value) }.getOrNull()
+        runCatching { ZonedDateTime.parse(value).withZoneSameInstant(zoneId) }.getOrNull()
             ?: runCatching { OffsetDateTime.parse(value).atZoneSameInstant(zoneId) }.getOrNull()
             ?: runCatching { LocalDateTime.parse(value).atZone(zoneId) }.getOrNull()
             ?: runCatching { Instant.parse(value).atZone(zoneId) }.getOrNull()

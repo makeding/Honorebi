@@ -1,6 +1,8 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.width
@@ -21,6 +23,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.focus.FocusRequester
+import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.model.RecordedChannel
@@ -31,6 +34,8 @@ import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.player.formatPlayerWallClock
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
+import com.beeregg2001.komorebi.ui.player.PlayerTimelineRow
+import com.beeregg2001.komorebi.ui.player.PlayerTimelineTrack
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -451,7 +456,16 @@ class RecordedPlayerLayoutTest {
                     description = if (missing.value) null else "本文".repeat(600),
                     detail = if (missing.value) null else mapOf("出演者" to "出演者情報".repeat(200)),
                     metadata = listOf("放送日時" to "2026/08/10(月) 23:55 - 2026/08/11(火) 00:25"),
-                    scrollState = rememberScrollState()
+                    scrollState = rememberScrollState(),
+                    feedbackHeight = 88.dp,
+                    feedback = {
+                        Column(Modifier.fillMaxWidth()) {
+                            PlayerTimelineRow(1_000L, 10_000L) {
+                                PlayerTimelineTrack(1_000L, 10_000L)
+                            }
+                            Text("下キーでスクロール", modifier = Modifier.testTag("program-feedback-hint"))
+                        }
+                    },
                 )
             }
         }
@@ -459,6 +473,10 @@ class RecordedPlayerLayoutTest {
         composeRule.onNodeWithTag("program-panel").assertIsDisplayed()
         val readyPanelBounds = composeRule.onNodeWithTag("program-panel").getUnclippedBoundsInRoot()
         val readyFeedbackBounds = composeRule.onNodeWithTag("program-feedback").getUnclippedBoundsInRoot()
+        val trackBounds = composeRule.onNodeWithTag("playback-track").getUnclippedBoundsInRoot()
+        assertTrue(trackBounds.top >= readyFeedbackBounds.top)
+        assertTrue(trackBounds.bottom <= readyFeedbackBounds.bottom)
+        composeRule.onNodeWithTag("program-feedback-hint").assertIsDisplayed()
 
         composeRule.runOnIdle { missing.value = true }
 

@@ -125,6 +125,17 @@ class PlaybackProgramInfoFormatterTest {
             formatBroadcastTime(start, "2026-08-11T02:30:00+09:00", "28H", zone))
     }
 
+    @Test
+    fun netStreamScheduleConvertsSourceOffsetToDeviceZoneForAllTimeFormats() {
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+        val start = "2026-08-10T23:30:00+09:00"
+        val end = "2026-08-11T00:30:00+09:00"
+
+        assertEquals("2026/08/10(月) 22:30 - 23:30", formatBroadcastTime(start, end, "24H", zone))
+        assertEquals("2026/08/10(月) 午後 10:30 - 午後 11:30", formatBroadcastTime(start, end, "12H", zone))
+        assertEquals("2026/08/10(月) 22:30 - 23:30", formatBroadcastTime(start, end, "28H", zone))
+    }
+
     private fun List<PlaybackProgramInfoRow>.valueFor(label: String): String =
         single { it.label == label }.value
 
