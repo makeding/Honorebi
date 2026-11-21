@@ -172,12 +172,12 @@ fun VideoTabContent(
     val historyRowState = rememberLazyListState()
     val genreRowState = rememberLazyListState()
     val seriesRowState = rememberLazyListState()
-    val recordingsRequester = remember { FocusRequester() }
-    val onAirRequester = contentFirstItemRequester
+    val recordingsRequester = contentFirstItemRequester
+    val onAirRequester = remember { FocusRequester() }
     val smbRequester = remember { FocusRequester() }
     val cardFocusRequesters = remember { mutableStateMapOf<VideoCardFocus, FocusRequester>() }
     var lastFocusedCard by remember { mutableStateOf(homeViewModel.lastVideoCardFocus) }
-    var lastFocusedBanner by remember { mutableStateOf(VideoBannerFocus.ON_AIR) }
+    var lastFocusedBanner by remember { mutableStateOf(VideoBannerFocus.RECORDINGS) }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val recentRecordingsLoading by recordViewModel.isRecentRecordingsLoading.collectAsState()
@@ -370,7 +370,7 @@ fun VideoTabContent(
 
         listState.scrollToItem(0)
         withFrameNanos { }
-        return onAirRequester.safeRequestFocusWithRetry("VideoTabPlayerReturnFallback")
+        return recordingsRequester.safeRequestFocusWithRetry("VideoTabPlayerReturnFallback")
     }
 
     // Player and AI returns are deliberately serialized here: scroll the target row,
@@ -444,6 +444,7 @@ fun VideoTabContent(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(recordingsRequester)
+                            .onGloballyPositioned { onContentReady() }
                             .then(upToTopBarModifier)
                             .focusProperties {
                                 left = tabFocusRequester
@@ -467,7 +468,6 @@ fun VideoTabContent(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(onAirRequester)
-                            .onGloballyPositioned { onContentReady() }
                             .onPreviewKeyEvent { event ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                                     recentFocus.requestEntryFocus() || historyFocus.requestEntryFocus()
