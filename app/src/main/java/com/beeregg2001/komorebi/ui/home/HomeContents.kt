@@ -3,42 +3,34 @@
 package com.beeregg2001.komorebi.ui.home
 
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
-import com.beeregg2001.komorebi.data.model.*
-import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
-import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.home.components.*
+import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingEnd
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingStart
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
 import com.beeregg2001.komorebi.viewmodel.RecordViewModel
-import kotlinx.coroutines.delay
-
-private const val TAG = "HomeContents"
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -57,8 +49,6 @@ fun HomeContents(
     onHistoryClick: (KonomiHistoryProgram) -> Unit,
     onReserveClick: (ReserveItem) -> Unit,
     onProgramClick: (EpgProgram) -> Unit,
-    // ★ 修正: タブ索引ではなくタブタイトルを渡す。アプリタブの非表示有無で
-    // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
     onNavigateToTab: (String) -> Unit,
     konomiIp: String, konomiPort: String,
     mirakurunIp: String, mirakurunPort: String,
@@ -74,13 +64,28 @@ fun HomeContents(
     timeFormat: String,
     focusMemory: FocusMemory,
     tabIndex: Int = 0,
+    topBarFocusRequester: FocusRequester? = null,
+    onShowAllRecordings: () -> Unit = {},
+    onShowOnAir: () -> Unit = {},
+    hideAppsTab: Boolean = false,
 ) {
     val lazyListState = rememberLazyListState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
+    val launcherApps by homeViewModel.launcherApps.collectAsState()
+    val colors = KomorebiTheme.colors
 
-    // ★ 修正: 固定スリープによる準備完了通知をやめ、先頭セクションが実際に
-    // 描画された(LazyColumn に項目が構築された)時点で即座に通知する描画駆動方式に変更。
-    // これによりタブ切替直後の「下」キーが無効になる時間を最小化する。
+    val quickApps = remember(launcherApps) {
+        launcherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }.take(5)
+    }
+    val showQuickApps = !hideAppsTab && quickApps.isNotEmpty()
+    val topBarTarget = topBarFocusRequester ?: tabFocusRequester
+
+    val tile0Requester = remember { FocusRequester() }
+    val tile1Requester = remember { FocusRequester() }
+    val tile2Requester = remember { FocusRequester() }
+    val tile3Requester = remember { FocusRequester() }
+    val quickAppsFirstRequester = remember { FocusRequester() }
+
     val isFirstItemRendered =
         remember { derivedStateOf { lazyListState.layoutInfo.visibleItemsInfo.isNotEmpty() } }
 
@@ -88,266 +93,228 @@ fun HomeContents(
         if (isFirstItemRendered.value) onUiReady()
     }
 
-    val welcomeHeroInfo = remember {
-        HomeHeroInfo(
-            title = "Komorebi へようこそ",
-            subtitle = "ホーム",
-            description = "十字キーの「下」を押してコンテンツを選択してください。\n現在放送中の人気番組や、録画した番組の続きをここから楽しめます。",
-            tag = "Welcome"
-        )
-    }
-
-    var pendingHeroInfo by remember { mutableStateOf<HomeHeroInfo?>(welcomeHeroInfo) }
-    var currentHeroInfo by remember { mutableStateOf<HomeHeroInfo>(welcomeHeroInfo) }
-    var isFirstHeroLoad by remember { mutableStateOf(true) }
-    val colors = KomorebiTheme.colors
-
-    // N〇K除外モードの ON/OFF 切替では一覧が作り直され、注視していた N〇K 項目が消える。
-    // バナー概要に古い項目を残さないため、切替を検知したら Welcome ヒーローへ戻して再レンダリングする。
-    val isNhkExcluded by homeViewModel.isNhkExclusionActive.collectAsState()
-    var heroExclusionBaseline by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(isNhkExcluded) {
-        if (heroExclusionBaseline != null && heroExclusionBaseline != isNhkExcluded) {
-            pendingHeroInfo = welcomeHeroInfo
-        }
-        heroExclusionBaseline = isNhkExcluded
-    }
-
-    LaunchedEffect(isTopNavFocused) { if (isTopNavFocused) pendingHeroInfo = welcomeHeroInfo }
-
-    LaunchedEffect(pendingHeroInfo) {
-        if (pendingHeroInfo != null) {
-            if (isFirstHeroLoad) {
-                currentHeroInfo = pendingHeroInfo!!; isFirstHeroLoad = false
-            } else {
-                delay(300); currentHeroInfo = pendingHeroInfo!!
-            }
-        }
-    }
-
-    val topSection =
-        remember(lastWatchedChannels, hotChannels, genrePickup, watchHistory, upcomingReserves) {
-            when {
-                lastWatchedChannels.isNotEmpty() -> "lastWatched"
-                hotChannels.isNotEmpty() -> "hot"
-                genrePickup.isNotEmpty() -> "pickup"
-                watchHistory.isNotEmpty() -> "history"
-                upcomingReserves.isNotEmpty() -> "upcoming"
-                else -> ""
-            }
-        }
-
     val availableSections =
-        remember(lastWatchedChannels, hotChannels, genrePickup, watchHistory, upcomingReserves) {
-            val list = mutableListOf<String>()
-            if (lastWatchedChannels.isNotEmpty()) list.add("lastWatched")
-            if (hotChannels.isNotEmpty()) list.add("hot")
-            if (genrePickup.isNotEmpty()) list.add("pickup")
-            if (watchHistory.isNotEmpty()) list.add("history")
-            if (upcomingReserves.isNotEmpty()) list.add("upcoming")
-            list
+        remember(watchHistory, lastWatchedChannels, hotChannels, genrePickup, upcomingReserves) {
+            buildList {
+                if (watchHistory.isNotEmpty()) add("history")
+                if (lastWatchedChannels.isNotEmpty()) add("lastWatched")
+                if (hotChannels.isNotEmpty()) add("hot")
+                if (genrePickup.isNotEmpty()) add("pickup")
+                if (upcomingReserves.isNotEmpty()) add("upcoming")
+            }
         }
 
-    LaunchedEffect(focusMemory.requestId, availableSections) {
+    val headerCount = 1 + (if (showQuickApps) 1 else 0)
+
+    LaunchedEffect(focusMemory.requestId, availableSections, headerCount) {
         val request = focusMemory.request ?: return@LaunchedEffect
         if (request.tab != tabIndex) return@LaunchedEffect
         val section = request.section ?: return@LaunchedEffect
         val index = availableSections.indexOf(section)
         if (index < 0) {
-            val fallback = if (availableSections.isEmpty()) tabFocusRequester else externalFocusRequester
-            if (fallback.safeRequestFocusWithRetry("HomeRestore_MissingSection")) {
+            if (externalFocusRequester.safeRequestFocusWithRetry("HomeRestore_MissingSection")) {
                 focusMemory.consume(request.id)
             }
         } else {
-            lazyListState.scrollToItem(index)
+            lazyListState.scrollToItem(headerCount + index)
             androidx.compose.runtime.withFrameNanos { }
             focusMemory.prepare(request.id)
         }
     }
 
-    val upToTabModifier = Modifier.onPreviewKeyEvent { event ->
-        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
-            tabFocusRequester.safeRequestFocus(TAG)
-            true
-        } else {
-            false
-        }
-    }
-
-    val layoutInfo = lazyListState.layoutInfo
-    val totalItemsCount = layoutInfo.totalItemsCount
-    val visibleItems = layoutInfo.visibleItemsInfo
-    val scrollProgress by remember(totalItemsCount, visibleItems) {
-        derivedStateOf {
-            if (totalItemsCount == 0 || visibleItems.isEmpty()) 0f
-            else (visibleItems.first().index.toFloat() / totalItemsCount.toFloat()).coerceIn(0f, 1f)
-        }
-    }
-    val animatedScrollProgress by animateFloatAsState(
-        targetValue = scrollProgress,
-        animationSpec = tween(300),
-        label = "ScrollIndicator"
-    )
-
-    Column(modifier = modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.45f)
-                .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 16.dp)
-        ) {
-            HomeHeroDashboard(
-                state = currentHeroInfo,
-                getLogoUrl = getLogoUrl,
-                shouldCropLogo = shouldCropLogo
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .weight(0.55f)
-                .fillMaxWidth()
-        ) {
-            LazyColumn(
+    LazyColumn(
+        state = lazyListState,
+        modifier = modifier
+            .fillMaxSize()
+            .simpleListVerticalScrollbar(
                 state = lazyListState,
+                color = colors.textPrimary,
+            ),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 56.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // Zone 1: Quick Resume Hero (58%) + 2x2 Quick Shortcuts Grid (42%)
+        item(key = "dashboard_header") {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(32.dp)
+                    .fillMaxWidth()
+                    .height(168.dp)
+                    .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                if (availableSections.isEmpty()) {
-                    item(key = "home_empty") {
-                        Box(
-                            modifier = Modifier
-                                .fillParentMaxSize()
-                                .focusRequester(externalFocusRequester)
-                                .focusProperties { up = tabFocusRequester }
-                                .focusable(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "表示できるコンテンツがありません",
-                                color = colors.textSecondary,
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
-                    }
-                }
-                if (lastWatchedChannels.isNotEmpty()) {
-                    item(key = "section_last_watched") {
-                        LastWatchedSection(
-                            channels = lastWatchedChannels,
-                            groupedChannels = groupedChannels,
-                            getLogoUrl = getLogoUrl,
-                            shouldCropLogo = shouldCropLogo,
-                            modifier = if (topSection == "lastWatched") upToTabModifier else Modifier,
-                            contentFirstItemRequester = if (availableSections.firstOrNull() == "lastWatched") externalFocusRequester else null,
-                            onChannelClick = onChannelClick,
-                            onUpdateHeroInfo = { pendingHeroInfo = it },
-                            homeViewModel = homeViewModel,
-                            sectionId = "lastWatched",
-                            focusMemory = focusMemory
-                        )
-                    }
-                }
-                if (hotChannels.isNotEmpty()) {
-                    item(key = "section_hot") {
-                        HotChannelSection(
-                            hotChannels = hotChannels,
-                            getLogoUrl = getLogoUrl,
-                            shouldCropLogo = shouldCropLogo,
-                            modifier = if (topSection == "hot") upToTabModifier else Modifier,
-                            contentFirstItemRequester = if (availableSections.firstOrNull() == "hot") externalFocusRequester else null,
-                            onChannelClick = onChannelClick,
-                            onUpdateHeroInfo = { pendingHeroInfo = it },
-                            homeViewModel = homeViewModel,
-                            sectionId = "hot",
-                            focusMemory = focusMemory
-                        )
-                    }
-                }
-                if (genrePickup.isNotEmpty()) {
-                    item(key = "section_pickup") {
-                        GenrePickupSection(
-                            genrePickup = genrePickup,
-                            pickupGenreName = pickupGenreName,
-                            pickupTimeSlot = pickupTimeSlot,
-                            getLogoUrl = getLogoUrl,
-                            shouldCropLogo = shouldCropLogo,
-                            modifier = if (topSection == "pickup") upToTabModifier else Modifier,
-                            contentFirstItemRequester = if (availableSections.firstOrNull() == "pickup") externalFocusRequester else null,
-                            onProgramClick = onProgramClick,
-                            onNavigateToTab = onNavigateToTab,
-                            onUpdateHeroInfo = { pendingHeroInfo = it },
-                            homeViewModel = homeViewModel,
-                            sectionId = "pickup",
-                            timeFormat = timeFormat,
-                            focusMemory = focusMemory
-                        )
-                    }
-                }
-                if (watchHistory.isNotEmpty()) {
-                    item(key = "section_history") {
-                        WatchHistorySection(
-                            watchHistory = watchHistory,
-                            recentRecordings = recentRecordings,
-                            konomiIp = konomiIp,
-                            konomiPort = konomiPort,
-                            modifier = if (topSection == "history") upToTabModifier else Modifier,
-                            contentFirstItemRequester = if (availableSections.firstOrNull() == "history") externalFocusRequester else null,
-                            onHistoryClick = onHistoryClick,
-                            onUpdateHeroInfo = { pendingHeroInfo = it },
-                            homeViewModel = homeViewModel,
-                            sectionId = "history",
-                            focusMemory = focusMemory
-                        )
-                    }
-                }
-                if (upcomingReserves.isNotEmpty()) {
-                    item(key = "section_upcoming") {
-                        UpcomingReserveSection(
-                            upcomingReserves = upcomingReserves,
-                            getLogoUrl = getLogoUrl,
-                            shouldCropLogo = shouldCropLogo,
-                            modifier = if (topSection == "upcoming") upToTabModifier else Modifier,
-                            contentFirstItemRequester = if (availableSections.firstOrNull() == "upcoming") externalFocusRequester else null,
-                            onReserveClick = onReserveClick,
-                            onNavigateToTab = onNavigateToTab,
-                            onUpdateHeroInfo = { pendingHeroInfo = it },
-                            homeViewModel = homeViewModel,
-                            sectionId = "upcoming",
-                            timeFormat = timeFormat,
-                            focusMemory = focusMemory
-                        )
-                    }
-                }
-            }
-
-            if (totalItemsCount > 1) {
-                Box(
+                QuickResumeHeroCard(
+                    watchHistory = watchHistory,
+                    recentRecordings = recentRecordings,
+                    lastWatchedChannels = lastWatchedChannels,
+                    hotChannels = hotChannels,
+                    groupedChannels = groupedChannels,
+                    timeFormat = timeFormat,
+                    onHistoryClick = onHistoryClick,
+                    onChannelClick = onChannelClick,
+                    onNavigateToTab = onNavigateToTab,
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp, top = 24.dp, bottom = 24.dp)
-                        .width(4.dp)
-                        .fillMaxHeight()
-                        .background(colors.textPrimary.copy(alpha = 0.1f), CircleShape)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(0.3f)
-                            .offset(
-                                y = animateDpAsState(
-                                    targetValue = (layoutInfo.viewportSize.height * 0.7f * animatedScrollProgress).dp,
-                                    animationSpec = tween(150),
-                                    label = "ScrollIndicatorOffset"
-                                ).value
-                            )
-                            .background(colors.textPrimary.copy(alpha = 0.5f), CircleShape)
-                    )
-                }
+                        .weight(0.58f)
+                        .focusRequester(externalFocusRequester)
+                        .focusProperties {
+                            left = tabFocusRequester
+                            right = tile0Requester
+                            up = topBarTarget
+                            down = if (showQuickApps) quickAppsFirstRequester else FocusRequester.Default
+                        },
+                )
+
+                QuickShortcutsGrid(
+                    lastWatchedChannelName = lastWatchedChannels.firstOrNull()?.name,
+                    recentRecordingsCount = recentRecordings.size,
+                    upcomingReserves = upcomingReserves,
+                    timeFormat = timeFormat,
+                    heroRequester = externalFocusRequester,
+                    topBarRequester = topBarTarget,
+                    tile0Requester = tile0Requester,
+                    tile1Requester = tile1Requester,
+                    tile2Requester = tile2Requester,
+                    tile3Requester = tile3Requester,
+                    onNavigateToTab = onNavigateToTab,
+                    onShowOnAir = onShowOnAir,
+                    onShowAllRecordings = onShowAllRecordings,
+                    modifier = Modifier.weight(0.42f),
+                )
+            }
+        }
+
+        // Zone 2: Quick Apps Strip (hidden if hideAppsTab or no apps)
+        if (showQuickApps) {
+            item(key = "dashboard_apps") {
+                HomeQuickAppsStrip(
+                    apps = quickApps,
+                    onAppClick = { homeViewModel.launchApp(it) },
+                    onOpenAllApps = { onNavigateToTab("アプリ") },
+                    firstItemRequester = quickAppsFirstRequester,
+                    leftEdgeFocusRequester = tabFocusRequester,
+                )
+            }
+        }
+
+        // Zone 3+: Scrollable content rows
+        if (watchHistory.isNotEmpty()) {
+            item(key = "section_history") {
+                WatchHistorySection(
+                    watchHistory = watchHistory,
+                    recentRecordings = recentRecordings,
+                    konomiIp = konomiIp,
+                    konomiPort = konomiPort,
+                    leftEdgeFocusRequester = tabFocusRequester,
+                    onHistoryClick = onHistoryClick,
+                    homeViewModel = homeViewModel,
+                    sectionId = "history",
+                    focusMemory = focusMemory,
+                )
+            }
+        }
+
+        if (lastWatchedChannels.isNotEmpty()) {
+            item(key = "section_last_watched") {
+                LastWatchedSection(
+                    channels = lastWatchedChannels,
+                    groupedChannels = groupedChannels,
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
+                    leftEdgeFocusRequester = tabFocusRequester,
+                    onChannelClick = onChannelClick,
+                    homeViewModel = homeViewModel,
+                    sectionId = "lastWatched",
+                    focusMemory = focusMemory,
+                )
+            }
+        }
+
+        if (hotChannels.isNotEmpty()) {
+            item(key = "section_hot") {
+                HotChannelSection(
+                    hotChannels = hotChannels,
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
+                    leftEdgeFocusRequester = tabFocusRequester,
+                    onChannelClick = onChannelClick,
+                    homeViewModel = homeViewModel,
+                    sectionId = "hot",
+                    focusMemory = focusMemory,
+                )
+            }
+        }
+
+        if (genrePickup.isNotEmpty()) {
+            item(key = "section_pickup") {
+                GenrePickupSection(
+                    genrePickup = genrePickup,
+                    pickupGenreName = pickupGenreName,
+                    pickupTimeSlot = pickupTimeSlot,
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
+                    leftEdgeFocusRequester = tabFocusRequester,
+                    onProgramClick = onProgramClick,
+                    onNavigateToTab = onNavigateToTab,
+                    homeViewModel = homeViewModel,
+                    sectionId = "pickup",
+                    timeFormat = timeFormat,
+                    focusMemory = focusMemory,
+                )
+            }
+        }
+
+        if (upcomingReserves.isNotEmpty()) {
+            item(key = "section_upcoming") {
+                UpcomingReserveSection(
+                    upcomingReserves = upcomingReserves,
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
+                    leftEdgeFocusRequester = tabFocusRequester,
+                    onReserveClick = onReserveClick,
+                    onNavigateToTab = onNavigateToTab,
+                    homeViewModel = homeViewModel,
+                    sectionId = "upcoming",
+                    timeFormat = timeFormat,
+                    focusMemory = focusMemory,
+                )
             }
         }
     }
+}
 
+private fun Modifier.simpleListVerticalScrollbar(
+    state: LazyListState,
+    color: Color,
+    width: Dp = 4.dp,
+    paddingEnd: Dp = 10.dp,
+    verticalInset: Dp = 16.dp,
+): Modifier = drawWithContent {
+    drawContent()
+    val totalItems = state.layoutInfo.totalItemsCount
+    val visibleItems = state.layoutInfo.visibleItemsInfo.size
+    if (totalItems <= 1 || visibleItems == 0 || visibleItems >= totalItems) return@drawWithContent
+
+    val firstVisible = state.layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: 0
+    val trackTop = verticalInset.toPx()
+    val trackHeight = (size.height - trackTop * 2f).coerceAtLeast(1f)
+    val thumbHeightRatio = (visibleItems.toFloat() / totalItems.toFloat()).coerceIn(0.15f, 0.8f)
+    val thumbHeight = trackHeight * thumbHeightRatio
+    val thumbOffsetRatio =
+        (firstVisible.toFloat() / (totalItems - visibleItems).coerceAtLeast(1).toFloat())
+            .coerceIn(0f, 1f)
+    val thumbY = trackTop + (trackHeight - thumbHeight) * thumbOffsetRatio
+    val x = size.width - width.toPx() - paddingEnd.toPx()
+    val radius = CornerRadius(width.toPx() / 2f, width.toPx() / 2f)
+
+    drawRoundRect(
+        color = color.copy(alpha = 0.08f),
+        topLeft = Offset(x, trackTop),
+        size = Size(width.toPx(), trackHeight),
+        cornerRadius = radius,
+    )
+    drawRoundRect(
+        color = color.copy(alpha = 0.42f),
+        topLeft = Offset(x, thumbY),
+        size = Size(width.toPx(), thumbHeight),
+        cornerRadius = radius,
+    )
 }

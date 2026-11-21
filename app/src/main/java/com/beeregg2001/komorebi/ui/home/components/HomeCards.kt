@@ -6,19 +6,17 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.KeyEventType
@@ -30,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
@@ -45,12 +42,17 @@ import com.beeregg2001.komorebi.ui.components.rememberChannelLogoUrl
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.StatusRecordingColor
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidthCard
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleGrid
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleWideCard
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
+import com.beeregg2001.komorebi.ui.theme.tnum
+import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun LastWatchedChannelCard(
@@ -70,6 +72,8 @@ fun LastWatchedChannelCard(
 
     val logoUrl = rememberChannelLogoUrl(channel.id, getLogoUrl)
 
+    val shape = RoundedCornerShape(TvCardRadiusGrid)
+
     Surface(
         onClick = onClick,
         modifier = modifier
@@ -79,17 +83,17 @@ fun LastWatchedChannelCard(
                 isFocused = it.isFocused
                 if (it.isFocused) onFocus()
             },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleWideCard),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
-            focusedContainerColor = colors.surface,
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidthCard, colors.accent), shape = shape)
         )
     ) {
         Row(
@@ -129,7 +133,7 @@ fun LastWatchedChannelCard(
                     Text(
                         text = channel.name,
                         style = MaterialTheme.typography.labelSmall,
-                        color = colors.textPrimary.copy(alpha = 0.6f),
+                        color = colors.textSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -145,8 +149,8 @@ fun LastWatchedChannelCard(
                     if (com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel(channel) != null) {
                         Text(
                             text = "${typeLabels[channel.type] ?: channel.type} ${channel.channelNumber}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.textPrimary.copy(alpha = 0.6f)
+                            style = MaterialTheme.typography.labelSmall.tnum,
+                            color = colors.textSecondary
                         )
                     }
                 }
@@ -169,6 +173,7 @@ fun HotChannelCard(
     val colors = KomorebiTheme.colors
 
     val logoUrl = rememberChannelLogoUrl(uiState.channel.id, getLogoUrl)
+    val shape = RoundedCornerShape(TvCardRadiusGrid)
 
     Surface(
         onClick = onClick,
@@ -179,17 +184,17 @@ fun HotChannelCard(
                 isFocused = it.isFocused
                 if (it.isFocused) onFocus()
             },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleWideCard),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
-            focusedContainerColor = colors.surface,
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidthCard, colors.accent), shape = shape)
         )
     ) {
         Row(
@@ -219,13 +224,13 @@ fun HotChannelCard(
                     Box(
                         Modifier
                             .size(6.dp)
-                            .background(Color(0xFFE53935), CircleShape)
+                            .background(StatusRecordingColor, CircleShape)
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = "${uiState.jikkyoForce ?: 0} コメ/分",
-                        color = if (isFocused) Color(0xFFE53935) else Color(0xFFE53935).copy(alpha = 0.8f),
-                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isFocused) StatusRecordingColor else StatusRecordingColor.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.labelSmall.tnum,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -233,7 +238,7 @@ fun HotChannelCard(
                 Text(
                     text = uiState.name,
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.textPrimary.copy(alpha = 0.7f),
+                    color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -254,12 +259,12 @@ fun HotChannelCard(
 @Composable
 fun WatchHistoryCard(
     history: KonomiHistoryProgram,
-    matchedProgram: RecordedProgram?, // ★ 追加: サムネイル用URL解決のために追加
+    matchedProgram: RecordedProgram?,
     konomiIp: String,
     konomiPort: String,
     settingViewModel: SettingsViewModel = hiltViewModel(),
     onClick: () -> Unit,
-    onFocus: (progress: Float, thumbnailUrl: String) -> Unit,
+    onFocus: (progress: Float, thumbnailUrl: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -267,7 +272,6 @@ fun WatchHistoryCard(
     val program = history.program
     val backendType by settingViewModel.backendType.collectAsState()
 
-    // ★ 修正: DB連携されたRecordedProgramがある場合はそれを使用し、フォールバック処理を実装
     val fallbackUrl = matchedProgram?.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
         backendType,
         konomiIp,
@@ -277,16 +281,21 @@ fun WatchHistoryCard(
     val primaryUrl = matchedProgram?.directThumbnailUrl ?: fallbackUrl
     var currentThumbnailUrl by remember(program.id, primaryUrl) { mutableStateOf(primaryUrl) }
 
-    val progress = remember(history) {
+    val (progress, remainingMinutes) = remember(history) {
         runCatching {
             val start = Instant.parse(program.start_time).epochSecond
             val end = Instant.parse(program.end_time).epochSecond
             val total = (end - start).toDouble()
-            if (total > 0) (history.playback_position / total).toFloat().coerceIn(0f, 1f) else 0f
-        }.getOrDefault(0f)
+            if (total > 0) {
+                val prog = (history.playback_position / total).toFloat().coerceIn(0f, 1f)
+                val rem = ((total - history.playback_position).coerceAtLeast(0.0) / 60.0).toInt()
+                prog to rem
+            } else {
+                0f to 0
+            }
+        }.getOrDefault(0f to 0)
     }
 
-    // ★ 追加: サムネイルURLがエラー等で切り替わった際に、フォーカス中であればHeroDashboardを更新する
     LaunchedEffect(currentThumbnailUrl, isFocused) {
         if (isFocused) onFocus(progress, currentThumbnailUrl)
     }
@@ -297,10 +306,7 @@ fun WatchHistoryCard(
             ?: currentThumbnailUrl
         ImageRequest.Builder(context)
             .data(matchedProgram?.recordedThumbnailModel(currentThumbnailUrl) ?: currentThumbnailUrl)
-            .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
-            .error(com.beeregg2001.komorebi.R.drawable.dark_image)
-            .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
-            .crossfade(true)
+            .crossfade(false)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)
@@ -308,99 +314,111 @@ fun WatchHistoryCard(
             .build()
     }
 
+    val thumbShape = RoundedCornerShape(TvCardRadiusGrid)
+
+    // Below-the-Card 16:9: 216dp wide, 122dp pure 16:9 thumb + 3dp progress bar + 44dp title/meta below
     Surface(
         onClick = onClick,
         modifier = modifier
-            .width(260.dp)
-            .height(146.dp)
+            .width(216.dp)
             .onFocusChanged {
                 isFocused = it.isFocused
-                // LaunchedEffect側でも呼ぶが、フォーカス時も確実に呼ぶ
                 if (it.isFocused) onFocus(progress, currentThumbnailUrl)
             },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        shape = ClickableSurfaceDefaults.shape(thumbShape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleGrid),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
-            focusedContainerColor = colors.surface,
-            contentColor = Color.White,
-            focusedContentColor = Color.White
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
+            contentColor = colors.textPrimary,
+            focusedContentColor = colors.textPrimary
         ),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            border = Border.None,
+            focusedBorder = Border.None
         )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                // ★ 追加: 画像読み込み失敗時のフォールバック処理
-                onError = {
-                    if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
-                        currentThumbnailUrl = fallbackUrl
-                    }
-                }
-            )
-
+        Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.6f),
-                                Color.Black.copy(alpha = if (isFocused) 0.95f else 0.85f)
-                            ),
-                            startY = 0f
-                        )
+                    .fillMaxWidth()
+                    .height(122.dp)
+                    .clip(thumbShape)
+                    .background(colors.surface1)
+                    .border(
+                        width = if (isFocused) TvCardFocusBorderWidthCard else 1.dp,
+                        color = if (isFocused) colors.accent else colors.borderSubtle,
+                        shape = thumbShape
                     )
-            )
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
             ) {
-                Text(
-                    program.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    onError = {
+                        if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
+                            currentThumbnailUrl = fallbackUrl
+                        }
+                    }
                 )
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "続きから再生",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = colors.accent
+
+                if (remainingMinutes > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 6.dp, bottom = 7.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.78f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "残り ${remainingMinutes}分",
+                            style = MaterialTheme.typography.labelSmall.tnum,
+                            color = Color.White,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(Color.White.copy(alpha = 0.22f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .background(colors.accent)
                     )
                 }
             }
 
-            Box(
+            Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .background(Color.White.copy(0.2f))
+                    .height(44.dp)
+                    .padding(top = 6.dp, start = 2.dp, end = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .fillMaxHeight()
-                        .background(if (isFocused) colors.accent else colors.accent.copy(alpha = 0.6f))
+                Text(
+                    text = program.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.88f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.tvCardMarquee(isFocused)
+                )
+                val metaText = matchedProgram?.channel?.name ?: "続きから再生"
+                Text(
+                    text = metaText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isFocused) colors.accent else colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -428,68 +446,66 @@ fun UpcomingReserveCard(
         ProgramTimeFormatter.formatTime(start.toLocalTime(), timeFormat)
     }
 
+    val shape = RoundedCornerShape(TvCardRadiusGrid)
+
     Surface(
         onClick = onClick,
         modifier = modifier
             .width(240.dp)
-            .height(106.dp)
+            .height(112.dp)
             .onFocusChanged {
                 isFocused = it.isFocused
                 if (it.isFocused) onFocus(startFormat)
             },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleWideCard),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
-            focusedContainerColor = colors.surface,
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidthCard, colors.accent), shape = shape)
         )
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = displayTime,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.textPrimary.copy(0.7f)
+                    style = MaterialTheme.typography.labelSmall.tnum,
+                    color = colors.textSecondary
                 )
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier
-                        .background(
-                            if (isFocused) colors.accent.copy(alpha = 0.2f) else colors.textPrimary.copy(
-                                0.05f
-                            ),
-                            RoundedCornerShape(4.dp)
-                        )
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (isFocused) colors.accentSoft else colors.textPrimary.copy(alpha = 0.06f))
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        "P${reserve.recordSettings.priority}",
-                        fontSize = 10.sp,
-                        color = if (isFocused) colors.accent else colors.textPrimary.copy(0.8f),
+                        text = "P${reserve.recordSettings.priority}",
+                        style = MaterialTheme.typography.labelSmall.tnum,
+                        color = if (isFocused) colors.accent else colors.textSecondary,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 reserve.program.title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
-                color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(0.9f),
+                color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.9f),
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.weight(1f))
             Text(
                 reserve.channel.name,
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.textPrimary.copy(0.6f),
+                color = colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -516,62 +532,58 @@ fun GenrePickupCard(
         ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd")
     }
 
-    val baseAlpha = if (isFocused) 1f else 0.6f
-    val gradientStartColor = when (timeSlot) {
-        "朝" -> Color(0xFFE65100).copy(alpha = 0.2f * baseAlpha)
-        "昼" -> Color(0xFF006064).copy(alpha = 0.2f * baseAlpha)
-        else -> Color(0xFF1A237E).copy(alpha = 0.2f * baseAlpha)
-    }
     val timeColor = when (timeSlot) {
         "朝" -> if (colors.isDark) Color(0xFFFFCC80) else Color(0xFFE65100)
         "昼" -> if (colors.isDark) Color(0xFF81D4FA) else Color(0xFF0277BD)
         else -> if (colors.isDark) Color(0xFFB39DDB) else Color(0xFF311B92)
     }
 
+    val shape = RoundedCornerShape(TvCardRadiusGrid)
+
     Surface(
         onClick = onClick,
         modifier = modifier
             .width(260.dp)
-            .height(116.dp)
+            .height(112.dp)
             .onFocusChanged {
                 isFocused = it.isFocused
                 if (it.isFocused) onFocus(startFormat)
             },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleWideCard),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = baseAlpha),
-            focusedContainerColor = colors.surface,
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidthCard, colors.accent), shape = shape)
         )
     ) {
-        Box(
-            Modifier
+        Column(
+            modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.horizontalGradient(listOf(gradientStartColor, Color.Transparent)))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    text = "$startFormat - $channelName",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = timeColor.copy(alpha = if (isFocused) 1f else 0.8f),
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = program.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.9f),
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                text = "$startFormat - $channelName",
+                style = MaterialTheme.typography.labelSmall.tnum,
+                color = if (isFocused) colors.accent else timeColor,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = program.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.9f),
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -632,11 +644,11 @@ fun LauncherAppCard(
                 .build()
         }
     }
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(TvCardRadiusGrid)
     val containerColor = when {
-        isEditing -> colors.accent.copy(alpha = 0.2f)
-        isFocused -> colors.surface
-        else -> colors.surface.copy(alpha = 0.6f)
+        isEditing -> colors.accentSoft
+        isFocused -> colors.surface2
+        else -> colors.surface1
     }
 
     DisposableEffect(app.stableId) {
@@ -654,11 +666,11 @@ fun LauncherAppCard(
                 val ringColor = when {
                     isEditing -> colors.accent
                     isFocused -> colors.accent
-                    showBorder -> colors.textPrimary.copy(alpha = 0.1f)
+                    showBorder -> colors.borderSubtle
                     else -> Color.Transparent
                 }
                 if (ringColor != Color.Transparent) {
-                    val stroke = if (isFocused || isEditing) 3.dp.toPx() else 1.dp.toPx()
+                    val stroke = if (isFocused || isEditing) TvCardFocusBorderWidthCard.toPx() else 1.dp.toPx()
                     drawRoundRect(
                         color = ringColor,
                         topLeft = androidx.compose.ui.geometry.Offset(stroke / 2f, stroke / 2f),
@@ -666,7 +678,7 @@ fun LauncherAppCard(
                             size.width - stroke,
                             size.height - stroke
                         ),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(TvCardRadiusGrid.toPx()),
                         style = Stroke(width = stroke)
                     )
                 }
@@ -797,7 +809,7 @@ fun LauncherAppCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(if (showLabel) Modifier.height(bannerHeight) else Modifier.fillMaxHeight())
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(TvCardRadiusGrid)),
                     contentScale = ContentScale.Fit
                 )
             } else {

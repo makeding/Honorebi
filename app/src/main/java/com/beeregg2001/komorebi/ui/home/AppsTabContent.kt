@@ -3,6 +3,8 @@
 package com.beeregg2001.komorebi.ui.home
 
 import android.util.Log
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -10,10 +12,12 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -29,6 +33,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -38,6 +43,11 @@ import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.beeregg2001.komorebi.ui.home.components.LauncherAppCard
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingEnd
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingStart
+import com.beeregg2001.komorebi.ui.theme.tnum
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -46,8 +56,9 @@ import kotlinx.coroutines.delay
 private const val TAG = "AppsTabContent"
 
 internal object AppsTabLayout {
-    val horizontalPadding = 48.dp
-    val topPadding = 36.dp
+    val horizontalPadding = TvContentPaddingStart
+    val endPadding = TvContentPaddingEnd
+    val topPadding = 12.dp
     val viewportBottomPadding = 12.dp
     val cardWidth = 160.dp
 
@@ -84,6 +95,7 @@ fun AppsTabContent(
     focusMemory: FocusMemory,
     tabIndex: Int = HOME_TAB_TITLES.indexOf("アプリ"),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
+    topBarFocusRequester: FocusRequester? = null,
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val hiddenLauncherApps by homeViewModel.hiddenLauncherApps.collectAsState()
@@ -207,26 +219,58 @@ fun AppsTabContent(
         homeViewModel.moveLauncherApp(app, targetIndex - appIndex)
     }
 
+    val colors = KomorebiTheme.colors
+    val upTarget = topBarFocusRequester ?: tabFocusRequester
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(
                 start = AppsTabLayout.horizontalPadding,
                 top = AppsTabLayout.topPadding,
-                end = AppsTabLayout.horizontalPadding,
+                end = AppsTabLayout.endPadding,
                 bottom = AppsTabLayout.viewportBottomPadding,
             )
     ) {
-        if (isHiddenCatalog) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.accentSoft)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "アプリ",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.accent,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
-                text = "非表示一覧",
-                style = MaterialTheme.typography.titleLarge,
-                color = KomorebiTheme.colors.textPrimary
+                text = if (isHiddenCatalog) "非表示一覧" else "${catalogApps.size} アプリ",
+                style = MaterialTheme.typography.titleMedium.tnum,
+                color = colors.textPrimary,
+                fontWeight = FontWeight.SemiBold,
             )
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "OKで起動 · 長押しで並び替え",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.textMuted,
+            )
         }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
             val columnCount = calculateAppGridColumns(
                 maxWidth,
                 AppsTabLayout.cardWidth,
@@ -253,7 +297,10 @@ fun AppsTabContent(
                     Modifier
                         .fillMaxSize()
                         .focusRequester(contentFirstItemRequester)
-                        .focusProperties { up = tabFocusRequester }
+                        .focusProperties {
+                            up = upTarget
+                            left = tabFocusRequester
+                        }
                         .onGloballyPositioned { onUiReady() }
                         .focusable(),
                     contentAlignment = Alignment.Center,
@@ -346,7 +393,9 @@ fun AppsTabContent(
                                     }
                                 )
                                 .focusProperties {
-                                    if (index % columnCount == 0) left = FocusRequester.Cancel
+                                    if (index % columnCount == 0) {
+                                        left = if (editingAppId == null) tabFocusRequester else FocusRequester.Cancel
+                                    }
                                     if (index == totalEntries - 1) right = FocusRequester.Cancel
                                 }
                                 .onPreviewKeyEvent { event ->
@@ -358,7 +407,7 @@ fun AppsTabContent(
                                         if (isHiddenCatalog) {
                                             isHiddenCatalog = false
                                         } else {
-                                            tabFocusRequester.safeRequestFocus(TAG)
+                                            upTarget.safeRequestFocus(TAG)
                                         }
                                         true
                                     } else if (event.type == KeyEventType.KeyDown &&
@@ -478,6 +527,7 @@ private fun LauncherAppActionDialog(
 ) {
     val focusRequester = remember { FocusRequester() }
     val colors = KomorebiTheme.colors
+    val buttonShape = RoundedCornerShape(TvCardRadiusListRow)
 
     LaunchedEffect(app.stableId) {
         delay(80)
@@ -486,7 +536,7 @@ private fun LauncherAppActionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.background,
+        containerColor = colors.overlay,
         titleContentColor = colors.textPrimary,
         textContentColor = colors.textSecondary,
         title = {
@@ -519,29 +569,44 @@ private fun LauncherAppActionDialog(
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.focusRequester(focusRequester),
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface.copy(alpha = 0.7f),
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textSecondary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("閉じる") }
                 Button(
                     onClick = onAppInfo,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textPrimary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("アプリ情報") }
                 Button(
                     onClick = onHide,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = Color(0xFFFF8AAE),
-                        contentColor = colors.textPrimary,
-                        focusedContentColor = Color.Black
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.danger.copy(alpha = 0.22f),
+                        contentColor = colors.danger,
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.danger.copy(alpha = 0.35f)), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.danger), shape = buttonShape)
                     )
                 ) { Text("非表示へ") }
             }
@@ -550,11 +615,16 @@ private fun LauncherAppActionDialog(
             if (canShowHiddenList) {
                 Button(
                     onClick = onShowHiddenList,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface.copy(alpha = 0.7f),
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textSecondary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("非表示一覧") }
             }
@@ -571,6 +641,7 @@ private fun HiddenLauncherAppActionDialog(
 ) {
     val focusRequester = remember { FocusRequester() }
     val colors = KomorebiTheme.colors
+    val buttonShape = RoundedCornerShape(TvCardRadiusListRow)
 
     LaunchedEffect(app.stableId) {
         delay(80)
@@ -579,7 +650,7 @@ private fun HiddenLauncherAppActionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.background,
+        containerColor = colors.overlay,
         titleContentColor = colors.textPrimary,
         textContentColor = colors.textSecondary,
         title = {
@@ -612,29 +683,44 @@ private fun HiddenLauncherAppActionDialog(
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.focusRequester(focusRequester),
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface.copy(alpha = 0.7f),
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textSecondary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("閉じる") }
                 Button(
                     onClick = onAppInfo,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textPrimary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("アプリ情報") }
                 Button(
                     onClick = onRestore,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = Color(0xFFFF8AAE),
-                        contentColor = colors.textPrimary,
-                        focusedContentColor = Color.Black
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.accentSoft,
+                        contentColor = colors.accent,
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.accent.copy(alpha = 0.35f)), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("表示へ戻す") }
             }

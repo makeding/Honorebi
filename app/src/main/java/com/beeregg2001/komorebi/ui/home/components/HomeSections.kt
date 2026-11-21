@@ -3,15 +3,17 @@
 package com.beeregg2001.komorebi.ui.home.components
 
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.AlertDialog
 // ★ 変更: TvLazy系のインポートを削除し、標準のLazy系のインポートに変更
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
@@ -20,21 +22,31 @@ import com.beeregg2001.komorebi.ui.home.HomeFocusRequest
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
-import com.beeregg2001.komorebi.common.UrlBuilder
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.home.FocusMemory
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import com.beeregg2001.komorebi.ui.theme.getSeasonalIcon
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleListRow
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingEnd
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingStart
 import com.beeregg2001.komorebi.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
 
@@ -65,7 +77,7 @@ internal fun restoredRowRequest(
 fun SectionHeader(title: String, icon: ImageVector, modifier: Modifier = Modifier) {
     val colors = KomorebiTheme.colors
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, modifier = Modifier.size(18.dp), tint = colors.textPrimary.copy(0.6f))
+        Icon(icon, null, modifier = Modifier.size(18.dp), tint = colors.textSecondary)
         Spacer(Modifier.width(8.dp))
         Text(
             text = title,
@@ -77,19 +89,36 @@ fun SectionHeader(title: String, icon: ImageVector, modifier: Modifier = Modifie
 }
 
 @Composable
-fun NavigationLinkButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+fun NavigationLinkButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
+) {
     val colors = KomorebiTheme.colors
-    Box(modifier = Modifier.padding(start = 48.dp, top = 12.dp)) {
+    val shape = RoundedCornerShape(TvCardRadiusListRow)
+    Box(modifier = Modifier.padding(start = TvContentPaddingStart, top = 8.dp)) {
         Button(
             onClick = onClick,
+            shape = ButtonDefaults.shape(shape),
+            scale = ButtonDefaults.scale(focusedScale = TvCardFocusScaleListRow),
             colors = ButtonDefaults.colors(
-                containerColor = colors.textPrimary.copy(0.05f),
-                contentColor = colors.textPrimary,
-                focusedContainerColor = colors.textPrimary,
-                focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                containerColor = colors.surface1,
+                contentColor = colors.textSecondary,
+                focusedContainerColor = colors.surface2,
+                focusedContentColor = colors.textPrimary
             ),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-            modifier = Modifier.height(40.dp)
+            border = ButtonDefaults.border(
+                border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+                focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape)
+            ),
+            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+            modifier = Modifier
+                .height(40.dp)
+                .focusProperties {
+                    left = leftEdgeFocusRequester
+                    right = FocusRequester.Cancel
+                }
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, modifier = Modifier.size(16.dp))
@@ -98,6 +127,216 @@ fun NavigationLinkButton(label: String, icon: ImageVector, onClick: () -> Unit) 
                 Spacer(Modifier.width(4.dp))
                 Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(14.dp))
             }
+        }
+    }
+}
+
+@Composable
+fun HomeQuickAppsStrip(
+    apps: List<LauncherApp>,
+    onAppClick: (LauncherApp) -> Unit,
+    onOpenAllApps: () -> Unit,
+    firstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val visibleApps = remember(apps) { apps.take(5) }
+    val tileShape = RoundedCornerShape(TvCardRadiusListRow)
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Apps,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = colors.textSecondary,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "よく使うアプリ",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "ランチャー固定アプリ",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.textMuted,
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            visibleApps.forEachIndexed { index, app ->
+                HomeQuickAppTile(
+                    app = app,
+                    shape = tileShape,
+                    onClick = { onAppClick(app) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp)
+                        .then(
+                            if (index == 0 && firstItemRequester != null) {
+                                Modifier.focusRequester(firstItemRequester)
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .focusProperties {
+                            if (index == 0) left = leftEdgeFocusRequester
+                        },
+                )
+            }
+
+            // 6th tile: "すべて" (+) -> Apps tab
+            var allFocused by remember { mutableStateOf(false) }
+            Surface(
+                onClick = onOpenAllApps,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .then(
+                        if (visibleApps.isEmpty() && firstItemRequester != null) {
+                            Modifier.focusRequester(firstItemRequester)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .focusProperties {
+                        if (visibleApps.isEmpty()) left = leftEdgeFocusRequester
+                        right = FocusRequester.Cancel
+                    }
+                    .onFocusChanged { allFocused = it.isFocused },
+                shape = ClickableSurfaceDefaults.shape(tileShape),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = colors.surface1,
+                    focusedContainerColor = colors.surface2,
+                    contentColor = colors.textSecondary,
+                    focusedContentColor = colors.textPrimary,
+                ),
+                border = ClickableSurfaceDefaults.border(
+                    border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = tileShape),
+                    focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = tileShape),
+                ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = if (allFocused) colors.accent else colors.textSecondary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "すべて",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (allFocused) colors.textPrimary else colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickAppTile(
+    app: LauncherApp,
+    shape: RoundedCornerShape,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val context = LocalContext.current
+    val iconModel = remember(app.icon, app.artworkCacheVersion) {
+        app.icon?.let { uri ->
+            ImageRequest.Builder(context)
+                .data(uri)
+                .memoryCacheKey("launcher-quick-icon:${app.stableId}:${app.artworkCacheVersion}:$uri")
+                .diskCacheKey("launcher-quick-icon:${app.stableId}:${app.artworkCacheVersion}:$uri")
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .crossfade(false)
+                .build()
+        }
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = ClickableSurfaceDefaults.shape(shape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
+            contentColor = colors.textPrimary,
+            focusedContentColor = colors.textPrimary,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.textPrimary.copy(alpha = 0.06f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (iconModel != null) {
+                    AsyncImage(
+                        model = iconModel,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Apps,
+                        contentDescription = null,
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = app.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -112,8 +351,9 @@ fun LastWatchedSection(
     shouldCropLogo: Boolean,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     onChannelClick: (Channel) -> Unit,
-    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit = {},
     homeViewModel: HomeViewModel,
     sectionId: String,
     focusMemory: FocusMemory
@@ -124,14 +364,19 @@ fun LastWatchedSection(
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
-            "前回視前回視聴したチャンネル",
+            "最近見たチャンネル",
             Icons.Default.History,
-            Modifier.padding(horizontal = 48.dp)
+            Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd)
         )
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = TvContentPaddingStart,
+                end = TvContentPaddingEnd,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(channels, key = { _, it -> "ch_${it.id}" }) { index, channel ->
@@ -161,11 +406,10 @@ fun LastWatchedSection(
                             HomeHeroInfo(
                                 title = liveChannel?.programPresent?.title ?: channel.name,
                                 subtitle = channel.name,
-                                description = liveChannel?.programPresent?.description
-                                    ?: "前回視聴していたチャンネルです。",
+                                description = liveChannel?.programPresent?.description ?: "",
                                 channelId = channel.id,
                                 isThumbnail = false,
-                                tag = "前回視聴"
+                                tag = "最近見た"
                             )
                         )
                     },
@@ -177,7 +421,7 @@ fun LastWatchedSection(
                             ) else Modifier
                         )
                         .focusProperties {
-                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == 0) left = leftEdgeFocusRequester
                             if (index == channels.size - 1) right = FocusRequester.Cancel
                         }
                         .onFocusChanged {
@@ -200,8 +444,9 @@ fun HotChannelSection(
     shouldCropLogo: Boolean,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     onChannelClick: (Channel) -> Unit,
-    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit = {},
     homeViewModel: HomeViewModel,
     sectionId: String,
     focusMemory: FocusMemory
@@ -214,12 +459,17 @@ fun HotChannelSection(
         SectionHeader(
             "今、盛り上がっているチャンネル",
             Icons.Default.TrendingUp,
-            Modifier.padding(horizontal = 48.dp)
+            Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd)
         )
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = TvContentPaddingStart,
+                end = TvContentPaddingEnd,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(hotChannels, key = { _, it -> "hot_${it.channel.id}" }) { index, uiState ->
@@ -259,7 +509,7 @@ fun HotChannelSection(
                             ) else Modifier
                         )
                         .focusProperties {
-                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == 0) left = leftEdgeFocusRequester
                             if (index == hotChannels.size - 1) right = FocusRequester.Cancel
                         }
                         .onFocusChanged {
@@ -282,8 +532,9 @@ fun WatchHistorySection(
     konomiIp: String, konomiPort: String,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     onHistoryClick: (KonomiHistoryProgram) -> Unit,
-    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit = {},
     homeViewModel: HomeViewModel,
     sectionId: String,
     focusMemory: FocusMemory
@@ -294,14 +545,19 @@ fun WatchHistorySection(
 
     Column(modifier = Modifier.animateContentSize()) {
         SectionHeader(
-            "録画の視聴履歴",
+            "続きから見る",
             Icons.Default.PlayCircle,
-            Modifier.padding(start = 48.dp, bottom = 12.dp)
+            Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd, bottom = 4.dp)
         )
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = TvContentPaddingStart,
+                end = TvContentPaddingEnd,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(
@@ -318,13 +574,12 @@ fun WatchHistorySection(
                     }
                 }
 
-                // ★ 追加: KonomiHistoryProgram と DBの RecordedProgram を突き合わせる
                 val matchedProgram =
                     recentRecordings.find { it.id.toString() == history.program.id.toString() }
 
                 WatchHistoryCard(
                     history = history,
-                    matchedProgram = matchedProgram, // ★ 追加: カードに渡す
+                    matchedProgram = matchedProgram,
                     konomiIp = konomiIp,
                     konomiPort = konomiPort,
                     onClick = { onHistoryClick(history) },
@@ -334,7 +589,7 @@ fun WatchHistorySection(
                                 title = history.program.title,
                                 subtitle = "視聴履歴から再開",
                                 description = history.program.description,
-                                imageUrl = thumbnailUrl, // サムネイル画像をそのままHeroへ
+                                imageUrl = thumbnailUrl,
                                 isThumbnail = true,
                                 tag = "視聴履歴",
                                 progress = progressVal
@@ -349,7 +604,7 @@ fun WatchHistorySection(
                             ) else Modifier
                         )
                         .focusProperties {
-                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == 0) left = leftEdgeFocusRequester
                             if (index == watchHistory.size - 1) right = FocusRequester.Cancel
                         }
                         .onFocusChanged {
@@ -372,11 +627,10 @@ fun UpcomingReserveSection(
     shouldCropLogo: Boolean,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     onReserveClick: (ReserveItem) -> Unit,
-    // ★ 修正: タブ索引ではなくタブタイトルを渡す。アプリタブの非表示有無で
-    // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
     onNavigateToTab: (String) -> Unit,
-    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit = {},
     homeViewModel: HomeViewModel,
     sectionId: String,
     timeFormat: String,
@@ -390,12 +644,17 @@ fun UpcomingReserveSection(
         SectionHeader(
             "これからの録画予約",
             Icons.Default.RadioButtonChecked,
-            Modifier.padding(horizontal = 48.dp)
+            Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd)
         )
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = TvContentPaddingStart,
+                end = TvContentPaddingEnd,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(upcomingReserves, key = { _, it -> "res_${it.id}" }) { index, reserve ->
@@ -433,7 +692,7 @@ fun UpcomingReserveSection(
                             ) else Modifier
                         )
                         .focusProperties {
-                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == 0) left = leftEdgeFocusRequester
                             if (index == upcomingReserves.size - 1) right = FocusRequester.Cancel
                         }
                         .onFocusChanged {
@@ -447,9 +706,11 @@ fun UpcomingReserveSection(
             }
         }
         NavigationLinkButton(
-            "録画予約リストを表示",
-            Icons.Default.List,
-            onClick = { onNavigateToTab("録画予約") })
+            label = "録画予約リストを表示",
+            icon = Icons.Default.List,
+            onClick = { onNavigateToTab("録画予約") },
+            leftEdgeFocusRequester = leftEdgeFocusRequester,
+        )
     }
 }
 
@@ -463,11 +724,10 @@ fun GenrePickupSection(
     shouldCropLogo: Boolean,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     onProgramClick: (EpgProgram) -> Unit,
-    // ★ 修正: タブ索引ではなくタブタイトルを渡す。アプリタブの非表示有無で
-    // 一覧の索引がずれるため、解決は表示中タブ一覧を知る呼び出し元で行う。
     onNavigateToTab: (String) -> Unit,
-    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit = {},
     homeViewModel: HomeViewModel,
     sectionId: String,
     timeFormat: String,
@@ -482,14 +742,19 @@ fun GenrePickupSection(
             "朝" -> "今朝の"; "昼" -> "今日の"; else -> "今夜の"
         }
         SectionHeader(
-            "${timePrefix}${pickupGenreName}ピックアップ ${getSeasonalIcon(KomorebiTheme.theme)}",
+            "${timePrefix}${pickupGenreName}ピックアップ",
             Icons.Default.Star,
-            Modifier.padding(horizontal = 48.dp)
+            Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd)
         )
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = TvContentPaddingStart,
+                end = TvContentPaddingEnd,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(
@@ -531,7 +796,7 @@ fun GenrePickupSection(
                             ) else Modifier
                         )
                         .focusProperties {
-                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == 0) left = leftEdgeFocusRequester
                             if (index == genrePickup.size - 1) right = FocusRequester.Cancel
                         }
                         .onFocusChanged {
@@ -545,9 +810,11 @@ fun GenrePickupSection(
             }
         }
         NavigationLinkButton(
-            "番組表を開く",
-            Icons.Default.CalendarToday,
-            onClick = { onNavigateToTab("番組表") })
+            label = "番組表を開く",
+            icon = Icons.Default.CalendarToday,
+            onClick = { onNavigateToTab("番組表") },
+            leftEdgeFocusRequester = leftEdgeFocusRequester,
+        )
     }
 }
 
@@ -556,9 +823,10 @@ fun LauncherAppSection(
     apps: List<LauncherApp>,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     onAppClick: (LauncherApp) -> Unit,
     onAppManage: (LauncherApp) -> Unit,
-    onUpdateHeroInfo: (HomeHeroInfo) -> Unit,
+    onUpdateHeroInfo: (HomeHeroInfo) -> Unit = {},
     homeViewModel: HomeViewModel,
     sectionId: String,
     focusMemory: FocusMemory
@@ -571,12 +839,17 @@ fun LauncherAppSection(
         SectionHeader(
             "アプリ",
             Icons.Default.Apps,
-            Modifier.padding(horizontal = 48.dp)
+            Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd)
         )
         LazyRow(
             state = rowState,
             modifier = modifier,
-            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = TvContentPaddingStart,
+                end = TvContentPaddingEnd,
+                top = 8.dp,
+                bottom = 8.dp
+            ),
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             itemsIndexed(apps, key = { _, it -> "app_${it.stableId}" }) { index, app ->
@@ -613,7 +886,7 @@ fun LauncherAppSection(
                             ) else Modifier
                         )
                         .focusProperties {
-                            if (index == 0) left = FocusRequester.Cancel
+                            if (index == 0) left = leftEdgeFocusRequester
                             if (index == apps.size - 1) right = FocusRequester.Cancel
                         }
                         .onFocusChanged {
@@ -641,6 +914,7 @@ fun LauncherAppManagementDialog(
 ) {
     val focusRequester = remember { FocusRequester() }
     val colors = KomorebiTheme.colors
+    val buttonShape = RoundedCornerShape(TvCardRadiusListRow)
 
     LaunchedEffect(app.stableId) {
         delay(80)
@@ -649,7 +923,7 @@ fun LauncherAppManagementDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.background,
+        containerColor = colors.overlay,
         titleContentColor = colors.textPrimary,
         textContentColor = colors.textSecondary,
         title = {
@@ -672,30 +946,45 @@ fun LauncherAppManagementDialog(
                     onClick = onMoveLeft,
                     enabled = canMoveLeft,
                     modifier = Modifier.focusRequester(focusRequester),
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textPrimary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("左へ") }
                 Button(
                     onClick = onMoveRight,
                     enabled = canMoveRight,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textPrimary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("右へ") }
                 Button(
                     onClick = onHide,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface,
-                        focusedContainerColor = Color(0xFFFF8AAE),
-                        contentColor = colors.textPrimary,
-                        focusedContentColor = Color.Black
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.danger.copy(alpha = 0.22f),
+                        contentColor = colors.danger,
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.danger.copy(alpha = 0.35f)), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.danger), shape = buttonShape)
                     )
                 ) { Text("非表示") }
             }
@@ -704,20 +993,30 @@ fun LauncherAppManagementDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = onShowAll,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface.copy(alpha = 0.7f),
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textSecondary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("すべて表示") }
                 Button(
                     onClick = onDismiss,
+                    shape = ButtonDefaults.shape(buttonShape),
                     colors = ButtonDefaults.colors(
-                        containerColor = colors.surface.copy(alpha = 0.7f),
-                        focusedContainerColor = colors.textPrimary,
+                        containerColor = colors.surface1,
+                        focusedContainerColor = colors.surface2,
                         contentColor = colors.textSecondary,
-                        focusedContentColor = if (colors.isDark) Color.Black else Color.White
+                        focusedContentColor = colors.textPrimary
+                    ),
+                    border = ButtonDefaults.border(
+                        border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = buttonShape),
+                        focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = buttonShape)
                     )
                 ) { Text("閉じる") }
             }
