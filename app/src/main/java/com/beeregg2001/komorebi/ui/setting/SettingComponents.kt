@@ -59,6 +59,7 @@ import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
+import com.beeregg2001.komorebi.ui.theme.tnum
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
@@ -156,11 +157,10 @@ fun CategoryItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedBgColor = MaterialTheme.colorScheme.primary
-    val focusedTextColor = dialogForeground(focusedBgColor)
 
     Surface(
-        selected = isSelected, onClick = { if (enabled) onClick() },
+        selected = isSelected,
+        onClick = { if (enabled) onClick() },
         modifier = modifier
             .fillMaxWidth()
             .focusProperties { canFocus = enabled }
@@ -168,47 +168,54 @@ fun CategoryItem(
         interactionSource = interactionSource,
         colors = SelectableSurfaceDefaults.colors(
             containerColor = Color.Transparent,
-            selectedContainerColor = colors.textPrimary.copy(0.1f),
-            focusedContainerColor = focusedBgColor,
+            selectedContainerColor = colors.accentSoft,
+            focusedContainerColor = colors.surface2,
             contentColor = if (enabled) colors.textSecondary else colors.textSecondary.copy(alpha = 0.3f),
             selectedContentColor = colors.textPrimary,
-            focusedContentColor = focusedTextColor,
-            focusedSelectedContainerColor = focusedBgColor,
-            focusedSelectedContentColor = focusedTextColor,
+            focusedContentColor = colors.textPrimary,
+            focusedSelectedContainerColor = colors.surface2,
+            focusedSelectedContentColor = colors.textPrimary,
+        ),
+        border = SelectableSurfaceDefaults.border(
+            focusedBorder = Border(BorderStroke(2.dp, colors.accent)),
+            focusedSelectedBorder = Border(BorderStroke(2.dp, colors.accent)),
         ),
         shape = SelectableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
         scale = SelectableSurfaceDefaults.scale(
-            focusedScale = if (enabled) 1.05f else 1.0f,
-            focusedSelectedScale = if (enabled) 1.05f else 1.0f,
+            focusedScale = if (enabled) 1.02f else 1.0f,
+            focusedSelectedScale = if (enabled) 1.02f else 1.0f,
         )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (isSelected) {
+                Box(
+                    Modifier
+                        .width(3.dp)
+                        .height(20.dp)
+                        .background(colors.accent, MaterialTheme.shapes.small)
+                )
+                Spacer(Modifier.width(13.dp))
+            } else {
+                Spacer(Modifier.width(16.dp))
+            }
             Icon(
                 icon,
-                null,
+                contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = if (isFocused) focusedTextColor else if (isSelected) colors.textPrimary else colors.textSecondary.copy(
+                tint = if (isSelected || isFocused) colors.accent else colors.textSecondary.copy(
                     alpha = if (enabled) 1f else 0.3f
                 )
             )
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (isFocused) focusedTextColor else Color.Unspecified
-            )
-            Spacer(Modifier.weight(1f))
-            if (isSelected) Box(
-                Modifier
-                    .width(4.dp)
-                    .height(20.dp)
-                    .background(
-                        if (isFocused) focusedTextColor else colors.accent,
-                        MaterialTheme.shapes.small
-                    )
+                color = if (isSelected || isFocused) colors.textPrimary else colors.textSecondary.copy(
+                    alpha = if (enabled) 1f else 0.3f
+                )
             )
         }
     }
@@ -228,8 +235,9 @@ fun SettingItem(
     val colors = KomorebiTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val focusedBgColor = focusedContainerColor ?: MaterialTheme.colorScheme.primary
-    val focusedTextColor = focusedContentColor ?: dialogForeground(focusedBgColor)
+    val customHighlight = focusedContainerColor != null
+    val focusedBgColor = focusedContainerColor ?: colors.surface2
+    val focusedTextColor = focusedContentColor ?: if (customHighlight) dialogForeground(focusedBgColor) else colors.textPrimary
 
     Surface(
         enabled = enabled,
@@ -239,13 +247,17 @@ fun SettingItem(
             .focusProperties { canFocus = enabled },
         interactionSource = interactionSource,
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.textPrimary.copy(alpha = if (enabled) 0.05f else 0.02f),
+            containerColor = colors.surface1,
             focusedContainerColor = focusedBgColor,
             contentColor = colors.textPrimary.copy(alpha = if (enabled) 1f else 0.4f),
             focusedContentColor = focusedTextColor
         ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.borderSubtle)),
+            focusedBorder = if (customHighlight) Border.None else Border(BorderStroke(2.dp, colors.accent))
+        ),
         shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = if (enabled) 1.02f else 1.0f)
+        scale = ClickableSurfaceDefaults.scale(focusedScale = if (enabled) 1.015f else 1.0f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
@@ -256,9 +268,13 @@ fun SettingItem(
                     icon,
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
-                    tint = if (isFocused && enabled) focusedTextColor else colors.textPrimary.copy(
-                        alpha = if (enabled) 0.7f else 0.3f
-                    )
+                    tint = if (isFocused && enabled) {
+                        if (customHighlight) focusedTextColor else colors.accent
+                    } else {
+                        colors.textPrimary.copy(
+                            alpha = if (enabled) 0.7f else 0.3f
+                        )
+                    }
                 )
                 Spacer(Modifier.width(16.dp))
             }
@@ -271,10 +287,14 @@ fun SettingItem(
             Text(
                 text = value,
                 textAlign = TextAlign.End,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isFocused && enabled) focusedTextColor else colors.textSecondary.copy(
-                    alpha = if (enabled) 1f else 0.5f
-                )
+                style = MaterialTheme.typography.bodyLarge.tnum,
+                color = if (isFocused && enabled) {
+                    if (customHighlight) focusedTextColor else colors.accent
+                } else {
+                    colors.textSecondary.copy(
+                        alpha = if (enabled) 1f else 0.5f
+                    )
+                }
             )
         }
     }

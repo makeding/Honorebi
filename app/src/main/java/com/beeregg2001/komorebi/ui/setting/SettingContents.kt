@@ -1228,16 +1228,6 @@ fun AppInfoContent(
     var versionPresses by remember { mutableIntStateOf(0) }
     var onFire by remember { mutableStateOf(false) }
 
-    val flamePulse by rememberInfiniteTransition(label = "hono").animateFloat(
-        initialValue = 1f,
-        targetValue = 1.18f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(620, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "honoPulse"
-    )
-
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -1248,6 +1238,15 @@ fun AppInfoContent(
             contentAlignment = Alignment.Center
         ) {
             if (onFire) {
+                val flamePulse by rememberInfiniteTransition(label = "hono").animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.18f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(620, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "honoPulse"
+                )
                 Icon(
                     imageVector = Icons.Default.LocalFireDepartment,
                     contentDescription = null,

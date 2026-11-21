@@ -43,7 +43,6 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.components.GlobalToast
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
 import kotlinx.coroutines.Dispatchers
@@ -55,7 +54,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import java.time.LocalTime
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
 
 internal val TIME_FORMAT_OPTIONS = listOf(
@@ -94,47 +92,16 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
-    var selectedCategory by remember(initialCategoryIndex) { mutableIntStateOf(initialCategoryIndex) }
-    var selectedFocusItem by remember(initialCategoryIndex, initialFocusItemIndex) {
-        mutableStateOf(initialFocusItemIndex)
-    }
-    var showGuide by remember(initialCategoryIndex, initialFocusItemIndex, initialOpenDeviceCapabilities) {
-        mutableStateOf(
-            initialCategoryIndex == 0 && initialFocusItemIndex == null && !initialOpenDeviceCapabilities
-        )
-    }
-
-    var guideCardIndex by remember { mutableIntStateOf(0) }
-    var enteredFromGuide by remember { mutableStateOf(false) }
-    var showDecoderCheck by remember { mutableStateOf(false) }
-
-    if (showDecoderCheck) {
-        DeviceCapabilitiesScreen(onBack = { showDecoderCheck = false; showGuide = true })
-    } else if (showGuide) {
-        SettingsGuideScreen(
-            initialCardIndex = guideCardIndex,
-            onSelectCategory = { card ->
-                guideCardIndex = settingsGuideCards.indexOf(card)
-                enteredFromGuide = true
-                showDecoderCheck = card.openDecoderCheck
-                selectedCategory = card.categoryIndex
-                selectedFocusItem = 0
-                showGuide = false
-            },
-            onBack = onBack,
-        )
-    } else {
-        SettingsMenuScreen(
-            onBack = { if (enteredFromGuide) showGuide = true else onBack() },
-            onClearLastChannel = onClearLastChannel,
-            onClearWatchHistory = onClearWatchHistory,
-            initialCategoryIndex = selectedCategory,
-            initialFocusItemIndex = selectedFocusItem,
-            initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
-            viewModel = viewModel,
-            channelViewModel = channelViewModel,
-        )
-    }
+    SettingsMenuScreen(
+        onBack = onBack,
+        onClearLastChannel = onClearLastChannel,
+        onClearWatchHistory = onClearWatchHistory,
+        initialCategoryIndex = initialCategoryIndex,
+        initialFocusItemIndex = initialFocusItemIndex,
+        initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
+        viewModel = viewModel,
+        channelViewModel = channelViewModel,
+    )
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -156,8 +123,6 @@ private fun SettingsMenuScreen(
     val homeEnvironment = remember(context) { LauncherEnvironmentDetector.detect(context) }
     var isDefaultHome by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
-    val currentTime = remember { LocalTime.now() }
-    val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
 
     val prefs = rememberSettingPreferences(repository)
     val themeSeason = when (prefs.currentThemeName) {
@@ -371,7 +336,6 @@ private fun SettingsMenuScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .background(backgroundBrush)
                 .focusProperties { canFocus = !isDialogOpen }
                 .onKeyEvent {
                     if (it.type == KeyEventType.KeyDown && (it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK || it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_ESCAPE)) {
@@ -387,10 +351,10 @@ private fun SettingsMenuScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .width(280.dp)
+                    .width(260.dp)
                     .fillMaxHeight()
-                    .background(colors.surface.copy(alpha = 0.6f))
-                    .padding(top = 32.dp, bottom = 32.dp, start = 24.dp, end = 24.dp)
+                    .background(colors.surface1)
+                    .padding(top = 32.dp, bottom = 32.dp, start = 16.dp, end = 16.dp)
                     .onFocusChanged { uiState.isSidebarFocused = it.hasFocus }
                     .focusProperties { canFocus = !uiState.isRestoringFocus }
             ) {
@@ -474,6 +438,13 @@ private fun SettingsMenuScreen(
                         }
                 )
             }
+
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(colors.borderSubtle)
+            )
 
             Box(
                 modifier = Modifier
