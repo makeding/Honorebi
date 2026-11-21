@@ -1112,6 +1112,7 @@ fun LivePlayerScreen(
             prepare = !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
                 showOverlay && !isManualOverlay && !isSubMenuOpen &&
                 ps.crop.mode == PlayerCropMode.HIDDEN,
+            preparationDelayMs = 350L,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxSize()

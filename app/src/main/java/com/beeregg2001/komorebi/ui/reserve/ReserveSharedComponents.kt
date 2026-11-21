@@ -110,7 +110,7 @@ fun DayOfWeekSelectionDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 4.dp, top = 4.dp, bottom = 12.dp),
+                    contentPadding = PaddingValues(start = 4.dp, top = 4.dp, end = 4.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.graphicsLayer { clip = false }
                 ) {
