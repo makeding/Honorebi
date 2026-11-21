@@ -6,6 +6,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
@@ -75,18 +77,79 @@ enum class AppTheme(val label: String) {
     KYLE_DAY("昼 (海辺のカイル)"), KYLE_NIGHT("夜 (深海のカイル)")
 }
 
-data class KomorebiColors(
-    val background: Color, val surface: Color, val accent: Color,
-    val textPrimary: Color, val textSecondary: Color, val isDark: Boolean = true
-)
+private val DefaultDarkOnAccentInk = Color(0xFF0B0E14)
 
-// --- 既存パレット ---
+private fun wcagContrastRatio(foreground: Color, background: Color): Float {
+    val lighter = maxOf(foreground.luminance(), background.luminance())
+    val darker = minOf(foreground.luminance(), background.luminance())
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
+private fun computeOnAccent(accent: Color): Color =
+    if (wcagContrastRatio(DefaultDarkOnAccentInk, accent) >= wcagContrastRatio(Color.White, accent)) {
+        DefaultDarkOnAccentInk
+    } else {
+        Color.White
+    }
+
+private fun defaultSurface2(surface: Color, isDark: Boolean): Color =
+    if (isDark) {
+        Color(
+            red = (surface.red + 0.045f).coerceAtMost(1f),
+            green = (surface.green + 0.048f).coerceAtMost(1f),
+            blue = (surface.blue + 0.055f).coerceAtMost(1f),
+            alpha = surface.alpha,
+        )
+    } else {
+        Color(0xFFE8EEF5)
+    }
+
+private fun defaultOverlay(isDark: Boolean): Color =
+    if (isDark) Color(0xEB0E1118) else Color(0xF5FFFFFF)
+
+private fun defaultTextMuted(textSecondary: Color, background: Color): Color {
+    val candidate = lerp(background, textSecondary, 0.72f)
+    if (wcagContrastRatio(candidate, background) >= 3.5f) return candidate
+    val stepped = lerp(background, textSecondary, 0.86f)
+    return if (wcagContrastRatio(stepped, background) >= 3.5f) stepped else textSecondary
+}
+
+data class KomorebiColors(
+    val background: Color,
+    val surface: Color,
+    val accent: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val isDark: Boolean = true,
+    val surface2: Color = defaultSurface2(surface, isDark),
+    val overlay: Color = defaultOverlay(isDark),
+    val accentSoft: Color = accent.copy(alpha = if (isDark) 0.16f else 0.14f),
+    val onAccent: Color = computeOnAccent(accent),
+    val textMuted: Color = defaultTextMuted(textSecondary, background),
+    val borderSubtle: Color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.10f),
+    val danger: Color = if (isDark) Color(0xFFF87171) else Color(0xFFD32F2F),
+    val recording: Color = StatusRecordingColor,
+    val cmRed: Color = Color(0xFFE11D48),
+) {
+    /** L1 flat surface alias */
+    val surface1: Color get() = surface
+
+    /** L2 elevated / focused surface alias */
+    val surfaceElevated: Color get() = surface2
+
+    /** L3 high-opacity flat overlay surface alias */
+    val surfaceOverlay: Color get() = overlay
+}
+
+// --- 既存パレット (4段フラットサーフェス対応) ---
 val MonotonePalette = KomorebiColors(
-    background = Color(0xFF121212),
-    surface = Color(0xFF1A1A1A),
+    background = Color(0xFF0C0E12),
+    surface = Color(0xFF151821),
+    surface2 = Color(0xFF1E2330),
     accent = Color.White,
     textPrimary = Color.White,
-    textSecondary = Color.Gray,
+    textSecondary = Color(0xFF9AA4B2),
+    textMuted = Color(0xFF687387),
     isDark = true
 )
 val HightonePalette = KomorebiColors(
@@ -164,9 +227,10 @@ val AutumnLightPalette = KomorebiColors(
 
 // EPGStation 風の青系パレット (アクセントは EPGStation のアプリバーに近いブルー)
 val BlueDarkPalette = KomorebiColors(
-    background = Color(0xFF101418),  // 寒色トーンの深いダークグレー
-    surface = Color(0xFF1A2027),
-    accent = Color(0xFF2196F3),      // ダーク背景でも視認しやすい Material Blue 500
+    background = Color(0xFF0B1118),
+    surface = Color(0xFF131D28),
+    surface2 = Color(0xFF1B2838),
+    accent = Color(0xFF2196F3),
     textPrimary = Color(0xFFE8EFF7),
     textSecondary = Color(0xFF8A99A8),
     isDark = true
@@ -174,182 +238,107 @@ val BlueDarkPalette = KomorebiColors(
 val BlueLightPalette = KomorebiColors(
     background = Color(0xFFEAF1F8),
     surface = Color(0xFFFFFFFF),
-    accent = Color(0xFF1976D2),      // EPGStation のアプリバーと同じブルー
+    accent = Color(0xFF1976D2),
     textPrimary = Color(0xFF1F2933),
     textSecondary = Color(0xFF5F6B78),
     isDark = false
 )
 
-// --- ★ 昼夜のパレット (Komorebi / Kyle) ---
+// --- ★ 昼夜のパレット (Komorebi / Kyle — 高コントラスト正規化) ---
 val KomorebiDayPalette = KomorebiColors(
-    background = Color(0xFF8C8675),
-    surface = Color(0xFF9C9584),
-    accent = Color(0xFFF9F1CC),
+    background = Color(0xFFF4F1EA),
+    surface = Color(0xFFFFFFFF),
+    surface2 = Color(0xFFEBE6DC),
+    accent = Color(0xFF5A7247),
     textPrimary = Color(0xFF1C1A17),
-    textSecondary = Color(0xFF4A463D),
+    textSecondary = Color(0xFF545047),
     isDark = false
 )
 val KomorebiNightPalette = KomorebiColors(
-    background = Color(0xFF0B141F),
-    surface = Color(0xFF132030),
+    background = Color(0xFF101214),
+    surface = Color(0xFF191C1F),
+    surface2 = Color(0xFF24282D),
     accent = Color(0xFFDDE7F5),
     textPrimary = Color(0xFFEAF1FB),
     textSecondary = Color(0xFF8A9AB0),
     isDark = true
 )
 val KyleDayPalette = KomorebiColors(
-    background = Color(0xFF5D9B91),
-    surface = Color(0xFF6CAFA5),
-    accent = Color(0xFFFFE066),
-    textPrimary = Color(0xFF051F1C),
-    textSecondary = Color(0xFF204742),
+    background = Color(0xFFEAF5F3),
+    surface = Color(0xFFFFFFFF),
+    surface2 = Color(0xFFDCECE9),
+    accent = Color(0xFF00796B),
+    textPrimary = Color(0xFF0A2421),
+    textSecondary = Color(0xFF3A5C57),
     isDark = false
 )
 val KyleNightPalette = KomorebiColors(
     background = Color(0xFF05171F),
     surface = Color(0xFF0A2433),
+    surface2 = Color(0xFF123245),
     accent = Color(0xFF4DB6AC),
     textPrimary = Color(0xFFDDF0F7),
     textSecondary = Color(0xFF6B8AAB),
     isDark = true
 )
 
-// --- ★ [NEW] 朝夕のパレット (エモーショナルな中間色) ---
+// --- ★ 朝夕のパレット (深いダークベースで視認性を確保) ---
 val KomorebiMorningPalette = KomorebiColors(
-    background = Color(0xFF4A4D45),
-    surface = Color(0xFF5C5F57),
-    accent = Color(0xFFFFE0B2), // 柔らかな朝日
+    background = Color(0xFF161512),
+    surface = Color(0xFF211F1B),
+    surface2 = Color(0xFF2D2A24),
+    accent = Color(0xFFFFD599),
     textPrimary = Color(0xFFFFFBE8),
-    textSecondary = Color(0xFFBDB59F),
+    textSecondary = Color(0xFFB3AA96),
     isDark = true
 )
 val KomorebiEveningPalette = KomorebiColors(
-    background = Color(0xFF594F53),
-    surface = Color(0xFF6E6166),
-    accent = Color(0xFFFFB280), // 夕暮れのオレンジ
+    background = Color(0xFF1A1518),
+    surface = Color(0xFF261F23),
+    surface2 = Color(0xFF332A2F),
+    accent = Color(0xFFFFB280),
     textPrimary = Color(0xFFFFF0E6),
-    textSecondary = Color(0xFFC4B6C2),
+    textSecondary = Color(0xFFB8A6B3),
     isDark = true
 )
 val KyleMorningPalette = KomorebiColors(
-    background = Color(0xFF38666B),
-    surface = Color(0xFF457A80),
-    accent = Color(0xFFAEE8F2), // 爽やかな朝の海
+    background = Color(0xFF0D1B1E),
+    surface = Color(0xFF15272B),
+    surface2 = Color(0xFF1E353B),
+    accent = Color(0xFFAEE8F2),
     textPrimary = Color(0xFFEAF9FA),
-    textSecondary = Color(0xFF8BBFCA),
+    textSecondary = Color(0xFF8AB5BF),
     isDark = true
 )
 val KyleEveningPalette = KomorebiColors(
-    background = Color(0xFF5E4356),
-    surface = Color(0xFF6D4E64),
-    accent = Color(0xFFFFAB66), // 夕焼けの海
+    background = Color(0xFF1B131A),
+    surface = Color(0xFF271C26),
+    surface2 = Color(0xFF342633),
+    accent = Color(0xFFFFAB66),
     textPrimary = Color(0xFFFFF3E0),
-    textSecondary = Color(0xFFC4A7BC),
+    textSecondary = Color(0xFFBFA3B8),
     isDark = true
 )
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun getSeasonalBackgroundBrush(theme: AppTheme, currentTime: LocalTime): Brush {
-    val alpha = if (theme.name.contains("LIGHT") || !KomorebiTheme.colors.isDark) 0.12f else 0.18f
-    val timeZone = getTimeZone(currentTime)
-
-    return when (theme) {
-        AppTheme.SPRING, AppTheme.SPRING_LIGHT -> Brush.radialGradient(
-            listOf(
-                Color(0xFFFF8A80).copy(
-                    alpha = alpha
-                ), Color.Transparent
-            ), center = Offset(0f, 0f), radius = 1800f
-        )
-
-        AppTheme.SUMMER, AppTheme.SUMMER_LIGHT -> Brush.verticalGradient(
-            0.0f to Color(0xFF00E5FF).copy(
-                alpha = alpha
-            ), 0.5f to Color.Transparent
-        )
-
-        AppTheme.AUTUMN, AppTheme.AUTUMN_LIGHT -> Brush.radialGradient(
-            listOf(
-                Color(0xFFFF7043).copy(
-                    alpha = alpha
-                ), Color.Transparent
-            ), center = Offset(1920f, 540f), radius = 2000f
-        )
-
-        AppTheme.WINTER_DARK, AppTheme.WINTER_LIGHT -> Brush.verticalGradient(
-            0.5f to Color.Transparent,
-            1.0f to Color(0xFFCF3C3C).copy(alpha = alpha)
-        )
-
-        AppTheme.KOMOREBI, AppTheme.KOMOREBI_DAY, AppTheme.KOMOREBI_NIGHT -> {
-            when (timeZone) {
-                TimeZone.MORNING -> Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFFFD599).copy(alpha = alpha * 1.5f),
-                        Color(0xFF2B2822).copy(alpha = 0.5f)
-                    ), startY = 0f, endY = 1080f
-                )
-
-                TimeZone.DAY -> Brush.linearGradient(
-                    listOf(
-                        Color(0xFF3E5C38).copy(alpha = 0.55f),
-                        Color(0xFFFFFBE8).copy(alpha = 0.35f),
-                        Color(0xFF2B2822).copy(alpha = 0.7f)
-                    ), start = Offset(400f, 0f), end = Offset(1920f, 1080f)
-                )
-
-                TimeZone.EVENING -> Brush.linearGradient(
-                    listOf(
-                        Color(0xFFFFB280).copy(alpha = alpha * 1.2f),
-                        Color(0xFF2C2433).copy(alpha = 0.8f)
-                    ), start = Offset(0f, 0f), end = Offset(1920f, 1080f)
-                )
-
-                TimeZone.NIGHT -> Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF0F1A2A),
-                        Color(0xFF060A08)
-                    ), startY = 0f, endY = 1080f
-                )
-            }
-        }
-
-        AppTheme.KYLE, AppTheme.KYLE_DAY, AppTheme.KYLE_NIGHT -> {
-            when (timeZone) {
-                TimeZone.MORNING -> Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFAEE8F2).copy(alpha = alpha * 1.2f),
-                        Color(0xFF23444A).copy(alpha = 0.6f)
-                    ), startY = 0f, endY = 1080f
-                )
-
-                TimeZone.DAY -> Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF0277BD).copy(alpha = 0.55f),
-                        Color(0xFF26A69A).copy(alpha = 0.25f),
-                        Color(0xFF0F362F).copy(alpha = 0.65f)
-                    ), startY = 0f, endY = 1080f
-                )
-
-                TimeZone.EVENING -> Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFFFAB66).copy(alpha = alpha * 1.2f),
-                        Color(0xFF38233B).copy(alpha = 0.8f)
-                    ), startY = 0f, endY = 1080f
-                )
-
-                TimeZone.NIGHT -> Brush.verticalGradient(
-                    listOf(
-                        Color.Transparent,
-                        Color(0xFF05171F).copy(alpha = 0.8f)
-                    ), startY = 0f, endY = 1080f
-                )
-            }
-        }
-
-        else -> Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+    val colors = KomorebiTheme.colors
+    val tintColor = when (theme) {
+        AppTheme.SPRING, AppTheme.SPRING_LIGHT -> Color(0xFFF48FB1)
+        AppTheme.SUMMER, AppTheme.SUMMER_LIGHT -> Color(0xFF00E5FF)
+        AppTheme.AUTUMN, AppTheme.AUTUMN_LIGHT -> Color(0xFFFF7043)
+        AppTheme.WINTER_DARK, AppTheme.WINTER_LIGHT -> Color(0xFFCF3C3C)
+        AppTheme.KOMOREBI, AppTheme.KOMOREBI_DAY, AppTheme.KOMOREBI_NIGHT,
+        AppTheme.KYLE, AppTheme.KYLE_DAY, AppTheme.KYLE_NIGHT -> colors.accent
+        else -> return Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
     }
+    val alpha = if (colors.isDark) 0.10f else 0.08f
+    return Brush.radialGradient(
+        colors = listOf(tintColor.copy(alpha = alpha), Color.Transparent),
+        center = Offset(1920f, 0f),
+        radius = 1200f,
+    )
 }
 
 fun getSeasonalIcon(theme: AppTheme): String {
@@ -414,13 +403,7 @@ fun KomorebiTheme(theme: AppTheme = AppTheme.MONOTONE, content: @Composable () -
         else -> MonotonePalette
     }
 
-    val onAccent = when (theme) {
-        AppTheme.KOMOREBI, AppTheme.KOMOREBI_DAY, AppTheme.KYLE, AppTheme.KYLE_DAY -> {
-            if (timeZone == TimeZone.DAY) komorebiColors.textPrimary else Color.Black
-        }
-
-        else -> if (komorebiColors.isDark) Color.Black else Color.White
-    }
+    val onAccent = komorebiColors.onAccent
 
     val materialColorScheme = if (komorebiColors.isDark) {
         darkColorScheme(
@@ -434,9 +417,9 @@ fun KomorebiTheme(theme: AppTheme = AppTheme.MONOTONE, content: @Composable () -
             onBackground = komorebiColors.textPrimary,
             surface = komorebiColors.surface,
             onSurface = komorebiColors.textPrimary,
-            surfaceVariant = komorebiColors.surface,
+            surfaceVariant = komorebiColors.surface2,
             onSurfaceVariant = komorebiColors.textSecondary,
-            error = Color(0xFFF44336)
+            error = komorebiColors.danger,
         )
     } else {
         lightColorScheme(
@@ -450,9 +433,9 @@ fun KomorebiTheme(theme: AppTheme = AppTheme.MONOTONE, content: @Composable () -
             onBackground = komorebiColors.textPrimary,
             surface = komorebiColors.surface,
             onSurface = komorebiColors.textPrimary,
-            surfaceVariant = komorebiColors.surface,
+            surfaceVariant = komorebiColors.surface2,
             onSurfaceVariant = komorebiColors.textSecondary,
-            error = Color(0xFFD32F2F)
+            error = komorebiColors.danger,
         )
     }
 
