@@ -3,26 +3,17 @@
 package com.beeregg2001.komorebi.ui.home
 
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Whatshot
@@ -31,7 +22,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -44,26 +34,36 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
-import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.LiveRowState
 import com.beeregg2001.komorebi.data.model.UiChannelState
 import com.beeregg2001.komorebi.data.util.toDeviceTime
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.live.logoUrlFor
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import com.beeregg2001.komorebi.viewmodel.*
-import androidx.hilt.navigation.compose.hiltViewModel
-import kotlinx.coroutines.delay
+import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleListRow
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusSpec
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingEnd
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingStart
+import com.beeregg2001.komorebi.ui.theme.tnum
+import com.beeregg2001.komorebi.ui.theme.tvCardFocus
+import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
+import com.beeregg2001.komorebi.viewmodel.EpgViewModel
+import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
-private const val TAG = "LiveContent"
+private const val LIVE_GRID_COLUMNS = 3
+private val HeatNormalColor = Color(0xFFFB923C)
+private val HeatHighColor = Color(0xFFE53935)
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -82,67 +82,62 @@ fun LiveContent(
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
     onContentReady: () -> Unit = {},
+    topBarFocusRequester: FocusRequester? = null,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val liveRows by channelViewModel.liveRows.collectAsState()
     val sourceErrors by channelViewModel.sourceErrors.collectAsState()
-    val listState = rememberLazyListState()
-
-    val rowStates = remember { mutableStateMapOf<String, LazyListState>() }
-
-    val targetChannelFocusRequester = remember { FocusRequester() }
-    val colors = KomorebiTheme.colors
-
-    var pendingChannel by remember { mutableStateOf<UiChannelState?>(null) }
-    var focusedChannel by remember { mutableStateOf<UiChannelState?>(null) }
-
-    // ★ 追加: EDCBメイン判定（勢い表記の非表示制御用）
+    val channelLogoUrls by channelViewModel.channelLogoUrls.collectAsState()
     val backendType by settingsViewModel.backendType.collectAsState(initial = "KONOMITV")
 
+    val imageLoader = rememberChannelLogoImageLoader()
+    val listState = rememberLazyListState()
+    val targetChannelFocusRequester = remember { FocusRequester() }
+    val activeChipFocusRequester = remember { FocusRequester() }
+    val colors = KomorebiTheme.colors
+    val wideCardFocus = tvCardFocus(TvCardFamily.WIDE_CARD)
+
+    val shouldCropLogo = backendType == "KONOMITV"
+    val showDanmakuHeat = backendType != "EDCB"
+    val upEdgeRequester = topBarFocusRequester ?: topNavFocusRequester
+
+    var selectedGenreId by remember { mutableStateOf<String?>(null) }
+    var focusedChannel by remember { mutableStateOf<UiChannelState?>(null) }
+    var contentEntryReady by remember { mutableStateOf(false) }
+
     LaunchedEffect(liveRows) {
+        if (selectedGenreId != null && liveRows.none { it.genreId == selectedGenreId }) {
+            selectedGenreId = null
+        }
         channelViewModel.prefetchChannelLogoUrls(liveRows.flatMap { it.channels }.map { it.channel })
     }
 
-    LaunchedEffect(pendingChannel) {
-        if (pendingChannel != null) {
-            delay(300)
-            focusedChannel = pendingChannel
+    val visibleRows = remember(liveRows, selectedGenreId) {
+        if (selectedGenreId == null) {
+            liveRows
+        } else {
+            liveRows.filter { it.genreId == selectedGenreId }
         }
     }
 
-    LaunchedEffect(liveRows) {
-        if (liveRows.isNotEmpty()) {
-            val visibleChannels = liveRows.flatMap { it.channels }
-            val currentId = pendingChannel?.channel?.id ?: focusedChannel?.channel?.id
+    val showGenreChips = liveRows.size > 1
 
+    LaunchedEffect(visibleRows, liveRows) {
+        val visibleChannels = visibleRows.flatMap { it.channels }
+        if (visibleChannels.isNotEmpty()) {
+            val currentId = focusedChannel?.channel?.id
             if (currentId == null) {
-                val firstChannel = visibleChannels.firstOrNull()
-                if (firstChannel != null) {
-                    pendingChannel = firstChannel
-                }
+                focusedChannel = visibleChannels.firstOrNull()
             } else {
                 val updatedChannel = visibleChannels.find { it.channel.id == currentId }
-
-                if (updatedChannel != null) {
-                    pendingChannel = updatedChannel
-                    focusedChannel = updatedChannel
-                } else {
-                    // N〇K除外モードの切替などで注視中のチャンネルが一覧から消えたときは、
-                    // バナー概要が古いチャンネルを表示し続けないよう、表示可能な先頭で作り直す。
-                    val fallbackChannel = visibleChannels.firstOrNull()
-                    if (fallbackChannel != null) {
-                        pendingChannel = fallbackChannel
-                        focusedChannel = fallbackChannel
-                    }
-                }
+                // N〇K除外モードの切替やジャンル絞り込みで注視中のチャンネルが一覧から消えたときは、
+                // 次の番組バーが古いチャンネルを表示し続けないよう、表示可能な先頭で更新する。
+                focusedChannel = updatedChannel ?: visibleChannels.firstOrNull()
             }
         }
     }
 
-
-    var contentEntryReady by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isReturningFromPlayer, aiFocusReturnTick, liveRows, contentEntryReady) {
+    LaunchedEffect(isReturningFromPlayer, aiFocusReturnTick, visibleRows, liveRows, contentEntryReady) {
         if ((isReturningFromPlayer || aiFocusReturnTick > 0) &&
             liveRows.isNotEmpty() && contentEntryReady
         ) {
@@ -152,26 +147,16 @@ fun LiveContent(
             }
             val targetId = lastFocusedChannelId
             if (targetId != null) {
-                var rowIndex = -1
-                var colIndex = -1
-                var genreId = ""
-
-                for (i in liveRows.indices) {
-                    val idx = liveRows[i].channels.indexOfFirst { it.channel.id == targetId }
-                    if (idx != -1) {
-                        rowIndex = i
-                        colIndex = idx
-                        genreId = liveRows[i].genreId
-                        break
-                    }
-                }
-
-                if (rowIndex != -1 && colIndex != -1) {
-                    listState.scrollToItem(maxOf(0, rowIndex))
-                    val rState = rowStates.getOrPut(genreId) { LazyListState() }
-                    rState.scrollToItem(maxOf(0, colIndex - 1))
+                val flatIdx = findFlatChunkIndex(visibleRows, targetId)
+                if (flatIdx != -1) {
+                    listState.scrollToItem(flatIdx)
                     withFrameNanos { }
-                    if (targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")) consumeReturn()
+                    if (targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")) {
+                        consumeReturn()
+                    }
+                } else if (selectedGenreId != null && findFlatChunkIndex(liveRows, targetId) != -1) {
+                    // 対象チャンネルが現在のジャンル絞り込み外にある場合は「すべて」へ戻して再探索する
+                    selectedGenreId = null
                 } else {
                     if (fallback.safeRequestFocusWithRetry("LiveNavFallback")) consumeReturn()
                 }
@@ -181,13 +166,16 @@ fun LiveContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
         if (liveRows.isEmpty()) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .focusRequester(contentFirstItemRequester)
-                    .focusProperties { up = topNavFocusRequester }
+                    .focusProperties {
+                        up = upEdgeRequester
+                        left = topNavFocusRequester
+                    }
                     .onGloballyPositioned {
                         contentEntryReady = true
                         onContentReady()
@@ -198,16 +186,26 @@ fun LiveContent(
                 CircularProgressIndicator(color = colors.textPrimary.copy(alpha = 0.5f))
             }
         } else {
-            Column(
-                modifier = modifier
-                    .fillMaxSize()
-            ) {
-                CompactLiveProgramInfo(
-                    uiState = focusedChannel,
-                    channelViewModel = channelViewModel,
-                    shouldCropLogo = backendType == "KONOMITV",
-                    modifier = Modifier.padding(horizontal = 48.dp, vertical = 16.dp),
-                    timeFormat = timeFormat
+            Column(modifier = Modifier.fillMaxSize()) {
+                LiveGenreFilterStrip(
+                    liveRows = liveRows,
+                    selectedGenreId = selectedGenreId,
+                    showChips = showGenreChips,
+                    activeChipFocusRequester = activeChipFocusRequester,
+                    upEdgeRequester = upEdgeRequester,
+                    leftEdgeRequester = topNavFocusRequester,
+                    downEdgeRequester = contentFirstItemRequester,
+                    onSelectGenre = { genreId ->
+                        selectedGenreId = genreId
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = TvContentPaddingStart,
+                            end = TvContentPaddingEnd,
+                            top = 4.dp,
+                            bottom = 8.dp
+                        )
                 )
 
                 LazyColumn(
@@ -215,153 +213,372 @@ fun LiveContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(liveRows, key = { it.genreId }) { row ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .graphicsLayer(clip = false)
-                        ) {
+                    visibleRows.forEachIndexed { rowIdx, row ->
+                        item(key = "hdr-${row.genreId}") {
                             Text(
                                 text = row.genreLabel,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = colors.textPrimary.copy(alpha = 0.8f),
-                                modifier = Modifier.padding(start = 48.dp, bottom = 8.dp)
+                                color = colors.textPrimary.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(
+                                    start = TvContentPaddingStart,
+                                    end = TvContentPaddingEnd,
+                                    top = if (rowIdx == 0) 0.dp else 6.dp
+                                )
                             )
+                        }
 
-                            LazyRow(
-                                state = rowStates.getOrPut(row.genreId) { LazyListState() },
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(horizontal = 48.dp),
+                        val chunks = row.channels.chunked(LIVE_GRID_COLUMNS)
+                        itemsIndexed(
+                            items = chunks,
+                            key = { chunkIdx, _ -> "row-${row.genreId}-$chunkIdx" }
+                        ) { chunkIdx, chunk ->
+                            val isFirstRow = rowIdx == 0 && chunkIdx == 0
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .graphicsLayer(clip = false)
+                                    .padding(
+                                        start = TvContentPaddingStart,
+                                        end = TvContentPaddingEnd
+                                    )
+                                    .graphicsLayer(clip = false),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
-                                itemsIndexed(
-                                    row.channels,
-                                    key = { _, item -> item.channel.id }) { index, uiState ->
+                                chunk.forEachIndexed { colIdx, uiState ->
+                                    val isFirstCard = isFirstRow && colIdx == 0
                                     val isTarget = uiState.channel.id == lastFocusedChannelId
-                                    val isLastItem = index == row.channels.lastIndex
+                                    val isRightEdge = colIdx == chunk.lastIndex
+                                    val cachedLogoUrl = channelLogoUrls.logoUrlFor(uiState.channel)
 
-                                    CompactChannelCard(
+                                    WideLiveChannelCard(
                                         uiState = uiState,
-                                        channelViewModel = channelViewModel,
-                                        shouldCropLogo = backendType == "KONOMITV",
+                                        cachedLogoUrl = cachedLogoUrl,
+                                        resolveLogoUrl = { channelViewModel.getChannelLogoUrl(uiState.channel) },
+                                        imageLoader = imageLoader,
+                                        shouldCropLogo = shouldCropLogo,
+                                        showDanmakuHeat = showDanmakuHeat,
+                                        timeFormat = timeFormat,
+                                        focusSpec = wideCardFocus,
                                         onClick = { onChannelClick(uiState.channel) },
+                                        onFocused = {
+                                            focusedChannel = uiState
+                                            onFocusChannelChange(uiState.channel.id)
+                                        },
                                         modifier = Modifier
+                                            .weight(1f)
                                             .then(
-                                                if (isTarget) Modifier.focusRequester(
-                                                    targetChannelFocusRequester
-                                                ) else Modifier
+                                                if (isTarget) {
+                                                    Modifier.focusRequester(targetChannelFocusRequester)
+                                                } else Modifier
                                             )
                                             .then(
-                                                if (row == liveRows.firstOrNull() && index == 0) Modifier.focusRequester(
-                                                    contentFirstItemRequester
-                                                ) else Modifier
-                                            )
-                                            .then(
-                                                if (row == liveRows.firstOrNull() && index == 0) {
-                                                    Modifier.onGloballyPositioned {
-                                                        contentEntryReady = true
-                                                        onContentReady()
-                                                    }
+                                                if (isFirstCard) {
+                                                    Modifier
+                                                        .focusRequester(contentFirstItemRequester)
+                                                        .onGloballyPositioned {
+                                                            contentEntryReady = true
+                                                            onContentReady()
+                                                        }
                                                 } else Modifier
                                             )
                                             .focusProperties {
-                                                if (row.genreId == liveRows.firstOrNull()?.genreId) {
-                                                    up = topNavFocusRequester
+                                                if (isFirstRow) {
+                                                    up = if (showGenreChips) {
+                                                        activeChipFocusRequester
+                                                    } else {
+                                                        upEdgeRequester
+                                                    }
                                                 }
-                                                if (index == 0) left = FocusRequester.Cancel
-                                                if (isLastItem) right = FocusRequester.Cancel
-                                            }
-                                            .onFocusChanged {
-                                                if (it.isFocused) {
-                                                    pendingChannel = uiState
-                                                    onFocusChannelChange(uiState.channel.id)
-                                                }
+                                                if (colIdx == 0) left = topNavFocusRequester
+                                                if (isRightEdge) right = FocusRequester.Cancel
                                             }
                                     )
+                                }
+
+                                repeat(LIVE_GRID_COLUMNS - chunk.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
                     }
+
                     sourceErrors["IPTV"]?.takeIf { it.isNotBlank() }?.let { error ->
                         item(key = "iptv-source-error") {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 48.dp, vertical = 12.dp)
+                                    .padding(
+                                        start = TvContentPaddingStart,
+                                        end = TvContentPaddingEnd,
+                                        top = 8.dp,
+                                        bottom = 8.dp
+                                    )
                             ) {
                                 Text(
                                     text = "ネットテレビを取得できませんでした: $error",
-                                    color = colors.textPrimary.copy(alpha = 0.8f),
+                                    color = colors.textSecondary,
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                                 Button(
                                     onClick = channelViewModel::fetchChannels,
-                                    modifier = Modifier.padding(top = 8.dp),
-                                ) { Text("再試行") }
+                                    modifier = Modifier
+                                        .padding(top = 8.dp)
+                                        .focusProperties { left = topNavFocusRequester },
+                                ) {
+                                    Text("再試行")
+                                }
                             }
                         }
                     }
                 }
-                }
-        }
 
+                LiveNextProgramBar(
+                    uiState = focusedChannel,
+                    timeFormat = timeFormat,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = TvContentPaddingStart,
+                            end = TvContentPaddingEnd,
+                            top = 4.dp,
+                            bottom = 12.dp
+                        )
+                )
+            }
+        }
+    }
+}
+
+private fun findFlatChunkIndex(rows: List<LiveRowState>, targetChannelId: String): Int {
+    var flatIdx = 0
+    for (row in rows) {
+        val channelIdx = row.channels.indexOfFirst { it.channel.id == targetChannelId }
+        if (channelIdx != -1) {
+            return flatIdx + 1 + (channelIdx / LIVE_GRID_COLUMNS)
+        }
+        val chunkCount = (row.channels.size + LIVE_GRID_COLUMNS - 1) / LIVE_GRID_COLUMNS
+        flatIdx += 1 + chunkCount
+    }
+    return -1
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+private fun formatLiveTime(timeStr: String?, timeFormat: String): String {
+    if (timeStr.isNullOrEmpty()) return ""
+    return runCatching {
+        ProgramTimeFormatter.formatTime(
+            OffsetDateTime.parse(timeStr).toDeviceTime().toLocalTime(),
+            timeFormat
+        )
+    }.getOrDefault("")
+}
+
+@Composable
+private fun LiveGenreFilterStrip(
+    liveRows: List<LiveRowState>,
+    selectedGenreId: String?,
+    showChips: Boolean,
+    activeChipFocusRequester: FocusRequester,
+    upEdgeRequester: FocusRequester,
+    leftEdgeRequester: FocusRequester,
+    downEdgeRequester: FocusRequester,
+    onSelectGenre: (String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+    val chips = remember(liveRows) {
+        buildList {
+            add(null to "すべて")
+            liveRows.forEach { add(it.genreId to it.genreLabel) }
+        }
+    }
+
+    Row(
+        modifier = modifier.height(36.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "ライブ視聴",
+            style = MaterialTheme.typography.titleLarge,
+            color = colors.textPrimary,
+            maxLines = 1
+        )
+
+        if (showChips) {
+            Spacer(modifier = Modifier.width(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState())
+                    .graphicsLayer(clip = false)
+            ) {
+                chips.forEachIndexed { index, (genreId, label) ->
+                    val isSelected = selectedGenreId == genreId
+                    val isLast = index == chips.lastIndex
+                    LiveGenreChip(
+                        label = label,
+                        isSelected = isSelected,
+                        onClick = { onSelectGenre(genreId) },
+                        modifier = Modifier
+                            .then(
+                                if (isSelected) {
+                                    Modifier.focusRequester(activeChipFocusRequester)
+                                } else Modifier
+                            )
+                            .focusProperties {
+                                up = upEdgeRequester
+                                down = downEdgeRequester
+                                if (index == 0) left = leftEdgeRequester
+                                if (isLast) right = FocusRequester.Cancel
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveGenreChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+    var isFocused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .height(34.dp)
+            .onFocusChanged { isFocused = it.isFocused },
+        shape = ClickableSurfaceDefaults.shape(shape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (isSelected) colors.accentSoft else colors.surface1,
+            focusedContainerColor = colors.surface2,
+            contentColor = if (isSelected) colors.accent else colors.textSecondary,
+            focusedContentColor = colors.textPrimary
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isSelected) colors.accent.copy(alpha = 0.45f) else colors.borderSubtle
+                ),
+                shape = shape
+            ),
+            focusedBorder = Border(
+                border = BorderStroke(TvCardFocusBorderWidth, colors.accent),
+                shape = shape
+            )
+        )
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
+                ),
+                color = when {
+                    isFocused -> colors.textPrimary
+                    isSelected -> colors.accent
+                    else -> colors.textSecondary
+                },
+                maxLines = 1
+            )
+        }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-private fun CompactLiveProgramInfo(
-    uiState: UiChannelState?,
-    channelViewModel: ChannelViewModel,
+private fun WideLiveChannelCard(
+    uiState: UiChannelState,
+    cachedLogoUrl: String,
+    resolveLogoUrl: suspend () -> String,
+    imageLoader: ImageLoader,
     shouldCropLogo: Boolean,
-    modifier: Modifier = Modifier,
-    timeFormat: String = "24H"
+    showDanmakuHeat: Boolean,
+    timeFormat: String,
+    focusSpec: TvCardFocusSpec,
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
-    val imageLoader = rememberChannelLogoImageLoader()
-    val channel = uiState?.channel
-    val present = channel?.programPresent
-    val cachedLogoUrl = channel?.let {
-        channelViewModel.channelLogoUrls.collectAsState().value.logoUrlFor(it)
-    }.orEmpty()
-    var fetchedLogoUrl by remember(channel?.id) { mutableStateOf("") }
+    var isFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(channel?.id, cachedLogoUrl) {
-        if (channel != null && cachedLogoUrl.isBlank()) {
-            fetchedLogoUrl = channelViewModel.getChannelLogoUrl(channel)
+    var fetchedLogoUrl by remember(uiState.channel.id) { mutableStateOf("") }
+    LaunchedEffect(uiState.channel.id, cachedLogoUrl) {
+        if (cachedLogoUrl.isBlank()) {
+            fetchedLogoUrl = resolveLogoUrl()
         }
     }
     val logoUrl = cachedLogoUrl.ifBlank { fetchedLogoUrl }
 
-    val formatTime = { timeStr: String? ->
-        if (timeStr.isNullOrEmpty()) "" else runCatching {
-            ProgramTimeFormatter.formatTime(OffsetDateTime.parse(timeStr).toDeviceTime().toLocalTime(), timeFormat)
-        }.getOrDefault("")
+    val present = uiState.channel.programPresent
+    val timeRangeText = remember(present?.startTime, present?.endTime, timeFormat) {
+        if (present == null) {
+            ""
+        } else {
+            val start = formatLiveTime(present.startTime, timeFormat)
+            val end = formatLiveTime(present.endTime, timeFormat)
+            if (start.isNotEmpty() || end.isNotEmpty()) "$start - $end" else ""
+        }
     }
+    val clampedProgress = uiState.progress.coerceIn(0f, 1f)
+    val progressPct = (clampedProgress * 100f).toInt()
+    val force = uiState.jikkyoForce ?: 0
+    val shape = RoundedCornerShape(TvCardRadiusGrid)
 
-    Row(
+    Surface(
+        onClick = onClick,
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 72.dp, max = 88.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.surface.copy(alpha = 0.42f))
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(124.dp)
+            .onFocusChanged { state ->
+                val focused = state.isFocused
+                isFocused = focused
+                if (focused) onFocused()
+            },
+        shape = ClickableSurfaceDefaults.shape(shape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
+            contentColor = colors.textPrimary,
+            focusedContentColor = colors.textPrimary
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = focusSpec.restBorder,
+            focusedBorder = focusSpec.focusedBorder
+        )
     ) {
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(width = 56.dp, height = 30.dp)
-                        .clip(RoundedCornerShape(5.dp))
+                        .size(width = 48.dp, height = 28.dp)
+                        .clip(RoundedCornerShape(6.dp))
                         .background(colors.textPrimary.copy(alpha = 0.06f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -369,435 +586,211 @@ private fun CompactLiveProgramInfo(
                         AsyncImage(
                             imageLoader = imageLoader,
                             model = logoUrl,
-                            contentDescription = null,
+                            contentDescription = uiState.name,
                             contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
-                Spacer(Modifier.width(12.dp))
-                if (uiState == null) {
-                    Box(
-                        modifier = Modifier
-                            .width(120.dp)
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(colors.textSecondary.copy(alpha = 0.16f))
-                    )
-                } else {
-                    Text(
-                        text = uiState.name,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Spacer(Modifier.height(5.dp))
-            if (uiState == null) {
-                Box(
-                    modifier = Modifier
-                        .width(420.dp)
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(colors.textPrimary.copy(alpha = 0.12f))
-                )
-            } else {
-                Text(
-                    text = uiState.programTitle,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (present != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "${formatTime(present.startTime)} - ${formatTime(present.endTime)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.textSecondary
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(140.dp)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(colors.textSecondary.copy(alpha = 0.2f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(uiState.progress.coerceIn(0f, 1f))
-                                .fillMaxHeight()
-                                .background(colors.accent)
-                        )
-                    }
-                }
-            }
-        }
 
-        if (uiState == null) {
-            Box(
-                modifier = Modifier
-                    .width(72.dp)
-                    .height(30.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(colors.accent.copy(alpha = 0.1f))
-            )
-        } else {
-            Text(
-                text = "放送中",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = colors.accent,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(colors.accent.copy(alpha = 0.16f))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            )
-        }
-    }
-}
+                Spacer(modifier = Modifier.width(8.dp))
 
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-fun HeroDashboard(
-    uiState: UiChannelState,
-    channelViewModel: ChannelViewModel,
-    backendType: String,
-    timeFormat: String = "24H"
-) {
-    val colors = KomorebiTheme.colors
-    val imageLoader = rememberChannelLogoImageLoader()
-    val present = uiState.channel.programPresent
-    val following = uiState.channel.programFollowing
-    val isHot = (uiState.jikkyoForce ?: 0) > 500
-
-    // ★ 修正: EDCB等で取得を成功させるため displayChannelId を使用する
-    val cachedLogoUrl = channelViewModel.channelLogoUrls.collectAsState().value.logoUrlFor(uiState.channel)
-    var fetchedLogoUrl by remember(uiState.channel.id) { mutableStateOf("") }
-    LaunchedEffect(uiState.channel.id, cachedLogoUrl) {
-        if (cachedLogoUrl.isBlank()) {
-            fetchedLogoUrl = channelViewModel.getChannelLogoUrl(uiState.channel)
-        }
-    }
-    val logoUrl = cachedLogoUrl.ifBlank { fetchedLogoUrl }
-
-    val formatTime = { timeStr: String? ->
-        if (timeStr.isNullOrEmpty()) ""
-        else try {
-            ProgramTimeFormatter.formatTime(OffsetDateTime.parse(timeStr).toDeviceTime().toLocalTime(), timeFormat)
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    AnimatedContent(
-        targetState = uiState,
-        transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
-        label = "HeroTransition",
-        modifier = Modifier.fillMaxSize()
-    ) { state ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                imageLoader = imageLoader,
-                model = logoUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxWidth(0.35f)
-                    .aspectRatio(16f / 9f)
-                    .alpha(0.12f)
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(clip = false)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(0.65f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.Bottom
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp, 36.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(colors.textPrimary.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AsyncImage(
-                                imageLoader = imageLoader,
-                                model = logoUrl,
-                                contentDescription = "Channel Logo",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = state.name,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = colors.textSecondary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = state.programTitle,
-                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                        color = colors.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            initialDelayMillis = 1500,
-                            spacing = MarqueeSpacing(48.dp)
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (state.hasProgram && present != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(24.dp)
-                        ) {
-                            Text(
-                                text = formatTime(present.startTime),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Box(
-                                modifier = Modifier
-                                    .width(180.dp)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(colors.textSecondary.copy(0.2f))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(state.progress)
-                                        .fillMaxHeight()
-                                        .background(colors.accent)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Text(
-                                text = formatTime(present.endTime),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = colors.textPrimary
-                            )
-
-                            Spacer(modifier = Modifier.width(28.dp))
-
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Whatshot,
-                                    contentDescription = "Hot",
-                                    tint = if (isHot) Color(0xFFE53935) else colors.textSecondary.copy(
-                                        alpha = 0.7f
-                                    ),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "勢い: ${state.jikkyoForce ?: 0}コメ/分",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = if (isHot) Color(0xFFE53935) else colors.textSecondary
-                                )
-
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            text = present.description.ifEmpty { "番組詳細がありません" },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = colors.textSecondary,
-                            maxLines = 3,
-                            minLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            lineHeight = 24.sp,
-                            modifier = Modifier.height(72.dp)
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.height(108.dp))
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(32.dp))
-
-                Column(
-                    modifier = Modifier
-                        .weight(0.35f)
-                        .fillMaxHeight()
-                        .padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.Bottom
-                ) {
-                    Box(modifier = Modifier.height(84.dp)) {
-                        if (following != null) {
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.Bottom
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(colors.accent.copy(alpha = 0.2f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = "NEXT",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 1.sp
-                                            ),
-                                            color = colors.accent
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "${formatTime(following.startTime)} - ${
-                                            formatTime(
-                                                following.endTime
-                                            )
-                                        }",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = colors.textPrimary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = following.title,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = colors.textPrimary,
-                                    maxLines = 2,
-                                    minLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-fun CompactChannelCard(
-    uiState: UiChannelState,
-    channelViewModel: ChannelViewModel,
-    shouldCropLogo: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = KomorebiTheme.colors
-    val imageLoader = rememberChannelLogoImageLoader()
-    var isFocused by remember { mutableStateOf(false) }
-
-    val animatedScale by animateFloatAsState(
-        targetValue = if (isFocused) 1.08f else 1.0f,
-        animationSpec = tween(durationMillis = 150),
-        label = "cardScale"
-    )
-
-    val cachedLogoUrl = channelViewModel.channelLogoUrls.collectAsState().value.logoUrlFor(uiState.channel)
-    var fetchedLogoUrl by remember(uiState.channel.id) { mutableStateOf("") }
-    LaunchedEffect(uiState.channel.id, cachedLogoUrl) {
-        if (cachedLogoUrl.isBlank()) {
-            fetchedLogoUrl = channelViewModel.getChannelLogoUrl(uiState.channel)
-        }
-    }
-    val logoUrl = cachedLogoUrl.ifBlank { fetchedLogoUrl }
-
-    Surface(
-        onClick = onClick,
-        modifier = modifier
-            .width(140.dp)
-            .height(76.dp)
-            .graphicsLayer { scaleX = animatedScale; scaleY = animatedScale }
-            .onFocusChanged { isFocused = it.isFocused },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = if (isFocused) 1f else 0.6f),
-            focusedContainerColor = colors.surface,
-            contentColor = colors.textPrimary,
-            focusedContentColor = colors.textPrimary
-        ),
-        border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
-        )
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 4.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(72.dp, 40.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.textPrimary.copy(alpha = 0.05f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (logoUrl.isNotBlank()) {
-                        AsyncImage(
-                            imageLoader = imageLoader,
-                            model = logoUrl,
-                            contentDescription = uiState.name,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = uiState.name,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (isFocused) colors.textPrimary else colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.8f)
+                    modifier = Modifier.weight(1f)
                 )
+
+                if (showDanmakuHeat && force > 0) {
+                    val heatColor = if (force > 500) HeatHighColor else HeatNormalColor
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(heatColor.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Whatshot,
+                            contentDescription = null,
+                            tint = heatColor,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = force.toString(),
+                            style = MaterialTheme.typography.labelSmall.tnum,
+                            color = heatColor,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
 
-            if (uiState.hasProgram) {
+            Text(
+                text = if (uiState.hasProgram && uiState.programTitle.isNotBlank()) {
+                    uiState.programTitle
+                } else {
+                    "番組情報なし"
+                },
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = if (uiState.hasProgram) colors.textPrimary else colors.textMuted,
+                maxLines = 2,
+                minLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (present != null && timeRangeText.isNotEmpty()) {
+                        Text(
+                            text = timeRangeText,
+                            style = MaterialTheme.typography.labelMedium.tnum,
+                            color = colors.textSecondary,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "$progressPct%",
+                            style = MaterialTheme.typography.labelMedium.tnum,
+                            color = if (isFocused) colors.accent else colors.textSecondary,
+                            maxLines = 1
+                        )
+                    } else {
+                        Text(
+                            text = " ",
+                            style = MaterialTheme.typography.labelMedium.tnum,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(colors.textPrimary.copy(alpha = 0.1f))
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors.textPrimary.copy(alpha = 0.12f))
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(uiState.progress)
-                            .fillMaxHeight()
-                            .background(if (isFocused) colors.accent else colors.accent.copy(alpha = 0.6f))
-                    )
+                    if (present != null && uiState.hasProgram) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(clampedProgress)
+                                .fillMaxHeight()
+                                .background(
+                                    if (isFocused) colors.accent else colors.accent.copy(alpha = 0.65f)
+                                )
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+private fun LiveNextProgramBar(
+    uiState: UiChannelState?,
+    timeFormat: String,
+    modifier: Modifier = Modifier
+) {
+    val colors = KomorebiTheme.colors
+    val following = uiState?.channel?.programFollowing
+    val nextStartTime = remember(following?.startTime, timeFormat) {
+        formatLiveTime(following?.startTime, timeFormat)
+    }
+    val shape = RoundedCornerShape(10.dp)
+
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(shape)
+            .background(colors.surface1)
+            .border(1.dp, colors.borderSubtle, shape)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(colors.accentSoft)
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = "次の番組",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.accent,
+                maxLines = 1
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        if (uiState != null) {
+            Text(
+                text = uiState.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "—",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textMuted,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            if (following != null && following.title.isNotBlank()) {
+                if (nextStartTime.isNotEmpty()) {
+                    Text(
+                        text = nextStartTime,
+                        style = MaterialTheme.typography.labelMedium.tnum,
+                        color = colors.textSecondary,
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(
+                    text = following.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Text(
+                    text = "次の番組情報なし",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Text(
+            text = "OK 視聴",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.textSecondary,
+            maxLines = 1
+        )
     }
 }
