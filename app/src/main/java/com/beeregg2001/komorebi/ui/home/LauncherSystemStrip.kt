@@ -35,10 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -55,6 +57,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.LauncherApp
 import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
 import com.beeregg2001.komorebi.ui.main.NetworkTransport
@@ -109,6 +112,7 @@ private fun PinnedSystemAppButton(
     downFocusRequester: FocusRequester,
     canTakeFocus: Boolean,
     onClick: () -> Unit,
+    onFocusedChanged: (Boolean) -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val focusSpec = tvCardFocus(TvCardFamily.SYSTEM_ICON)
@@ -118,6 +122,7 @@ private fun PinnedSystemAppButton(
         modifier = Modifier
             .size(48.dp)
             .focusRequester(focusRequester)
+            .onFocusChanged { onFocusedChanged(it.isFocused) }
             .focusProperties {
                 left = leftFocusRequester
                 right = rightFocusRequester
@@ -230,10 +235,26 @@ internal fun LauncherSystemStrip(
     modifier: Modifier = Modifier,
     clockFocusRequester: FocusRequester = remember { FocusRequester() },
     onClockClick: () -> Unit = {},
+    isContentReady: Boolean = true,
 ) {
     val colors = KomorebiTheme.colors
+    val focusManager = LocalFocusManager.current
     val focusSpec = tvCardFocus(TvCardFamily.SYSTEM_ICON)
     val stripShape = RoundedCornerShape(14.dp)
+
+    var returnPlayerFocused by remember { mutableStateOf(false) }
+    var inputSourceFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hasActivePlayer, inputSourceApp) {
+        if (!hasActivePlayer && returnPlayerFocused) {
+            returnPlayerFocused = false
+            val target = if (inputSourceApp != null) inputSourceFocusRequester else wifiSettingsFocusRequester
+            target.safeRequestFocus("StripHandoff_Player")
+        } else if (inputSourceApp == null && inputSourceFocused) {
+            inputSourceFocused = false
+            wifiSettingsFocusRequester.safeRequestFocus("StripHandoff_Input")
+        }
+    }
 
     Row(
         modifier = modifier
@@ -241,13 +262,21 @@ internal fun LauncherSystemStrip(
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .onFocusChanged { onHasFocusChanged(it.hasFocus) }
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Back || event.key == Key.Escape)
-                ) {
-                    onBack()
-                    true
-                } else {
-                    false
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.Escape -> {
+                        onBack()
+                        true
+                    }
+                    Key.DirectionDown -> {
+                        if (isContentReady) {
+                            if (!downFocusRequester.safeRequestFocus("StripDown")) {
+                                focusManager.moveFocus(FocusDirection.Down)
+                            }
+                        }
+                        true
+                    }
+                    else -> false
                 }
             },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -260,6 +289,7 @@ internal fun LauncherSystemStrip(
                 modifier = Modifier
                     .height(40.dp)
                     .focusRequester(returnPlayerFocusRequester)
+                    .onFocusChanged { returnPlayerFocused = it.isFocused }
                     .focusProperties {
                         left = leftEdgeFocusRequester
                         right = if (inputSourceApp != null) {
@@ -267,7 +297,7 @@ internal fun LauncherSystemStrip(
                         } else {
                             wifiSettingsFocusRequester
                         }
-                        down = downFocusRequester
+                        down = FocusRequester.Cancel
                         up = FocusRequester.Cancel
                         canFocus = canTakeFocus
                     },
@@ -321,9 +351,10 @@ internal fun LauncherSystemStrip(
                     leftEdgeFocusRequester
                 },
                 rightFocusRequester = wifiSettingsFocusRequester,
-                downFocusRequester = downFocusRequester,
+                downFocusRequester = FocusRequester.Cancel,
                 canTakeFocus = canTakeFocus,
                 onClick = { onLaunchInputSourcePicker(inputSourceApp) },
+                onFocusedChanged = { inputSourceFocused = it },
             )
         }
 
@@ -338,7 +369,7 @@ internal fun LauncherSystemStrip(
             rightFocusRequester = systemSettingsFocusRequester,
             canTakeFocus = canTakeFocus,
             onClick = onLaunchWifiSettings,
-            downFocusRequester = downFocusRequester,
+            downFocusRequester = FocusRequester.Cancel,
         )
 
         Surface(
@@ -349,7 +380,7 @@ internal fun LauncherSystemStrip(
                 .focusProperties {
                     left = wifiSettingsFocusRequester
                     right = clockFocusRequester
-                    down = downFocusRequester
+                    down = FocusRequester.Cancel
                     up = FocusRequester.Cancel
                     canFocus = canTakeFocus
                 },
@@ -383,7 +414,7 @@ internal fun LauncherSystemStrip(
                 .focusProperties {
                     left = systemSettingsFocusRequester
                     right = FocusRequester.Cancel
-                    down = downFocusRequester
+                    down = FocusRequester.Cancel
                     up = FocusRequester.Cancel
                     canFocus = canTakeFocus
                 },

@@ -43,10 +43,12 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -69,6 +71,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.R
+import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
@@ -112,13 +115,18 @@ internal fun LauncherNavRail(
     onTabFocused: (LauncherTab) -> Unit,
     onTabActivated: (LauncherTab) -> Unit = onTabFocused,
     onOpenSettings: () -> Unit,
+    onSettingsFocused: () -> Unit = {},
     onHasFocusChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
+    val focusManager = LocalFocusManager.current
     val visibleTabs = controller.visibleTabs
     val selectedTab = controller.selectedTab
+    val focusableTabs = remember(visibleTabs, isEpgJumping) {
+        visibleTabs.filter { !(it == LauncherTab.EPG && isEpgJumping) }
+    }
 
     var railHasFocus by remember { mutableStateOf(false) }
     var interactionTick by remember { mutableIntStateOf(0) }
@@ -172,17 +180,24 @@ internal fun LauncherNavRail(
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
                     interactionTick++
-                    if (event.key == Key.Back || event.key == Key.Escape) {
+                    if (event.key == Key.Escape) {
                         onBack()
                         return@onPreviewKeyEvent true
                     }
                 }
                 false
             }
-            .focusGroup()
             .focusProperties {
-                enter = { controller.tabRequester(controller.selectedTab) }
+                enter = {
+                    val target = if (controller.selectedTab == LauncherTab.EPG && isEpgJumping) {
+                        focusableTabs.firstOrNull() ?: controller.selectedTab
+                    } else {
+                        controller.selectedTab
+                    }
+                    controller.tabRequester(target)
+                }
             }
+            .focusGroup()
             .padding(top = 8.dp, bottom = 16.dp),
     ) {
         // Non-focusable brand badge aligned with the top utility strip.
@@ -218,13 +233,18 @@ internal fun LauncherNavRail(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        visibleTabs.forEachIndexed { index, tab ->
+        visibleTabs.forEach { tab ->
             val isSelected = selectedTab == tab
             val canFocusTab = !(tab == LauncherTab.EPG && isEpgJumping)
             var isItemFocused by remember(tab) { mutableStateOf(false) }
             val interactionSource = remember(tab) { MutableInteractionSource() }
-            val prevTab = visibleTabs.getOrNull(index - 1)
-            val nextTab = visibleTabs.getOrNull(index + 1)
+            val focusableIdx = focusableTabs.indexOf(tab)
+            val prevTab = if (focusableIdx > 0) focusableTabs[focusableIdx - 1] else null
+            val nextTab = if (focusableIdx >= 0 && focusableIdx < focusableTabs.lastIndex) {
+                focusableTabs[focusableIdx + 1]
+            } else {
+                null
+            }
 
             val contentColor = when {
                 isItemFocused -> colors.textPrimary
@@ -245,11 +265,7 @@ internal fun LauncherNavRail(
                     .focusProperties {
                         up = prevTab?.let { controller.tabRequester(it) } ?: upEdgeFocusRequester
                         down = nextTab?.let { controller.tabRequester(it) } ?: settingsItemFocusRequester
-                        right = if (isSelected && controller.isContentReadyFor(tab)) {
-                            controller.contentRequester(tab)
-                        } else {
-                            FocusRequester.Cancel
-                        }
+                        right = FocusRequester.Cancel
                         left = FocusRequester.Cancel
                         canFocus = canFocusTab
                     }
@@ -263,10 +279,15 @@ internal fun LauncherNavRail(
                     .onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown &&
                             event.key == Key.DirectionRight &&
-                            canFocusTab &&
-                            !(isSelected && controller.isContentReadyFor(tab))
+                            canFocusTab
                         ) {
-                            onTabActivated(tab)
+                            if (isSelected && controller.isContentReadyFor(tab)) {
+                                if (!controller.contentRequester(tab).safeRequestFocus("RailRight_${tab.name}")) {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                }
+                            } else {
+                                onTabActivated(tab)
+                            }
                             true
                         } else {
                             false
@@ -295,7 +316,7 @@ internal fun LauncherNavRail(
 
         var isSettingsFocused by remember { mutableStateOf(false) }
         val settingsInteractionSource = remember { MutableInteractionSource() }
-        val lastVisibleTab = visibleTabs.lastOrNull()
+        val lastVisibleTab = focusableTabs.lastOrNull()
 
         RailItemSurface(
             isSelected = false,
@@ -316,7 +337,24 @@ internal fun LauncherNavRail(
                 }
                 .onFocusChanged { focusState ->
                     isSettingsFocused = focusState.isFocused
-                    if (focusState.isFocused) interactionTick++
+                    if (focusState.isFocused) {
+                        interactionTick++
+                        onSettingsFocused()
+                    }
+                }
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionRight &&
+                        controller.isActiveContentReady
+                    ) {
+                        val activeTab = controller.selectedTab
+                        if (!controller.contentRequester(activeTab).safeRequestFocus("RailSettingsRight")) {
+                            focusManager.moveFocus(FocusDirection.Right)
+                        }
+                        true
+                    } else {
+                        false
+                    }
                 }
                 .clickable(
                     enabled = settingsCanFocus,

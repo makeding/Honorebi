@@ -48,6 +48,10 @@ class FocusMemory {
             completedId = id
         }
     }
+
+    fun clear() {
+        request = null
+    }
 }
 
 @Composable
@@ -87,8 +91,7 @@ internal fun HomeEntryFocusEffect(
         if (request.section != null) return@LaunchedEffect
         if (request.contentTop && !isContentReady(request.tab)) return@LaunchedEffect
         val requester = if (request.contentTop) contentRequester(request.tab) else tabRequester(request.tab)
-        if (requester?.safeRequestFocusWithRetry("HomeFocus_Entry") == true) {
-            memory.consume(request.id)
-        }
+        requester?.safeRequestFocusWithRetry("HomeFocus_Entry")
+        memory.consume(request.id)
     }
 }

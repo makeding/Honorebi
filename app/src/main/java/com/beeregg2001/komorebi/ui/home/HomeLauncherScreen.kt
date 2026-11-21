@@ -149,23 +149,62 @@ fun HomeLauncherScreen(
         )
     }
 
+    val isOverlayOpen = epgSelectedProgram != null ||
+        isSettingsOpen || isRecordListOpen || isReserveOverlayOpen || ui.isSeriesListOpen
+    val isFullScreenPlayer = (selectedChannel != null || selectedProgram != null) && !hasActivePlayer
+    val isFullScreenMode = isOverlayOpen || isFullScreenPlayer
+
     LaunchedEffect(visibleTabs) {
         val fallback = tabController.syncVisibleTabs(visibleTabs)
-        if (fallback != null) {
-            ui.selectedTabIndex = 0
-            onTabChange(0)
+        val syncedIndex = tabController.selectedIndex
+        ui.selectedTabIndex = syncedIndex
+        if (syncedIndex != initialTabIndex || fallback != null) {
+            onTabChange(syncedIndex)
+        }
+        if (fallback != null && !isFullScreenMode) {
+            focusMemory.remember(0)
         }
     }
 
-    LaunchedEffect(requestedTab, visibleTabs) {
-        tabController.selectTab(requestedTab)
+    LaunchedEffect(initialTabIndex) {
+        val target = visibleTabs.getOrNull(initialTabIndex.coerceIn(0, (visibleTabs.size - 1).coerceAtLeast(0)))
+            ?: LauncherTab.HOME
+        if (target != tabController.selectedTab) {
+            tabController.selectTab(target)
+        }
+    }
+
+    LaunchedEffect(tabController.activeTab) {
+        if (tabController.activeTab != LauncherTab.EPG) {
+            ui.isEpgJumping = false
+        }
+    }
+
+    var pendingEnterContentTab by remember { mutableStateOf<LauncherTab?>(null) }
+    var railHasFocus by remember { mutableStateOf(false) }
+    var stripHasFocus by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isFullScreenMode) {
+        if (isFullScreenMode) {
+            pendingEnterContentTab = null
+        }
     }
 
     suspend fun handleLauncherBack() {
+        pendingEnterContentTab = null
+        if (stripHasFocus) {
+            tabController.tabRequester(tabController.selectedTab).safeRequestFocus("Back_StripToRail")
+            onBackTriggered()
+            return
+        }
         val defaultTab = LauncherTab.fromTitle(settingsViewModel.getStartupTabOnce())
             ?.takeIf { it in visibleTabs }
             ?: visibleTabs.first()
         val defaultIndex = visibleTabs.indexOf(defaultTab).coerceAtLeast(0)
+        if (railHasFocus && tabController.selectedIndex == defaultIndex) {
+            onBackTriggered()
+            return
+        }
         ui.handleBackNavigation(
             defaultTabIndex = defaultIndex,
             onTabChange = { targetIndex ->
@@ -177,11 +216,6 @@ fun HomeLauncherScreen(
             escapeToSafeHouse = { ui.safeHouseRequester.safeRequestFocus("Back_SafeHouse") },
         )
     }
-
-    val isFullScreenMode = ui.isFullScreen(
-        selectedChannel, selectedProgram, epgSelectedProgram,
-        isSettingsOpen, isRecordListOpen, isReserveOverlayOpen
-    ) && !hasActivePlayer
 
     fun applyReturnFocus(trigger: FocusReturnTrigger): TabFocusAction {
         val currentTab = tabController.selectedTab
@@ -218,9 +252,6 @@ fun HomeLauncherScreen(
     val railSettingsFocusRequester = remember { FocusRequester() }
     val wifiSettingsFocusRequester = remember { FocusRequester() }
     val clockFocusRequester = remember { FocusRequester() }
-    var pendingEnterContentTab by remember { mutableStateOf<LauncherTab?>(null) }
-    var railHasFocus by remember { mutableStateOf(false) }
-    var stripHasFocus by remember { mutableStateOf(false) }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
@@ -264,14 +295,19 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(isReturningFromPlayer) {
+    LaunchedEffect(isReturningFromPlayer, isFullScreenMode) {
         if (isReturningFromPlayer && !isFullScreenMode) {
             val currentTab = tabController.selectedTab
             if (!currentTab.ownsExternalReturnFocus) {
-                ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
                 val action = applyReturnFocus(FocusReturnTrigger.PLAYER_RETURN)
-                if (action is TabFocusAction.DelegateToTabContent && action.consumeImmediately) {
-                    onReturnFocusConsumed()
+                if (action is TabFocusAction.DelegateToTabContent) {
+                    if (action.consumeImmediately) {
+                        // Allow EPG/content one compose cycle to read restoreChannelId before clearing.
+                        delay(250)
+                        onReturnFocusConsumed()
+                    }
+                } else {
+                    ui.safeHouseRequester.safeRequestFocusWithRetry("SafeHouse_Return")
                 }
             }
         }
@@ -295,8 +331,12 @@ fun HomeLauncherScreen(
         isContentReady = { tabController.isContentReadyAt(it) },
     )
 
-    LaunchedEffect(pendingEnterContentTab, tabController.activeTab, tabController.readyGeneration) {
+    LaunchedEffect(pendingEnterContentTab, tabController.activeTab, tabController.readyGeneration, isFullScreenMode, railHasFocus) {
         val target = pendingEnterContentTab ?: return@LaunchedEffect
+        if (isFullScreenMode || !railHasFocus) {
+            pendingEnterContentTab = null
+            return@LaunchedEffect
+        }
         if (tabController.isContentReadyFor(target)) {
             pendingEnterContentTab = null
             withFrameNanos { }
@@ -330,7 +370,7 @@ fun HomeLauncherScreen(
         val stripDownRequester = if (tabController.isActiveContentReady) {
             tabController.contentRequester(tabController.selectedTab)
         } else {
-            FocusRequester.Default
+            FocusRequester.Cancel
         }
 
         Box(
@@ -362,7 +402,7 @@ fun HomeLauncherScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .focusProperties { canFocus = isCurrentSnapshot },
+                            .focusProperties { canFocus = isCurrentSnapshot && !isFullScreenMode },
                     ) {
                         when (snapshot.tab) {
                             LauncherTab.HOME -> HomeContents(
@@ -566,11 +606,13 @@ fun HomeLauncherScreen(
                     onLaunchSystemSettings = { homeViewModel.launchSystemSettings() },
                     onHasFocusChanged = { hasFocus ->
                         stripHasFocus = hasFocus
+                        if (hasFocus) pendingEnterContentTab = null
                         ui.topNavHasFocus = railHasFocus || hasFocus
                     },
                     onBack = { scope.launch { handleLauncherBack() } },
                     clockFocusRequester = clockFocusRequester,
                     onClockClick = onClockClick,
+                    isContentReady = tabController.isActiveContentReady,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 24.dp)
@@ -582,11 +624,12 @@ fun HomeLauncherScreen(
         if (!isFullScreenMode) {
             LauncherNavRail(
                 controller = tabController,
-                isEpgJumping = ui.isEpgJumping,
+                isEpgJumping = isEpgJumpingActive,
                 upEdgeFocusRequester = topBarEntryRequester,
                 settingsItemFocusRequester = railSettingsFocusRequester,
                 settingsCanFocus = !isEpgJumpingActive,
                 onTabFocused = { tab ->
+                    focusMemory.clear()
                     if (pendingEnterContentTab != null && pendingEnterContentTab != tab) {
                         pendingEnterContentTab = null
                     }
@@ -597,6 +640,7 @@ fun HomeLauncherScreen(
                     ui.topNavHasFocus = true
                 },
                 onTabActivated = { tab ->
+                    focusMemory.clear()
                     tabController.selectTab(tab, immediate = true)
                     val targetIndex = tabController.selectedIndex
                     ui.selectedTabIndex = targetIndex
@@ -609,6 +653,7 @@ fun HomeLauncherScreen(
                     }
                 },
                 onOpenSettings = { onSettingsToggle(true) },
+                onSettingsFocused = { pendingEnterContentTab = null },
                 onHasFocusChanged = { hasFocus ->
                     railHasFocus = hasFocus
                     ui.topNavHasFocus = hasFocus || stripHasFocus
