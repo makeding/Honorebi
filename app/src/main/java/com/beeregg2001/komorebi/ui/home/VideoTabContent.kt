@@ -171,11 +171,16 @@ fun VideoTabContent(
     onShowSmbLibrary: () -> Unit = {},
     onShowOnAir: () -> Unit = {},
     topBarFocusRequester: FocusRequester? = null,
+    onScrolledChanged: (Boolean) -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val coroutineScope = rememberCoroutineScope()
 
     val listState = rememberLazyListState()
+    val isScrolled by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
+    }
+    LaunchedEffect(isScrolled) { onScrolledChanged(isScrolled) }
     val recentRowState = rememberLazyListState()
     val historyRowState = rememberLazyListState()
     val genreRowState = rememberLazyListState()

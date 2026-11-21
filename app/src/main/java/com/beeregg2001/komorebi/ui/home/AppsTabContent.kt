@@ -98,6 +98,7 @@ fun AppsTabContent(
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     topBarFocusRequester: FocusRequester? = null,
     isTopNavFocused: Boolean = false,
+    onScrolledChanged: (Boolean) -> Unit = {},
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val hiddenLauncherApps by homeViewModel.hiddenLauncherApps.collectAsState()
@@ -118,6 +119,10 @@ fun AppsTabContent(
     var pendingFocusAppIndex by remember { mutableStateOf<Int?>(null) }
     val appFocusRequesters = remember { mutableStateMapOf<String, FocusRequester>() }
     val gridState = rememberLazyGridState()
+    val isScrolled by remember {
+        derivedStateOf { gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 24 }
+    }
+    LaunchedEffect(isScrolled) { onScrolledChanged(isScrolled) }
 
     val catalogApps = if (isHiddenCatalog) hiddenApps else apps
 

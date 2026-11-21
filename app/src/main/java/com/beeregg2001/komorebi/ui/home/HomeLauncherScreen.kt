@@ -364,11 +364,15 @@ fun HomeLauncherScreen(
                 .focusable()
         )
 
+        var isContentScrolled by remember(tabController.activeTab) { mutableStateOf(false) }
+        val isCompactStrip = isContentScrolled && !stripHasFocus
+        val showStripActions = !isCompactStrip
         val isEpgJumpingActive = tabController.selectedTab == LauncherTab.EPG && ui.isEpgJumping
         val topBarEntryRequester = when {
             hasActivePlayer -> returnPlayerFocusRequester
+            !showStripActions -> wifiSettingsFocusRequester
             inputSourceApp != null -> inputSourceFocusRequester
-            else -> wifiSettingsFocusRequester
+            else -> ui.settingsFocusRequester
         }
         val stripDownRequester = if (tabController.isActiveContentReady) {
             tabController.contentRequester(tabController.selectedTab)
@@ -459,6 +463,7 @@ fun HomeLauncherScreen(
                                 onShowAllRecordings = onShowAllRecordings,
                                 onShowOnAir = onShowOnAir,
                                 hideAppsTab = hideAppsTab,
+                                onScrolledChanged = { isContentScrolled = it },
                             )
 
                             LauncherTab.LIVE -> LiveContent(
@@ -482,6 +487,7 @@ fun HomeLauncherScreen(
                                 aiFocusReturnTick = if (isCurrentSnapshot) aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed,
                                 onContentReady = snapshotReady,
+                                onScrolledChanged = { isContentScrolled = it },
                             )
 
                             LauncherTab.APPS -> AppsTabContent(
@@ -493,6 +499,7 @@ fun HomeLauncherScreen(
                                 onUiReady = snapshotReady,
                                 focusMemory = focusMemory,
                                 tabIndex = snapshotTabIndex,
+                                onScrolledChanged = { isContentScrolled = it },
                             )
 
                             LauncherTab.VIDEO -> VideoTabContent(
@@ -519,6 +526,7 @@ fun HomeLauncherScreen(
                                 aiFocusReturnTick = if (isCurrentSnapshot) aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed,
                                 onContentReady = snapshotReady,
+                                onScrolledChanged = { isContentScrolled = it },
                             )
 
                             LauncherTab.EPG -> EpgNavigationContainer(
@@ -617,6 +625,7 @@ fun HomeLauncherScreen(
                     clockFocusRequester = clockFocusRequester,
                     onClockClick = onClockClick,
                     isContentReady = tabController.isActiveContentReady,
+                    isCompactStatusOnly = isCompactStrip,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 24.dp)

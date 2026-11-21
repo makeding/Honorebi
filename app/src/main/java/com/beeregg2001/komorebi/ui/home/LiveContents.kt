@@ -85,6 +85,7 @@ fun LiveContent(
     onAiReturnConsumed: () -> Unit = {},
     onContentReady: () -> Unit = {},
     topBarFocusRequester: FocusRequester? = null,
+    onScrolledChanged: (Boolean) -> Unit = {},
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val liveRows by channelViewModel.liveRows.collectAsState()
@@ -94,6 +95,10 @@ fun LiveContent(
 
     val imageLoader = rememberChannelLogoImageLoader()
     val listState = rememberLazyListState()
+    val isScrolled by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
+    }
+    LaunchedEffect(isScrolled) { onScrolledChanged(isScrolled) }
     val targetChannelFocusRequester = remember { FocusRequester() }
     val activeChipFocusRequester = remember { FocusRequester() }
     val colors = KomorebiTheme.colors

@@ -4,6 +4,11 @@ package com.beeregg2001.komorebi.ui.home
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -210,7 +215,9 @@ internal fun NetworkStatusButton(
 
 /**
  * Top-right system utility strip for the launcher:
- * `[再生中 112dp slot][入力切替 if present][Network][本体設定][Clock]`.
+ * `[再生中 if active][入力切替 if present][本体設定][Network][Clock]`.
+ * When [isCompactStatusOnly] is true and the strip is unfocused, action buttons (HDMI & System Settings)
+ * collapse horizontally, leaving only status indicators (再生中 / Network / Clock).
  */
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -236,23 +243,31 @@ internal fun LauncherSystemStrip(
     clockFocusRequester: FocusRequester = remember { FocusRequester() },
     onClockClick: () -> Unit = {},
     isContentReady: Boolean = true,
+    isCompactStatusOnly: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val focusManager = LocalFocusManager.current
     val focusSpec = tvCardFocus(TvCardFamily.SYSTEM_ICON)
     val stripShape = RoundedCornerShape(14.dp)
 
+    var stripFocused by remember { mutableStateOf(false) }
     var returnPlayerFocused by remember { mutableStateOf(false) }
     var inputSourceFocused by remember { mutableStateOf(false) }
+    val showActionButtons = !isCompactStatusOnly || stripFocused
 
-    LaunchedEffect(hasActivePlayer, inputSourceApp) {
+    LaunchedEffect(hasActivePlayer, inputSourceApp, showActionButtons) {
         if (!hasActivePlayer && returnPlayerFocused) {
             returnPlayerFocused = false
-            val target = if (inputSourceApp != null) inputSourceFocusRequester else wifiSettingsFocusRequester
+            val target = when {
+                showActionButtons && inputSourceApp != null -> inputSourceFocusRequester
+                showActionButtons -> systemSettingsFocusRequester
+                else -> wifiSettingsFocusRequester
+            }
             target.safeRequestFocus("StripHandoff_Player")
         } else if (inputSourceApp == null && inputSourceFocused) {
             inputSourceFocused = false
-            wifiSettingsFocusRequester.safeRequestFocus("StripHandoff_Input")
+            val target = if (showActionButtons) systemSettingsFocusRequester else wifiSettingsFocusRequester
+            target.safeRequestFocus("StripHandoff_Input")
         }
     }
 
@@ -260,7 +275,10 @@ internal fun LauncherSystemStrip(
         modifier = modifier
             .background(colors.background.copy(alpha = 0.60f), stripShape)
             .padding(horizontal = 8.dp, vertical = 4.dp)
-            .onFocusChanged { onHasFocusChanged(it.hasFocus) }
+            .onFocusChanged {
+                stripFocused = it.hasFocus
+                onHasFocusChanged(it.hasFocus)
+            }
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
@@ -292,10 +310,10 @@ internal fun LauncherSystemStrip(
                     .onFocusChanged { returnPlayerFocused = it.isFocused }
                     .focusProperties {
                         left = leftEdgeFocusRequester
-                        right = if (inputSourceApp != null) {
-                            inputSourceFocusRequester
-                        } else {
-                            wifiSettingsFocusRequester
+                        right = when {
+                            showActionButtons && inputSourceApp != null -> inputSourceFocusRequester
+                            showActionButtons -> systemSettingsFocusRequester
+                            else -> wifiSettingsFocusRequester
                         }
                         down = FocusRequester.Cancel
                         up = FocusRequester.Cancel
@@ -341,70 +359,86 @@ internal fun LauncherSystemStrip(
             }
         }
 
-        if (inputSourceApp != null) {
-            PinnedSystemAppButton(
-                app = inputSourceApp,
-                focusRequester = inputSourceFocusRequester,
-                leftFocusRequester = if (hasActivePlayer) {
-                    returnPlayerFocusRequester
-                } else {
-                    leftEdgeFocusRequester
-                },
-                rightFocusRequester = wifiSettingsFocusRequester,
-                downFocusRequester = FocusRequester.Cancel,
-                canTakeFocus = canTakeFocus,
-                onClick = { onLaunchInputSourcePicker(inputSourceApp) },
-                onFocusedChanged = { inputSourceFocused = it },
-            )
+        AnimatedVisibility(
+            visible = showActionButtons && inputSourceApp != null,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally(),
+        ) {
+            if (inputSourceApp != null) {
+                PinnedSystemAppButton(
+                    app = inputSourceApp,
+                    focusRequester = inputSourceFocusRequester,
+                    leftFocusRequester = if (hasActivePlayer) {
+                        returnPlayerFocusRequester
+                    } else {
+                        leftEdgeFocusRequester
+                    },
+                    rightFocusRequester = systemSettingsFocusRequester,
+                    downFocusRequester = FocusRequester.Cancel,
+                    canTakeFocus = canTakeFocus,
+                    onClick = { onLaunchInputSourcePicker(inputSourceApp) },
+                    onFocusedChanged = { inputSourceFocused = it },
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showActionButtons,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally(),
+        ) {
+            Surface(
+                onClick = onLaunchSystemSettings,
+                modifier = Modifier
+                    .size(48.dp)
+                    .focusRequester(systemSettingsFocusRequester)
+                    .focusProperties {
+                        left = when {
+                            inputSourceApp != null -> inputSourceFocusRequester
+                            hasActivePlayer -> returnPlayerFocusRequester
+                            else -> leftEdgeFocusRequester
+                        }
+                        right = wifiSettingsFocusRequester
+                        down = FocusRequester.Cancel
+                        up = FocusRequester.Cancel
+                        canFocus = canTakeFocus
+                    },
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
+                border = ClickableSurfaceDefaults.border(
+                    border = Border.None,
+                    focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
+                ),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = Color.Transparent,
+                    focusedContainerColor = colors.surface2,
+                    contentColor = colors.textSecondary,
+                    focusedContentColor = colors.textPrimary,
+                ),
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "システム設定",
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
         }
 
         NetworkStatusButton(
             status = networkConnectionStatus,
             focusRequester = wifiSettingsFocusRequester,
             leftFocusRequester = when {
-                inputSourceApp != null -> inputSourceFocusRequester
+                showActionButtons -> systemSettingsFocusRequester
                 hasActivePlayer -> returnPlayerFocusRequester
                 else -> leftEdgeFocusRequester
             },
-            rightFocusRequester = systemSettingsFocusRequester,
+            rightFocusRequester = clockFocusRequester,
             canTakeFocus = canTakeFocus,
             onClick = onLaunchWifiSettings,
             downFocusRequester = FocusRequester.Cancel,
         )
-
-        Surface(
-            onClick = onLaunchSystemSettings,
-            modifier = Modifier
-                .size(48.dp)
-                .focusRequester(systemSettingsFocusRequester)
-                .focusProperties {
-                    left = wifiSettingsFocusRequester
-                    right = clockFocusRequester
-                    down = FocusRequester.Cancel
-                    up = FocusRequester.Cancel
-                    canFocus = canTakeFocus
-                },
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
-            border = ClickableSurfaceDefaults.border(
-                border = Border.None,
-                focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
-            ),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = Color.Transparent,
-                focusedContainerColor = colors.surface2,
-                contentColor = colors.textSecondary,
-                focusedContentColor = colors.textPrimary,
-            ),
-        ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "システム設定",
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
 
         Surface(
             onClick = onClockClick,
@@ -412,7 +446,7 @@ internal fun LauncherSystemStrip(
                 .height(48.dp)
                 .focusRequester(clockFocusRequester)
                 .focusProperties {
-                    left = systemSettingsFocusRequester
+                    left = wifiSettingsFocusRequester
                     right = FocusRequester.Cancel
                     down = FocusRequester.Cancel
                     up = FocusRequester.Cancel

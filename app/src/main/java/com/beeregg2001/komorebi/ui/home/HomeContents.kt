@@ -68,8 +68,13 @@ fun HomeContents(
     onShowAllRecordings: () -> Unit = {},
     onShowOnAir: () -> Unit = {},
     hideAppsTab: Boolean = false,
+    onScrolledChanged: (Boolean) -> Unit = {},
 ) {
     val lazyListState = rememberLazyListState()
+    val isScrolled by remember {
+        derivedStateOf { lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 24 }
+    }
+    LaunchedEffect(isScrolled) { onScrolledChanged(isScrolled) }
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val colors = KomorebiTheme.colors
