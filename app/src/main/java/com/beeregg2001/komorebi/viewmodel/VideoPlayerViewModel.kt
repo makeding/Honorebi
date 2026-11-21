@@ -27,6 +27,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.selectNaturalEpisodeProgr
 import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.PlaybackQualityCatalog
 import com.beeregg2001.komorebi.ui.player.recorded.RecordedPlaybackSourceResolver
+import com.beeregg2001.komorebi.util.ChapterParser
 import com.beeregg2001.komorebi.util.TitleNormalizer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -263,7 +264,22 @@ class VideoPlayerViewModel @Inject constructor(
 
                 val durationMs = (program.recordedVideo.duration * 1000).toLong()
                 val cmSections = program.recordedVideo.cmSections ?: emptyList()
-                _chapters.value = calculateChapters(durationMs, cmSections)
+                val chapterText = program.recordedVideo.chapterText
+                val parsedChapters = if (chapterText.isNullOrBlank()) {
+                    emptyList()
+                } else {
+                    ChapterParser.parse(chapterText, program.recordedVideo.duration)
+                }
+                _chapters.value = when {
+                    parsedChapters.isEmpty() -> calculateChapters(durationMs, cmSections)
+                    cmSections.isEmpty() -> parsedChapters
+                    else -> {
+                        // Preserve the existing two-second CM coalescing while retaining named markers.
+                        (calculateChapters(durationMs, cmSections) +
+                            parsedChapters.filter { it.isMarkerOnly })
+                            .sortedBy { it.startTimeMs }
+                    }
+                }
 
             }.onFailure {
                 if (it is CancellationException && it !is TimeoutCancellationException) throw it

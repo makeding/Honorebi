@@ -25,6 +25,8 @@ class ChannelViewModel @Inject constructor(
 
     val isLoading: StateFlow<Boolean> = appContentStore.isChannelsLoading
 
+    val isRecovering: StateFlow<Boolean> = appContentStore.isChannelsRecovering
+
     val liveRows: StateFlow<List<LiveRowState>> = appContentStore.liveRows
 
     val groupedChannels: StateFlow<Map<String, List<Channel>>> = appContentStore.groupedChannels
@@ -91,6 +93,10 @@ class ChannelViewModel @Inject constructor(
 
     fun refreshAfterRecovery() {
         appContentStore.refreshAfterRecovery()
+    }
+
+    fun onPhysicalNetworkRestored() {
+        appContentStore.onPhysicalNetworkRestored()
     }
 
     fun setAppAwake(awake: Boolean) {

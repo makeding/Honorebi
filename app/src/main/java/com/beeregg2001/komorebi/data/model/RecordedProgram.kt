@@ -127,6 +127,8 @@ data class RecordedVideo(
     @SerializedName("has_key_frames") val hasKeyFrames: Boolean? = true,
     @SerializedName("thumbnail_info") val thumbnailInfo: ThumbnailInfo? = null,
     @SerializedName("cm_sections") val cmSections: List<CmSection>? = null,
+    /** Local-only source text for preserving named chapter markers during playback. */
+    val chapterText: String? = null,
 )
 
 data class ThumbnailInfo(

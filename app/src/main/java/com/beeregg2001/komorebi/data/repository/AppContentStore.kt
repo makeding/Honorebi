@@ -66,6 +66,9 @@ class AppContentStore internal constructor(
     private val _isChannelsLoading = MutableStateFlow(true)
     val isChannelsLoading: StateFlow<Boolean> = _isChannelsLoading.asStateFlow()
 
+    private val _isChannelsRecovering = MutableStateFlow(false)
+    val isChannelsRecovering: StateFlow<Boolean> = _isChannelsRecovering.asStateFlow()
+
     private val _groupedChannels = MutableStateFlow<Map<String, List<Channel>>>(emptyMap())
     val groupedChannels: StateFlow<Map<String, List<Channel>>> = combine(
         _groupedChannels, nhkExclusionRepository.state,
@@ -182,6 +185,18 @@ class AppContentStore internal constructor(
         if (isRecordingPollingEnabled) refreshRecentRecordings(afterRecovery = true)
     }
 
+    /**
+     * Wakes any in-flight recovery backoff wait when the physical NIC comes up during
+     * a wake/roaming grace window, then immediately runs a fresh recovery check.
+     */
+    fun onPhysicalNetworkRestored() {
+        if (!networkAvailable) {
+            networkAvailable = true
+        }
+        wakeGeneration.value++
+        refreshAfterRecovery()
+    }
+
     private fun startMaintenance() {
         if (progressUpdateJob?.isActive != true) {
             startProgressUpdater()
@@ -235,28 +250,38 @@ class AppContentStore internal constructor(
             channelRefreshRunner.run(queueIfRunning) {
                 val recovering = channelRecoveryPending
                 channelRecoveryPending = false
-                var retry = 0
-                val generation = wakeGeneration.value
-                while (appAwake && networkAvailable && generation == wakeGeneration.value) {
-                    val failure = fetchChannelsOnce()
-                    if (failure == null || !recovering ||
-                        failure.backendApiFailure()?.automaticallyRetryable == false ||
-                        retry >= RECOVERY_RETRY_DELAYS_MS.size ||
-                        !appAwake || generation != wakeGeneration.value
-                    ) break
-                    // A new sleep/wake cancels the old wait so queued recovery is not delayed.
-                    withTimeoutOrNull(RECOVERY_RETRY_DELAYS_MS[retry++]) {
-                        wakeGeneration.first { it != generation }
+                _isChannelsRecovering.value = recovering
+                try {
+                    var retry = 0
+                    val generation = wakeGeneration.value
+                    while (appAwake && networkAvailable && generation == wakeGeneration.value) {
+                        val hasMoreRetries = recovering && retry < RECOVERY_RETRY_DELAYS_MS.size
+                        val failure = fetchChannelsOnce(deferRetryableError = hasMoreRetries)
+                        if (failure == null || !recovering ||
+                            failure.backendApiFailure()?.automaticallyRetryable == false ||
+                            retry >= RECOVERY_RETRY_DELAYS_MS.size ||
+                            !appAwake || !networkAvailable || generation != wakeGeneration.value
+                        ) break
+                        // A new sleep/wake or physical network restore cancels the old wait immediately.
+                        withTimeoutOrNull(RECOVERY_RETRY_DELAYS_MS[retry++]) {
+                            wakeGeneration.first { it != generation }
+                        }
                     }
+                } finally {
+                    _isChannelsRecovering.value = false
                 }
             }
         } finally {
             // A queued reconnect must finish before the UI accepts a result from this flight.
-            if (!channelRefreshRunner.isRunning) _isChannelsLoading.value = false
+            if (!channelRefreshRunner.isRunning) {
+                _isChannelsRecovering.value = false
+                _isChannelsLoading.value = false
+            }
         }
     }
 
-    private suspend fun fetchChannelsOnce(): Throwable? {
+    private suspend fun fetchChannelsOnce(deferRetryableError: Boolean = false): Throwable? {
+        if (!appAwake || !networkAvailable) return null
         val generation = wakeGeneration.value
         try {
             val response = withContext(ioDispatcher) { liveProvider.getChannels() }
@@ -332,13 +357,16 @@ class AppContentStore internal constructor(
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching channels", e)
             if (!appAwake || !networkAvailable || generation != wakeGeneration.value) return null
-            _connectionError.value = true
-            _channelError.value = e.backendApiFailure()?.let { failure ->
-                "${failure.reason}（${failure.safeCode} / HTTP ${failure.status}）接続設定を確認するか、再試行してください。"
-            } ?: userFacingFailure(e, "CHANNELS_LOAD_FAILED").let { failure ->
-                "${failure.message}（${failure.code}）"
+            val retryable = e.backendApiFailure()?.automaticallyRetryable != false
+            if (!deferRetryableError || !retryable) {
+                _connectionError.value = true
+                _channelError.value = e.backendApiFailure()?.let { failure ->
+                    "${failure.reason}（${failure.safeCode} / HTTP ${failure.status}）接続設定を確認するか、再試行してください。"
+                } ?: userFacingFailure(e, "CHANNELS_LOAD_FAILED").let { failure ->
+                    "${failure.message}（${failure.code}）"
+                }
+                channelRetry.failed(e)
             }
-            channelRetry.failed(e)
             return e
         } finally {
             lastChannelsFetchedAtMillis = elapsedRealtime()

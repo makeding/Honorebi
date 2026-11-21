@@ -51,7 +51,6 @@ class HomeConnectionFeedbackTest {
         compose.onNodeWithText("接続設定").assertDoesNotExist()
 
         listOf(
-            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "[BACKEND_HTTP_503 / HTTP 503]"),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Hidden),
@@ -67,14 +66,13 @@ class HomeConnectionFeedbackTest {
 
     @Test
     fun failureAndRecoveryAreInformationalOnlyWithoutButtonsOrFocus() {
-        val state = mutableStateOf(HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline))
+        val state = mutableStateOf(HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"))
         compose.setContent {
             KomorebiTheme {
                 HomeConnectionFeedback(state = state.value)
             }
         }
         listOf(
-            HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.BackendFailure, "HTTP 503"),
             HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Recovering, "HTTP 503"),
         ).forEach { next ->
@@ -87,7 +85,7 @@ class HomeConnectionFeedbackTest {
     }
 
     @Test
-    fun policyDoesNotExposeOrdinaryConnectedWorkAsRecovery() {
+    fun policyHidesDeviceOfflineAndSilentWakeRecovery() {
         assertEquals(
             HomeConnectionFeedbackKind.Hidden,
             homeConnectionFeedbackState(
@@ -95,6 +93,16 @@ class HomeConnectionFeedbackTest {
                 hasBackendFailure = false,
                 backendFailureReason = null,
                 recoveryInProgress = false,
+            ).kind,
+        )
+        // Silent recovery after wake or reconnect without an existing backend failure stays hidden.
+        assertEquals(
+            HomeConnectionFeedbackKind.Hidden,
+            homeConnectionFeedbackState(
+                networkAvailable = true,
+                hasBackendFailure = false,
+                backendFailureReason = null,
+                recoveryInProgress = true,
             ).kind,
         )
         assertEquals(
@@ -107,7 +115,17 @@ class HomeConnectionFeedbackTest {
             ).kind,
         )
         assertEquals(
-            HomeConnectionFeedbackKind.DeviceOffline,
+            HomeConnectionFeedbackKind.BackendFailure,
+            homeConnectionFeedbackState(
+                networkAvailable = true,
+                hasBackendFailure = true,
+                backendFailureReason = "HTTP 503",
+                recoveryInProgress = false,
+            ).kind,
+        )
+        // Device offline is represented by the top-right network status icon; no banner/toast is shown.
+        assertEquals(
+            HomeConnectionFeedbackKind.Hidden,
             homeConnectionFeedbackState(
                 networkAvailable = false,
                 hasBackendFailure = true,

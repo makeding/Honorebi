@@ -407,12 +407,22 @@ fun MainRootScreen(
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val isChannelLoading by channelViewModel.isLoading.collectAsState()
+    val isChannelRecovering by channelViewModel.isRecovering.collectAsState()
     val isHomeLoading by homeViewModel.isLoading.collectAsState()
     val isChannelError by channelViewModel.connectionError.collectAsState()
     val channelErrorReason by channelViewModel.channelError.collectAsState()
-    val networkConnectionStatus by rememberNetworkConnectionStatus(appWakeState.isAwake, appWakeState.generation)
-    val isNetworkAvailable = networkConnectionStatus.isAvailable
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
+    val networkConnectionStatus by rememberNetworkConnectionStatus(
+        awake = appWakeState.isAwake,
+        wakeGeneration = appWakeState.generation,
+        onPhysicalNetworkRestored = {
+            if (appWakeState.isAwake && isSettingsInitialized) {
+                channelViewModel.onPhysicalNetworkRestored()
+                homeViewModel.refreshHomeData()
+            }
+        },
+    )
+    val isNetworkAvailable = networkConnectionStatus.isAvailable
     val watchHistory by homeViewModel.watchHistory.collectAsState()
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val localRecordedCount by recordViewModel.localRecordedCount.collectAsState()
@@ -787,8 +797,8 @@ fun MainRootScreen(
                         isSyncingInitial = isSyncingInitial,
                         hasBackendFailure = isChannelError,
                         backendFailureReason = channelErrorReason,
-                        isBackendRecoveryInProgress = isNetworkAvailable && state.isOfflineMode &&
-                                (isChannelLoading || state.isConnectionRetryPending),
+                        isBackendRecoveryInProgress = isNetworkAvailable &&
+                                (isChannelRecovering || state.isConnectionRetryPending),
                         onExitApp = { showExitDialog = true },
                         onTriggerScreensaver = {
                             if (screensaverEnabled && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {

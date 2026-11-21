@@ -8,6 +8,7 @@ import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.api.edcb.*
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.data.repository.RecordProvider
+import com.beeregg2001.komorebi.util.ChapterParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -451,6 +452,7 @@ class EdcbRecordRepository @Inject constructor(
             if (resolverUrls != null) "$baseUrl${resolverUrls.thumbnailUrl}" else fallbackUrl
 
         var cmSections: List<CmSection>? = null
+        var rawChapterText: String? = null
         if (resolverUrls != null) {
             try {
                 // ★ 修正: resolverが代替チャプターを見つけられなかった場合chapter_alt_urlは
@@ -473,7 +475,7 @@ class EdcbRecordRepository @Inject constructor(
                             if (response.isSuccessful && response.code == 200) {
                                 val bytes = response.body?.bytes()
                                 if (bytes != null && bytes.isNotEmpty()) {
-                                    val rawText = decodeEdcbString(bytes)
+                                    val rawText = ChapterParser.decode(bytes)
                                     // ★ 修正: 大文字小文字を区別する完全一致だけだと、
                                     // "<!doctype html>"のような表記ゆれのあるHTMLページや
                                     // DOCTYPE宣言の無いHTMLがすり抜けていた。大文字小文字を
@@ -494,12 +496,15 @@ class EdcbRecordRepository @Inject constructor(
                     }
                 }
                 if (chapterText != null) {
-                    // Mapperを使用して変換
-                    val parsed = EdcbDataMapper.parseChapterTextToCmSections(
+                    val parsedChapters = ChapterParser.parse(
                         chapterText,
                         info.durationSec.toDouble()
                     )
-                    if (parsed.isNotEmpty()) cmSections = parsed
+                    if (parsedChapters.isNotEmpty()) {
+                        rawChapterText = chapterText
+                        val sections = ChapterParser.toCmSections(parsedChapters)
+                        if (sections.isNotEmpty()) cmSections = sections
+                    }
                 }
             } catch (e: Exception) {
             }
@@ -582,7 +587,8 @@ class EdcbRecordRepository @Inject constructor(
                 audioCodec = "aac",
                 hasKeyFrames = true,
                 thumbnailInfo = thumbnailInfo,
-                cmSections = cmSections
+                cmSections = cmSections,
+                chapterText = rawChapterText
             ),
             genres = dummyGenre,
             isRecording = isRecording,
@@ -591,28 +597,6 @@ class EdcbRecordRepository @Inject constructor(
             apiThumbnailUrl = fallbackUrl
         )
     }
-
-    private fun decodeEdcbString(bytes: ByteArray): String {
-        if (bytes.isEmpty()) return ""
-        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
-            return String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
-        }
-        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
-            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
-        }
-        // ★ 修正: String(bytes, UTF_8) は不正バイト列を例外にせずU+FFFD(置換文字)へ
-        // 静かに置き換えるため、以前のtry/catchによるShift_JISフォールバックには
-        // 実質到達できなかった(Windows EDCB環境のShift-JISチャプター名等が文字化けしていた)。
-        // 例外の有無ではなく、置換文字が出たかどうかでUTF-8として妥当だったか判定する。
-        val utf8 = String(bytes, Charsets.UTF_8)
-        if (!utf8.contains('�')) return utf8
-        return try {
-            String(bytes, charset("Shift_JIS"))
-        } catch (e: Exception) {
-            utf8
-        }
-    }
-
 
     private fun getCommentColor(color: String): String? {
         if (color.matches(Regex("^#[0-9A-Fa-f]{6}$"))) return color

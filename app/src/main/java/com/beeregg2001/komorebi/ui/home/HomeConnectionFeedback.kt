@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,7 +34,6 @@ internal const val HOME_CONNECTION_FEEDBACK_SLOT_HEIGHT_DP = 72
 
 internal enum class HomeConnectionFeedbackKind {
     Hidden,
-    DeviceOffline,
     BackendFailure,
     Recovering,
 }
@@ -46,8 +44,10 @@ internal data class HomeConnectionFeedbackState(
 )
 
 /**
- * Only an explicit recovery request may produce [HomeConnectionFeedbackKind.Recovering].
- * Ordinary channel polling must pass false even while its request is in flight.
+ * Device-offline state is already indicated by the top-right network status icon,
+ * so the home banner stays hidden while offline or during silent wake/reconnect recovery.
+ * [HomeConnectionFeedbackKind.Recovering] only appears when recovering from an already-visible
+ * backend failure.
  */
 internal fun homeConnectionFeedbackState(
     networkAvailable: Boolean,
@@ -55,8 +55,8 @@ internal fun homeConnectionFeedbackState(
     backendFailureReason: String?,
     recoveryInProgress: Boolean,
 ): HomeConnectionFeedbackState = when {
-    !networkAvailable -> HomeConnectionFeedbackState(HomeConnectionFeedbackKind.DeviceOffline)
-    recoveryInProgress -> HomeConnectionFeedbackState(
+    !networkAvailable -> HomeConnectionFeedbackState(HomeConnectionFeedbackKind.Hidden)
+    hasBackendFailure && recoveryInProgress -> HomeConnectionFeedbackState(
         HomeConnectionFeedbackKind.Recovering,
         backendFailureReason?.takeIf { it.isNotBlank() },
     )
@@ -130,11 +130,6 @@ private data class HomeConnectionFeedbackPresentation(
 private fun connectionFeedbackPresentation(
     state: HomeConnectionFeedbackState,
 ): HomeConnectionFeedbackPresentation = when (state.kind) {
-    HomeConnectionFeedbackKind.DeviceOffline -> HomeConnectionFeedbackPresentation(
-        icon = Icons.Default.WifiOff,
-        title = "ネットワークに接続されていません",
-        detail = "キャッシュ済みの情報を表示しています。接続を確認してください。",
-    )
     HomeConnectionFeedbackKind.BackendFailure -> HomeConnectionFeedbackPresentation(
         icon = Icons.Default.CloudOff,
         title = "サーバーに接続できません",

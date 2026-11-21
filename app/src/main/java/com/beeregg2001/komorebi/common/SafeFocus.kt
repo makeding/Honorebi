@@ -8,14 +8,17 @@ import kotlinx.coroutines.delay
  * FocusRequesterがノードにアタッチされていない、または初期化されていない状態での
  * requestFocus() 呼び出しによるクラッシュを防止するための拡張関数です。
  */
-fun FocusRequester.safeRequestFocus(tag: String = "KomorebiFocus") {
-    try {
-        if (!this.requestFocus()) {
+fun FocusRequester.safeRequestFocus(tag: String = "KomorebiFocus"): Boolean {
+    return try {
+        val granted = this.requestFocus()
+        if (!granted) {
             Log.w(tag, "Focus request was rejected by the current focus tree.")
         }
+        granted
     } catch (e: IllegalStateException) {
         // ノードがアタッチされていない場合は警告をログに出力し、クラッシュを回避します
         Log.w(tag, "FocusRequester is not initialized or not attached to the layout. Ignoring request.")
+        false
     }
 }
 

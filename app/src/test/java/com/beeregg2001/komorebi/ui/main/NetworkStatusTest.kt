@@ -60,4 +60,44 @@ class NetworkStatusTest {
             resolveNetworkConnectionStatus(emptyList()),
         )
     }
+
+    @Test
+    fun nonRoutableAndSuspendedNetworksAreIgnored() {
+        assertEquals(
+            NetworkConnectionStatus.Disconnected,
+            resolveNetworkConnectionStatus(
+                listOf(
+                    networkSnapshot(hasInternet = false),
+                    networkSnapshot(hasWifi = true, isSuspended = true),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun vpnDefaultPreservesUnderlyingPhysicalTransportIcon() {
+        assertEquals(
+            NetworkConnectionStatus(NetworkTransport.ETHERNET, true),
+            resolveNetworkConnectionStatus(
+                listOf(
+                    networkSnapshot(hasVpn = true, isDefault = true),
+                    networkSnapshot(hasEthernet = true, isDefault = false),
+                ),
+            ),
+        )
+        assertEquals(
+            NetworkConnectionStatus(NetworkTransport.OTHER, true),
+            resolveNetworkConnectionStatus(
+                listOf(networkSnapshot(hasVpn = true, isDefault = true)),
+            ),
+        )
+    }
+
+    @Test
+    fun disconnectGraceWindowMatchesWakeAndRuntimeTransitions() {
+        assertEquals(0L, disconnectGraceMillis(wasConnected = false, isWakeTransition = false))
+        assertEquals(0L, disconnectGraceMillis(wasConnected = false, isWakeTransition = true))
+        assertEquals(NORMAL_DISCONNECT_GRACE_MS, disconnectGraceMillis(wasConnected = true, isWakeTransition = false))
+        assertEquals(WAKE_DISCONNECT_GRACE_MS, disconnectGraceMillis(wasConnected = true, isWakeTransition = true))
+    }
 }

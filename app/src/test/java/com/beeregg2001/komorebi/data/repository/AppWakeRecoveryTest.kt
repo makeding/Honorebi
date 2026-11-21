@@ -63,18 +63,46 @@ class AppWakeRecoveryTest {
             store.refreshAfterRecovery()
             assertEquals(2, provider.requests)
             assertTrue(store.isChannelsLoading.value)
+            assertTrue(store.isChannelsRecovering.value)
+            // Transient wake retryable failures must not prematurely flash connectionError.
+            assertFalse(store.connectionError.value)
+            assertNull(store.channelError.value)
             assertEquals("old", store.groupedChannels.value["GR"]!!.single().id)
             advance(1_000)
             assertEquals(3, provider.requests)
             assertTrue(store.isChannelsLoading.value)
+            assertFalse(store.connectionError.value)
             advance(2_000)
             store.isChannelsLoading.first { !it }
             store.groupedChannels.first { it["GR"]?.single()?.id == "new" }
             assertEquals(4, provider.requests)
+            assertFalse(store.isChannelsRecovering.value)
             assertFalse(store.connectionError.value)
             assertNull(store.channelError.value)
-            assertEquals(2, store.recoveryVersion.value)
+            assertEquals(1, store.recoveryVersion.value)
             assertEquals(1, provider.maxConcurrent)
+        } finally { scope.cancel() }
+    }
+
+    @Test(timeout = 10_000) fun physicalNetworkRestoredWakesInFlightBackoffImmediately() = runBlocking {
+        val provider = FakeLiveProvider()
+        try {
+            val store = store(provider)
+            store.isChannelsLoading.first { !it }
+            provider.failuresRemaining = 2
+            provider.response = response("fresh")
+            store.refreshAfterRecovery()
+            // Attempt 0 failed; advance 1s for attempt 1 (also fails -> enters 2s backoff).
+            advance(1_000)
+            assertEquals(3, provider.requests)
+            assertFalse(store.connectionError.value)
+            // Physical NIC comes up mid-backoff: must retry immediately without waiting 2s.
+            store.onPhysicalNetworkRestored()
+            store.isChannelsLoading.first { !it }
+            store.groupedChannels.first { it["GR"]?.single()?.id == "fresh" }
+            assertEquals(4, provider.requests)
+            assertFalse(store.connectionError.value)
+            assertFalse(store.isChannelsRecovering.value)
         } finally { scope.cancel() }
     }
 
