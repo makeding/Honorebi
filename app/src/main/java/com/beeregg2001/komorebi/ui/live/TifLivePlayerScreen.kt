@@ -1,11 +1,13 @@
 package com.beeregg2001.komorebi.ui.live
 
+import android.content.Intent
 import android.media.tv.TvContentRating
 import android.media.tv.TvInputManager
 import android.media.tv.TvTrackInfo
 import android.media.tv.TvView
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,11 +20,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SettingsInputHdmi
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
@@ -92,6 +96,7 @@ fun TifLivePlayerScreen(
     onShowOverlayChange: (Boolean) -> Unit,
     initialCaptions: Boolean,
     standaloneInput: Boolean = false,
+    onExit: () -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
@@ -171,6 +176,17 @@ fun TifLivePlayerScreen(
     val captionControlFocus = remember { FocusRequester() }
     val hideControlFocus = remember { FocusRequester() }
     var controlHasFocus by remember { mutableStateOf(false) }
+    var overlayInteractionTick by remember { mutableIntStateOf(0) }
+    val displaySettingsIntent = remember(context) {
+        Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
+            context.packageManager.resolveActivity(it, 0) != null
+        }
+    }
+    val soundSettingsIntent = remember(context) {
+        Intent(Settings.ACTION_SOUND_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
+            context.packageManager.resolveActivity(it, 0) != null
+        }
+    }
 
     val isPassthroughInput = standaloneInput || channel.id.startsWith("tif:input:")
     val allChannels = remember(groupedChannels) {
@@ -247,13 +263,22 @@ fun TifLivePlayerScreen(
         if (!standaloneInput && isMiniListOpen && allChannels.isEmpty()) onMiniListToggle(false)
     }
 
+    // 操作帯は無操作5秒で自動的に隠す。
+    LaunchedEffect(showOverlay, isMiniListOpen, overlayInteractionTick) {
+        if (showOverlay && !isMiniListOpen) {
+            delay(5_000L)
+            onShowOverlayChange(false)
+        }
+    }
+
     // 操作帯を隠した場合は必ず画面本体へフォーカスを戻し、決定キーで再表示できる。
-    // ボタン操作中はフォーカスを移さず、子要素の決定/左右キーを奪わない。
+    // ボタン操作中や入力切替ドロワー表示中はフォーカスを奪わない。
     LaunchedEffect(isMiniListOpen, showOverlay, allChannels.isEmpty(), isPassthroughInput) {
         if (!showOverlay || isMiniListOpen) controlHasFocus = false
         delay(60)
         runCatching {
             when {
+                standaloneInput && isMiniListOpen -> Unit // TvInputSourceDialog が自身の初期フォーカスを管理する
                 isMiniListOpen && allChannels.isNotEmpty() -> listFocus.requestFocus()
                 !isMiniListOpen && showOverlay -> {
                     when {
@@ -408,18 +433,24 @@ fun TifLivePlayerScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(horizontal = 24.dp, vertical = 18.dp)
-                    .background(colors.surface1.copy(alpha = 0.92f), barShape)
-                    .border(1.dp, colors.borderSubtle, barShape)
+                    .background(colors.surface1.copy(alpha = 0.72f), barShape)
                     .horizontalScroll(rememberScrollState())
-                    .onFocusChanged { controlHasFocus = it.hasFocus }
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown) overlayInteractionTick++
+                        false
+                    }
+                    .onFocusChanged {
+                        controlHasFocus = it.hasFocus
+                        if (it.hasFocus) overlayInteractionTick++
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(start = 4.dp, end = 6.dp),
+                    modifier = Modifier.padding(start = 6.dp, end = 6.dp),
                 ) {
                     Icon(
                         imageVector = if (standaloneInput) Icons.Default.SettingsInputHdmi else Icons.Default.LiveTv,
@@ -441,7 +472,7 @@ fun TifLivePlayerScreen(
                 Box(
                     modifier = Modifier
                         .width(1.dp)
-                        .height(22.dp)
+                        .height(20.dp)
                         .background(colors.borderSubtle)
                 )
 
@@ -463,7 +494,7 @@ fun TifLivePlayerScreen(
                     )
                 }
 
-                if (audioTracks.isNotEmpty()) {
+                if (audioTracks.size > 1) {
                     val selectedIndex = audioTracks.indexOfFirst { it.id == selectedAudioId }
                     val selection = if (selectedIndex >= 0) {
                         val labels = audioTracks.mapIndexed { index, track -> audioLabel(track, index) }
@@ -473,7 +504,6 @@ fun TifLivePlayerScreen(
                     TifOsdActionChip(
                         label = "音声: $selection",
                         icon = Icons.Default.VolumeUp,
-                        enabled = audioTracks.size > 1,
                         onClick = {
                             val tracks = audioTracks
                             if (tracks.size >= 2) {
@@ -489,25 +519,45 @@ fun TifLivePlayerScreen(
                     )
                 }
 
-                if (!isPassthroughInput) {
+                if (displaySettingsIntent != null) {
                     TifOsdActionChip(
-                        label = "再選局",
-                        icon = Icons.Default.Refresh,
-                        onClick = { retuneGeneration++ },
-                    )
-                } else if (!videoAvailable) {
-                    TifOsdActionChip(
-                        label = "再接続",
-                        icon = Icons.Default.Refresh,
-                        onClick = { retuneGeneration++ },
+                        label = "画質設定",
+                        icon = Icons.Default.Tune,
+                        onClick = {
+                            overlayInteractionTick++
+                            runCatching { context.startActivity(displaySettingsIntent) }
+                        },
                     )
                 }
+
+                if (soundSettingsIntent != null) {
+                    TifOsdActionChip(
+                        label = "音声設定",
+                        icon = Icons.Default.VolumeUp,
+                        onClick = {
+                            overlayInteractionTick++
+                            runCatching { context.startActivity(soundSettingsIntent) }
+                        },
+                    )
+                }
+
+                TifOsdActionChip(
+                    label = if (isPassthroughInput) "再接続" else "再選局",
+                    icon = Icons.Default.Refresh,
+                    onClick = { retuneGeneration++ },
+                )
 
                 TifOsdActionChip(
                     label = "操作を隠す",
                     icon = Icons.Default.VisibilityOff,
                     onClick = { onShowOverlayChange(false) },
                     modifier = Modifier.focusRequester(hideControlFocus),
+                )
+
+                TifOsdActionChip(
+                    label = "終了",
+                    icon = Icons.Default.Close,
+                    onClick = onExit,
                 )
             }
         }
@@ -597,18 +647,15 @@ private fun TifOsdActionChip(
         interactionSource = interactionSource,
         shape = ClickableSurfaceDefaults.shape(shape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (active) colors.accentSoft else colors.surface2,
-            focusedContainerColor = colors.accent,
-            disabledContainerColor = colors.surface2.copy(alpha = 0.4f),
+            containerColor = if (active) colors.accentSoft else Color.Transparent,
+            focusedContainerColor = colors.surface2.copy(alpha = 0.92f),
+            disabledContainerColor = Color.Transparent,
             contentColor = if (active) colors.accent else colors.textPrimary,
-            focusedContentColor = colors.onAccent,
+            focusedContentColor = colors.textPrimary,
             disabledContentColor = colors.textSecondary.copy(alpha = 0.45f),
         ),
         border = ClickableSurfaceDefaults.border(
-            border = Border(
-                BorderStroke(1.dp, if (active) colors.accent.copy(alpha = 0.45f) else colors.borderSubtle),
-                shape = shape,
-            ),
+            border = Border.None,
             focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
@@ -623,8 +670,7 @@ private fun TifOsdActionChip(
                 contentDescription = null,
                 tint = when {
                     !enabled -> colors.textSecondary.copy(alpha = 0.45f)
-                    isFocused -> colors.onAccent
-                    active -> colors.accent
+                    isFocused || active -> colors.accent
                     else -> colors.textSecondary
                 },
                 modifier = Modifier.size(18.dp),

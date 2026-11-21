@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Input
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SettingsInputHdmi
 import androidx.compose.runtime.*
@@ -172,6 +173,7 @@ fun TvInputSourceDialog(
     LaunchedEffect(loading, hasAnySelectableItem) {
         if (!loading && !hasRequestedInitialFocus) {
             hasRequestedInitialFocus = true
+            kotlinx.coroutines.delay(60)
             val target = if (hasAnySelectableItem) firstItemFocus else refreshFocus
             target.safeRequestFocusWithRetry("TvInputSourceDrawer")
         }
@@ -187,12 +189,7 @@ fun TvInputSourceDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.42f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                ),
+                .background(Color.Black.copy(alpha = 0.42f)),
         ) {
             // Right-edge full-height TV Input Switcher drawer (zero blur, flat dark theme)
             Column(
@@ -200,12 +197,7 @@ fun TvInputSourceDialog(
                     .align(Alignment.CenterEnd)
                     .width(380.dp)
                     .fillMaxHeight()
-                    .background(colors.surface1)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    ),
+                    .background(colors.surface1),
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
@@ -304,21 +296,36 @@ fun TvInputSourceDialog(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = colors.textSecondary,
                                         )
-                                        DialogActionButton(
-                                            role = DialogActionRole.Primary,
+                                        TvInputDrawerRow(
+                                            label = "TV番組一覧を許可",
+                                            icon = Icons.Default.LockOpen,
                                             onClick = { permission.launch(TifInput.READ_LISTINGS_PERMISSION) },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .then(if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier),
-                                        ) { Text("TV番組一覧を許可") }
+                                            modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+                                        )
                                     }
                                 }
                             }
 
-                            if (ports.isNotEmpty()) {
-                                item(key = "ports_header") {
-                                    DrawerSectionLabel("外部入力")
+                            if (hasAirPlay && airPlayLaunchIntent != null) {
+                                item(key = "airplay_item") {
+                                    val isFirst = !firstAssigned
+                                    if (isFirst) firstAssigned = true
+                                    TvInputDrawerRow(
+                                        label = "AirPlay",
+                                        icon = Icons.Default.Cast,
+                                        statusBadge = "待機中",
+                                        isConnected = false,
+                                        onClick = {
+                                            runCatching { context.startActivity(airPlayLaunchIntent) }
+                                                .onSuccess { onDismiss() }
+                                                .onFailure { error = "AirPlay画面を開けませんでした" }
+                                        },
+                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+                                    )
                                 }
+                            }
+
+                            if (ports.isNotEmpty()) {
                                 itemsIndexed(ports, key = { _, ch -> ch.id }) { idx, channel ->
                                     val isFirst = !firstAssigned && idx == 0
                                     if (isFirst) firstAssigned = true
@@ -336,28 +343,6 @@ fun TvInputSourceDialog(
                                         statusBadge = stateBadge,
                                         isConnected = state == TvInputManager.INPUT_STATE_CONNECTED,
                                         onClick = { onOpenChannel(channel) },
-                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
-                                    )
-                                }
-                            }
-
-                            if (hasAirPlay && airPlayLaunchIntent != null) {
-                                item(key = "airplay_header") {
-                                    DrawerSectionLabel("ワイヤレス表示")
-                                }
-                                item(key = "airplay_item") {
-                                    val isFirst = !firstAssigned
-                                    if (isFirst) firstAssigned = true
-                                    TvInputDrawerRow(
-                                        label = "AirPlay",
-                                        icon = Icons.Default.Cast,
-                                        statusBadge = "待機中",
-                                        isConnected = false,
-                                        onClick = {
-                                            runCatching { context.startActivity(airPlayLaunchIntent) }
-                                                .onSuccess { onDismiss() }
-                                                .onFailure { error = "AirPlay画面を開けませんでした" }
-                                        },
                                         modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
                                     )
                                 }
@@ -554,9 +539,9 @@ private fun DrawerFooterAction(
         shape = ClickableSurfaceDefaults.shape(shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface2,
-            focusedContainerColor = colors.accent,
+            focusedContainerColor = colors.accentSoft,
             contentColor = colors.textSecondary,
-            focusedContentColor = colors.onAccent,
+            focusedContentColor = colors.textPrimary,
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
@@ -574,13 +559,13 @@ private fun DrawerFooterAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (isFocused) colors.onAccent else colors.textSecondary,
+                tint = if (isFocused) colors.accent else colors.textSecondary,
                 modifier = Modifier.size(16.dp),
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                color = if (isFocused) colors.onAccent else colors.textPrimary,
+                color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

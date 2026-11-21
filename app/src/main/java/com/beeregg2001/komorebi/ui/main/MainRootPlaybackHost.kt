@@ -118,6 +118,7 @@ fun MainRootPlaybackHost(
                     showOverlay = state.playbackState.playerShowOverlay && !suppressChrome,
                     onShowOverlayChange = { state.playbackState.playerShowOverlay = it },
                     initialCaptions = subtitle == "ON",
+                    onExit = { state.playbackState.leavePlayback() },
                 )
             } else {
                 val livePlayerViewModel: com.beeregg2001.komorebi.ui.live.LivePlayerViewModel = hiltViewModel()
