@@ -60,12 +60,17 @@ class OnAirScreenTest {
     }
 
     @Test fun freshEntryResetsCalendarToTodayAndPlacesFocusAfterScroll() {
-        val vm = viewModel()
-        vm.selectWeekday((currentJapanWeekday() + 3) % 7)
-        compose.setContent { screen(vm) }
         val day = currentJapanWeekday()
+        val extra = if (day in 0..1) emptyList() else listOf(
+            OnAirSeries(day + 1, "本日作品", emptyList(), emptyList(), 0, 0, 0, day, "23:30", "2026-09-13T23:30:00+09:00")
+        )
+        val vm = OnAirViewModel(FakeProvider(extraSeries = extra), MutableStateFlow(OnAirBackendConfiguration("KONOMITV", "tv", "7000", ""))).also {
+            ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+        }
+        vm.selectWeekday((day + 3) % 7)
+        compose.setContent { screen(vm) }
         assertEquals(day, vm.uiState.value.selectedWeekday)
-        val expected = if (day == 0) 1 else 2
+        val expected = day + 1
         compose.onNodeWithTag("onair-series-$expected").assertIsDisplayed().assertIsFocused()
     }
 
@@ -207,11 +212,16 @@ class OnAirScreenTest {
     }
     @androidx.compose.runtime.Composable private fun screen(vm: OnAirViewModel) = KomorebiTheme { OnAirScreen("tv", "7000", "24H", {}, {}, {}, FocusRequester(), false, {}, vm) }
 
-    private class FakeProvider(private val empty: Boolean = false, private val failSummary: Boolean = false, private val longMatrix: Boolean = false) : OnAirProvider {
-        override suspend fun getOnAirSeries() = OnAirSeriesApiResponse(listOf(OnAirSeason("2026-fall", "2026年 秋", true, "2026-10-01", "2026-12-31", listOf(
+    private class FakeProvider(
+        private val empty: Boolean = false,
+        private val failSummary: Boolean = false,
+        private val longMatrix: Boolean = false,
+        private val extraSeries: List<OnAirSeries> = emptyList(),
+    ) : OnAirProvider {
+        override suspend fun getOnAirSeries() = OnAirSeriesApiResponse(listOf(OnAirSeason("2026-fall", "2026年 秋", true, "2026-10-01", "2026-12-31", (listOf(
             OnAirSeries(1, "月曜作品", emptyList(), emptyList(), 0, 0, 0, 0, "23:30", "2026-09-13T23:30:00+09:00"),
             OnAirSeries(2, "火曜作品", emptyList(), emptyList(), 0, 0, 0, 1, "01:00", "2026-09-13T01:00:00+09:00"),
-        ).takeUnless { empty } ?: emptyList())), "2026-fall")
+        ) + extraSeries).takeUnless { empty } ?: emptyList())), "2026-fall")
         override suspend fun getSeriesSummary(seriesId: Int): SeriesProgram {
             if (failSummary) throw RuntimeException("summary unavailable")
             return SeriesProgram(seriesId, "概要")
