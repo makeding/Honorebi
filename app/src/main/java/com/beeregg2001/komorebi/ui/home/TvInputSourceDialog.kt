@@ -205,7 +205,7 @@ fun TvInputSourceDialog(
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .width(380.dp)
+                    .width(296.dp)
                     .fillMaxHeight()
                     .background(colors.surface1)
                     .focusProperties {
@@ -227,8 +227,8 @@ fun TvInputSourceDialog(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .padding(horizontal = 20.dp, vertical = 22.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                            .padding(horizontal = 16.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -392,7 +392,7 @@ fun TvInputSourceDialog(
                             )
                             if (onSystemPicker != null) {
                                 DrawerFooterAction(
-                                    label = "端末の入力切替",
+                                    label = "端末設定",
                                     icon = Icons.Default.Input,
                                     onClick = onSystemPicker,
                                     modifier = Modifier.weight(1f),
@@ -456,9 +456,9 @@ private fun TvInputDrawerRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 13.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Icon(
                 imageVector = icon,
