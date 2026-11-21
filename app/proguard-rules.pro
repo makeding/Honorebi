@@ -79,8 +79,13 @@
 -keep class master.flame.danmaku.** { *; }
 -keep class tv.cjump.jni.** { *; }
 
-# jcifs-ng (SMB)
+# jcifs-ng (SMB) — suppress optional JDK Kerberos/JAAS/JGSS and Servlet API references
 -keep class jcifs.** { *; }
+-dontwarn javax.security.auth.callback.NameCallback
+-dontwarn javax.security.auth.kerberos.**
+-dontwarn javax.security.auth.login.**
+-dontwarn javax.servlet.**
+-dontwarn org.ietf.jgss.**
 
 # Jellyfin Media3 FFmpeg audio decoder (loaded via reflection by DefaultRenderersFactory)
 -keep class androidx.media3.decoder.ffmpeg.** { *; }
