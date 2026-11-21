@@ -62,7 +62,6 @@ import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidthCard
 import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleListRow
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
 import com.beeregg2001.komorebi.ui.theme.tnum
-import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import java.time.Instant
 import java.time.OffsetDateTime
 
@@ -125,7 +124,6 @@ fun QuickResumeHeroCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
-    var isFocused by remember { mutableStateOf(false) }
 
     val target = remember(
         watchHistory,
@@ -217,8 +215,7 @@ fun QuickResumeHeroCard(
             }
         },
         modifier = modifier
-            .fillMaxHeight()
-            .onFocusChanged { isFocused = it.isFocused },
+            .fillMaxHeight(),
         shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
         colors = ClickableSurfaceDefaults.colors(
@@ -325,7 +322,7 @@ fun QuickResumeHeroCard(
                 }
             }
 
-            // Middle: 1-line titleLarge + 1-line bodyMedium
+            // Middle: 2-line titleLarge + 1-line bodyMedium
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 val mainTitle = when (target) {
                     is QuickResumeTarget.Recorded -> target.history.program.title
@@ -344,9 +341,8 @@ fun QuickResumeHeroCard(
                     text = mainTitle,
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.tvCardMarquee(isFocused),
                 )
                 if (subLine.isNotBlank()) {
                     Text(
@@ -398,6 +394,7 @@ fun QuickShortcutsGrid(
     onShowOnAir: () -> Unit,
     onShowAllRecordings: () -> Unit,
     modifier: Modifier = Modifier,
+    isBottomRow: Boolean = false,
 ) {
     val nextReserveBadge = remember(upcomingReserves, timeFormat) {
         upcomingReserves.firstOrNull()?.let { reserve ->
@@ -472,6 +469,7 @@ fun QuickShortcutsGrid(
                         up = tile0Requester
                         left = heroRequester
                         right = tile3Requester
+                        if (isBottomRow) down = FocusRequester.Cancel
                     },
             )
             QuickShortcutTile(
@@ -491,6 +489,7 @@ fun QuickShortcutsGrid(
                         up = tile1Requester
                         left = tile2Requester
                         right = FocusRequester.Cancel
+                        if (isBottomRow) down = FocusRequester.Cancel
                     },
             )
         }
