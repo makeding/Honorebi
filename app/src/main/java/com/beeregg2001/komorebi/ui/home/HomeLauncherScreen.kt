@@ -486,6 +486,7 @@ fun HomeLauncherScreen(
                                 tabFocusRequester = snapshotTabRequester,
                                 topBarFocusRequester = topBarEntryRequester,
                                 contentFirstItemRequester = snapshotContentRequester,
+                                isTopNavFocused = ui.topNavHasFocus,
                                 onUiReady = snapshotReady,
                                 focusMemory = focusMemory,
                                 tabIndex = snapshotTabIndex,

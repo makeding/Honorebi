@@ -955,7 +955,7 @@ fun SmbManualInputDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp),
+                            .padding(top = 12.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         DialogActionButton(DialogActionRole.Secondary, { isClosing = true; onDismiss() }, Modifier.weight(1f)) { Text("キャンセル") }
@@ -1081,7 +1081,7 @@ fun SelectionDialogItem(
             focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape),
         ),
         shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f)
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -1222,7 +1222,7 @@ fun MultiSelectionDialogItem(
             focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape),
         ),
         shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f)
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

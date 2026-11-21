@@ -361,8 +361,8 @@ fun OnAirScreen(
                 }
             }
             Column(Modifier.width(360.dp).heightIn(max = 400.dp)
-                .background(colors.surface, RoundedCornerShape(12.dp)).padding(16.dp)
-                .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                .background(colors.surface, RoundedCornerShape(12.dp))
+                .verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("放送期間", color = colors.textPrimary, fontSize = 20.sp)
                 state.seasons.forEach { season ->
                     OnAirAction(

@@ -26,6 +26,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -408,7 +409,9 @@ private fun SettingsMenuScreen(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(sidebarScrollState),
+                        .graphicsLayer { clip = false }
+                        .verticalScroll(sidebarScrollState)
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     sidebarRows.forEachIndexed { index, row ->
@@ -489,7 +492,9 @@ private fun SettingsMenuScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .graphicsLayer { clip = false }
                         .verticalScroll(mainScrollState)
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
                 ) {
                     when (uiState.selectedCategoryIndex) {
                         0 -> GeneralSettingsContent(

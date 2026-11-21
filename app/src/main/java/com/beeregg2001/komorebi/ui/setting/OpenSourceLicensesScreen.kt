@@ -735,7 +735,7 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
 
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = 32.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, top = 8.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 itemsIndexed(ossLibraries) { index, lib ->
