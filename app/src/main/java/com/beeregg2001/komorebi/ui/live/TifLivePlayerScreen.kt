@@ -128,6 +128,10 @@ fun TifLivePlayerScreen(
 
     // 明示的な再選局は新セッションを作成し、古いTvViewを解放する。
     var retuneGeneration by remember(channel.id) { mutableIntStateOf(0) }
+    var coldHandshakeRetries by remember(channel.id, isStarted, sessionGeneration) { mutableIntStateOf(0) }
+    var lastUnavailableReason by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+        mutableStateOf<Int?>(null)
+    }
     var target by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
         mutableStateOf<TifInput.TuneTarget?>(null)
     }
@@ -207,6 +211,34 @@ fun TifLivePlayerScreen(
             }
             tvInputManager.registerCallback(callback, Handler(Looper.getMainLooper()))
             onDispose { tvInputManager.unregisterCallback(callback) }
+        }
+    }
+
+    // 物理接続済み（INPUT_STATE_CONNECTED）のHDMI入力で初回ハンドシェイクが
+    // TISの短いタイムアウト（約1秒）に間に合わず WEAK_SIGNAL になった場合、最大2回だけ自動で再接続する。
+    LaunchedEffect(
+        isPassthroughInput,
+        currentInputId,
+        isStarted,
+        videoAvailable,
+        contentBlocked,
+        lastUnavailableReason,
+        coldHandshakeRetries,
+    ) {
+        if (!isPassthroughInput || !isStarted || currentInputId == null || videoAvailable || contentBlocked) {
+            return@LaunchedEffect
+        }
+        if (lastUnavailableReason != TvInputManager.VIDEO_UNAVAILABLE_REASON_WEAK_SIGNAL) return@LaunchedEffect
+        if (coldHandshakeRetries >= 2) return@LaunchedEffect
+        val state = runCatching {
+            context.getSystemService(TvInputManager::class.java)?.getInputState(currentInputId)
+        }.getOrNull()
+        if (state != TvInputManager.INPUT_STATE_CONNECTED) return@LaunchedEffect
+        delay(1_500L)
+        if (!videoAvailable && !contentBlocked) {
+            coldHandshakeRetries++
+            videoStatus = "信号を検出しています…"
+            retuneGeneration++
         }
     }
 
@@ -293,6 +325,8 @@ fun TifLivePlayerScreen(
                                 override fun onVideoAvailable(inputId: String) {
                                     onChannelPlaybackCommitted(channel)
                                     videoAvailable = true
+                                    lastUnavailableReason = null
+                                    coldHandshakeRetries = 0
                                     if (!contentBlocked) videoStatus = ""
                                 }
 
@@ -318,6 +352,7 @@ fun TifLivePlayerScreen(
 
                                 override fun onVideoUnavailable(inputId: String, reason: Int) {
                                     videoAvailable = false
+                                    lastUnavailableReason = reason
                                     if (!contentBlocked) {
                                         videoStatus = videoUnavailableMessage(reason, isPassthroughInput)
                                     }
@@ -343,6 +378,7 @@ fun TifLivePlayerScreen(
                                 }
                             })
                             try {
+                                setStreamVolume(1.0f)
                                 tune(tuneTarget.inputId, tuneTarget.channelUri)
                                 activeView = this
                                 activeViewForLifecycle = this
