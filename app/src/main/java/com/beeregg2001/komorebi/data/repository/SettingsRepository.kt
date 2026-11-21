@@ -184,7 +184,7 @@ class SettingsRepository @Inject constructor(
     val commentDefaultDisplay: Flow<String> =
         context.dataStore.data.map { it[COMMENT_DEFAULT_DISPLAY] ?: "ON" }
     val commentEngine: Flow<String> =
-        context.dataStore.data.map { it[COMMENT_ENGINE] ?: "GLES" }
+        context.dataStore.data.map { it[COMMENT_ENGINE] ?: "DFM" }
     val liveQuality: Flow<String> = context.dataStore.data.map { it[LIVE_QUALITY] ?: "1080p-60fps" }
     val videoQuality: Flow<String> =
         context.dataStore.data.map { it[VIDEO_QUALITY] ?: "1080p-60fps" }

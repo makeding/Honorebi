@@ -206,7 +206,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     commentFontSizeScale: Float,
     commentOpacity: Float,
     commentMaxLines: Int,
-    commentEngine: DanmakuEngineMode = DanmakuEngineMode.GLES,
+    commentEngine: DanmakuEngineMode = DanmakuEngineMode.DFM,
     isCommentPlaybackActive: Boolean,
     isEmulator: Boolean,
     recordedPlaybackFence: RecordedPlaybackFence,

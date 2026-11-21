@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 fun DanmakuOverlay(
     modifier: Modifier = Modifier,
     useSoftwareRendering: Boolean = false,
-    engineMode: DanmakuEngineMode = DanmakuEngineMode.GLES,
+    engineMode: DanmakuEngineMode = DanmakuEngineMode.DFM,
     speed: Float = 1.0f,
     opacity: Float = 1.0f,
     maxLines: Int = 0,

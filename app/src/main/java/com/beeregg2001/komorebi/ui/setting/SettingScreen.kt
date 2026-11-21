@@ -337,8 +337,8 @@ private fun SettingsMenuScreen(
         uiState.activeDialog = SettingDialogState.Selection(
             AppStrings.DIALOG_COMMENT_ENGINE_TITLE,
             listOf(
-                AppStrings.DIALOG_COMMENT_ENGINE_GLES to "GLES",
-                AppStrings.DIALOG_COMMENT_ENGINE_DFM to "DFM"
+                AppStrings.DIALOG_COMMENT_ENGINE_DFM to "DFM",
+                AppStrings.DIALOG_COMMENT_ENGINE_GLES to "GLES"
             ),
             prefs.commentEngine
         ) {
