@@ -10,9 +10,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -42,7 +45,7 @@ class PlayerClockSettingsTest {
                 var restore by remember { mutableStateOf<FocusRequester?>(null) }
                 var dialog by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
-                LaunchedEffect(dialog) { if (!dialog) restore?.requestFocus() }
+                LaunchedEffect(dialog) { if (!dialog) restore?.safeRequestFocusWithRetry() }
                 Box(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     DisplaySettingsContent(
@@ -110,7 +113,9 @@ class PlayerClockSettingsTest {
             val current = runBlocking { repository.playerClockMode.first() }
             compose.onAllNodes(hasText(current.label) and hasClickAction()).onLast().assertIsFocused()
             compose.onAllNodes(hasText(mode.label) and hasClickAction()).onLast().requestFocus().performKeyInput { pressKey(Key.DirectionCenter) }
+            compose.mainClock.advanceTimeBy(300)
             compose.waitForIdle()
+            compose.waitUntil(3000) { clock.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true }
             clock.assertIsFocused().assertTextContains(mode.label)
             assertEquals(mode, runBlocking { repository.playerClockMode.first() })
             assertEquals(bounds, clock.getUnclippedBoundsInRoot())
@@ -118,6 +123,9 @@ class PlayerClockSettingsTest {
         clock.performKeyInput { pressKey(Key.DirectionCenter) }
         compose.mainClock.advanceTimeBy(300)
         row("キャンセル").requestFocus().performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.mainClock.advanceTimeBy(300)
+        compose.waitForIdle()
+        compose.waitUntil(3000) { clock.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true }
         clock.assertIsFocused().assertTextContains("Always off")
     }
 }
