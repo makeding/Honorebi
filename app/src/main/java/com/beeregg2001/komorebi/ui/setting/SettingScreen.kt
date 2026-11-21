@@ -237,7 +237,7 @@ private fun SettingsMenuScreen(
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(6) { FocusRequester() },
+            List(7) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(13) { FocusRequester() },
@@ -320,6 +320,24 @@ private fun SettingsMenuScreen(
                                         )
                                     }
                                 }
+    }
+
+    val openCommentEngineDialog = {
+        uiState.activeDialog = SettingDialogState.Selection(
+            AppStrings.DIALOG_COMMENT_ENGINE_TITLE,
+            listOf(
+                AppStrings.DIALOG_COMMENT_ENGINE_GLES to "GLES",
+                AppStrings.DIALOG_COMMENT_ENGINE_DFM to "DFM"
+            ),
+            prefs.commentEngine
+        ) {
+            scope.launch {
+                repository.saveString(
+                    SettingsRepository.COMMENT_ENGINE,
+                    it
+                )
+            }
+        }
     }
 
     val isDialogOpen = uiState.activeDialog !is SettingDialogState.None || showInternalImagePicker || showScreensaverGallery || screensaverPreview || screensaverPlayerPreview
@@ -1071,7 +1089,9 @@ private fun SettingsMenuScreen(
                             prefs.commentOpacity,
                             prefs.commentMaxLines,
                             prefs.subtitleCommentLayer,
+                            prefs.commentEngine,
                             openCommentLayerDialog,
+                            openCommentEngineDialog,
                             { t, v ->
                                 uiState.activeDialog = SettingDialogState.Input(t, v) {
                                     scope.launch {
@@ -1096,6 +1116,7 @@ private fun SettingsMenuScreen(
                             itemFocusRequesters[5][3],
                             itemFocusRequesters[5][4],
                             itemFocusRequesters[5][5],
+                            itemFocusRequesters[5][6],
                             categoryFocusRequesters[5]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
 

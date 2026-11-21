@@ -63,6 +63,7 @@ import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryDe
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRecoveryGate
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedNetworkRetry
 import com.beeregg2001.komorebi.ui.video.player.policy.RecordedTsRecoveryPolicy
+import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -338,6 +339,7 @@ internal fun RecordedPlayerScreen(
     val commentOpacityStr by settingsViewModel.commentOpacity.collectAsState()
     val commentMaxLinesStr by settingsViewModel.commentMaxLines.collectAsState()
     val commentDefaultDisplayStr by settingsViewModel.commentDefaultDisplay.collectAsState()
+    val commentEngineStr by settingsViewModel.commentEngine.collectAsState()
     val subtitleCommentLayer by settingsViewModel.subtitleCommentLayer.collectAsState()
     val videoSubtitleDefaultStr by settingsViewModel.videoSubtitleDefault.collectAsState()
     val videoPlaybackSpeedStr by settingsViewModel.videoPlaybackSpeed.collectAsState()
@@ -348,6 +350,7 @@ internal fun RecordedPlayerScreen(
     val commentFontSizeScale = commentFontSizeStr.toFloatOrNull() ?: 1.0f
     val commentOpacity = commentOpacityStr.toFloatOrNull() ?: 1.0f
     val commentMaxLines = commentMaxLinesStr.toIntOrNull() ?: 0
+    val commentEngine = remember(commentEngineStr) { DanmakuEngineMode.fromId(commentEngineStr) }
 
     LaunchedEffect(commentDefaultDisplayStr) {
         vs.isCommentEnabled = commentDefaultDisplayStr == "ON"
@@ -1838,6 +1841,7 @@ internal fun RecordedPlayerScreen(
                 commentFontSizeScale = commentFontSizeScale,
                 commentOpacity = commentOpacity,
                 commentMaxLines = commentMaxLines,
+                commentEngine = commentEngine,
                 isCommentPlaybackActive = isActuallyPlaying,
                 isEmulator = isEmulator,
                 recordedPlaybackFence = recordedPlaybackFence,

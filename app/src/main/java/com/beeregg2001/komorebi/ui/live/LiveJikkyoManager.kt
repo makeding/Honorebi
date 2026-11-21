@@ -260,10 +260,8 @@ class LiveJikkyoManager @Inject constructor(
                 getCommentSize(cmd)?.let { size = it }
             }
 
-            managerScope.launch(Dispatchers.Main) {
-                if (isActive(token, isCurrent)) {
-                    _liveComments.emit(LiveComment(content, color, position, size, token))
-                }
+            if (isActive(token, isCurrent)) {
+                _liveComments.tryEmit(LiveComment(content, color, position, size, token))
             }
 
         } catch (e: Exception) {

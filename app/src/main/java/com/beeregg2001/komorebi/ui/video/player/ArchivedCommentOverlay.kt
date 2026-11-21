@@ -6,14 +6,15 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.beeregg2001.komorebi.data.model.ArchivedComment
+import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
+import com.beeregg2001.komorebi.ui.player.DanmakuItem
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuType
 import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import master.flame.danmaku.controller.IDanmakuView
-import master.flame.danmaku.danmaku.model.BaseDanmaku
 import android.graphics.Color as AndroidColor
 
 private const val TAG = "ArchivedCommentOverlay"
@@ -29,6 +30,7 @@ fun ArchivedCommentOverlay(
     commentFontSizeScale: Float,
     commentOpacity: Float,
     commentMaxLines: Int,
+    commentEngine: DanmakuEngineMode = DanmakuEngineMode.GLES,
     useSoftwareRendering: Boolean = false,
     recordedPlaybackFence: RecordedPlaybackFence,
 ) {
@@ -82,14 +84,13 @@ fun ArchivedCommentOverlay(
                     val batch = schedule.next(commentsSnapshot, currentSec)
                     if (batch.reset) {
                         if (!recordedPlaybackFence.accepts()) return@ifActive
-                        activeView.removeAllDanmakus(true)
+                        activeView.clearAll()
                         Log.i(TAG, "Comment overlay seek reset. [current_sec=$currentSec, comments=${commentsSnapshot.size}]")
                     }
                     batch.comments.forEach { comment ->
-                        val danmaku = createDanmaku(activeView, comment, fontScale, density, colorCache)
-                        if (danmaku != null && recordedPlaybackFence.accepts()) {
-                            danmaku.setTime(activeView.currentTime + ((comment.time - currentSec) * 1000).toLong())
-                            activeView.addDanmaku(danmaku)
+                        if (recordedPlaybackFence.accepts()) {
+                            val showTimeMs = activeView.currentTimeMs + ((comment.time - currentSec) * 1000).toLong()
+                            activeView.addDanmaku(createDanmakuItem(comment, fontScale, density, colorCache, showTimeMs))
                         }
                     }
                 }
@@ -101,6 +102,7 @@ fun ArchivedCommentOverlay(
     DanmakuOverlay(
         modifier = modifier,
         useSoftwareRendering = useSoftwareRendering,
+        engineMode = commentEngine,
         speed = commentSpeed,
         opacity = commentOpacity,
         maxLines = commentMaxLines,
@@ -128,26 +130,22 @@ fun ArchivedCommentOverlay(
  * コメントのインスタンスを作成する
  * View の release と直列化したバックグラウンド処理から呼び、事前計算した density を使う。
  */
-private fun createDanmaku(
-    view: IDanmakuView,
+private fun createDanmakuItem(
     comment: ArchivedComment,
     fontSizeScale: Float,
     density: Float,
-    colorCache: MutableMap<String, Int>
-): BaseDanmaku? {
-    val danmaku =
-        view.config.mDanmakuFactory.createDanmaku(BaseDanmaku.TYPE_SCROLL_RL) ?: return null
-    danmaku.text = comment.text
-    danmaku.padding = 5
-
-    // 引数で受け取った density を使って計算する
-    danmaku.textSize = (32f * fontSizeScale) * density
-
-    danmaku.textColor = colorCache.getOrPut(comment.color) {
+    colorCache: MutableMap<String, Int>,
+    showTimeMs: Long,
+): DanmakuItem {
+    val textColor = colorCache.getOrPut(comment.color) {
         runCatching { AndroidColor.parseColor(comment.color) }
             .getOrDefault(AndroidColor.WHITE)
     }
-
-    danmaku.textShadowColor = AndroidColor.BLACK
-    return danmaku
+    return DanmakuItem(
+        text = comment.text,
+        textColor = textColor,
+        textSizePx = (32f * fontSizeScale) * density,
+        type = DanmakuType.SCROLL_RL,
+        showTimeMs = showTimeMs,
+    )
 }

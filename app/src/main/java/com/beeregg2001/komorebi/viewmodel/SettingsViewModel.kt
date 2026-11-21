@@ -211,6 +211,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "ON"
     )
+    val commentEngine: StateFlow<String> = settingsRepository.commentEngine.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "GLES"
+    )
     val liveQuality: StateFlow<String> = settingsRepository.liveQuality.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

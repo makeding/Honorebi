@@ -1,38 +1,23 @@
 package com.beeregg2001.komorebi.ui.player
 
-import android.graphics.Typeface
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import master.flame.danmaku.controller.DrawHandler
-import master.flame.danmaku.controller.IDanmakuView
-import master.flame.danmaku.danmaku.model.BaseDanmaku
-import master.flame.danmaku.danmaku.model.DanmakuTimer
-import master.flame.danmaku.danmaku.model.IDanmakus
-import master.flame.danmaku.danmaku.model.android.DanmakuContext
-import master.flame.danmaku.danmaku.model.android.Danmakus
-import master.flame.danmaku.danmaku.model.android.SimpleTextCacheStuffer
-import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
-import master.flame.danmaku.ui.widget.DanmakuSurfaceView
-import master.flame.danmaku.ui.widget.DanmakuView
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import android.graphics.Color as AndroidColor
-
-private const val MAX_VISIBLE_DANMAKU = 80
 
 /** Common Android Danmaku view. Callers retain source-specific scheduling and session fencing. */
 @Composable
 fun DanmakuOverlay(
     modifier: Modifier = Modifier,
     useSoftwareRendering: Boolean = false,
+    engineMode: DanmakuEngineMode = DanmakuEngineMode.GLES,
     speed: Float = 1.0f,
     opacity: Float = 1.0f,
     maxLines: Int = 0,
@@ -46,135 +31,86 @@ fun DanmakuOverlay(
     val latestOnViewCreated by rememberUpdatedState(onViewCreated)
     val latestOnViewPrepared by rememberUpdatedState(onViewPrepared)
     val latestOnViewReleased by rememberUpdatedState(onViewReleased)
-    val viewLifecycles = remember { IdentityHashMap<IDanmakuView, DanmakuViewLifecycle>() }
-    val danmakuContext = remember(sessionKey) {
-        DanmakuContext.create().apply {
-            setDanmakuStyle(1, 8.0f)
-            setTypeface(Typeface.DEFAULT_BOLD)
-            setDanmakuBold(true)
-            setDuplicateMergingEnabled(false)
-            setDanmakuSync(null)
-            setCacheStuffer(
-                SimpleTextCacheStuffer(),
-                null,
-            )
-            setMaximumVisibleSizeInScreen(MAX_VISIBLE_DANMAKU)
-            preventOverlapping(
-                mapOf(
-                    BaseDanmaku.TYPE_SCROLL_RL to true,
-                    BaseDanmaku.TYPE_FIX_TOP to true,
-                )
-            )
-        }
-    }
-    val parser = remember(sessionKey) {
-        object : BaseDanmakuParser() {
-            override fun parse(): IDanmakus = Danmakus()
-        }
-    }
+    val viewBindings = remember { IdentityHashMap<View, Pair<DanmakuController, DanmakuViewLifecycle>>() }
 
-    LaunchedEffect(danmakuContext, speed, opacity, maxLines) {
-        danmakuContext.setScrollSpeedFactor(if (speed > 0f) 1.0f / speed else 1.0f)
-        danmakuContext.setDanmakuTransparency(opacity)
-        danmakuContext.setMaximumLines(
-            if (maxLines > 0) mapOf(BaseDanmaku.TYPE_SCROLL_RL to maxLines) else emptyMap(),
-        )
-    }
-
-    key(sessionKey, useSoftwareRendering) {
+    key(sessionKey, useSoftwareRendering, engineMode) {
         AndroidView(
             modifier = modifier,
             factory = { context ->
-                fun <T> setup(view: T): T where T : View, T : IDanmakuView = view.apply {
-                    val lifecycle = DanmakuViewLifecycle()
-                    val handle = DanmakuViewHandle(this, lifecycle)
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                    // Live and archived comments are overwhelmingly one-shot strings. Keeping the
-                    // library bitmap cache disabled avoids competing with video/caption memory.
-                    enableDanmakuDrawingCache(false)
-                    setCallback(object : DrawHandler.Callback {
-                        override fun prepared() {
-                            // DrawHandler may call this from its drawing thread. Queue the whole
-                            // check/start/pause transition on the View thread so AndroidView
-                            // release and a late prepared callback cannot interleave.
-                            post {
-                                val accepted = lifecycle.prepared(
-                                    running = latestRunning,
-                                    start = { start() },
-                                    pause = { pause() },
-                                )
-                                if (accepted) {
-                                    latestOnViewPrepared(handle)
+                val lifecycle = DanmakuViewLifecycle()
+                lateinit var handle: DanmakuViewHandle
+                lateinit var hostView: View
+
+                val onPrepared: () -> Unit = {
+                    hostView.post {
+                        val accepted = lifecycle.prepared(
+                            running = latestRunning,
+                            start = {
+                                val controller = handle.view
+                                if (controller is DfmDanmakuController) {
+                                    controller.start()
+                                } else {
+                                    controller.resume()
                                 }
-                            }
-                        }
-                        override fun updateTimer(timer: DanmakuTimer?) = Unit
-                        override fun danmakuShown(danmaku: BaseDanmaku?) = Unit
-                        override fun drawingFinished() = Unit
-                    })
-                    post {
-                        lifecycle.ifActive {
-                            if (isAttachedToWindow) prepare(parser, danmakuContext)
+                            },
+                            pause = { handle.view.pause() },
+                        )
+                        if (accepted) {
+                            latestOnViewPrepared(handle)
                         }
                     }
-                    viewLifecycles[this] = lifecycle
-                    latestOnViewCreated(handle)
                 }
-                if (useSoftwareRendering) {
-                    setup(DanmakuView(context)).apply {
-                        setBackgroundColor(AndroidColor.TRANSPARENT)
-                        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+
+                val controller: DanmakuController = when (engineMode) {
+                    DanmakuEngineMode.GLES -> {
+                        val glOrSw: View = if (useSoftwareRendering) {
+                            SoftwareDanmakuView(context, onPrepared)
+                        } else {
+                            GlDanmakuSurfaceView(context, onPrepared)
+                        }
+                        hostView = glOrSw
+                        glOrSw as DanmakuController
                     }
-                } else {
-                    // DanmakuView は UI スレッドの onDraw で描くため、Compose の再コンポーズや GC で
-                    // UI スレッドが 100ms 程度止まるだけで流れるコメントが目に見えて止まる。
-                    // DanmakuSurfaceView はライブラリ側の描画スレッドが専用 Surface に直接描くので、
-                    // UI スレッドの引っかかりからコメントの動きを切り離せる（低スペック TV 向け）。
-                    // DanmakuTextureView は Compose の AndroidView 配下だと SurfaceTexture が生成されず
-                    // 何も描画されないため使えない。SurfaceView は init で setZOrderMediaOverlay(true) と
-                    // 半透明フォーマットが設定済みで、動画の SurfaceView の上・Compose UI の下に重なる。
-                    setup(DanmakuSurfaceView(context))
+                    DanmakuEngineMode.DFM -> {
+                        val dfm = DfmDanmakuController(context, useSoftwareRendering, onPrepared)
+                        hostView = dfm.view
+                        dfm
+                    }
                 }
+
+                handle = DanmakuViewHandle(controller, lifecycle)
+                hostView.layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                controller.updateConfig(speed = speed, opacity = opacity, maxLines = maxLines)
+                if (controller is DfmDanmakuController) {
+                    controller.prepareWhenAttached { lifecycle.ifActive { } }
+                }
+                viewBindings[hostView] = controller to lifecycle
+                latestOnViewCreated(handle)
+                hostView
             },
             update = { view ->
-                (view as? IDanmakuView)?.let { danmakuView ->
-                    viewLifecycles[danmakuView]?.updateRunning(
+                viewBindings[view]?.let { (controller, lifecycle) ->
+                    controller.updateConfig(speed = speed, opacity = opacity, maxLines = maxLines)
+                    lifecycle.updateRunning(
                         running = running,
-                        isPrepared = danmakuView.isPrepared,
-                        resume = { danmakuView.resume() },
-                        pause = { danmakuView.pause() },
+                        isPrepared = controller.isPrepared,
+                        resume = { controller.resume() },
+                        pause = { controller.pause() },
                     )
-                }
-                if (view is DanmakuView) {
-                    val layerType = if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
-                    if (view.layerType != layerType) view.setLayerType(layerType, null)
                 }
             },
             onRelease = { view ->
-                (view as? IDanmakuView)?.let {
-                    val lifecycle = viewLifecycles.remove(it)
-                    if (lifecycle != null) {
-                        val handle = DanmakuViewHandle(it, lifecycle)
-                        try {
-                            lifecycle.release {
-                                try {
-                                    it.stop()
-                                } finally {
-                                    it.release()
-                                }
-                            }
-                        } finally {
-                            latestOnViewReleased(handle)
+                viewBindings.remove(view)?.let { (controller, lifecycle) ->
+                    val handle = DanmakuViewHandle(controller, lifecycle)
+                    try {
+                        lifecycle.release {
+                            controller.release()
                         }
-                    } else {
-                        try {
-                            it.stop()
-                        } finally {
-                            it.release()
-                        }
+                    } finally {
+                        latestOnViewReleased(handle)
                     }
                 }
             },
@@ -183,10 +119,10 @@ fun DanmakuOverlay(
 }
 
 class DanmakuViewHandle internal constructor(
-    val view: IDanmakuView,
+    val view: DanmakuController,
     private val lifecycle: DanmakuViewLifecycle,
 ) {
-    fun ifActive(block: (IDanmakuView) -> Unit): Boolean = lifecycle.ifActive {
+    fun ifActive(block: (DanmakuController) -> Unit): Boolean = lifecycle.ifActive {
         block(view)
     }
 }

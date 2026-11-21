@@ -2,13 +2,16 @@ package com.beeregg2001.komorebi.ui.live
 
 import android.graphics.Color as AndroidColor
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalContext
+import com.beeregg2001.komorebi.ui.player.DanmakuItem
+import com.beeregg2001.komorebi.ui.player.DanmakuType
+import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
 import kotlinx.coroutines.flow.SharedFlow
-import master.flame.danmaku.controller.IDanmakuView
-import master.flame.danmaku.danmaku.model.BaseDanmaku
 
 private const val DANMAKU_WINDOW_MS = 1_000L
 private const val SCROLL_DANMAKU_LIMIT_PER_WINDOW = 16
@@ -23,15 +26,17 @@ internal fun LiveDanmakuEffect(
     heavyUiReady: Boolean,
     dualDisplay: Boolean,
     fontSizeScale: Float,
-    danmakuView: MutableState<IDanmakuView?>,
+    danmakuView: MutableState<DanmakuViewHandle?>,
 ) {
+    val context = LocalContext.current
+    val density = remember(context) { context.resources.displayMetrics.density }
     val currentEnabled by rememberUpdatedState(enabled)
     val currentHeavyUiReady by rememberUpdatedState(heavyUiReady)
     val currentDualDisplay by rememberUpdatedState(dualDisplay)
     val currentFontSizeScale by rememberUpdatedState(fontSizeScale)
 
     LaunchedEffect(sessionToken) {
-        danmakuView.value?.removeAllDanmakus(true)
+        danmakuView.value?.ifActive { it.clearAll() }
         var rateWindowStartMs = System.currentTimeMillis()
         var scrollDanmakuCount = 0
         var fixedDanmakuCount = 0
@@ -49,39 +54,37 @@ internal fun LiveDanmakuEffect(
                 fixedDanmakuCount = 0
             }
             val danmakuType = when (comment.position) {
-                "top" -> BaseDanmaku.TYPE_FIX_TOP
-                "bottom" -> BaseDanmaku.TYPE_FIX_BOTTOM
-                else -> BaseDanmaku.TYPE_SCROLL_RL
+                "top" -> DanmakuType.FIX_TOP
+                "bottom" -> DanmakuType.FIX_BOTTOM
+                else -> DanmakuType.SCROLL_RL
             }
-            if (danmakuType == BaseDanmaku.TYPE_SCROLL_RL) {
+            if (danmakuType == DanmakuType.SCROLL_RL) {
                 if (scrollDanmakuCount >= SCROLL_DANMAKU_LIMIT_PER_WINDOW) return@collect
                 scrollDanmakuCount++
             } else {
                 if (fixedDanmakuCount >= FIXED_DANMAKU_LIMIT_PER_WINDOW) return@collect
                 fixedDanmakuCount++
             }
-            danmakuView.value?.let { view ->
-                (view as? android.view.View)?.post {
-                    if (comment.sessionToken != sessionToken || danmakuView.value !== view ||
-                        !currentEnabled || !currentHeavyUiReady || currentDualDisplay || !view.isPrepared
-                    ) return@post
-                    val danmaku = view.config.mDanmakuFactory.createDanmaku(danmakuType) ?: return@post
-                    danmaku.text = comment.text
-                    danmaku.padding = 5
-                    val sizeFactor = when (comment.size) {
-                        "big" -> 1.5f
-                        "small" -> 0.8f
-                        else -> 1.0f
-                    }
-                    danmaku.textSize =
-                        (32f * currentFontSizeScale * sizeFactor) * view.context.resources.displayMetrics.density
-                    danmaku.textColor = colorCache.getOrPut(comment.color) {
-                        runCatching { AndroidColor.parseColor(comment.color) }.getOrDefault(AndroidColor.WHITE)
-                    }
-                    danmaku.textShadowColor = AndroidColor.BLACK
-                    danmaku.setTime(view.currentTime + 10)
-                    view.addDanmaku(danmaku)
-                }
+            val sizeFactor = when (comment.size) {
+                "big" -> 1.5f
+                "small" -> 0.8f
+                else -> 1.0f
+            }
+            val textColor = colorCache.getOrPut(comment.color) {
+                runCatching { AndroidColor.parseColor(comment.color) }.getOrDefault(AndroidColor.WHITE)
+            }
+            val textSizePx = (32f * currentFontSizeScale * sizeFactor) * density
+            danmakuView.value?.ifActive { controller ->
+                if (!controller.isPrepared) return@ifActive
+                controller.addDanmaku(
+                    DanmakuItem(
+                        text = comment.text,
+                        textColor = textColor,
+                        textSizePx = textSizePx,
+                        type = danmakuType,
+                        showTimeMs = controller.currentTimeMs + 10L,
+                    )
+                )
             }
         }
     }

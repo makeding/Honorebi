@@ -956,7 +956,9 @@ fun CommentSettingsContent(
     opacity: String,
     max: String,
     layerOrder: String,
+    commentEngine: String,
     onLayer: () -> Unit,
+    onEngine: () -> Unit,
     onEdit: (String, String) -> Unit,
     onT: () -> Unit,
     defR: FocusRequester,
@@ -965,6 +967,7 @@ fun CommentSettingsContent(
     opR: FocusRequester,
     mxR: FocusRequester,
     layerR: FocusRequester,
+    engineR: FocusRequester,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -1065,9 +1068,24 @@ fun CommentSettingsContent(
                 modifier = Modifier.focusRequester(layerR).focusProperties {
                     left = sidebarR
                     up = mxR
-                    down = FocusRequester.Cancel
+                    down = engineR
                 },
                 onClick = { onClick(layerR); onLayer() },
+            )
+            SettingItem(
+                AppStrings.SETTINGS_ITEM_COMMENT_ENGINE,
+                if (commentEngine.equals("DFM", ignoreCase = true)) {
+                    AppStrings.DIALOG_COMMENT_ENGINE_DFM
+                } else {
+                    AppStrings.DIALOG_COMMENT_ENGINE_GLES
+                },
+                Icons.Default.Memory,
+                modifier = Modifier.focusRequester(engineR).focusProperties {
+                    left = sidebarR
+                    up = layerR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(engineR); onEngine() },
             )
         }
     }

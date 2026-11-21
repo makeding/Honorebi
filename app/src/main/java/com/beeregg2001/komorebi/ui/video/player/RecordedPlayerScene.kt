@@ -49,6 +49,7 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.player.B60_INITIAL_MEDIA_PLANE
 import com.beeregg2001.komorebi.ui.player.B60MediaPlane
+import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingInputState
 import com.beeregg2001.komorebi.ui.player.PlayerSurface
@@ -205,6 +206,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     commentFontSizeScale: Float,
     commentOpacity: Float,
     commentMaxLines: Int,
+    commentEngine: DanmakuEngineMode = DanmakuEngineMode.GLES,
     isCommentPlaybackActive: Boolean,
     isEmulator: Boolean,
     recordedPlaybackFence: RecordedPlaybackFence,
@@ -333,6 +335,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
                 commentFontSizeScale = commentFontSizeScale,
                 commentOpacity = effectiveCommentOpacity,
                 commentMaxLines = commentMaxLines,
+                commentEngine = commentEngine,
                 useSoftwareRendering = isEmulator,
                 recordedPlaybackFence = recordedPlaybackFence
             )

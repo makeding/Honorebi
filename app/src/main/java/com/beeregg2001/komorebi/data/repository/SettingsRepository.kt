@@ -77,6 +77,7 @@ class SettingsRepository @Inject constructor(
         val COMMENT_OPACITY = stringPreferencesKey("comment_opacity")
         val COMMENT_MAX_LINES = stringPreferencesKey("comment_max_lines")
         val COMMENT_DEFAULT_DISPLAY = stringPreferencesKey("comment_default_display")
+        val COMMENT_ENGINE = stringPreferencesKey("comment_engine")
         val LIVE_QUALITY = stringPreferencesKey("live_quality")
         val VIDEO_QUALITY = stringPreferencesKey("video_quality")
         val LIVE_SUBTITLE_DEFAULT = stringPreferencesKey("live_subtitle_default")
@@ -172,6 +173,8 @@ class SettingsRepository @Inject constructor(
     val commentMaxLines: Flow<String> = context.dataStore.data.map { it[COMMENT_MAX_LINES] ?: "0" }
     val commentDefaultDisplay: Flow<String> =
         context.dataStore.data.map { it[COMMENT_DEFAULT_DISPLAY] ?: "ON" }
+    val commentEngine: Flow<String> =
+        context.dataStore.data.map { it[COMMENT_ENGINE] ?: "GLES" }
     val liveQuality: Flow<String> = context.dataStore.data.map { it[LIVE_QUALITY] ?: "1080p-60fps" }
     val videoQuality: Flow<String> =
         context.dataStore.data.map { it[VIDEO_QUALITY] ?: "1080p-60fps" }

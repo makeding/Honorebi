@@ -61,7 +61,9 @@ import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
 import com.beeregg2001.komorebi.ui.player.PLAYER_CONTROLS_AUTO_HIDE_MS
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingHorizontal
 import com.beeregg2001.komorebi.ui.player.b60MediaPlane
@@ -73,7 +75,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import org.json.JSONObject
-import master.flame.danmaku.controller.IDanmakuView
 
 private const val TAG = "LivePlayerScreen"
 @RequiresApi(Build.VERSION_CODES.O)
@@ -149,6 +150,7 @@ fun LivePlayerScreen(
     val commentOpacityStr by settingsViewModel.commentOpacity.collectAsState()
     val commentMaxLinesStr by settingsViewModel.commentMaxLines.collectAsState()
     val commentDefaultDisplayStr by settingsViewModel.commentDefaultDisplay.collectAsState()
+    val commentEngineStr by settingsViewModel.commentEngine.collectAsState()
     val audioOutputMode by settingsViewModel.audioOutputMode.collectAsState()
     val hdrRenderMode by livePlayerViewModel.hdrRenderMode.collectAsState()
     val isHdrToSdrToneMappingSupported = remember(livePlayerViewModel) {
@@ -161,6 +163,7 @@ fun LivePlayerScreen(
     val commentFontSizeScale = commentFontSizeStr.toFloatOrNull() ?: 1.0f
     val commentOpacity = commentOpacityStr.toFloatOrNull() ?: 1.0f
     val commentMaxLines = commentMaxLinesStr.toIntOrNull() ?: 0
+    val commentEngine = remember(commentEngineStr) { DanmakuEngineMode.fromId(commentEngineStr) }
 
     var isCommentEnabled by rememberSaveable(commentDefaultDisplayStr) {
         mutableStateOf(commentDefaultDisplayStr == "ON")
@@ -198,7 +201,7 @@ fun LivePlayerScreen(
     val isEmulator =
         remember { Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk") || Build.PRODUCT == "google_sdk" }
 
-    val danmakuViewRef = remember { mutableStateOf<IDanmakuView?>(null) }
+    val danmakuViewRef = remember { mutableStateOf<DanmakuViewHandle?>(null) }
     val mainPlayer by livePlayerViewModel.mainPlayer.collectAsState()
     val dualPlayer by livePlayerViewModel.dualPlayer.collectAsState()
     val mainRuntimeState by livePlayerViewModel.mainRuntimeState.collectAsState()
@@ -959,16 +962,17 @@ fun LivePlayerScreen(
                     DanmakuOverlay(
                         modifier = Modifier.fillMaxSize(),
                         useSoftwareRendering = isEmulator,
+                        engineMode = commentEngine,
                         speed = commentSpeed,
                         opacity = effectiveCommentOpacity,
                         maxLines = commentMaxLines,
                         sessionKey = mainSessionToken,
                         running = ps.isPlayerPlaying && isCommentEnabled && isHeavyUiReady && !ps.isDualDisplayMode && !isModalMenuOpen,
                         onViewCreated = { handle ->
-                            if (mainSessionToken != null) danmakuViewRef.value = handle.view
+                            if (mainSessionToken != null) danmakuViewRef.value = handle
                         },
                         onViewReleased = { handle ->
-                            if (danmakuViewRef.value === handle.view) danmakuViewRef.value = null
+                            if (danmakuViewRef.value?.view === handle.view) danmakuViewRef.value = null
                         },
                     )
                 }
