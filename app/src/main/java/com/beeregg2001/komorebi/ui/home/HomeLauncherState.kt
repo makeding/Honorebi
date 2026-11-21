@@ -12,7 +12,7 @@ import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.viewmodel.*
 
 /**
- * ランチャー上部のタブ定義。タブ数とフォーカス要求リストのサイズを
+ * ランチャー左ナビゲーションレールのタブ定義。タブ数とフォーカス要求リストのサイズを
  * 一致させるため、[LauncherTab] から導出する単一ソースを共有する。
  */
 internal val HOME_TAB_TITLES = LauncherTab.entries.map { it.title }

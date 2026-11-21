@@ -789,7 +789,6 @@ fun MainRootScreen(
                         backendFailureReason = channelErrorReason,
                         isBackendRecoveryInProgress = isNetworkAvailable && state.isOfflineMode &&
                                 (isChannelLoading || state.isConnectionRetryPending),
-                        backgroundBrush = backgroundBrush,
                         onExitApp = { showExitDialog = true }
                     )
 

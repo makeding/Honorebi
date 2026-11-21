@@ -4,7 +4,6 @@ package com.beeregg2001.komorebi.ui.main
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
@@ -25,7 +23,6 @@ import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.home.HomeLauncherScreen
 import com.beeregg2001.komorebi.ui.reserve.ConditionEditDialog
-import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.RecordListScreen
 import com.beeregg2001.komorebi.viewmodel.*
 import kotlinx.coroutines.delay
@@ -58,11 +55,9 @@ fun MainRootBackground(
     hasBackendFailure: Boolean,
     backendFailureReason: String?,
     isBackendRecoveryInProgress: Boolean,
-    backgroundBrush: Brush,
     onExitApp: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val colors = KomorebiTheme.colors
     val onAirInitialFocusRequester = remember { FocusRequester() }
 
     // ★ 修正: SMBアイテムが選択されている場合も背面を非表示（ホームレイヤー維持）にする
@@ -160,12 +155,6 @@ fun MainRootBackground(
                     val relatedReserves =
                         reserves.filter { it.comment.contains(currentCondition.programSearchCondition.keyword) }
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(colors.background)
-                            .background(backgroundBrush)
-                    )
                     ConditionEditDialog(
                         condition = currentCondition,
                         relatedReserves = relatedReserves,

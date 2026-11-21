@@ -417,7 +417,7 @@ fun ReserveListScreen(
                             .focusProperties {
                                 down = listFocusRequester
                                 up = topNavFocusRequester ?: FocusRequester.Default
-                                if (index == 0) left = FocusRequester.Cancel
+                                if (index == 0) left = topNavFocusRequester ?: FocusRequester.Cancel
                                 if (index == tabs.lastIndex) right = FocusRequester.Cancel
                             }
                             .onKeyEvent { event ->
@@ -465,7 +465,8 @@ fun ReserveListScreen(
                             EmptyMessage(
                                 message = "現在、予約されている番組はありません。",
                                 listFocusRequester = listFocusRequester,
-                                targetTabRequester = tabFocusRequesters[0]
+                                targetTabRequester = tabFocusRequesters[0],
+                                leftEdgeFocusRequester = topNavFocusRequester ?: FocusRequester.Cancel,
                             )
                         } else {
                             // ★ 変更: TvLazyColumn -> LazyColumn
@@ -504,7 +505,7 @@ fun ReserveListScreen(
                                         modifier = Modifier
                                             .focusRequester(specificRequester)
                                             .focusProperties {
-                                                left = FocusRequester.Cancel
+                                                left = topNavFocusRequester ?: FocusRequester.Cancel
                                                 right = FocusRequester.Cancel
                                             }
                                             .onFocusChanged {
@@ -530,7 +531,8 @@ fun ReserveListScreen(
                             EmptyMessage(
                                 message = "現在、手動で予約されている番組はありません。",
                                 listFocusRequester = listFocusRequester,
-                                targetTabRequester = tabFocusRequesters[1]
+                                targetTabRequester = tabFocusRequesters[1],
+                                leftEdgeFocusRequester = topNavFocusRequester ?: FocusRequester.Cancel,
                             )
                         } else {
                             // ★ 変更: TvLazyColumn -> LazyColumn
@@ -568,7 +570,7 @@ fun ReserveListScreen(
                                         modifier = Modifier
                                             .focusRequester(specificRequester)
                                             .focusProperties {
-                                                left = FocusRequester.Cancel
+                                                left = topNavFocusRequester ?: FocusRequester.Cancel
                                                 right = FocusRequester.Cancel
                                             }
                                             .onFocusChanged {
@@ -594,7 +596,8 @@ fun ReserveListScreen(
                             EmptyMessage(
                                 message = "キーワード自動予約の条件は登録されていません。\n番組表の番組詳細から「EPG予約」が可能です。",
                                 listFocusRequester = listFocusRequester,
-                                targetTabRequester = tabFocusRequesters[2]
+                                targetTabRequester = tabFocusRequesters[2],
+                                leftEdgeFocusRequester = topNavFocusRequester ?: FocusRequester.Cancel,
                             )
                         } else {
                             // ★ 変更: TvLazyColumn -> LazyColumn
@@ -634,7 +637,7 @@ fun ReserveListScreen(
                                         modifier = Modifier
                                             .focusRequester(specificRequester)
                                             .focusProperties {
-                                                left = FocusRequester.Cancel
+                                                left = topNavFocusRequester ?: FocusRequester.Cancel
                                                 right = FocusRequester.Cancel
                                             }
                                             .onFocusChanged {
@@ -664,7 +667,8 @@ fun ReserveListScreen(
 private fun EmptyMessage(
     message: String,
     listFocusRequester: FocusRequester,
-    targetTabRequester: FocusRequester
+    targetTabRequester: FocusRequester,
+    leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
 ) {
     val colors = KomorebiTheme.colors
     Box(
@@ -673,7 +677,7 @@ private fun EmptyMessage(
             .focusRequester(listFocusRequester)
             .focusProperties {
                 up = targetTabRequester
-                left = FocusRequester.Cancel
+                left = leftEdgeFocusRequester
                 right = FocusRequester.Cancel
             }
             .focusable(),

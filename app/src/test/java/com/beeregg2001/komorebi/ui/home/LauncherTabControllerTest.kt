@@ -3,6 +3,7 @@ package com.beeregg2001.komorebi.ui.home
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -277,57 +278,69 @@ class LauncherTabControllerTest {
     }
 
     @Test
-    fun tabBarHandlesDpadSelectionDirectionalTransitionsUpActionAndReadyGatedDown() {
+    fun navRailHandlesDpadSelectionDirectionalTransitionsUpEdgeAndReadyGatedRight() {
         val controller = LauncherTabController(initialTab = LauncherTab.HOME)
-        var upCount = 0
+        val upEdgeRequester = FocusRequester()
+        val settingsRequester = FocusRequester()
 
         compose.setContent {
             Column {
-                LauncherTabBar(
-                    controller = controller,
-                    isEpgJumping = false,
-                    leftEdgeFocusRequester = FocusRequester.Cancel,
-                    onTabFocused = { controller.selectTab(it) },
-                    onUpKey = {
-                        upCount++
-                        true
-                    },
-                )
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .testTag("home-content")
-                        .focusRequester(controller.contentRequester(LauncherTab.HOME))
+                        .testTag("top-strip-entry")
+                        .focusRequester(upEdgeRequester)
                         .focusable(),
                 )
+                Row {
+                    LauncherNavRail(
+                        controller = controller,
+                        isEpgJumping = false,
+                        upEdgeFocusRequester = upEdgeRequester,
+                        settingsItemFocusRequester = settingsRequester,
+                        settingsCanFocus = true,
+                        onTabFocused = { controller.selectTab(it) },
+                        onOpenSettings = {},
+                        onHasFocusChanged = {},
+                        onBack = {},
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("home-content")
+                            .focusRequester(controller.contentRequester(LauncherTab.HOME))
+                            .focusable(),
+                    )
+                }
             }
         }
 
         compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
 
-        // Pressing UP fires onUpKey cleanly.
+        // Pressing UP on the first rail tab moves focus to the top-right strip entry.
         compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionUp) }
-        compose.runOnIdle { assertEquals(1, upCount) }
+        compose.onNodeWithTag("top-strip-entry").assertIsFocused()
 
-        // Pressing RIGHT immediately selects LIVE with FORWARD direction.
-        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionRight) }
+        // Return to HOME and press DOWN to select LIVE with FORWARD direction.
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNodeWithTag("launcher-tab-live").assertIsFocused()
         compose.runOnIdle {
             assertEquals(LauncherTab.LIVE, controller.selectedTab)
             assertEquals(TabTransitionDirection.FORWARD, controller.transitionDirection)
         }
 
-        // Pressing LEFT returns to HOME immediately.
-        compose.onNodeWithTag("launcher-tab-live").performKeyInput { pressKey(Key.DirectionLeft) }
+        // Pressing UP returns to HOME immediately.
+        compose.onNodeWithTag("launcher-tab-live").performKeyInput { pressKey(Key.DirectionUp) }
         compose.onNodeWithTag("launcher-tab-home").assertIsFocused()
         compose.runOnIdle {
             assertEquals(LauncherTab.HOME, controller.selectedTab)
         }
 
-        // Once HOME content marks ready, DOWN moves focus cleanly into content.
+        // Once HOME content marks ready, RIGHT moves focus cleanly into content.
         compose.runOnIdle { assertTrue(controller.markContentReady(controller.generation)) }
         compose.waitForIdle()
-        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionRight) }
         compose.onNodeWithTag("home-content").assertIsFocused()
     }
 }

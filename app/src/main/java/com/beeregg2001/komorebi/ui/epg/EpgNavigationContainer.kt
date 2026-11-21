@@ -288,7 +288,7 @@ fun EpgNavigationContainer(
                                 .focusRequester(searchResultsBackButtonRequester)
                                 .focusProperties {
                                     up = mainTabFocusRequester
-                                    left = FocusRequester.Cancel
+                                    left = mainTabFocusRequester
                                     down = searchResultsListRequester
                                 },
                             colors = IconButtonDefaults.colors(

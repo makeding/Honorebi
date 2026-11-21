@@ -11,62 +11,35 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SettingsEthernet
-import androidx.compose.material.icons.filled.SettingsInputHdmi
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
 import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
-import com.beeregg2001.komorebi.ui.main.NetworkTransport
 import com.beeregg2001.komorebi.ui.reserve.ReserveListScreen
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
-import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvRailCollapsedWidth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private const val TAG = "HomeLauncher"
-internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
-internal const val NETWORK_STATUS_BUTTON_TEST_TAG = "network-status-button"
-private val RETURN_PLAYER_SLOT_WIDTH = 112.dp
 
 @Composable
 internal fun HomeTabRenderEffect(
@@ -81,106 +54,6 @@ internal fun HomeTabRenderEffect(
             delay(TAB_RENDER_COALESCE_MS)
             state.commit(requestedIndex, requestedContentKey)
         }
-    }
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-fun DigitalClock(timeFormat: String, modifier: Modifier = Modifier) {
-    var currentTime by remember { mutableStateOf(LocalTime.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = LocalTime.now()
-            delay(60000)
-        }
-    }
-
-    val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-    val formattedTime = currentTime.format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
-
-    Text(
-        text = formattedTime,
-        color = KomorebiTheme.colors.textPrimary,
-        style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun PinnedSystemAppButton(
-    app: LauncherApp,
-    focusRequester: FocusRequester,
-    rightFocusRequester: FocusRequester,
-    downFocusRequester: FocusRequester,
-    canMoveDown: Boolean,
-    onClick: () -> Unit
-) {
-    val colors = KomorebiTheme.colors
-
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(48.dp)
-            .focusRequester(focusRequester)
-            .focusProperties {
-                left = FocusRequester.Cancel
-                right = rightFocusRequester
-                down = if (canMoveDown) downFocusRequester else FocusRequester.Default
-                up = FocusRequester.Cancel
-            },
-        colors = IconButtonDefaults.colors(
-            containerColor = colors.textPrimary.copy(alpha = 0.06f),
-            focusedContainerColor = colors.textPrimary,
-            contentColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-        )
-    ) {
-        Icon(
-            Icons.Default.SettingsInputHdmi,
-            contentDescription = app.label,
-            modifier = Modifier.size(28.dp)
-        )
-    }
-}
-
-@Composable
-internal fun NetworkStatusButton(
-    status: NetworkConnectionStatus,
-    focusRequester: FocusRequester,
-    leftFocusRequester: FocusRequester,
-    rightFocusRequester: FocusRequester,
-    canTakeFocus: Boolean,
-    onClick: () -> Unit
-) {
-    val colors = KomorebiTheme.colors
-    val (icon, description) = when (status.transport) {
-        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi 設定"
-        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線ネットワーク設定"
-        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
-        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "オフライン。Wi-Fi 設定"
-    }
-
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(NETWORK_STATUS_BUTTON_SIZE_DP.dp)
-            .testTag(NETWORK_STATUS_BUTTON_TEST_TAG)
-            .focusRequester(focusRequester)
-            .focusProperties {
-                left = leftFocusRequester
-                right = rightFocusRequester
-                up = FocusRequester.Cancel
-                canFocus = canTakeFocus
-            },
-        colors = IconButtonDefaults.colors(
-            containerColor = if (status.isAvailable) Color.Transparent
-            else colors.accent.copy(alpha = 0.16f),
-            focusedContainerColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
-            contentColor = if (status.isAvailable) colors.textSecondary else colors.accent,
-        ),
-    ) {
-        Icon(icon, contentDescription = description, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -246,7 +119,6 @@ fun HomeLauncherScreen(
         recordViewModel,
         reserveViewModel
     )
-    val colors = KomorebiTheme.colors
 
     val focusMemory = rememberFocusMemory()
     val scope = rememberCoroutineScope()
@@ -342,8 +214,10 @@ fun HomeLauncherScreen(
 
     val returnPlayerFocusRequester = remember { FocusRequester() }
     val inputSourceFocusRequester = remember { FocusRequester() }
-    val systemSettingsFocusRequester = remember { FocusRequester() }
+    val railSettingsFocusRequester = remember { FocusRequester() }
     val wifiSettingsFocusRequester = remember { FocusRequester() }
+    var railHasFocus by remember { mutableStateOf(false) }
+    var stripHasFocus by remember { mutableStateOf(false) }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
@@ -435,167 +309,46 @@ fun HomeLauncherScreen(
                 .focusable()
         )
 
-        Column(modifier = Modifier.fillMaxSize()) {
+        val isEpgJumpingActive = tabController.selectedTab == LauncherTab.EPG && ui.isEpgJumping
+        val topBarEntryRequester = when {
+            hasActivePlayer -> returnPlayerFocusRequester
+            inputSourceApp != null -> inputSourceFocusRequester
+            else -> wifiSettingsFocusRequester
+        }
+        val stripDownRequester = if (tabController.isActiveContentReady) {
+            tabController.contentRequester(tabController.selectedTab)
+        } else {
+            FocusRequester.Default
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = if (!isFullScreenMode) TvRailCollapsedWidth else 0.dp)
+        ) {
             if (!isFullScreenMode) {
-                val isEpgJumpingActive = tabController.selectedTab == LauncherTab.EPG && ui.isEpgJumping
-                val firstVisibleTab = visibleTabs.firstOrNull() ?: LauncherTab.HOME
-                val lastVisibleTab = visibleTabs.lastOrNull() ?: LauncherTab.HOME
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(80.dp)
-                        .padding(top = 8.dp, start = 40.dp, end = 40.dp)
-                        .onFocusChanged { ui.topNavHasFocus = it.hasFocus }
-                        .onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && (event.key == Key.Back || event.key == Key.Escape)) {
-                                scope.launch { handleLauncherBack() }
-                                return@onPreviewKeyEvent true
-                            }
-                            false
-                        },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    DigitalClock(timeFormat = timeFormat)
-                    Spacer(modifier = Modifier.width(24.dp))
-                    if (inputSourceApp != null) {
-                        PinnedSystemAppButton(
-                            app = inputSourceApp,
-                            focusRequester = inputSourceFocusRequester,
-                            rightFocusRequester = tabController.tabRequester(firstVisibleTab),
-                            downFocusRequester = tabController.contentRequester(tabController.selectedTab),
-                            canMoveDown = tabController.isActiveContentReady,
-                            onClick = { homeViewModel.launchInputSourcePicker(inputSourceApp) }
-                        )
-                        Spacer(modifier = Modifier.width(18.dp))
-                    } else {
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-
-                    LauncherTabBar(
-                        controller = tabController,
-                        isEpgJumping = ui.isEpgJumping,
-                        leftEdgeFocusRequester = if (inputSourceApp != null) {
-                            inputSourceFocusRequester
-                        } else {
-                            FocusRequester.Cancel
-                        },
-                        rightEdgeFocusRequester = if (hasActivePlayer) {
-                            returnPlayerFocusRequester
-                        } else {
-                            systemSettingsFocusRequester
-                        },
-                        onTabFocused = { tab ->
-                            tabController.selectTab(tab)
-                            val targetIndex = tabController.selectedIndex
-                            ui.selectedTabIndex = targetIndex
-                            ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
-                            ui.topNavHasFocus = true
-                        },
-                        onUpKey = inputSourceApp?.let { app ->
-                            {
-                                homeViewModel.launchInputSourcePicker(app)
-                                true
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    // 「再生中」ボタンの有無で上部バーやタブ列がリフローしないよう、
-                    // 常に同じ幅のスロットを確保しておく。
-                    Box(
-                        modifier = Modifier.width(RETURN_PLAYER_SLOT_WIDTH),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (hasActivePlayer) {
-                            Button(
-                                onClick = onReturnToPlayerClick,
-                                modifier = Modifier
-                                    .focusRequester(returnPlayerFocusRequester)
-                                    .focusProperties {
-                                        left = tabController.tabRequester(lastVisibleTab)
-                                        right = systemSettingsFocusRequester
-                                        canFocus = !isEpgJumpingActive
-                                        up = FocusRequester.Cancel
-                                    },
-                                colors = ButtonDefaults.colors(
-                                    containerColor = colors.accent.copy(alpha = 0.2f),
-                                    focusedContainerColor = colors.accent,
-                                    contentColor = colors.accent,
-                                    focusedContentColor = if (colors.isDark) Color.Black else Color.White
-                                ),
-                                shape = ButtonDefaults.shape(shape = RoundedCornerShape(20.dp)),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = "再生中",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "再生中",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    IconButton(
-                        onClick = { onSettingsToggle(true) },
-                        modifier = Modifier
-                            .focusRequester(systemSettingsFocusRequester)
-                            .focusProperties {
-                                left = if (hasActivePlayer) {
-                                    returnPlayerFocusRequester
-                                } else {
-                                    tabController.tabRequester(lastVisibleTab)
-                                }
-                                right = wifiSettingsFocusRequester
-                                canFocus = !isEpgJumpingActive
-                                up = FocusRequester.Cancel
-                            },
-                        colors = IconButtonDefaults.colors(
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
-                            contentColor = colors.textSecondary
-                        )
-                    ) {
-                        Icon(Icons.Default.Build, contentDescription = "設定")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    NetworkStatusButton(
-                        status = networkConnectionStatus,
-                        focusRequester = wifiSettingsFocusRequester,
-                        leftFocusRequester = systemSettingsFocusRequester,
-                        rightFocusRequester = ui.settingsFocusRequester,
-                        canTakeFocus = !isEpgJumpingActive,
-                        onClick = { homeViewModel.launchWifiSettings() }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = { homeViewModel.launchSystemSettings() },
-                        modifier = Modifier
-                            .focusRequester(ui.settingsFocusRequester)
-                            .focusProperties {
-                                left = wifiSettingsFocusRequester
-                                canFocus = !isEpgJumpingActive
-                                up = FocusRequester.Cancel
-                                right = FocusRequester.Cancel
-                            },
-                        colors = IconButtonDefaults.colors(
-                            focusedContainerColor = colors.textPrimary,
-                            focusedContentColor = if (colors.isDark) Color.Black else Color.White,
-                            contentColor = colors.textSecondary
-                        )
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = "システム設定")
-                    }
-                }
+                LauncherSystemStrip(
+                    timeFormat = timeFormat,
+                    hasActivePlayer = hasActivePlayer,
+                    inputSourceApp = inputSourceApp,
+                    networkConnectionStatus = networkConnectionStatus,
+                    canTakeFocus = !isEpgJumpingActive,
+                    returnPlayerFocusRequester = returnPlayerFocusRequester,
+                    inputSourceFocusRequester = inputSourceFocusRequester,
+                    wifiSettingsFocusRequester = wifiSettingsFocusRequester,
+                    systemSettingsFocusRequester = ui.settingsFocusRequester,
+                    leftEdgeFocusRequester = tabController.tabRequester(tabController.selectedTab),
+                    downFocusRequester = stripDownRequester,
+                    onReturnToPlayerClick = onReturnToPlayerClick,
+                    onLaunchInputSourcePicker = { app -> homeViewModel.launchInputSourcePicker(app) },
+                    onLaunchWifiSettings = { homeViewModel.launchWifiSettings() },
+                    onLaunchSystemSettings = { homeViewModel.launchSystemSettings() },
+                    onHasFocusChanged = { hasFocus ->
+                        stripHasFocus = hasFocus
+                        ui.topNavHasFocus = railHasFocus || hasFocus
+                    },
+                    onBack = { scope.launch { handleLauncherBack() } },
+                )
             }
 
             Box(modifier = Modifier.weight(1f)) {
@@ -800,6 +553,33 @@ fun HomeLauncherScreen(
                 )
             }
         }
+
+        if (!isFullScreenMode) {
+            LauncherNavRail(
+                controller = tabController,
+                isEpgJumping = ui.isEpgJumping,
+                upEdgeFocusRequester = topBarEntryRequester,
+                settingsItemFocusRequester = railSettingsFocusRequester,
+                settingsCanFocus = !isEpgJumpingActive,
+                onTabFocused = { tab ->
+                    tabController.selectTab(tab)
+                    val targetIndex = tabController.selectedIndex
+                    ui.selectedTabIndex = targetIndex
+                    ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
+                    ui.topNavHasFocus = true
+                },
+                onOpenSettings = { onSettingsToggle(true) },
+                onHasFocusChanged = { hasFocus ->
+                    railHasFocus = hasFocus
+                    ui.topNavHasFocus = hasFocus || stripHasFocus
+                },
+                onBack = { scope.launch { handleLauncherBack() } },
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .zIndex(30f),
+            )
+        }
     }
 }
 
@@ -811,15 +591,15 @@ private fun launcherTabContentTransform(direction: TabTransitionDirection): Cont
     } else {
         val enter = fadeIn(
             animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
-        ) + slideInHorizontally(
+        ) + slideInVertically(
             animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
-            initialOffsetX = { width -> sign * (width / 24).coerceIn(18, 36) },
+            initialOffsetY = { height -> sign * (height / 24).coerceIn(18, 36) },
         )
         val exit = fadeOut(
             animationSpec = tween(durationMillis = 110, easing = FastOutSlowInEasing),
-        ) + slideOutHorizontally(
+        ) + slideOutVertically(
             animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
-            targetOffsetX = { width -> -sign * (width / 32).coerceIn(12, 24) },
+            targetOffsetY = { height -> -sign * (height / 32).coerceIn(12, 24) },
         )
         enter togetherWith exit
     }
