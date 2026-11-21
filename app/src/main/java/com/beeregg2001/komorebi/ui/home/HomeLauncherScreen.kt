@@ -451,9 +451,11 @@ fun HomeLauncherScreen(
                                         ?.takeIf { it in visibleTabs }
                                     if (targetTab != null) {
                                         val targetIndex = visibleTabs.indexOf(targetTab)
-                                        tabController.selectTab(targetTab)
-                                        tabController.tabRequester(targetTab).safeRequestFocus(TAG)
+                                        suppressInitialRailExpand = false
+                                        tabController.selectTab(targetTab, immediate = true)
+                                        ui.selectedTabIndex = targetIndex
                                         ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
+                                        focusMemory.requestContent(targetIndex)
                                     }
                                 },
                                 konomiIp = konomiIp,

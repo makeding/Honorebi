@@ -249,7 +249,6 @@ fun EpgNavigationContainer(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 68.dp)
             .background(Color.Transparent)
     ) {
 

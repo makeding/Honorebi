@@ -231,47 +231,71 @@ fun RecordListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.tvCardMarquee(isVisualFocused)
                 )
+                Text(
+                    text = "$displayDate $durationDisplay  $channelName",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = secondaryTextColor,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (isCurrentlyRecording) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "$displayDate $durationDisplay  $channelName",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = secondaryTextColor,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (isCurrentlyRecording) {
-                        Text(
-                            text = "録画中",
-                            color = if (isVisualFocused) inverseColor else StatusRecordingColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    } else if (!isPlayable) {
-                        Text(
-                            text = "メタデータ解析中",
-                            color = if (isVisualFocused) inverseColor else StatusAnalyzingColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
-                }
-            }
-            if (isFocused) {
-                Icon(
-                    imageVector = Icons.Filled.KeyboardArrowRight,
-                    contentDescription = "Menu",
-                    tint = inverseColor.copy(alpha = 0.7f),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier
-                        .size(32.dp)
-                        .padding(end = 4.dp)
+                        .padding(start = 10.dp)
+                        .background(
+                            color = if (isVisualFocused) StatusRecordingColor else StatusRecordingColor.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(
+                                color = if (isVisualFocused) Color.White else StatusRecordingColor,
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                            )
+                    )
+                    Text(
+                        text = "録画中",
+                        color = if (isVisualFocused) Color.White else StatusRecordingColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
+            } else if (!isPlayable) {
+                Text(
+                    text = "解析中",
+                    color = if (isVisualFocused) Color.White else StatusAnalyzingColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .background(
+                            color = if (isVisualFocused) StatusAnalyzingColor else StatusAnalyzingColor.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
+            }
+            Box(
+                modifier = Modifier.width(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isFocused) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowRight,
+                        contentDescription = "Menu",
+                        tint = inverseColor.copy(alpha = 0.7f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
     }

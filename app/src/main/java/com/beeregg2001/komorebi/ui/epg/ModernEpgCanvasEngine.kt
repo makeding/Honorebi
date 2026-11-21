@@ -469,13 +469,70 @@ fun EpgHeaderSection(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(60.dp)
             .background(colors.surface.copy(alpha = 0.95f))
+            .padding(top = 12.dp, bottom = 6.dp, start = 12.dp, end = 248.dp)
     ) {
         Row(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.Center
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            var isJumpBtnFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .width(92.dp)
+                    .fillMaxHeight()
+                    .onFocusChanged { isJumpBtnFocused = it.isFocused }
+                    .then(
+                        if (availableBroadcastingTypes.isEmpty()) {
+                            Modifier
+                                .focusRequester(headerFocusRequester)
+                                .onGloballyPositioned { onContentReady() }
+                        } else Modifier
+                    )
+                    .focusRequester(jumpMenuFocusRequester)
+                    .focusProperties {
+                        left = mainTabFocusRequester
+                        right =
+                            if (subTabFocusRequesters.isNotEmpty()) subTabFocusRequesters[0] else searchButtonFocusRequester
+                        down = gridFocusRequester; up = topTabFocusRequester
+                    }
+                    .onKeyEvent { event ->
+                        if (event.key == Key.Back || event.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
+                            if (event.type == KeyEventType.KeyDown) return@onKeyEvent true
+                            if (event.type == KeyEventType.KeyUp) {
+                                topTabFocusRequester.safeRequestFocus("EpgJump_Back"); return@onKeyEvent true
+                            }
+                        }
+                        if (event.type == KeyEventType.KeyDown) {
+                            when (event.key) {
+                                Key.DirectionUp -> {
+                                    topTabFocusRequester.safeRequestFocus("EpgJump_Up"); return@onKeyEvent true
+                                }
+
+                                Key.DirectionCenter, Key.Enter -> {
+                                    onEpgJumpMenuStateChanged(true); return@onKeyEvent true
+                                }
+                            }
+                        }
+                        false
+                    }
+                    .focusable()
+                    .background(
+                        if (isJumpBtnFocused) colors.textPrimary else Color.Transparent,
+                        RoundedCornerShape(8.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "日時指定",
+                    color = if (isJumpBtnFocused) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp
+                )
+            }
+
             availableBroadcastingTypes.forEachIndexed { index, (label, apiValue) ->
                 var isTabFocused by remember { mutableStateOf(false) }
                 val requester = subTabFocusRequesters[index]
@@ -483,7 +540,7 @@ fun EpgHeaderSection(
 
                 Box(
                     modifier = Modifier
-                        .width(110.dp)
+                        .width(76.dp)
                         .fillMaxHeight()
                         .onFocusChanged { isTabFocused = it.isFocused }
                         .then(if (isTarget) Modifier.focusRequester(headerFocusRequester) else Modifier)
@@ -521,7 +578,7 @@ fun EpgHeaderSection(
                         .focusable()
                         .background(
                             if (isTabFocused) colors.textPrimary else Color.Transparent,
-                            RectangleShape
+                            RoundedCornerShape(8.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -535,108 +592,58 @@ fun EpgHeaderSection(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth(0.6f)
                             .height(3.dp)
-                            .background(colors.accent)
+                            .background(colors.accent, RoundedCornerShape(1.5.dp))
                     )
                 }
             }
-        }
 
-        var isSearchBtnFocused by remember { mutableStateOf(false) }
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .width(60.dp)
-                .fillMaxHeight()
-                .onFocusChanged { isSearchBtnFocused = it.isFocused }
-                .focusRequester(searchButtonFocusRequester)
-                .focusProperties {
-                    left =
-                        if (subTabFocusRequesters.isNotEmpty()) subTabFocusRequesters.last() else jumpMenuFocusRequester
-                    down = gridFocusRequester
-                    up = topTabFocusRequester
-                }
-                .onKeyEvent { event ->
-                    if (event.key == Key.Back || event.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
-                        if (event.type == KeyEventType.KeyDown) return@onKeyEvent true
-                        if (event.type == KeyEventType.KeyUp) {
-                            topTabFocusRequester.safeRequestFocus("EpgSearch_Back"); return@onKeyEvent true
-                        }
+            var isSearchBtnFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .width(48.dp)
+                    .fillMaxHeight()
+                    .onFocusChanged { isSearchBtnFocused = it.isFocused }
+                    .focusRequester(searchButtonFocusRequester)
+                    .focusProperties {
+                        left =
+                            if (subTabFocusRequesters.isNotEmpty()) subTabFocusRequesters.last() else jumpMenuFocusRequester
+                        right = topTabFocusRequester
+                        down = gridFocusRequester
+                        up = topTabFocusRequester
                     }
-                    if (event.type == KeyEventType.KeyDown) {
-                        when (event.key) {
-                            Key.DirectionUp -> {
-                                topTabFocusRequester.safeRequestFocus("EpgSearch_Up"); return@onKeyEvent true
-                            }
-
-                            Key.DirectionCenter, Key.Enter -> {
-                                onSearchClick(); return@onKeyEvent true
+                    .onKeyEvent { event ->
+                        if (event.key == Key.Back || event.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
+                            if (event.type == KeyEventType.KeyDown) return@onKeyEvent true
+                            if (event.type == KeyEventType.KeyUp) {
+                                topTabFocusRequester.safeRequestFocus("EpgSearch_Back"); return@onKeyEvent true
                             }
                         }
-                    }
-                    false
-                }
-                .focusable()
-                .background(if (isSearchBtnFocused) colors.textPrimary else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "番組検索",
-                tint = if (isSearchBtnFocused) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary
-            )
-        }
+                        if (event.type == KeyEventType.KeyDown) {
+                            when (event.key) {
+                                Key.DirectionUp -> {
+                                    topTabFocusRequester.safeRequestFocus("EpgSearch_Up"); return@onKeyEvent true
+                                }
 
-        var isJumpBtnFocused by remember { mutableStateOf(false) }
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .width(110.dp)
-                .fillMaxHeight()
-                .onFocusChanged { isJumpBtnFocused = it.isFocused }
-                .then(
-                    if (availableBroadcastingTypes.isEmpty()) {
-                        Modifier
-                            .focusRequester(headerFocusRequester)
-                            .onGloballyPositioned { onContentReady() }
-                    } else Modifier
+                                Key.DirectionCenter, Key.Enter -> {
+                                    onSearchClick(); return@onKeyEvent true
+                                }
+                            }
+                        }
+                        false
+                    }
+                    .focusable()
+                    .background(
+                        if (isSearchBtnFocused) colors.textPrimary else Color.Transparent,
+                        RoundedCornerShape(8.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "番組検索",
+                    tint = if (isSearchBtnFocused) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary
                 )
-                .focusRequester(jumpMenuFocusRequester)
-                .focusProperties {
-                    left = mainTabFocusRequester
-                    right =
-                        if (subTabFocusRequesters.isNotEmpty()) subTabFocusRequesters[0] else searchButtonFocusRequester
-                    down = gridFocusRequester; up = topTabFocusRequester
-                }
-                .onKeyEvent { event ->
-                    if (event.key == Key.Back || event.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
-                        if (event.type == KeyEventType.KeyDown) return@onKeyEvent true
-                        if (event.type == KeyEventType.KeyUp) {
-                            topTabFocusRequester.safeRequestFocus("EpgJump_Back"); return@onKeyEvent true
-                        }
-                    }
-                    if (event.type == KeyEventType.KeyDown) {
-                        when (event.key) {
-                            Key.DirectionUp -> {
-                                topTabFocusRequester.safeRequestFocus("EpgJump_Up"); return@onKeyEvent true
-                            }
-
-                            Key.DirectionCenter, Key.Enter -> {
-                                onEpgJumpMenuStateChanged(true); return@onKeyEvent true
-                            }
-                        }
-                    }
-                    false
-                }
-                .focusable()
-                .background(if (isJumpBtnFocused) colors.textPrimary else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                "日時指定",
-                color = if (isJumpBtnFocused) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 15.sp
-            )
+            }
         }
     }
 }
