@@ -6,24 +6,22 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,8 +32,8 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
-import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
+import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.util.toDeviceTime
@@ -43,11 +41,109 @@ import com.beeregg2001.komorebi.ui.components.recordedThumbnailCacheKey
 import com.beeregg2001.komorebi.ui.components.recordedThumbnailModel
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.TvCardFamily
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
+import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidthCard
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
+import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
+import com.beeregg2001.komorebi.ui.theme.tnum
 import com.beeregg2001.komorebi.ui.theme.tvCardFocus
-import com.beeregg2001.komorebi.viewmodel.SeriesInfo
 import com.beeregg2001.komorebi.ui.video.components.SeriesThumbnailCollage
+import com.beeregg2001.komorebi.viewmodel.SeriesInfo
 import java.time.OffsetDateTime
+
+private val VideoCardWidth = 236.dp
+private val VideoCardThumbHeight = 132.dp
+private val VideoCardMetaHeight = 66.dp
+private val VideoCardTotalHeight = VideoCardThumbHeight + VideoCardMetaHeight
+private val CornerBadgeBg = Color(0xC7000000)
+
+internal fun formatDurationBadge(seconds: Double): String {
+    val totalSec = seconds.toLong()
+    if (totalSec <= 0L) return ""
+    val hours = totalSec / 3600
+    val minutes = (totalSec % 3600) / 60
+    val secs = totalSec % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, secs)
+    } else {
+        "%02d:%02d".format(minutes, secs)
+    }
+}
+
+@Composable
+private fun CornerDurationBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    if (text.isBlank()) return
+    Box(
+        modifier = modifier
+            .background(CornerBadgeBg, RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.tnum,
+            color = Color.White,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun CardBottomProgressBar(
+    progress: Float,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .background(Color.White.copy(alpha = 0.22f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(accentColor),
+        )
+    }
+}
+
+@Composable
+private fun BelowCardMetadata(
+    title: String,
+    subtitle: String,
+    isFocused: Boolean,
+) {
+    val colors = KomorebiTheme.colors
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(VideoCardMetaHeight)
+            .padding(top = 6.dp, start = 2.dp, end = 2.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall.copy(lineHeight = 19.sp),
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = if (isFocused) colors.textPrimary else colors.textSecondary,
+        )
+        if (subtitle.isNotBlank()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium.tnum,
+                color = if (isFocused) colors.textSecondary else colors.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -82,6 +178,25 @@ fun VideoRecentRecordCard(
     val progress = if (history != null && duration > 0 && history.playback_position > 5.0) {
         (history.playback_position / duration).toFloat().coerceIn(0f, 1f)
     } else null
+    val durationBadge = remember(duration) { formatDurationBadge(duration) }
+
+    val startFormat = remember(program.startTime, timeFormat) {
+        try {
+            ProgramTimeFormatter.formatDateTime(
+                OffsetDateTime.parse(program.startTime).toDeviceTime(),
+                timeFormat,
+                "M/d(E)",
+            )
+        } catch (e: Exception) {
+            program.startTime
+        }
+    }
+    val metaLine = remember(program.channel?.name, startFormat) {
+        listOfNotNull(
+            program.channel?.name?.takeIf { it.isNotBlank() },
+            startFormat.takeIf { it.isNotBlank() },
+        ).joinToString(" · ")
+    }
 
     val context = LocalContext.current
     val imageRequest = remember(program.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl, allowNetworkImages) {
@@ -100,112 +215,88 @@ fun VideoRecentRecordCard(
             .build()
     }
 
+    val thumbShape = RoundedCornerShape(TvCardRadiusGrid)
+
     Surface(
         onClick = onClick,
         enabled = true,
         modifier = modifier
-            .width(280.dp)
-            .height(160.dp)
+            .width(VideoCardWidth)
+            .height(VideoCardTotalHeight)
             .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = 0.5f),
-            focusedContainerColor = colors.surface,
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+        shape = ClickableSurfaceDefaults.shape(thumbShape),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = focusSpec.focusedBorder
+            border = Border.None,
+            focusedBorder = Border.None
         )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize(),
-                onError = {
-                    if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
-                        currentThumbnailUrl = fallbackUrl
-                    }
-                }
-            )
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(
-                alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
-            )))
+        Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                            startY = 100f
-                        )
+                    .fillMaxWidth()
+                    .height(VideoCardThumbHeight)
+                    .clip(thumbShape)
+                    .background(colors.surface1)
+                    .border(
+                        width = if (isFocused) TvCardFocusBorderWidthCard else 1.dp,
+                        color = if (isFocused) colors.accent else colors.borderSubtle,
+                        shape = thumbShape,
                     )
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
             ) {
-                val startFormat = try {
-                    ProgramTimeFormatter.formatDateTime(OffsetDateTime.parse(program.startTime).toDeviceTime(), timeFormat, "M/d(E)")
-                } catch (e: Exception) {
-                    program.startTime
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isCurrentlyRecording) {
-                        Box(
-                            modifier = Modifier
-                                .background(colors.accent, RoundedCornerShape(2.dp))
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "録画中",
-                                color = if (colors.isDark) Color.Black else Color.White,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = {
+                        if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
+                            currentThumbnailUrl = fallbackUrl
                         }
-                        Spacer(Modifier.width(6.dp))
                     }
-                    Text(
-                        text = startFormat,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.accent.copy(alpha = if (isFocused) 1f else 0.8f),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = program.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    color = Color.White,
-                    overflow = TextOverflow.Ellipsis
                 )
-            }
-            if (progress != null && !isCurrentlyRecording) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .background(Color.White.copy(alpha = 0.3f))
-                ) {
+                if (isCurrentlyRecording) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .fillMaxHeight()
-                            .background(colors.accent)
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .background(colors.recording, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "REC",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+                CornerDurationBadge(
+                    text = durationBadge,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 6.dp, bottom = 7.dp),
+                )
+                if (progress != null && !isCurrentlyRecording) {
+                    CardBottomProgressBar(
+                        progress = progress,
+                        accentColor = colors.accent,
+                        modifier = Modifier.align(Alignment.BottomStart),
                     )
                 }
             }
+            BelowCardMetadata(
+                title = program.title,
+                subtitle = metaLine,
+                isFocused = isFocused,
+            )
         }
     }
 }
@@ -247,12 +338,25 @@ fun VideoWatchHistoryCard(
     val progress = if (duration > 0) (historyItem.playback_position / duration).toFloat()
         .coerceIn(0f, 1f) else null
     val broadcastStart = matchedProgram?.startTime ?: historyItem.program.start_time
-    val broadcastEnd = matchedProgram?.endTime ?: historyItem.program.end_time
-    val broadcastTime = runCatching {
-        ProgramTimeFormatter.formatRange(broadcastStart, broadcastEnd, timeFormat, "M/d(E)") ?: ""
-    }.getOrDefault("")
-    val watchedPosition = historyItem.playback_position.coerceAtLeast(0.0).toLong()
-    val watchedTime = "%02d:%02d".format(watchedPosition / 60, watchedPosition % 60)
+    val broadcastDate = remember(broadcastStart, timeFormat) {
+        runCatching {
+            ProgramTimeFormatter.formatDateTime(
+                OffsetDateTime.parse(broadcastStart).toDeviceTime(),
+                timeFormat,
+                "M/d(E)",
+            )
+        }.getOrDefault("")
+    }
+    val watchedTime = remember(historyItem.playback_position) {
+        val pos = historyItem.playback_position.coerceAtLeast(0.0)
+        formatDurationBadge(pos).ifBlank { "00:00" }
+    }
+    val metaLine = remember(matchedProgram?.channel?.name, broadcastDate) {
+        listOfNotNull(
+            matchedProgram?.channel?.name?.takeIf { it.isNotBlank() },
+            broadcastDate.takeIf { it.isNotBlank() },
+        ).joinToString(" · ")
+    }
 
     val context = LocalContext.current
     val imageRequest = remember(matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl, allowNetworkImages) {
@@ -272,97 +376,71 @@ fun VideoWatchHistoryCard(
             .build()
     }
 
+    val thumbShape = RoundedCornerShape(TvCardRadiusGrid)
+
     Surface(
         onClick = onClick,
         modifier = modifier
-            .width(280.dp)
-            .height(160.dp)
+            .width(VideoCardWidth)
+            .height(VideoCardTotalHeight)
             .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = 0.5f),
-            focusedContainerColor = colors.surface,
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+        shape = ClickableSurfaceDefaults.shape(thumbShape),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = focusSpec.focusedBorder
+            border = Border.None,
+            focusedBorder = Border.None
         )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                onError = {
-                    if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
-                        currentThumbnailUrl = fallbackUrl
-                    }
-                }
-            )
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(
-                alpha = if (isFocused) focusSpec.scrimAlphaFocused else focusSpec.scrimAlphaUnfocused
-            )))
+        Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                            startY = 100f
-                        )
+                    .fillMaxWidth()
+                    .height(VideoCardThumbHeight)
+                    .clip(thumbShape)
+                    .background(colors.surface1)
+                    .border(
+                        width = if (isFocused) TvCardFocusBorderWidthCard else 1.dp,
+                        color = if (isFocused) colors.accent else colors.borderSubtle,
+                        shape = thumbShape,
                     )
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
             ) {
-                if (broadcastTime.isNotBlank()) {
-                    Text(
-                        text = broadcastTime,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = historyItem.program.title.toString(),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    color = Color.White,
-                    overflow = TextOverflow.Ellipsis
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    onError = {
+                        if (currentThumbnailUrl == primaryUrl && primaryUrl != fallbackUrl) {
+                            currentThumbnailUrl = fallbackUrl
+                        }
+                    }
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "前回視聴: $watchedTime",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.accent,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (progress != null) {
-                Box(
+                CornerDurationBadge(
+                    text = watchedTime,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .background(Color.White.copy(alpha = 0.3f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(progress)
-                            .background(colors.accent)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 6.dp, bottom = 7.dp),
+                )
+                if (progress != null) {
+                    CardBottomProgressBar(
+                        progress = progress,
+                        accentColor = colors.accent,
+                        modifier = Modifier.align(Alignment.BottomStart),
                     )
                 }
             }
+            BelowCardMetadata(
+                title = historyItem.program.title,
+                subtitle = metaLine,
+                isFocused = isFocused,
+            )
         }
     }
 }
@@ -379,69 +457,119 @@ fun VideoSeriesCard(
     allowNetworkImages: Boolean = true
 ) {
     val colors = KomorebiTheme.colors
+    val focusSpec = tvCardFocus(TvCardFamily.GRID)
     var isFocused by remember { mutableStateOf(false) }
+    val thumbShape = RoundedCornerShape(TvCardRadiusGrid)
 
     Surface(
         onClick = onClick,
         modifier = modifier
-            .width(280.dp)
-            .height(160.dp)
+            .width(VideoCardWidth)
+            .height(VideoCardTotalHeight)
             .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface.copy(alpha = 0.5f),
-            focusedContainerColor = colors.surface,
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(thumbShape),
         border = ClickableSurfaceDefaults.border(
-            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
+            border = Border.None,
+            focusedBorder = Border.None
         )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            SeriesThumbnailCollage(
-                series = series,
-                backendType = backendType,
-                konomiIp = konomiIp,
-                konomiPort = konomiPort,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(if (isFocused) 0.8f else 0.4f),
-                allowNetworkImages = allowNetworkImages,
-            )
+        Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                            startY = 100f
-                        )
+                    .fillMaxWidth()
+                    .height(VideoCardThumbHeight)
+                    .clip(thumbShape)
+                    .background(colors.surface1)
+                    .border(
+                        width = if (isFocused) TvCardFocusBorderWidthCard else 1.dp,
+                        color = if (isFocused) colors.accent else colors.borderSubtle,
+                        shape = thumbShape,
                     )
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
             ) {
-                Text(
-                    text = "${series.programCount}エピソード",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.accent,
-                    fontWeight = FontWeight.Bold
+                SeriesThumbnailCollage(
+                    series = series,
+                    backendType = backendType,
+                    konomiIp = konomiIp,
+                    konomiPort = konomiPort,
+                    modifier = Modifier.fillMaxSize(),
+                    allowNetworkImages = allowNetworkImages,
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = series.displayTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    color = Color.White,
-                    overflow = TextOverflow.Ellipsis
+                CornerDurationBadge(
+                    text = "${series.programCount}件",
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 6.dp, bottom = 7.dp),
                 )
             }
+            BelowCardMetadata(
+                title = series.displayTitle,
+                subtitle = "${series.programCount} エピソード",
+                isFocused = isFocused,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoQuickEntryPill(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    onFocus: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val focusSpec = tvCardFocus(TvCardFamily.LIST_ROW)
+    var isFocused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(TvCardRadiusListRow)
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .height(40.dp)
+            .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
+        shape = ClickableSurfaceDefaults.shape(shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface1,
+            focusedContainerColor = colors.surface2,
+            contentColor = colors.textPrimary,
+            focusedContentColor = colors.textPrimary,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isFocused) colors.accent else colors.textSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -452,283 +580,41 @@ fun RecordListBannerButton(
     onFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val colors = KomorebiTheme.colors
-    var isFocused by remember { mutableStateOf(false) }
-    val backgroundBrush = remember(colors) {
-        Brush.horizontalGradient(
-            colors = listOf(
-                colors.surface,
-                colors.accent.copy(alpha = if (colors.isDark) 0.2f else 0.1f)
-            )
-        )
-    }
-
-    Surface(
+    VideoQuickEntryPill(
+        label = "録画リスト",
+        icon = Icons.Default.List,
         onClick = onClick,
-        modifier = modifier
-            .height(64.dp)
-            .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = colors.textPrimary,
-            contentColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-        ),
-        border = ClickableSurfaceDefaults.border(
-            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isFocused) SolidColor(Color.Transparent) else backgroundBrush)
-        ) {
-            Icon(
-                imageVector = Icons.Default.List,
-                contentDescription = null,
-                tint = (if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent).copy(
-                    alpha = 0.1f
-                ),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .offset(x = 24.dp, y = 16.dp)
-                    .size(100.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(
-                            color = if (isFocused) Color.Transparent else colors.accent.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        ), contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.List,
-                        contentDescription = null,
-                        tint = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(verticalArrangement = Arrangement.Center) {
-                    Text(
-                        text = "録画リスト",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "すべての番組・シリーズから探す",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
-                            alpha = 0.8f
-                        )) else colors.textSecondary,
-                        fontSize = 11.sp
-                    )
-                }
-            }
-        }
-    }
+        onFocus = onFocus,
+        modifier = modifier,
+    )
 }
 
-// ★ 新規追加: 放送中画面へ遷移するためのボタン
 @Composable
 fun OnAirBannerButton(
     onClick: () -> Unit,
     onFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val colors = KomorebiTheme.colors
-    var isFocused by remember { mutableStateOf(false) }
-    val backgroundBrush = remember(colors) {
-        Brush.horizontalGradient(
-            colors = listOf(
-                colors.surface,
-                colors.accent.copy(alpha = if (colors.isDark) 0.2f else 0.1f)
-            )
-        )
-    }
-
-    Surface(
+    VideoQuickEntryPill(
+        label = "放送中",
+        icon = Icons.Default.LiveTv,
         onClick = onClick,
-        modifier = modifier
-            .height(64.dp)
-            .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = colors.textPrimary,
-            contentColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-        ),
-        border = ClickableSurfaceDefaults.border(
-            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isFocused) SolidColor(Color.Transparent) else backgroundBrush)
-        ) {
-            Icon(
-                imageVector = Icons.Default.LiveTv,
-                contentDescription = null,
-                tint = (if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent).copy(
-                    alpha = 0.1f
-                ),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .offset(x = 24.dp, y = 16.dp)
-                    .size(100.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(
-                            color = if (isFocused) Color.Transparent else colors.accent.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        ), contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LiveTv,
-                        contentDescription = null,
-                        tint = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(verticalArrangement = Arrangement.Center) {
-                    Text(
-                        text = "放送中",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "今放送中の番組を探す",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
-                            alpha = 0.8f
-                        )) else colors.textSecondary,
-                        fontSize = 11.sp
-                    )
-                }
-            }
-        }
-    }
+        onFocus = onFocus,
+        modifier = modifier,
+    )
 }
 
-// ★ 新規追加: SMBライブラリ画面へ遷移するためのボタン
 @Composable
 fun SmbLibraryBannerButton(
     onClick: () -> Unit,
     onFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val colors = KomorebiTheme.colors
-    var isFocused by remember { mutableStateOf(false) }
-    val backgroundBrush = remember(colors) {
-        Brush.horizontalGradient(
-            colors = listOf(
-                colors.surface,
-                colors.accent.copy(alpha = if (colors.isDark) 0.2f else 0.1f)
-            )
-        )
-    }
-
-    Surface(
+    VideoQuickEntryPill(
+        label = "ファイルライブラリ",
+        icon = Icons.Default.FolderShared,
         onClick = onClick,
-        modifier = modifier
-            .height(64.dp)
-            .onFocusChanged { isFocused = it.isFocused || it.hasFocus; if (isFocused) onFocus() },
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent,
-            focusedContainerColor = colors.textPrimary,
-            contentColor = colors.textPrimary,
-            focusedContentColor = if (colors.isDark) Color.Black else Color.White
-        ),
-        border = ClickableSurfaceDefaults.border(
-            Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f))),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isFocused) SolidColor(Color.Transparent) else backgroundBrush)
-        ) {
-            Icon(
-                imageVector = Icons.Default.FolderShared,
-                contentDescription = null,
-                tint = (if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent).copy(
-                    alpha = 0.1f
-                ),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .offset(x = 24.dp, y = 16.dp)
-                    .size(100.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(
-                            color = if (isFocused) Color.Transparent else colors.accent.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        ), contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FolderShared,
-                        contentDescription = null,
-                        tint = if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.accent,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(verticalArrangement = Arrangement.Center) {
-                    Text(
-                        text = "ファイルライブラリ",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "ネットワーク上の動画を再生",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isFocused) (if (colors.isDark) Color.Black.copy(alpha = 0.8f) else Color.White.copy(
-                            alpha = 0.8f
-                        )) else colors.textSecondary,
-                        fontSize = 11.sp
-                    )
-                }
-            }
-        }
-    }
+        onFocus = onFocus,
+        modifier = modifier,
+    )
 }
