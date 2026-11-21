@@ -96,7 +96,8 @@ fun NativeCaptionOverlay(
     visible: Boolean,
     modifier: Modifier = Modifier,
     avoidanceObstacles: List<Rect> = emptyList(),
-    avoidanceProgress: Float = 0f
+    avoidanceProgress: Float = 0f,
+    avoidanceProgressProvider: (() -> Float)? = null,
 ) {
     // Keep the overlay bounds allocated through empty, disabled and transition states.
 
@@ -107,7 +108,8 @@ fun NativeCaptionOverlay(
     val drawCache = remember(cue) { NativeCaptionDrawCache(cue) }
     Canvas(modifier = modifier.onGloballyPositioned { origin = it.positionInRoot() }) {
         if (!visible || cue == null) return@Canvas
-        drawCache.get(size, localObstacles, avoidanceProgress).forEach { draw ->
+        val resolvedProgress = avoidanceProgressProvider?.invoke() ?: avoidanceProgress
+        drawCache.get(size, localObstacles, resolvedProgress).forEach { draw ->
             if (draw.clip == null) {
                 drawImage(draw.bitmap, dstOffset = draw.offset, dstSize = draw.size)
             } else {

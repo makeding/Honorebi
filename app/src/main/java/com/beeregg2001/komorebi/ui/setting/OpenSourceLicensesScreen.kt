@@ -700,7 +700,8 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
     val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
 
     var selectedLib by remember { mutableStateOf(ossLibraries.first()) }
-    val listFocusRequester = remember { FocusRequester() }
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    val itemFocusRequesters = remember { List(ossLibraries.size) { FocusRequester() } }
     val textFocusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
 
@@ -709,7 +710,7 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
     // 初期フォーカス設定
     LaunchedEffect(Unit) {
         delay(100)
-        runCatching { listFocusRequester.requestFocus() }
+        runCatching { itemFocusRequesters.firstOrNull()?.requestFocus() }
     }
 
     // ★修正: 背景を不透明下地 ＋ 季節のブラシの2重塗りに変更
@@ -734,7 +735,7 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
 
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(bottom = 32.dp),
+                contentPadding = PaddingValues(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 itemsIndexed(ossLibraries) { index, lib ->
@@ -747,6 +748,7 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
                                 isFocused = it.isFocused
                                 if (it.isFocused) {
                                     selectedLib = lib
+                                    selectedIndex = index
                                 }
                             }
                             .onKeyEvent { event ->
@@ -757,7 +759,7 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
                                     true
                                 } else false
                             }
-                            .then(if (index == 0) Modifier.focusRequester(listFocusRequester) else Modifier),
+                            .focusRequester(itemFocusRequesters[index]),
                         // ★修正: 録画カードと同様の「反転カラー」を適用して視認性を向上
                         colors = ClickableSurfaceDefaults.colors(
                             containerColor = Color.Transparent,
@@ -821,7 +823,15 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
                                 }
 
                                 Key.DirectionLeft -> {
-                                    listFocusRequester.requestFocus()
+                                    val target = itemFocusRequesters.getOrNull(selectedIndex)
+                                    val focused = runCatching { target?.requestFocus() == true }.getOrDefault(false)
+                                    if (!focused && target != null) {
+                                        coroutineScope.launch {
+                                            listState.scrollToItem(selectedIndex)
+                                            withFrameNanos { }
+                                            runCatching { target.requestFocus() }
+                                        }
+                                    }
                                     true
                                 }
 

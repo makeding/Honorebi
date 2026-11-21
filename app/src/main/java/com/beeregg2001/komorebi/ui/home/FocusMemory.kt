@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.delay
 
 /** A one-shot focus command; click identities remain in HomeViewModel. */
 data class HomeFocusRequest(
@@ -62,11 +63,13 @@ fun rememberFocusMemory() = remember { FocusMemory() }
 internal fun HomeOverlayReturnFocusEffect(
     isFullScreen: Boolean,
     returnInProgress: Boolean,
+    onInitialEntry: (() -> Unit)? = null,
     onRestore: () -> Unit,
 ) {
     val enteredWithReturn = remember { returnInProgress }
     var previousFullScreen by remember { mutableStateOf<Boolean?>(null) }
     val currentReturning by rememberUpdatedState(returnInProgress)
+    val initialEntry by rememberUpdatedState(onInitialEntry)
     val restore by rememberUpdatedState(onRestore)
     LaunchedEffect(isFullScreen) {
         val previous = previousFullScreen
@@ -74,7 +77,9 @@ internal fun HomeOverlayReturnFocusEffect(
         if (isFullScreen || currentReturning || (previous == null && enteredWithReturn)) {
             return@LaunchedEffect
         }
-        if (!currentReturning) restore()
+        if (!currentReturning) {
+            if (previous == null) (initialEntry ?: restore)() else restore()
+        }
     }
 }
 
@@ -85,13 +90,27 @@ internal fun HomeEntryFocusEffect(
     contentRequester: (Int) -> FocusRequester,
     contentReadyGeneration: Long = 0L,
     isContentReady: (Int) -> Boolean = { true },
+    contentFallbackTimeoutMs: Long = 2_000L,
 ) {
     LaunchedEffect(memory.requestId, contentReadyGeneration) {
         val request = memory.request ?: return@LaunchedEffect
         if (request.section != null) return@LaunchedEffect
-        if (request.contentTop && !isContentReady(request.tab)) return@LaunchedEffect
+        if (request.contentTop && !isContentReady(request.tab)) {
+            if (contentFallbackTimeoutMs <= 0L) return@LaunchedEffect
+            delay(contentFallbackTimeoutMs)
+            val stillPending = memory.request
+            if (stillPending == null || stillPending.id != request.id) return@LaunchedEffect
+            if (!isContentReady(request.tab)) {
+                tabRequester(request.tab)?.safeRequestFocusWithRetry("HomeFocus_EntryFallback")
+                memory.consume(request.id)
+            }
+            return@LaunchedEffect
+        }
         val requester = if (request.contentTop) contentRequester(request.tab) else tabRequester(request.tab)
-        requester?.safeRequestFocusWithRetry("HomeFocus_Entry")
+        val focused = requester?.safeRequestFocusWithRetry("HomeFocus_Entry") ?: false
+        if (!focused && request.contentTop) {
+            tabRequester(request.tab)?.safeRequestFocusWithRetry("HomeFocus_EntryFallback")
+        }
         memory.consume(request.id)
     }
 }

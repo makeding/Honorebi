@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -105,11 +106,12 @@ fun RecordGridContent(
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(4),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp, end = 28.dp),
+        contentPadding = PaddingValues(start = 12.dp, top = 16.dp, end = 28.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { clip = false }
             .focusRequester(contentContainerFocusRequester)
             // 🌟 修正3: focusRestorer を削除し、安全な focusGroup() に変更。
             // 画面外の FocusRequester を参照しようとして発生するクラッシュを完全に防ぎます。

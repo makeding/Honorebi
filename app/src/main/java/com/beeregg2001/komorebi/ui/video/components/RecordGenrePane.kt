@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,21 +50,21 @@ fun RecordGenrePane(
         shape = RoundedCornerShape(16.dp),
         border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.1f)))
     ) {
-        Column(modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Text(
                 text = "ジャンル選択",
                 style = MaterialTheme.typography.titleSmall,
                 color = colors.textSecondary,
-                modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
             )
 
             LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
-                modifier = Modifier.fillMaxSize()
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { clip = false }
             ) {
                 item {
                     // ★一番上のアイテム：上方向と右方向をガード

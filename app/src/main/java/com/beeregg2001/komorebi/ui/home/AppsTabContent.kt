@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.home
 
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -96,6 +97,7 @@ fun AppsTabContent(
     tabIndex: Int = HOME_TAB_TITLES.indexOf("アプリ"),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     topBarFocusRequester: FocusRequester? = null,
+    isTopNavFocused: Boolean = false,
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val hiddenLauncherApps by homeViewModel.hiddenLauncherApps.collectAsState()
@@ -119,11 +121,26 @@ fun AppsTabContent(
 
     val catalogApps = if (isHiddenCatalog) hiddenApps else apps
 
-    LaunchedEffect(apps.map { it.stableId }) {
-        val visibleIds = apps.map { it.stableId }.toSet()
+    LaunchedEffect(isTopNavFocused) {
+        if (isTopNavFocused) {
+            gridState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(apps, hiddenApps) {
+        val allIds = (apps + hiddenApps).map { it.stableId }.toSet()
         appFocusRequesters.keys
-            .filter { it !in visibleIds }
+            .filter { it !in allIds }
             .forEach { appFocusRequesters.remove(it) }
+    }
+
+    BackHandler(
+        enabled = isHiddenCatalog &&
+            actionMenuApp == null &&
+            hiddenActionMenuApp == null &&
+            editingAppId == null
+    ) {
+        isHiddenCatalog = false
     }
 
     // ★ 修正: 固定スリープによる準備完了通知をやめ、先頭アプリが実際に描画された
@@ -153,6 +170,12 @@ fun AppsTabContent(
             if (requester.safeRequestFocusWithRetry("AppsRestore")) {
                 focusMemory.consume(request.id)
             }
+        }
+    }
+
+    LaunchedEffect(isHiddenCatalog, hiddenApps.isEmpty()) {
+        if (isHiddenCatalog && hiddenApps.isEmpty()) {
+            isHiddenCatalog = false
         }
     }
 
@@ -333,7 +356,13 @@ fun AppsTabContent(
                                     homeViewModel.launchApp(app)
                                 }
                             },
-                            onManage = { editingAppId = app.stableId },
+                            onManage = {
+                                if (isHiddenCatalog) {
+                                    hiddenActionMenuApp = app
+                                } else {
+                                    editingAppId = app.stableId
+                                }
+                            },
                             onFocus = {},
                             cardWidth = cellWidth,
                             cardHeight = effectiveCardHeight,
@@ -354,6 +383,12 @@ fun AppsTabContent(
                                 if (!isHiddenCatalog) moveVisibleApp(index, columnCount)
                             },
                             onHide = {
+                                val remaining = apps.filterNot { it.stableId == app.stableId }
+                                dismissedActionAppId = if (remaining.isNotEmpty()) {
+                                    remaining[index.coerceAtMost(remaining.lastIndex)].stableId
+                                } else {
+                                    null
+                                }
                                 homeViewModel.hideLauncherApp(app)
                                 editingAppId = null
                             },
@@ -378,7 +413,12 @@ fun AppsTabContent(
                                     if (index % columnCount == 0) {
                                         left = if (editingAppId == null) tabFocusRequester else FocusRequester.Cancel
                                     }
-                                    if (index == totalEntries - 1) right = FocusRequester.Cancel
+                                    if ((index + 1) % columnCount == 0 || index == totalEntries - 1) {
+                                        right = FocusRequester.Cancel
+                                    }
+                                    if (isLastRow && (isHiddenCatalog || hiddenApps.isEmpty())) {
+                                        down = FocusRequester.Cancel
+                                    }
                                 }
                                 .onPreviewKeyEvent { event ->
                                     if (event.type == KeyEventType.KeyDown &&
@@ -434,6 +474,13 @@ fun AppsTabContent(
                 actionMenuApp = null
             },
             onHide = {
+                val currentIndex = apps.indexOfFirst { it.stableId == app.stableId }
+                val remaining = apps.filterNot { it.stableId == app.stableId }
+                dismissedActionAppId = if (remaining.isNotEmpty() && currentIndex >= 0) {
+                    remaining[currentIndex.coerceAtMost(remaining.lastIndex)].stableId
+                } else {
+                    null
+                }
                 homeViewModel.hideLauncherApp(app)
                 editingAppId = null
                 actionMenuApp = null
@@ -460,8 +507,18 @@ fun AppsTabContent(
                 hiddenActionMenuApp = null
             },
             onRestore = {
+                val currentIndex = hiddenApps.indexOfFirst { it.stableId == app.stableId }
+                val remaining = hiddenApps.filterNot { it.stableId == app.stableId }
+                dismissedActionAppId = if (remaining.isNotEmpty() && currentIndex >= 0) {
+                    remaining[currentIndex.coerceAtMost(remaining.lastIndex)].stableId
+                } else {
+                    null
+                }
                 homeViewModel.restoreLauncherApp(app)
                 hiddenActionMenuApp = null
+                if (remaining.isEmpty()) {
+                    isHiddenCatalog = false
+                }
             },
             onDismiss = {
                 dismissedActionAppId = app.stableId

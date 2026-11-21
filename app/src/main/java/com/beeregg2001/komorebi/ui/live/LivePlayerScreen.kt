@@ -716,7 +716,7 @@ fun LivePlayerScreen(
     val isRetryFocusBlocked =
         ps.crop.mode != PlayerCropMode.HIDDEN || isMiniListOpen
     var subtitleAvoidanceObstacles by remember { mutableStateOf(emptyList<Rect>()) }
-    val subtitleAvoidanceProgress by animateFloatAsState(
+    val subtitleAvoidanceProgressState = animateFloatAsState(
         targetValue = if (showOverlay && subtitleAvoidanceObstacles.isNotEmpty()) 1f else 0f,
         animationSpec = tween(durationMillis = 180),
         label = "liveOverlaySubtitleAvoidance"
@@ -991,7 +991,7 @@ fun LivePlayerScreen(
                                 }
                             ),
                         avoidanceObstacles = subtitleAvoidanceObstacles,
-                        avoidanceProgress = subtitleAvoidanceProgress,
+                        avoidanceProgressProvider = { subtitleAvoidanceProgressState.value },
                     )
                 }
                 if (isHeavyUiReady) {
@@ -1098,17 +1098,21 @@ fun LivePlayerScreen(
                 timeFormatSetting = timeFormat,
                 restingRootOrigin = playerRootOrigin,
                 onAvoidanceObstaclesChanged = { obstacles ->
-                    if (showOverlay) subtitleAvoidanceObstacles = obstacles
+                    if (showOverlay && subtitleAvoidanceObstacles != obstacles) {
+                        subtitleAvoidanceObstacles = obstacles
+                    }
                 },
             )
         }
 
+        val topRecentRecordings = remember(recentRecordings) { recentRecordings.take(10) }
         PreparedPlayerPanel(
             visible = !isPiPMode && isMiniListOpen && ps.playerError == null,
             contentKey = currentChannelItem.id,
             prepare = !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
                 showOverlay && !isManualOverlay && !isSubMenuOpen &&
                 ps.crop.mode == PlayerCropMode.HIDDEN,
+            preparationDelayMs = 350L,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxSize()
@@ -1116,7 +1120,7 @@ fun LivePlayerScreen(
             ChannelListOverlay(
                 groupedChannels = groupedChannels,
                 recentChannels = displayLastWatchedChannels,
-                recentRecordings = recentRecordings.take(10),
+                recentRecordings = topRecentRecordings,
                 backendType = backendType,
                 konomiIp = konomiIp,
                 konomiPort = konomiPort,

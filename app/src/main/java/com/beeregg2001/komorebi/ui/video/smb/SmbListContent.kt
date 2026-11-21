@@ -25,6 +25,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -108,10 +109,11 @@ fun SmbListContent(
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(top = 16.dp, end = 28.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 12.dp, top = 16.dp, end = 28.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { clip = false }
             .focusRequester(focuses.contentContainer)
             .focusGroup()
             .focusProperties { canFocus = !isMenuOpen }
@@ -281,11 +283,12 @@ fun SmbGridContent(
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
         state = gridState,
-        contentPadding = PaddingValues(top = 16.dp, end = 28.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 12.dp, top = 16.dp, end = 28.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { clip = false }
             .focusRequester(focuses.contentContainer)
             .focusGroup()
             .focusProperties { canFocus = !isMenuOpen }

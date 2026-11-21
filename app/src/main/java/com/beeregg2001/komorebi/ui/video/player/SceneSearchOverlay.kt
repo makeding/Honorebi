@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -333,12 +334,13 @@ fun SceneSearchOverlay(
 
             LazyRow(
                 state = listState,
-                contentPadding = PaddingValues(horizontal = 48.dp),
+                contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(126.dp)
+                    .height(150.dp)
+                    .graphicsLayer { clip = false }
             ) {
                 itemsIndexed(timePoints) { index, time ->
                     TiledThumbnailItem(
@@ -624,11 +626,13 @@ fun KeyframeGridOverlay(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
                 state = gridState,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(spacing),
                 verticalArrangement = Arrangement.spacedBy(spacing),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(gridHeight)
+                    .graphicsLayer { clip = false }
             ) {
                 repeat(itemCount) { index ->
                     item(key = index) {
@@ -760,12 +764,13 @@ fun ChapterListOverlay(
 
             LazyRow(
                 state = listState,
-                contentPadding = PaddingValues(horizontal = 48.dp),
+                contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(126.dp)
+                    .height(150.dp)
+                    .graphicsLayer { clip = false }
             ) {
                 itemsIndexed(chapters) { index, chapter ->
                     val tagColor = if (chapter.isCm) Color(0xFFE53935) else Color(0xFF1E88E5)

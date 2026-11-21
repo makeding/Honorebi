@@ -106,6 +106,13 @@ fun LiveContent(
     var selectedGenreId by remember { mutableStateOf<String?>(null) }
     var focusedChannel by remember { mutableStateOf<UiChannelState?>(null) }
     var contentEntryReady by remember { mutableStateOf(false) }
+    var lastFocusedChipRequester by remember(liveRows) { mutableStateOf(activeChipFocusRequester) }
+
+    LaunchedEffect(liveRows.isEmpty()) {
+        if (liveRows.isEmpty()) {
+            contentEntryReady = false
+        }
+    }
 
     LaunchedEffect(liveRows) {
         if (selectedGenreId != null && liveRows.none { it.genreId == selectedGenreId }) {
@@ -119,6 +126,33 @@ fun LiveContent(
             liveRows
         } else {
             liveRows.filter { it.genreId == selectedGenreId }
+        }
+    }
+
+    val firstNonEmptyRowIdx = remember(visibleRows) {
+        visibleRows.indexOfFirst { it.channels.isNotEmpty() }
+    }
+    val hasVisibleChannels = firstNonEmptyRowIdx != -1
+
+    val chunkRows = remember(visibleRows) {
+        buildList {
+            visibleRows.forEach { row ->
+                row.channels.chunked(LIVE_GRID_COLUMNS).forEachIndexed { chunkIdx, chunk ->
+                    add(Triple(row.genreId, chunkIdx, chunk.size))
+                }
+            }
+        }
+    }
+    val lastCardRequesters = remember(chunkRows) {
+        chunkRows.associate { (genreId, chunkIdx, _) -> (genreId to chunkIdx) to FocusRequester() }
+    }
+    val nextChunkMap = remember(chunkRows) {
+        buildMap {
+            for (i in 0 until chunkRows.lastIndex) {
+                val cur = chunkRows[i]
+                val next = chunkRows[i + 1]
+                put(cur.first to cur.second, next)
+            }
         }
     }
 
@@ -155,6 +189,9 @@ fun LiveContent(
                     withFrameNanos { }
                     if (targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")) {
                         consumeReturn()
+                    } else {
+                        fallback.safeRequestFocusWithRetry("LiveNavFallback")
+                        consumeReturn()
                     }
                 } else if (selectedGenreId != null && findFlatChunkIndex(liveRows, targetId) != -1) {
                     // 対象チャンネルが現在のジャンル絞り込み外にある場合は「すべて」へ戻して再探索する
@@ -179,7 +216,6 @@ fun LiveContent(
                         left = topNavFocusRequester
                     }
                     .onGloballyPositioned {
-                        contentEntryReady = true
                         onContentReady()
                     }
                     .focusable(),
@@ -196,9 +232,12 @@ fun LiveContent(
                         activeChipFocusRequester = activeChipFocusRequester,
                         upEdgeRequester = upEdgeRequester,
                         leftEdgeRequester = topNavFocusRequester,
-                        downEdgeRequester = contentFirstItemRequester,
+                        downEdgeRequester = if (hasVisibleChannels) null else contentFirstItemRequester,
                         onSelectGenre = { genreId ->
                             selectedGenreId = genreId
+                        },
+                        onChipFocused = { requester ->
+                            lastFocusedChipRequester = requester
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -217,6 +256,38 @@ fun LiveContent(
                     contentPadding = PaddingValues(top = if (showGenreChips) 4.dp else 68.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (!hasVisibleChannels) {
+                        item(key = "empty-genre") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .padding(
+                                        start = TvContentPaddingStart,
+                                        end = TvContentPaddingEnd
+                                    )
+                                    .focusRequester(contentFirstItemRequester)
+                                    .focusProperties {
+                                        up = if (showGenreChips) lastFocusedChipRequester else upEdgeRequester
+                                        left = topNavFocusRequester
+                                        right = FocusRequester.Cancel
+                                    }
+                                    .onGloballyPositioned {
+                                        contentEntryReady = true
+                                        onContentReady()
+                                    }
+                                    .focusable(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "チャンネルがありません",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
                     visibleRows.forEachIndexed { rowIdx, row ->
                         item(key = "hdr-${row.genreId}") {
                             Text(
@@ -238,7 +309,9 @@ fun LiveContent(
                             items = chunks,
                             key = { chunkIdx, _ -> "row-${row.genreId}-$chunkIdx" }
                         ) { chunkIdx, chunk ->
-                            val isFirstRow = rowIdx == 0 && chunkIdx == 0
+                            val isFirstRow = rowIdx == firstNonEmptyRowIdx && chunkIdx == 0
+                            val chunkLastRequester = lastCardRequesters[row.genreId to chunkIdx]
+                            val nextChunk = nextChunkMap[row.genreId to chunkIdx]
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -254,6 +327,11 @@ fun LiveContent(
                                     val isTarget = uiState.channel.id == lastFocusedChannelId
                                     val isRightEdge = colIdx == chunk.lastIndex
                                     val cachedLogoUrl = channelLogoUrls.logoUrlFor(uiState.channel)
+                                    val nextRowLastCardRequester = if (nextChunk != null && colIdx >= nextChunk.third) {
+                                        lastCardRequesters[nextChunk.first to nextChunk.second]
+                                    } else {
+                                        null
+                                    }
 
                                     WideLiveChannelCard(
                                         uiState = uiState,
@@ -277,6 +355,11 @@ fun LiveContent(
                                                 } else Modifier
                                             )
                                             .then(
+                                                if (isRightEdge && chunkLastRequester != null) {
+                                                    Modifier.focusRequester(chunkLastRequester)
+                                                } else Modifier
+                                            )
+                                            .then(
                                                 if (isFirstCard) {
                                                     Modifier
                                                         .focusRequester(contentFirstItemRequester)
@@ -289,10 +372,13 @@ fun LiveContent(
                                             .focusProperties {
                                                 if (isFirstRow) {
                                                     up = if (showGenreChips) {
-                                                        activeChipFocusRequester
+                                                        lastFocusedChipRequester
                                                     } else {
                                                         upEdgeRequester
                                                     }
+                                                }
+                                                if (nextRowLastCardRequester != null) {
+                                                    down = nextRowLastCardRequester
                                                 }
                                                 if (colIdx == 0) left = topNavFocusRequester
                                                 if (isRightEdge) right = FocusRequester.Cancel
@@ -385,8 +471,9 @@ private fun LiveGenreFilterStrip(
     activeChipFocusRequester: FocusRequester,
     upEdgeRequester: FocusRequester,
     leftEdgeRequester: FocusRequester,
-    downEdgeRequester: FocusRequester,
+    downEdgeRequester: FocusRequester?,
     onSelectGenre: (String?) -> Unit,
+    onChipFocused: (FocusRequester) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val chips = remember(liveRows) {
@@ -394,6 +481,9 @@ private fun LiveGenreFilterStrip(
             add(null to "すべて")
             liveRows.forEach { add(it.genreId to it.genreLabel) }
         }
+    }
+    val chipRequesters = remember(chips) {
+        chips.associate { (genreId, _) -> genreId to FocusRequester() }
     }
 
     LazyRow(
@@ -415,11 +505,14 @@ private fun LiveGenreFilterStrip(
         ) { index, (genreId, label) ->
             val isSelected = selectedGenreId == genreId
             val isLast = index == chips.lastIndex
+            val chipRequester = chipRequesters.getValue(genreId)
             LiveGenreChip(
                 label = label,
                 isSelected = isSelected,
                 onClick = { onSelectGenre(genreId) },
+                onFocused = { onChipFocused(chipRequester) },
                 modifier = Modifier
+                    .focusRequester(chipRequester)
                     .then(
                         if (isSelected) {
                             Modifier.focusRequester(activeChipFocusRequester)
@@ -427,7 +520,7 @@ private fun LiveGenreFilterStrip(
                     )
                     .focusProperties {
                         up = upEdgeRequester
-                        down = downEdgeRequester
+                        if (downEdgeRequester != null) down = downEdgeRequester
                         if (index == 0) left = leftEdgeRequester
                         if (isLast) right = FocusRequester.Cancel
                     }
@@ -441,6 +534,7 @@ private fun LiveGenreChip(
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = KomorebiTheme.colors
@@ -451,7 +545,10 @@ private fun LiveGenreChip(
         onClick = onClick,
         modifier = modifier
             .height(34.dp)
-            .onFocusChanged { isFocused = it.isFocused },
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (it.isFocused) onFocused()
+            },
         shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
         colors = ClickableSurfaceDefaults.colors(

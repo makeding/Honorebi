@@ -155,7 +155,10 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
             AnimatedContent(targetState = selectedCategory, label = "SettingsMenu") { category ->
                 if (category == null) {
                     Column(
-                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .graphicsLayer { clip = false },
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         ModernSettingRow(
@@ -215,7 +218,10 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                     }
                 } else if (category == SubMenuCategory.QUALITY) {
                     Column(
-                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .graphicsLayer { clip = false },
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         availableQualities.forEach { quality ->

@@ -13,6 +13,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -75,7 +78,19 @@ fun ConnectionSettingsContent(
             }, onClick = { onClick(itemRs[index]); action() })
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    Column(
+        modifier = Modifier.onKeyEvent {
+            if (source != null && !isDialogOpen &&
+                it.type == KeyEventType.KeyDown &&
+                (it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                    it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE)
+            ) {
+                returnToSources()
+                true
+            } else false
+        },
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
         Text(source?.let { "${it.label} 設定" } ?: AppStrings.SETTINGS_CATEGORY_CONNECTION,
             style = MaterialTheme.typography.headlineMedium, color = colors.textPrimary,
             fontWeight = FontWeight.Bold)

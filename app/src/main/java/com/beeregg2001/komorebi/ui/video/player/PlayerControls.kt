@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -64,9 +65,61 @@ import com.beeregg2001.komorebi.ui.player.PlayerTimelineTrack
 import com.beeregg2001.komorebi.ui.player.PlayerOverlayEdgePaddingVertical
 import com.beeregg2001.komorebi.ui.player.formatPlayerDurationMillis
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import kotlinx.coroutines.delay
 import kotlin.math.floor
 import kotlin.math.pow
+
+private val BUTTON_OBSTACLE_KEYS = setOf(
+    "info", "chapter-list", "keyframe-grid", "previous-chapter", "seek-back",
+    "play-pause", "seek-forward", "next-chapter", "settings",
+)
+
+private val OsdButtonShape = RoundedCornerShape(8.dp)
+
+private class ControlsObstacleTracker {
+    private val bounds = LinkedHashMap<String, List<Rect>>()
+    private var lastEmitted: List<Rect>? = null
+    private var isVisible: Boolean = false
+    private var isModernUi: Boolean = false
+    private var showHeatmap: Boolean = false
+    private var onChanged: (List<Rect>) -> Unit = {}
+
+    fun update(key: String, rects: List<Rect>) {
+        if (bounds[key] == rects) return
+        bounds[key] = rects
+        emitIfChanged()
+    }
+
+    fun sync(
+        isVisible: Boolean,
+        isModernUi: Boolean,
+        showHeatmap: Boolean,
+        onChanged: (List<Rect>) -> Unit,
+    ) {
+        this.isVisible = isVisible
+        this.isModernUi = isModernUi
+        this.showHeatmap = showHeatmap
+        this.onChanged = onChanged
+        emitIfChanged()
+    }
+
+    private fun emitIfChanged() {
+        val next = if (!isVisible) {
+            emptyList()
+        } else {
+            buildList {
+                for ((key, rects) in bounds) {
+                    if (!isModernUi && key in BUTTON_OBSTACLE_KEYS) continue
+                    if (!showHeatmap && key == "comment-heatmap") continue
+                    addAll(rects)
+                }
+            }
+        }
+        if (next != lastEmitted) {
+            lastEmitted = next
+            onChanged(next)
+        }
+    }
+}
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -109,27 +162,25 @@ fun PlayerControls(
     val loader = remember { TileSheetLoader(context) }
     val density = LocalDensity.current
     var controlsHeight by remember { mutableStateOf(0.dp) }
-    val avoidanceBounds = remember { mutableStateMapOf<String, List<Rect>>() }
     val obstaclePaddingPx = with(density) { 8.dp.toPx() }
-    val recordTextBounds: (String, List<Rect>) -> Unit = { key, bounds ->
-        avoidanceBounds[key] = bounds.map { it.inflate(obstaclePaddingPx) }
+    val obstacleTracker = remember { ControlsObstacleTracker() }
+    val latestOnAvoidanceObstaclesChanged by rememberUpdatedState(onAvoidanceObstaclesChanged)
+    val recordTextBounds: (String, List<Rect>) -> Unit = remember(obstacleTracker, obstaclePaddingPx) {
+        { key, bounds ->
+            obstacleTracker.update(key, bounds.map { it.inflate(obstaclePaddingPx) })
+        }
     }
-    val recordAvoidanceBounds: (String, Rect) -> Unit = { key, bounds ->
-        recordTextBounds(key, listOf(bounds))
+    val recordAvoidanceBounds: (String, Rect) -> Unit = remember(recordTextBounds) {
+        { key, bounds -> recordTextBounds(key, listOf(bounds)) }
     }
 
-    val buttonObstacleKeys = remember {
-        setOf(
-            "info", "chapter-list", "keyframe-grid", "previous-chapter", "seek-back",
-            "play-pause", "seek-forward", "next-chapter", "settings",
+    SideEffect {
+        obstacleTracker.sync(
+            isVisible = isVisible,
+            isModernUi = isModernUi,
+            showHeatmap = allComments.isNotEmpty() && totalDurationMs > 0,
+            onChanged = latestOnAvoidanceObstaclesChanged,
         )
-    }
-    LaunchedEffect(isVisible, isModernUi, allComments.isNotEmpty(), avoidanceBounds.toMap()) {
-        val currentBounds = avoidanceBounds.filterKeys { key ->
-            (isModernUi || key !in buttonObstacleKeys) &&
-                ((allComments.isNotEmpty() && totalDurationMs > 0) || key != "comment-heatmap")
-        }.values.flatten()
-        onAvoidanceObstaclesChanged(if (isVisible) currentBounds else emptyList())
     }
 
     DisposableEffect(Unit) { onDispose { loader.release() } }
@@ -167,16 +218,8 @@ fun PlayerControls(
     val graphHeight = 48.dp
     val chapterControlsEnabled = capabilities.chapters && hasChapters
     val keyframeGridEnabled = capabilities.thumbnailGrid && canOpenKeyframeGrid
-    LaunchedEffect(isVisible, isModernUi) {
-        if (isVisible && isModernUi) {
-            delay(100)
-            try {
-                if (!isSeekBarFocused) {
-                    controlsFocusRequester.requestFocus()
-                }
-            } catch (e: Exception) {
-            }
-        }
+    val controlsGradient = remember {
+        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f)))
     }
 
     Box(
@@ -224,10 +267,11 @@ fun PlayerControls(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned {
-                        controlsHeight = with(density) { it.size.height.toDp() }
+                    .onSizeChanged {
+                        val nextHeight = with(density) { it.height.toDp() }
+                        if (controlsHeight != nextHeight) controlsHeight = nextHeight
                     }
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))))
+                    .background(controlsGradient)
                     .testTag("recorded-controls")
                     .padding(
                         horizontal = PlayerOverlayEdgePaddingHorizontal,
@@ -259,8 +303,6 @@ fun PlayerControls(
                     playHeadVerticalOffset = playHeadVerticalOffset,
                     graphHeight = graphHeight,
                     onProgressBoundsChanged = { bounds -> recordAvoidanceBounds("progress", bounds) },
-                    onPlayHeadBoundsChanged = { bounds -> recordAvoidanceBounds("play-head", bounds) },
-                    onElapsedTimeBoundsChanged = { bounds -> recordTextBounds("elapsed-time", bounds) },
                     onDurationBoundsChanged = { bounds -> recordTextBounds("duration", bounds) },
                     onHeatmapBoundsChanged = { bounds -> recordAvoidanceBounds("comment-heatmap", bounds) },
                 )
@@ -469,8 +511,6 @@ private fun RecordedControlsProgressRow(
     playHeadVerticalOffset: Dp,
     graphHeight: Dp,
     onProgressBoundsChanged: (Rect) -> Unit,
-    onPlayHeadBoundsChanged: (Rect) -> Unit,
-    onElapsedTimeBoundsChanged: (List<Rect>) -> Unit,
     onDurationBoundsChanged: (List<Rect>) -> Unit,
     onHeatmapBoundsChanged: (Rect) -> Unit,
 ) {
@@ -484,7 +524,6 @@ private fun RecordedControlsProgressRow(
         trackModifier = Modifier.onFocusChanged { onSeekBarFocusChanged(it.isFocused) }
             .focusProperties { left = FocusRequester.Cancel; right = FocusRequester.Cancel }
             .focusable(isModernUi),
-        onElapsedBoundsChanged = onElapsedTimeBoundsChanged,
         onDurationBoundsChanged = onDurationBoundsChanged,
         speedContent = {
             androidx.compose.animation.AnimatedVisibility(
@@ -500,7 +539,7 @@ private fun RecordedControlsProgressRow(
             CommentMomentumGraph(
                 comments = allComments,
                 totalDurationMs = totalDurationMs,
-                currentPositionMs = displayPositionMs,
+                currentPositionMsProvider = { displayProgress.value.positionMs },
                 playedColor = colors.accent.copy(alpha = 0.6f),
                 unplayedColor = Color.White.copy(alpha = 0.2f),
                 modifier = Modifier.fillMaxWidth().fillMaxHeight().align(Alignment.BottomStart)
@@ -513,7 +552,6 @@ private fun RecordedControlsProgressRow(
             trackHeight = trackHeight, playHeadSize = playHeadSize,
             playHeadVerticalOffset = playHeadVerticalOffset,
             onTrackBoundsChanged = onProgressBoundsChanged,
-            onPlayHeadBoundsChanged = onPlayHeadBoundsChanged,
         ) {
             if (hasChapters && totalDurationMs > 0L) {
                 val apiCmSections = mediaInfo.cmSections
@@ -553,7 +591,7 @@ fun OsdIconButton(
     val colors = KomorebiTheme.colors
     var lastRepeatTime by remember { mutableLongStateOf(0L) }
 
-    val shape = RoundedCornerShape(8.dp)
+    val shape = OsdButtonShape
     Surface(
         onClick = onClick,
         enabled = enabled,
@@ -599,14 +637,14 @@ fun OsdIconButton(
 fun CommentMomentumGraph(
     comments: List<ArchivedComment>,
     totalDurationMs: Long,
-    currentPositionMs: Long,
+    currentPositionMsProvider: () -> Long,
     modifier: Modifier = Modifier,
     bucketCount: Int = 150,
     playedColor: Color = Color.White.copy(alpha = 0.8f),
     unplayedColor: Color = Color.White.copy(alpha = 0.3f)
 ) {
     val momentumData = remember(comments, totalDurationMs, bucketCount) {
-        if (totalDurationMs <= 0 || comments.isEmpty()) return@remember List(bucketCount) { 0f }
+        if (totalDurationMs <= 0 || comments.isEmpty()) return@remember FloatArray(bucketCount)
 
         val buckets = IntArray(bucketCount)
         val bucketDurationMs = totalDurationMs / bucketCount.toFloat()
@@ -618,48 +656,71 @@ fun CommentMomentumGraph(
         }
 
         val maxComments = buckets.maxOrNull()?.toFloat()?.coerceAtLeast(1f) ?: 1f
-        buckets.map {
-            (it.toFloat() / maxComments).pow(1.5f)
+        FloatArray(bucketCount) { i ->
+            (buckets[i].toFloat() / maxComments).pow(1.5f)
         }
     }
 
-    val currentRatio =
-        if (totalDurationMs > 0) currentPositionMs.toFloat() / totalDurationMs else 0f
+    Spacer(
+        modifier = modifier.drawWithCache {
+            val stepX = size.width / (bucketCount - 1).coerceAtLeast(1)
+            val maxBarHeight = size.height
 
-    Canvas(modifier = modifier) {
-        val stepX = size.width / (bucketCount - 1).coerceAtLeast(1)
-        val maxBarHeight = size.height
-
-        val wavePath = Path().apply {
-            moveTo(0f, size.height)
-            val points = momentumData.mapIndexed { index, value ->
-                val x = index * stepX
-                val y = size.height - (value * maxBarHeight).coerceAtLeast(2f)
-                Offset(x, y)
-            }
-            lineTo(points.first().x, points.first().y)
-            var currentPoint = points.first()
-            for (i in 1 until points.size) {
-                val nextPoint = points[i]
-                val midPoint = Offset(
-                    (currentPoint.x + nextPoint.x) / 2f,
-                    (currentPoint.y + nextPoint.y) / 2f
-                )
-                if (i == 1) {
-                    lineTo(midPoint.x, midPoint.y)
-                } else {
-                    quadraticBezierTo(currentPoint.x, currentPoint.y, midPoint.x, midPoint.y)
+            val wavePath = Path().apply {
+                moveTo(0f, size.height)
+                if (momentumData.isNotEmpty()) {
+                    var currentX = 0f
+                    var currentY = size.height - (momentumData[0] * maxBarHeight).coerceAtLeast(2f)
+                    lineTo(currentX, currentY)
+                    for (i in 1 until momentumData.size) {
+                        val nextX = i * stepX
+                        val nextY = size.height - (momentumData[i] * maxBarHeight).coerceAtLeast(2f)
+                        val midX = (currentX + nextX) / 2f
+                        val midY = (currentY + nextY) / 2f
+                        if (i == 1) {
+                            lineTo(midX, midY)
+                        } else {
+                            quadraticBezierTo(currentX, currentY, midX, midY)
+                        }
+                        currentX = nextX
+                        currentY = nextY
+                    }
+                    lineTo(currentX, currentY)
                 }
-                currentPoint = nextPoint
+                lineTo(size.width, size.height)
+                close()
             }
-            lineTo(points.last().x, points.last().y)
-            lineTo(size.width, size.height)
-            close()
-        }
 
-        drawPath(path = wavePath, color = unplayedColor)
-        clipRect(right = currentRatio * size.width) {
-            drawPath(path = wavePath, color = playedColor)
+            onDrawBehind {
+                val currentRatio = if (totalDurationMs > 0L) {
+                    (currentPositionMsProvider().toFloat() / totalDurationMs).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                drawPath(path = wavePath, color = unplayedColor)
+                clipRect(right = currentRatio * size.width) {
+                    drawPath(path = wavePath, color = playedColor)
+                }
+            }
         }
-    }
+    )
 }
+
+@Composable
+fun CommentMomentumGraph(
+    comments: List<ArchivedComment>,
+    totalDurationMs: Long,
+    currentPositionMs: Long,
+    modifier: Modifier = Modifier,
+    bucketCount: Int = 150,
+    playedColor: Color = Color.White.copy(alpha = 0.8f),
+    unplayedColor: Color = Color.White.copy(alpha = 0.3f)
+) = CommentMomentumGraph(
+    comments = comments,
+    totalDurationMs = totalDurationMs,
+    currentPositionMsProvider = { currentPositionMs },
+    modifier = modifier,
+    bucketCount = bucketCount,
+    playedColor = playedColor,
+    unplayedColor = unplayedColor,
+)

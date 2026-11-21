@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.beeregg2001.komorebi.ui.setting
 
 import androidx.compose.foundation.background
@@ -8,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.testTag
@@ -45,15 +48,23 @@ fun CloudflareAccessDialog(
         id.isBlank() -> "保存するとサービス トークンを消去します。"
         else -> "保存後の接続からサービス トークンを使用します。"
     }
+    var isClosing by remember { mutableStateOf(false) }
     val clientIdFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(150); clientIdFocus.safeRequestFocus() }
     Box(
-        Modifier.fillMaxSize().background(DialogBackdropScrim).focusGroup().onKeyEvent {
-            if (it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK || it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_ESCAPE) {
-                if (!saving && it.type == KeyEventType.KeyUp) onDismiss()
-                true
-            } else false
-        },
+        Modifier
+            .fillMaxSize()
+            .background(DialogBackdropScrim)
+            .focusGroup()
+            .focusProperties {
+                exit = { if (isClosing) FocusRequester.Default else FocusRequester.Cancel }
+            }
+            .onKeyEvent {
+                if (it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK || it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_ESCAPE) {
+                    if (!saving && it.type == KeyEventType.KeyUp) { isClosing = true; onDismiss() }
+                    true
+                } else false
+            },
         contentAlignment = Alignment.Center,
     ) {
         ThemedDialogSurface(width = 620.dp) {
@@ -70,7 +81,7 @@ fun CloudflareAccessDialog(
                     Text(status, color = if (error != null || !valid) colors.danger else colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f), enabled = !saving) { Text("キャンセル") }
+                    DialogActionButton(DialogActionRole.Secondary, { isClosing = true; onDismiss() }, Modifier.weight(1f), enabled = !saving) { Text("キャンセル") }
                     DialogActionButton(DialogActionRole.Primary, onClick = {
                         val id = clientId.trim()
                         val secret = clientSecret.trim()
@@ -78,7 +89,7 @@ fun CloudflareAccessDialog(
                         else {
                             saving = true
                             scope.launch {
-                            try { onConfirm(id, secret); onDismiss() }
+                            try { onConfirm(id, secret); isClosing = true; onDismiss() }
                             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                             catch (_: Exception) { error = "端末に設定を書き込めませんでした。空き容量を確認して再試行してください。" }
                             finally { saving = false }

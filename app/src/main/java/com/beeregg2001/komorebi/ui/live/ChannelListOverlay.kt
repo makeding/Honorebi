@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +47,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,9 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
-import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
@@ -65,7 +64,10 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.RecordedCard
 import com.beeregg2001.komorebi.ui.components.rememberChannelLogoImageLoader
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
-import kotlinx.coroutines.delay
+
+private val ChannelCardShape = RoundedCornerShape(12.dp)
+private val ChannelLogoShape = RoundedCornerShape(4.dp)
+private val SelectedDotShape = RoundedCornerShape(50)
 
 @Composable
 fun ChannelListOverlay(
@@ -103,16 +105,28 @@ fun ChannelListOverlay(
     val secondSection = sectionKeys.getOrNull(1)
     val columnState = rememberLazyListState()
     val secondSectionFocusRequester = remember { FocusRequester() }
+    val logoImageLoader = rememberChannelLogoImageLoader()
+    val backgroundBrush = remember(colors.background) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.Black.copy(alpha = 0.78f),
+                colors.background.copy(alpha = 0.96f),
+                colors.background
+            ),
+            startY = 0f,
+            endY = 700f
+        )
+    }
     var isTwoRowsVisible by remember { mutableStateOf(false) }
-    var isPlaced by remember(isActive) { mutableStateOf(false) }
     var hasInitialFocus by remember(isActive, firstSection, currentChannelId) { mutableStateOf(false) }
 
-    LaunchedEffect(isActive, isPlaced, firstSection, currentChannelId) {
-        if (!isActive || !isPlaced || hasInitialFocus || firstSection == null) return@LaunchedEffect
+    LaunchedEffect(isActive, firstSection, currentChannelId) {
+        if (!isActive || hasInitialFocus || firstSection == null) return@LaunchedEffect
         isTwoRowsVisible = false
         if (columnState.firstVisibleItemIndex != 0 || columnState.firstVisibleItemScrollOffset != 0) {
             columnState.scrollToItem(0)
         }
+        withFrameNanos { }
         val focused = focusRequester.safeRequestFocusWithRetry(
             tag = "ChannelBrowserFocus",
             maxRetries = 8,
@@ -126,7 +140,7 @@ fun ChannelListOverlay(
 
     LaunchedEffect(isActive, isTwoRowsVisible, secondSection) {
         if (isActive && isTwoRowsVisible && secondSection != null) {
-            delay(60)
+            withFrameNanos { }
             secondSectionFocusRequester.safeRequestFocusWithRetry(
                 tag = "ChannelBrowserSecondRowFocus",
                 maxRetries = 5,
@@ -136,9 +150,7 @@ fun ChannelListOverlay(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onGloballyPositioned { isPlaced = isActive },
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.BottomCenter
     ) {
         LazyColumn(
@@ -150,17 +162,7 @@ fun ChannelListOverlay(
                     if (isActive) onFirstDraw()
                 }
                 .height(if (isTwoRowsVisible) 336.dp else 180.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.78f),
-                            colors.background.copy(alpha = 0.96f),
-                            colors.background
-                        ),
-                        startY = 0f,
-                        endY = 700f
-                    )
-                )
+                .background(backgroundBrush)
                 .onPreviewKeyEvent { event ->
                     if (isActive && event.type == KeyEventType.KeyDown &&
                         event.key == Key.DirectionDown && event.nativeKeyEvent.repeatCount > 0
@@ -189,6 +191,7 @@ fun ChannelListOverlay(
                         currentChannelId = currentChannelId,
                         logoUrls = logoUrls,
                         shouldCropLogo = shouldCropLogo,
+                        imageLoader = logoImageLoader,
                         onChannelSelect = onChannelSelect,
                         initialFocusRequester = when ("recent-channels") {
                             firstSection -> focusRequester
@@ -228,6 +231,7 @@ fun ChannelListOverlay(
                     currentChannelId = currentChannelId,
                     logoUrls = logoUrls,
                     shouldCropLogo = shouldCropLogo,
+                    imageLoader = logoImageLoader,
                     onChannelSelect = onChannelSelect,
                     initialFocusRequester = when (type) {
                         firstSection -> focusRequester
@@ -247,6 +251,7 @@ private fun ChannelSectionRow(
     currentChannelId: String,
     logoUrls: Map<String, String>,
     shouldCropLogo: Boolean,
+    imageLoader: ImageLoader,
     onChannelSelect: (Channel) -> Unit,
     initialFocusRequester: FocusRequester?
 ) {
@@ -286,7 +291,8 @@ private fun ChannelSectionRow(
                         } else {
                             Modifier
                         }
-                    )
+                    ),
+                    imageLoader = imageLoader,
                 )
             }
         }
@@ -353,11 +359,11 @@ fun ChannelCardItem(
     logoUrl: String,
     shouldCropLogo: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    imageLoader: ImageLoader = rememberChannelLogoImageLoader(),
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
-    val imageLoader = rememberChannelLogoImageLoader()
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val imageRequest = remember(context, logoUrl) {
@@ -383,12 +389,12 @@ fun ChannelCardItem(
         modifier = modifier
             .width(220.dp)
             .height(90.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ChannelCardShape)
             .background(backgroundColor)
             .border(
                 width = borderWidth,
                 color = borderColor,
-                shape = RoundedCornerShape(12.dp)
+                shape = ChannelCardShape
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -401,12 +407,11 @@ fun ChannelCardItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize()
         ) {
-            Surface(
+            Box(
                 modifier = Modifier
                     .size(48.dp, 27.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (isFocused) Color.LightGray else Color.White),
-                colors = SurfaceDefaults.colors(containerColor = Color.Transparent)
+                    .clip(ChannelLogoShape)
+                    .background(if (isFocused) Color.LightGray else Color.White)
             ) {
                 AsyncImage(
                     imageLoader = imageLoader,
@@ -449,7 +454,7 @@ fun ChannelCardItem(
                     .align(Alignment.TopEnd)
                     .offset(x = 4.dp, y = (-4).dp)
                     .size(8.dp)
-                    .background(colors.accent, RoundedCornerShape(50))
+                    .background(colors.accent, SelectedDotShape)
             )
         }
     }

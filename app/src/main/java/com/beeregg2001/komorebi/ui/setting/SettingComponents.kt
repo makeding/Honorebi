@@ -481,7 +481,14 @@ fun HonomiLoginDialog(
 ) {
     val colors = KomorebiTheme.colors
     val qrBitmap = verificationUrl?.let { rememberQrBitmap(it, 260, margin = 1) }
+    val cancelRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { onStart() }
+    LaunchedEffect(isLoading) {
+        if (!isLoading) {
+            delay(120)
+            cancelRequester.safeRequestFocusWithRetry("HonomiLogin_Cancel")
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize().background(DialogBackdropScrim).focusGroup()
@@ -532,7 +539,12 @@ fun HonomiLoginDialog(
                     )
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f), enabled = !isLoading) { Text("キャンセル") }
+                    DialogActionButton(
+                        DialogActionRole.Secondary,
+                        onDismiss,
+                        Modifier.weight(1f).focusRequester(cancelRequester),
+                        enabled = !isLoading,
+                    ) { Text("キャンセル") }
                     if (isLoading) CircularProgressIndicator(Modifier.size(36.dp).align(Alignment.CenterVertically))
                 }
             }
@@ -943,7 +955,7 @@ fun SmbManualInputDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp),
+                            .padding(top = 12.dp, bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         DialogActionButton(DialogActionRole.Secondary, { isClosing = true; onDismiss() }, Modifier.weight(1f)) { Text("キャンセル") }
@@ -972,10 +984,10 @@ fun SelectionDialog(
     onSelect: (String) -> Unit
 ) {
     val colors = KomorebiTheme.colors
-    val initialIndex = remember(options, current) {
-        options.indexOfFirst { it.second == current }.coerceAtLeast(0)
+    val targetIndex = remember(options, current) {
+        options.indexOfFirst { it.second == current }.let { if (it >= 0) it else 0 }
     }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = targetIndex)
 
     var isClosing by remember { mutableStateOf(false) }
     val initialFocusRequester = remember { FocusRequester() }
@@ -993,7 +1005,6 @@ fun SelectionDialog(
             .focusProperties {
                 exit = { if (isClosing) FocusRequester.Default else FocusRequester.Cancel }
             }
-            .focusRequester(initialFocusRequester)
             .onKeyEvent {
                 if (it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK && it.type == KeyEventType.KeyUp) {
                     isClosing = true; onDismiss(); return@onKeyEvent true
@@ -1018,7 +1029,7 @@ fun SelectionDialog(
                 itemsIndexed(options) { index, (label, value) ->
                     val isSelected = value == current
                     val focusModifier =
-                        if (isSelected || (current.isEmpty() && index == 0)) Modifier.focusRequester(
+                        if (index == targetIndex) Modifier.focusRequester(
                             initialFocusRequester
                         ) else Modifier
                     SelectionDialogItem(
@@ -1070,7 +1081,7 @@ fun SelectionDialogItem(
             focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape),
         ),
         shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f)
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -1211,7 +1222,7 @@ fun MultiSelectionDialogItem(
             focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = shape),
         ),
         shape = ClickableSurfaceDefaults.shape(shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f)
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

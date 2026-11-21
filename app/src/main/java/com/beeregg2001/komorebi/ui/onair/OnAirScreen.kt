@@ -151,6 +151,7 @@ fun OnAirScreen(
     val headerFocus = remember { mutableMapOf<Int, FocusRequester>() }
     (0..6).forEach { headerFocus.getOrPut(it) { FocusRequester() } }
     val seasonFocus = remember { FocusRequester() }
+    val emptyActionFocus = remember { FocusRequester() }
     var choosingSeason by remember { mutableStateOf(false) }
     var initialFocusPlaced by remember(konomiIp, konomiPort) { mutableStateOf(isReturningFromPlayer) }
     val nowJst = rememberJapanNow()
@@ -187,24 +188,28 @@ fun OnAirScreen(
     fun requesterAt(day: Int, index: Int): FocusRequester? =
         byWeekday.getOrNull(day)?.getOrNull(index)?.let { cardFocus[it.id] }
 
-    fun neighborDay(day: Int, step: Int): Int {
+    fun neighborDay(day: Int, step: Int): Int? {
         var d = day + step
         while (d in 0..6) {
             if (byWeekday[d].isNotEmpty()) return d
             d += step
         }
-        return day
+        return null
     }
 
-    fun cardLeft(day: Int, index: Int): FocusRequester =
-        if (day == 0) FocusRequester.Cancel
-        else requesterAt(neighborDay(day, -1), index.coerceIn(0, (byWeekday[neighborDay(day, -1)].size - 1).coerceAtLeast(0)))
-            ?: FocusRequester.Cancel
+    fun cardLeft(day: Int, index: Int): FocusRequester {
+        if (day == 0) return FocusRequester.Cancel
+        val prevDay = neighborDay(day, -1) ?: return FocusRequester.Cancel
+        val targetIndex = index.coerceIn(0, (byWeekday[prevDay].size - 1).coerceAtLeast(0))
+        return requesterAt(prevDay, targetIndex) ?: FocusRequester.Cancel
+    }
 
-    fun cardRight(day: Int, index: Int): FocusRequester =
-        if (day == 6) FocusRequester.Cancel
-        else requesterAt(neighborDay(day, 1), index.coerceIn(0, (byWeekday[neighborDay(day, 1)].size - 1).coerceAtLeast(0)))
-            ?: FocusRequester.Cancel
+    fun cardRight(day: Int, index: Int): FocusRequester {
+        if (day == 6) return FocusRequester.Cancel
+        val nextDay = neighborDay(day, 1) ?: return FocusRequester.Cancel
+        val targetIndex = index.coerceIn(0, (byWeekday[nextDay].size - 1).coerceAtLeast(0))
+        return requesterAt(nextDay, targetIndex) ?: FocusRequester.Cancel
+    }
 
     fun cardUp(day: Int, index: Int): FocusRequester =
         if (index > 0) requesterAt(day, index - 1) ?: headerFocus.getValue(day) else headerFocus.getValue(day)
@@ -275,15 +280,27 @@ fun OnAirScreen(
         onDispose { viewModel.onLeavePage() }
     }
 
-    LaunchedEffect(initialSeriesId, isReturningFromPlayer, freshEntryPrepared, expanded?.seriesId) {
+    LaunchedEffect(
+        initialSeriesId,
+        isReturningFromPlayer,
+        freshEntryPrepared,
+        expanded?.seriesId,
+        state.backendSupported,
+        state.listStatus
+    ) {
         if (!freshEntryPrepared || isReturningFromPlayer || expanded != null || initialFocusPlaced) return@LaunchedEffect
         val day = initialDay
         if (day in 0..6 && initialSeriesId != null) {
             scrollToCard(day, 0, animate = false)
             withFrameNanos { }
             initialFocusPlaced = cardFocus[initialSeriesId]?.safeRequestFocusWithRetry("OnAirInitialFocus") == true
+        } else if (!state.backendSupported || (state.series.isEmpty() && state.listStatus is OnAirLoadState.Error)) {
+            withFrameNanos { }
+            initialFocusPlaced = emptyActionFocus.safeRequestFocusWithRetry("OnAirEmptyActionFocus")
         } else {
-            if (topFocusRequester != FocusRequester.Default) topFocusRequester.safeRequestFocus("OnAirInitialFallback")
+            if (topFocusRequester != FocusRequester.Default && topFocusRequester != FocusRequester.Cancel) {
+                topFocusRequester.safeRequestFocus("OnAirInitialFallback")
+            }
         }
     }
 
@@ -326,10 +343,26 @@ fun OnAirScreen(
     }
 
     if (choosingSeason) {
-        Dialog(onDismissRequest = { choosingSeason = false }) {
+        val selectedSeasonFocus = remember { FocusRequester() }
+        val initialSeasonId = remember(state.seasons, state.selectedSeasonId) {
+            state.seasons.firstOrNull { it.seasonId == state.selectedSeasonId }?.seasonId
+                ?: state.seasons.firstOrNull()?.seasonId
+        }
+        Dialog(
+            onDismissRequest = {
+                choosingSeason = false
+                scope.launch { seasonFocus.safeRequestFocusWithRetry("OnAirSeasonDismiss") }
+            }
+        ) {
+            LaunchedEffect(initialSeasonId) {
+                if (initialSeasonId != null) {
+                    withFrameNanos { }
+                    selectedSeasonFocus.safeRequestFocusWithRetry("OnAirSeasonDialogOpen")
+                }
+            }
             Column(Modifier.width(360.dp).heightIn(max = 400.dp)
-                .background(colors.surface, RoundedCornerShape(12.dp)).padding(16.dp)
-                .verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                .background(colors.surface, RoundedCornerShape(12.dp))
+                .verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("放送期間", color = colors.textPrimary, fontSize = 20.sp)
                 state.seasons.forEach { season ->
                     OnAirAction(
@@ -340,7 +373,13 @@ fun OnAirScreen(
                             scope.launch { seasonFocus.safeRequestFocusWithRetry("OnAirSeasonReturn") }
                         },
                         selected = season.seasonId == state.selectedSeasonId,
-                        modifier = Modifier.fillMaxWidth().testTag("onair-season-${season.seasonId}"),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (season.seasonId == initialSeasonId) Modifier.focusRequester(selectedSeasonFocus)
+                                else Modifier
+                            )
+                            .testTag("onair-season-${season.seasonId}"),
                     )
                 }
             }
@@ -412,12 +451,14 @@ fun OnAirScreen(
                             "このバックエンドは「放送中」に対応していません",
                             "HonomiTV の接続を設定してください。 [ON_AIR_UNSUPPORTED]", "接続設定を開く", onSettings,
                             modifier = Modifier.weight(1f),
+                            actionFocusRequester = emptyActionFocus,
                         )
                         state.series.isEmpty() && state.listStatus is OnAirLoadState.Error -> {
                             val error = state.listStatus as OnAirLoadState.Error
                             OnAirEmpty(
                                 "放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList,
                                 modifier = Modifier.weight(1f),
+                                actionFocusRequester = emptyActionFocus,
                             )
                         }
                         else -> Column(Modifier.weight(1f).fillMaxWidth()) {
@@ -627,11 +668,18 @@ internal fun OnAirEmpty(
     action: String? = null,
     onAction: () -> Unit = {},
     modifier: Modifier = Modifier,
+    actionFocusRequester: FocusRequester? = null,
 ) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, color = KomorebiTheme.colors.textPrimary)
         if (detail.isNotBlank()) Text(detail, color = KomorebiTheme.colors.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
-        if (action != null) OnAirAction(action, onAction)
+        if (action != null) {
+            OnAirAction(
+                action,
+                onAction,
+                modifier = if (actionFocusRequester != null) Modifier.focusRequester(actionFocusRequester) else Modifier,
+            )
+        }
     }
 }
 

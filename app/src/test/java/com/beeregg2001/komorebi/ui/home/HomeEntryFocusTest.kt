@@ -159,6 +159,40 @@ class HomeEntryFocusTest {
         compose.runOnIdle { assertNull(memory.request) }
     }
 
+    @Test fun initialEntryFocusesContentAndFallsBackToTabOnlyIfContentNeverReady() {
+        val memory = FocusMemory()
+        val ready = mutableStateOf(false)
+        val tab = FocusRequester()
+        val content = FocusRequester()
+        compose.setContent {
+            HomeOverlayReturnFocusEffect(
+                isFullScreen = false,
+                returnInProgress = false,
+                onInitialEntry = { memory.requestContent(0) },
+                onRestore = { memory.remember(0) },
+            )
+            HomeEntryFocusEffect(
+                memory = memory,
+                tabRequester = { tab },
+                contentRequester = { content },
+                contentReadyGeneration = if (ready.value) 1L else -1L,
+                isContentReady = { ready.value },
+                contentFallbackTimeoutMs = 2_000L,
+            )
+            Row {
+                Box(Modifier.size(48.dp).testTag("init-tab").focusRequester(tab).focusable())
+                Box(Modifier.size(48.dp).testTag("init-content").focusRequester(content).focusable())
+            }
+        }
+        compose.runOnIdle { assertTrue(memory.request?.contentTop == true) }
+        compose.runOnIdle {
+            effects.advanceTimeBy(2_000L)
+            effects.runCurrent()
+        }
+        compose.onNodeWithTag("init-tab").assertIsFocused()
+        compose.runOnIdle { assertNull(memory.request) }
+    }
+
     @Test fun rapidTabChangesCancelIntermediateRenderAndSameIndexKeyChangeResetsReady() {
         val requestedIndex = mutableIntStateOf(0)
         val requestedKey = mutableStateOf("home")

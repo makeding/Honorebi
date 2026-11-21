@@ -114,6 +114,33 @@ fun VideoTopSubMenuUI(
     val qualityListRequester = remember { FocusRequester() }
     val quickVideoListRequester = remember { FocusRequester() }
     val showHdrTile = capabilities.hdr && isHdrRenderModeSupported
+    val quickSelectionEnabled = capabilities.quickSelection &&
+        (seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty())
+    val thumbnailEnabled = capabilities.thumbnailGrid && canOpenKeyframeGrid
+    val audioEnabled = capabilities.audio
+    val programInfoEnabled = capabilities.programInfo
+    val qualityEnabled = capabilities.quality && availableQualities.isNotEmpty()
+    val speedEnabled = capabilities.speed
+    val subtitlesEnabled = capabilities.subtitles
+    val cropEnabled = capabilities.crop
+    val cmSkipEnabled = capabilities.cmSkip
+    val commentsEnabled = capabilities.comments
+    val dataBroadcastingEnabled = capabilities.dataBroadcasting && isDataBroadcastingAvailable
+    val initialFocusTile = when {
+        programInfoEnabled -> "programInfo"
+        quickSelectionEnabled -> "quickSelection"
+        thumbnailEnabled -> "thumbnail"
+        audioEnabled -> "audio"
+        qualityEnabled -> "quality"
+        speedEnabled -> "speed"
+        subtitlesEnabled -> "subtitles"
+        cropEnabled -> "crop"
+        cmSkipEnabled -> "cmSkip"
+        commentsEnabled -> "comments"
+        showHdrTile -> "hdr"
+        dataBroadcastingEnabled -> "dataBroadcasting"
+        else -> "programInfo"
+    }
     var hdrTileFocused by remember { mutableStateOf(false) }
     val restoreFocusAfterHdrRemoval = !showHdrTile && hdrTileFocused
     LaunchedEffect(showHdrTile) {
@@ -242,22 +269,24 @@ fun VideoTopSubMenuUI(
                     },
                     modifier = Modifier
                         .focusRequester(quickVideoButtonRequester)
+                        .then(if (initialFocusTile == "quickSelection") Modifier.focusRequester(focusRequester) else Modifier)
                         .focusProperties {
                             if (selectedCategory != SubMenuCategory.QUICK_VIDEOS) down =
                                 FocusRequester.Cancel
                         },
                     contentColor = colors.textPrimary,
-                    enabled = capabilities.quickSelection &&
-                        (seriesPrograms.isNotEmpty() || quickPrograms.isNotEmpty() || animeChannels.isNotEmpty())
+                    enabled = quickSelectionEnabled
                 )
                 VideoMenuTileItem(
                     title = "サムネイル",
                     icon = Icons.Default.GridView,
-                    subtitle = if (capabilities.thumbnailGrid && canOpenKeyframeGrid) "一覧" else "未生成",
+                    subtitle = if (thumbnailEnabled) "一覧" else "未生成",
                     onClick = onKeyframeGridToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
-                    contentColor = if (capabilities.thumbnailGrid && canOpenKeyframeGrid) colors.textPrimary else colors.textSecondary,
-                    enabled = capabilities.thumbnailGrid && canOpenKeyframeGrid
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "thumbnail") Modifier.focusRequester(focusRequester) else Modifier)
+                        .focusProperties { down = FocusRequester.Cancel },
+                    contentColor = if (thumbnailEnabled) colors.textPrimary else colors.textSecondary,
+                    enabled = thumbnailEnabled
                 )
                 VideoMenuTileItem(
                     title = "音声切替",
@@ -265,56 +294,63 @@ fun VideoTopSubMenuUI(
                     subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
                     onClick = onAudioToggle,
                     modifier = Modifier
+                        .then(if (initialFocusTile == "audio") Modifier.focusRequester(focusRequester) else Modifier)
                         .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = capabilities.audio
+                    enabled = audioEnabled
                 )
                 VideoMenuTileItem(
                     title = "番組情報",
                     icon = Icons.Default.Info,
                     subtitle = "詳細を開く",
                     onClick = onProgramInfo,
-                    modifier = Modifier.focusRequester(focusRequester)
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "programInfo") Modifier.focusRequester(focusRequester) else Modifier)
                         .focusProperties { down = FocusRequester.Cancel },
-                    contentColor = if (capabilities.programInfo) colors.textPrimary else colors.textSecondary,
-                    enabled = capabilities.programInfo
+                    contentColor = if (programInfoEnabled) colors.textPrimary else colors.textSecondary,
+                    enabled = programInfoEnabled
                 )
                 VideoMenuTileItem(
                     title = "画質",
                     icon = Icons.Default.HighQuality,
                     subtitle = currentQuality.label,
                     onClick = {
-                        if (capabilities.quality && availableQualities.isNotEmpty()) {
+                        if (qualityEnabled) {
                             selectedCategory =
                                 if (selectedCategory == SubMenuCategory.QUALITY) null else SubMenuCategory.QUALITY
                         }
                     },
                     modifier = Modifier
                         .focusRequester(qualityButtonRequester)
+                        .then(if (initialFocusTile == "quality") Modifier.focusRequester(focusRequester) else Modifier)
                         .focusProperties {
                             if (selectedCategory != SubMenuCategory.QUALITY) down =
                                 FocusRequester.Cancel
                         },
                     contentColor = colors.textPrimary,
-                    enabled = capabilities.quality && availableQualities.isNotEmpty()
+                    enabled = qualityEnabled
                 )
                 VideoMenuTileItem(
                     title = "再生速度",
                     icon = Icons.Default.Speed,
                     subtitle = "${currentSpeed}x",
                     onClick = onSpeedToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "speed") Modifier.focusRequester(focusRequester) else Modifier)
+                        .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = capabilities.speed
+                    enabled = speedEnabled
                 )
                 VideoMenuTileItem(
                     title = "字幕",
                     icon = Icons.Default.Subtitles,
                     subtitle = if (isSubtitleEnabled) "表示" else "非表示",
                     onClick = onSubtitleToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "subtitles") Modifier.focusRequester(focusRequester) else Modifier)
+                        .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = capabilities.subtitles
+                    enabled = subtitlesEnabled
                 )
                 if (subtitleLanguages.size > 1 && currentSubtitleLanguage != null) {
                     VideoMenuTileItem(
@@ -332,9 +368,11 @@ fun VideoTopSubMenuUI(
                     icon = Icons.Default.Crop,
                     subtitle = if (isLCropEnabled) "有効" else "設定",
                     onClick = onLCropToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "crop") Modifier.focusRequester(focusRequester) else Modifier)
+                        .focusProperties { down = FocusRequester.Cancel },
                     contentColor = if (isLCropEnabled) colors.accent else colors.textPrimary,
-                    enabled = capabilities.crop
+                    enabled = cropEnabled
                 )
 
                 VideoMenuTileItem(
@@ -342,9 +380,11 @@ fun VideoTopSubMenuUI(
                     icon = Icons.Default.FastForward,
                     subtitle = cmSkipMode.displayLabel,
                     onClick = onCmSkipModeToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "cmSkip") Modifier.focusRequester(focusRequester) else Modifier)
+                        .focusProperties { down = FocusRequester.Cancel },
                     contentColor = if (cmSkipMode != CmSkipMode.OFF) colors.accent else colors.textPrimary,
-                    enabled = capabilities.cmSkip
+                    enabled = cmSkipEnabled
                 )
 
                 VideoMenuTileItem(
@@ -352,9 +392,11 @@ fun VideoTopSubMenuUI(
                     icon = Icons.Default.Chat,
                     subtitle = if (isCommentEnabled) "表示" else "非表示",
                     onClick = onCommentToggle,
-                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    modifier = Modifier
+                        .then(if (initialFocusTile == "comments") Modifier.focusRequester(focusRequester) else Modifier)
+                        .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary,
-                    enabled = capabilities.comments
+                    enabled = commentsEnabled
                 )
                 if (showHdrTile) {
                     VideoMenuTileItem(
@@ -366,7 +408,9 @@ fun VideoTopSubMenuUI(
                             "HLG そのまま"
                         },
                         onClick = onHdrRenderModeToggle,
-                        modifier = Modifier.onFocusChanged { if (showHdrTile) hdrTileFocused = it.isFocused }
+                        modifier = Modifier
+                            .then(if (initialFocusTile == "hdr") Modifier.focusRequester(focusRequester) else Modifier)
+                            .onFocusChanged { if (showHdrTile) hdrTileFocused = it.isFocused }
                             .focusProperties { down = FocusRequester.Cancel },
                         contentColor = if (capabilities.hdr && isHdrRenderModeSupported && hdrRenderMode == HdrToneMapping.RENDER_MODE_SDR) {
                             colors.accent
@@ -381,13 +425,15 @@ fun VideoTopSubMenuUI(
                         icon = Icons.Default.Tv,
                         subtitle = if (isDataBroadcastingActive) "表示中" else "開く",
                         onClick = onDataBroadcastingToggle,
-                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        modifier = Modifier
+                            .then(if (initialFocusTile == "dataBroadcasting") Modifier.focusRequester(focusRequester) else Modifier)
+                            .focusProperties { down = FocusRequester.Cancel },
                         contentColor = if (capabilities.dataBroadcasting && isDataBroadcastingActive) {
                             colors.accent
                         } else {
                             colors.textPrimary
                         },
-                        enabled = capabilities.dataBroadcasting && isDataBroadcastingAvailable,
+                        enabled = dataBroadcastingEnabled,
                     )
 
             }
@@ -442,8 +488,10 @@ fun VideoTopSubMenuUI(
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 32.dp, vertical = 8.dp)
                     ) {
-                        availableQualities.forEach { quality ->
+                        availableQualities.forEachIndexed { index, quality ->
                             val isSelected = currentQuality.value == quality.value
+                            val isInitialQualityFocus = isSelected ||
+                                (index == 0 && availableQualities.none { it.value == currentQuality.value })
 
                             VideoMenuTileItem(
                                 title = quality.label,
@@ -461,7 +509,7 @@ fun VideoTopSubMenuUI(
                                 height = 100.dp,
                                 modifier = Modifier
                                     .then(
-                                        if (isSelected) Modifier.focusRequester(
+                                        if (isInitialQualityFocus) Modifier.focusRequester(
                                             qualityListRequester
                                         ) else Modifier
                                     )

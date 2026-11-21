@@ -93,6 +93,17 @@ fun HomeContents(
         if (isFirstItemRendered.value) onUiReady()
     }
 
+    LaunchedEffect(isTopNavFocused) {
+        if (isTopNavFocused) {
+            lazyListState.scrollToItem(0)
+        }
+    }
+
+    fun clearLastClickedSection() {
+        homeViewModel.lastClickedSection = null
+        homeViewModel.lastClickedItemId = null
+    }
+
     val availableSections =
         remember(watchHistory, lastWatchedChannels, hotChannels, genrePickup, upcomingReserves) {
             buildList {
@@ -103,6 +114,7 @@ fun HomeContents(
                 if (upcomingReserves.isNotEmpty()) add("upcoming")
             }
         }
+    val lastSectionId = availableSections.lastOrNull()
 
     val headerCount = 1 + (if (showQuickApps) 1 else 0)
 
@@ -112,6 +124,8 @@ fun HomeContents(
         val section = request.section ?: return@LaunchedEffect
         val index = availableSections.indexOf(section)
         if (index < 0) {
+            lazyListState.scrollToItem(0)
+            androidx.compose.runtime.withFrameNanos { }
             if (externalFocusRequester.safeRequestFocusWithRetry("HomeRestore_MissingSection")) {
                 focusMemory.consume(request.id)
             }
@@ -149,9 +163,18 @@ fun HomeContents(
                     hotChannels = hotChannels,
                     groupedChannels = groupedChannels,
                     timeFormat = timeFormat,
-                    onHistoryClick = onHistoryClick,
-                    onChannelClick = onChannelClick,
-                    onNavigateToTab = onNavigateToTab,
+                    onHistoryClick = {
+                        clearLastClickedSection()
+                        onHistoryClick(it)
+                    },
+                    onChannelClick = {
+                        clearLastClickedSection()
+                        onChannelClick(it)
+                    },
+                    onNavigateToTab = {
+                        clearLastClickedSection()
+                        onNavigateToTab(it)
+                    },
                     modifier = Modifier
                         .weight(0.58f)
                         .focusRequester(externalFocusRequester)
@@ -159,7 +182,11 @@ fun HomeContents(
                             left = tabFocusRequester
                             right = tile0Requester
                             up = topBarTarget
-                            down = if (showQuickApps) quickAppsFirstRequester else FocusRequester.Default
+                            down = when {
+                                showQuickApps -> quickAppsFirstRequester
+                                availableSections.isEmpty() -> FocusRequester.Cancel
+                                else -> FocusRequester.Default
+                            }
                         },
                 )
 
@@ -174,10 +201,20 @@ fun HomeContents(
                     tile1Requester = tile1Requester,
                     tile2Requester = tile2Requester,
                     tile3Requester = tile3Requester,
-                    onNavigateToTab = onNavigateToTab,
-                    onShowOnAir = onShowOnAir,
-                    onShowAllRecordings = onShowAllRecordings,
+                    onNavigateToTab = {
+                        clearLastClickedSection()
+                        onNavigateToTab(it)
+                    },
+                    onShowOnAir = {
+                        clearLastClickedSection()
+                        onShowOnAir()
+                    },
+                    onShowAllRecordings = {
+                        clearLastClickedSection()
+                        onShowAllRecordings()
+                    },
                     modifier = Modifier.weight(0.42f),
+                    isBottomRow = !showQuickApps && availableSections.isEmpty(),
                 )
             }
         }
@@ -187,10 +224,17 @@ fun HomeContents(
             item(key = "dashboard_apps") {
                 HomeQuickAppsStrip(
                     apps = quickApps,
-                    onAppClick = { homeViewModel.launchApp(it) },
-                    onOpenAllApps = { onNavigateToTab("アプリ") },
+                    onAppClick = {
+                        clearLastClickedSection()
+                        homeViewModel.launchApp(it)
+                    },
+                    onOpenAllApps = {
+                        clearLastClickedSection()
+                        onNavigateToTab("アプリ")
+                    },
                     firstItemRequester = quickAppsFirstRequester,
                     leftEdgeFocusRequester = tabFocusRequester,
+                    isLastSection = availableSections.isEmpty(),
                 )
             }
         }
@@ -208,6 +252,7 @@ fun HomeContents(
                     homeViewModel = homeViewModel,
                     sectionId = "history",
                     focusMemory = focusMemory,
+                    isLastSection = lastSectionId == "history",
                 )
             }
         }
@@ -224,6 +269,7 @@ fun HomeContents(
                     homeViewModel = homeViewModel,
                     sectionId = "lastWatched",
                     focusMemory = focusMemory,
+                    isLastSection = lastSectionId == "lastWatched",
                 )
             }
         }
@@ -239,6 +285,7 @@ fun HomeContents(
                     homeViewModel = homeViewModel,
                     sectionId = "hot",
                     focusMemory = focusMemory,
+                    isLastSection = lastSectionId == "hot",
                 )
             }
         }
@@ -258,6 +305,7 @@ fun HomeContents(
                     sectionId = "pickup",
                     timeFormat = timeFormat,
                     focusMemory = focusMemory,
+                    isLastSection = lastSectionId == "pickup",
                 )
             }
         }
@@ -275,6 +323,7 @@ fun HomeContents(
                     sectionId = "upcoming",
                     timeFormat = timeFormat,
                     focusMemory = focusMemory,
+                    isLastSection = lastSectionId == "upcoming",
                 )
             }
         }

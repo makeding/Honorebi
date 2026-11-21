@@ -144,8 +144,7 @@ fun LiveTopSubMenuUI(
 
     LaunchedEffect(isDualDisplayMode) {
         delay(50)
-        val target = if (isDualDisplayMode) quickChannelButtonRequester else audioButtonRequester
-        target.safeRequestFocusWithRetry(TAG)
+        quickChannelButtonRequester.safeRequestFocusWithRetry(TAG)
     }
 
     LaunchedEffect(selectedCategory) {
@@ -352,7 +351,6 @@ fun LiveTopSubMenuUI(
                     onClick = onAudioToggle,
                     modifier = Modifier
                         .focusRequester(audioButtonRequester)
-                        .focusRequester(focusRequester)
                         .focusProperties { down = FocusRequester.Cancel },
                     contentColor = colors.textPrimary
                 )

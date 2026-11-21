@@ -108,7 +108,6 @@ fun BoxScope.PlayerTimelineTrack(
     }
     Box(Modifier.fillMaxWidth(progress).fillMaxHeight(), contentAlignment = Alignment.BottomEnd) {
         Box(Modifier.offset(x = playHeadSize / 2, y = playHeadVerticalOffset).size(playHeadSize)
-            .onGloballyPositioned { onPlayHeadBoundsChanged(it.boundsInRoot()) }
             .background(if (focused) colors.accent else Color.White, CircleShape))
     }
 }

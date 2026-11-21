@@ -171,11 +171,32 @@ internal fun OnAirDetail(
     }
 
     var autoFocused by remember(series.id) { mutableStateOf(false) }
+    var wasWaitingForPlayerReturn by remember(series.id) { mutableStateOf(waitingForPlayerReturn) }
     LaunchedEffect(series.id, detail.programsStatus, returnCell, waitingForPlayerReturn) {
+        if (waitingForPlayerReturn) {
+            wasWaitingForPlayerReturn = true
+        }
         if (returnCell != null) {
             if (detail.programsStatus != OnAirLoadState.Ready) return@LaunchedEffect
             autoFocused = true
+            wasWaitingForPlayerReturn = false
             if ((cellRequesters[returnCell] ?: defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturn")) onRestored()
+        } else if (!waitingForPlayerReturn && wasWaitingForPlayerReturn) {
+            when (detail.programsStatus) {
+                OnAirLoadState.Ready -> {
+                    if ((defaultCell ?: summaryFocus).safeRequestFocusWithRetry("OnAirEpisodeReturnFallback")) {
+                        autoFocused = true
+                        wasWaitingForPlayerReturn = false
+                    }
+                }
+                is OnAirLoadState.Error -> {
+                    if (summaryFocus.safeRequestFocusWithRetry("OnAirEpisodeReturnErrorFallback")) {
+                        autoFocused = true
+                        wasWaitingForPlayerReturn = false
+                    }
+                }
+                OnAirLoadState.Loading, OnAirLoadState.Idle -> Unit
+            }
         } else if (!autoFocused && !waitingForPlayerReturn) {
             // 録画を待つ間に hero へ仮フォーカスを置かない。Ready 後に末尾スロットを
             // 上から順に探す latestCellKey へ一度だけ入るため、同一話数の局は行順先頭が選ばれる。

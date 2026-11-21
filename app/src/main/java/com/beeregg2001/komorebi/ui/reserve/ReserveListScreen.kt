@@ -10,7 +10,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 // ★ 追加・変更: 標準の Lazy系のインポート。items も明示的にインポートすることで Argument type mismatch を防ぎます
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
@@ -190,6 +190,7 @@ fun ReserveListScreen(
 
     var restoreReserveId by remember { mutableStateOf<Int?>(null) }
     var restoreConditionId by remember { mutableStateOf<Int?>(null) }
+    var wasLoading by remember { mutableStateOf(isLoading) }
 
     LaunchedEffect(isLoading) {
         if (isReserveOverlayOpen) {
@@ -197,9 +198,11 @@ fun ReserveListScreen(
                 "KomorebiFocus",
                 "[ReserveList] オーバーレイ起動中のためリロード時のフォーカス退避・復元をスキップします"
             )
+            wasLoading = isLoading
             return@LaunchedEffect
         }
         if (isLoading) {
+            wasLoading = true
             val resId = viewModel.lastClickedReserveId
             val condId = viewModel.lastClickedConditionId
 
@@ -230,9 +233,16 @@ fun ReserveListScreen(
                     ticketManager.issueForReserve(restoreReserveId!!)
                     restoreReserveId = null
                 }
+            } else if (wasLoading && ticketManager.currentTicket == ReserveFocusTicket.NONE) {
+                Log.i(
+                    "KomorebiFocus",
+                    "[ReserveList] リロード完了。復元すべきIDがないためCONTENT_TOPチケットを発行します。"
+                )
+                ticketManager.issueForTop()
             } else {
                 Log.i("KomorebiFocus", "[ReserveList] リロード完了。復元すべきIDはありません。")
             }
+            wasLoading = false
         }
     }
 
@@ -312,7 +322,10 @@ fun ReserveListScreen(
                     2 -> conditionListState.scrollToItem(0)
                 }
                 withFrameNanos { }
-                listFocusRequester.safeRequestFocusWithRetry("ReserveContentTop")
+                val focused = listFocusRequester.safeRequestFocusWithRetry("ReserveContentTop")
+                if (!focused) {
+                    tabFocusRequesters[selectedTabIndex].safeRequestFocusWithRetry("ReserveContentTopFallback")
+                }
                 ticketManager.consume(ReserveFocusTicket.CONTENT_TOP)
                 viewModel.clearFocusMemory()
             }
@@ -331,16 +344,13 @@ fun ReserveListScreen(
                     if (event.type == KeyEventType.KeyUp) {
                         Log.i(
                             "KomorebiFocus",
-                            "[ReserveList] 自前で戻るキーを処理 -> TopNavへ移動し、記憶をリセット"
+                            "[ReserveList] 戻るキーを処理 -> onBack() へ委譲し、記憶をリセット"
                         )
-
-                        scope.launch {
-                            topNavFocusRequester?.safeRequestFocusWithRetry("BackToTopNav")
-                        }
 
                         viewModel.clearFocusMemory()
                         restoreReserveId = null
                         restoreConditionId = null
+                        onBack()
                         return@onKeyEvent true
                     }
                 }
@@ -352,6 +362,12 @@ fun ReserveListScreen(
                 .size(1.dp)
                 .alpha(0f)
                 .focusRequester(localSafeHouse)
+                .focusProperties {
+                    up = FocusRequester.Cancel
+                    down = FocusRequester.Cancel
+                    left = FocusRequester.Cancel
+                    right = FocusRequester.Cancel
+                }
                 .focusable()
         )
 
@@ -416,7 +432,6 @@ fun ReserveListScreen(
                                 } else Modifier
                             )
                             .focusProperties {
-                                down = listFocusRequester
                                 up = topBarFocusRequester ?: topNavFocusRequester ?: FocusRequester.Default
                                 if (index == 0) left = topNavFocusRequester ?: FocusRequester.Cancel
                                 if (index == tabs.lastIndex) right = FocusRequester.Cancel
@@ -477,11 +492,9 @@ fun ReserveListScreen(
                                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .focusRequester(listFocusRequester)
-                                    .focusProperties { up = tabFocusRequesters[0] }
+                                    .focusGroup()
                             ) {
-                                // ★ items(reserves) が上でインポートしたことにより正しく型解決されます
-                                items(reserves, key = { "all_res_${it.id}" }) { program ->
+                                itemsIndexed(reserves, key = { _, it -> "all_res_${it.id}" }) { index, program ->
                                     val specificRequester = remember { FocusRequester() }
                                     LaunchedEffect(
                                         ticketManager.currentTicket,
@@ -505,7 +518,12 @@ fun ReserveListScreen(
                                         },
                                         modifier = Modifier
                                             .focusRequester(specificRequester)
+                                            .then(
+                                                if (index == 0) Modifier.focusRequester(listFocusRequester)
+                                                else Modifier
+                                            )
                                             .focusProperties {
+                                                if (index == 0) up = tabFocusRequesters[0]
                                                 left = topNavFocusRequester ?: FocusRequester.Cancel
                                                 right = FocusRequester.Cancel
                                             }
@@ -543,10 +561,9 @@ fun ReserveListScreen(
                                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .focusRequester(listFocusRequester)
-                                    .focusProperties { up = tabFocusRequesters[1] }
+                                    .focusGroup()
                             ) {
-                                items(normalReserves, key = { "norm_${it.id}" }) { program ->
+                                itemsIndexed(normalReserves, key = { _, it -> "norm_${it.id}" }) { index, program ->
                                     val specificRequester = remember { FocusRequester() }
                                     LaunchedEffect(
                                         ticketManager.currentTicket,
@@ -570,7 +587,12 @@ fun ReserveListScreen(
                                         },
                                         modifier = Modifier
                                             .focusRequester(specificRequester)
+                                            .then(
+                                                if (index == 0) Modifier.focusRequester(listFocusRequester)
+                                                else Modifier
+                                            )
                                             .focusProperties {
+                                                if (index == 0) up = tabFocusRequesters[1]
                                                 left = topNavFocusRequester ?: FocusRequester.Cancel
                                                 right = FocusRequester.Cancel
                                             }
@@ -608,10 +630,9 @@ fun ReserveListScreen(
                                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .focusRequester(listFocusRequester)
-                                    .focusProperties { up = tabFocusRequesters[2] }
+                                    .focusGroup()
                             ) {
-                                items(conditions, key = { "cond_${it.id}" }) { condition ->
+                                itemsIndexed(conditions, key = { _, it -> "cond_${it.id}" }) { index, condition ->
                                     val specificRequester = remember { FocusRequester() }
                                     LaunchedEffect(
                                         ticketManager.currentTicket,
@@ -637,7 +658,12 @@ fun ReserveListScreen(
                                         reserves = reserves,
                                         modifier = Modifier
                                             .focusRequester(specificRequester)
+                                            .then(
+                                                if (index == 0) Modifier.focusRequester(listFocusRequester)
+                                                else Modifier
+                                            )
                                             .focusProperties {
+                                                if (index == 0) up = tabFocusRequesters[2]
                                                 left = topNavFocusRequester ?: FocusRequester.Cancel
                                                 right = FocusRequester.Cancel
                                             }

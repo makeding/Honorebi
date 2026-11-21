@@ -52,11 +52,13 @@ import com.beeregg2001.komorebi.ui.theme.TvContentPaddingEnd
 import com.beeregg2001.komorebi.ui.theme.TvContentPaddingStart
 import com.beeregg2001.komorebi.viewmodel.RecordViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 
 private const val TAG = "VideoTabContent"
 
 private enum class VideoBannerFocus { RECORDINGS, ON_AIR, SMB }
+private enum class PlayerReturnRestoreResult { WAITING, RESTORED, FAILED }
 
 @RequiresApi(Build.VERSION_CODES.O)
 private fun buildRecordedHeroPreview(
@@ -171,6 +173,7 @@ fun VideoTabContent(
     topBarFocusRequester: FocusRequester? = null,
 ) {
     val colors = KomorebiTheme.colors
+    val coroutineScope = rememberCoroutineScope()
 
     val listState = rememberLazyListState()
     val recentRowState = rememberLazyListState()
@@ -262,8 +265,8 @@ fun VideoTabContent(
         heroExclusionBaseline = isNhkExcluded
     }
 
-    LaunchedEffect(isTopNavFocused) {
-        if (isTopNavFocused) {
+    LaunchedEffect(isTopNavFocused, isReturningFromPlayer) {
+        if (isTopNavFocused && !isReturningFromPlayer) {
             // The tab bar can regain focus while this lazy list is showing a lower
             // row.  Returning to the first row keeps the next Down on On Air.
             listState.scrollToItem(0)
@@ -334,7 +337,7 @@ fun VideoTabContent(
         return requester.safeRequestFocusWithRetry("VideoTabPlayerReturn_${target.row}_${target.programId}")
     }
 
-    suspend fun restorePlayerReturnFocus(playedProgramId: String?): Boolean {
+    suspend fun restorePlayerReturnFocus(playedProgramId: String?): PlayerReturnRestoreResult {
         // The card may arrive from either the recording refresh or the local
         // history write made by player disposal. Do not consume B's return or
         // move focus to a temporary fallback until both are settled.
@@ -345,18 +348,24 @@ fun VideoTabContent(
                 recentLoading = recentRecordingsLoading,
                 historyReady = watchHistoryReady,
             )
-        ) return false
+        ) return PlayerReturnRestoreResult.WAITING
 
         val fallbackTarget = VideoFocusPolicy.playerReturnTarget(
             playedProgramId = playedProgramId,
             recentProgramIds = recentProgramIds,
             historyProgramIds = historyProgramIds,
         )
-        if (fallbackTarget != null) return focusPlayerReturnTarget(fallbackTarget)
+        if (fallbackTarget != null && focusPlayerReturnTarget(fallbackTarget)) {
+            return PlayerReturnRestoreResult.RESTORED
+        }
 
         listState.scrollToItem(0)
         withFrameNanos { }
-        return recordingsRequester.safeRequestFocusWithRetry("VideoTabPlayerReturnFallback")
+        return if (recordingsRequester.safeRequestFocusWithRetry("VideoTabPlayerReturnFallback")) {
+            PlayerReturnRestoreResult.RESTORED
+        } else {
+            PlayerReturnRestoreResult.FAILED
+        }
     }
 
     // Player and AI returns are deliberately serialized here: scroll the target row,
@@ -373,8 +382,10 @@ fun VideoTabContent(
     ) {
         when {
             isReturningFromPlayer -> {
-                if (restorePlayerReturnFocus(lastPlayedProgramId)) {
-                    onReturnFocusConsumed()
+                when (restorePlayerReturnFocus(lastPlayedProgramId)) {
+                    PlayerReturnRestoreResult.WAITING -> Unit
+                    PlayerReturnRestoreResult.RESTORED,
+                    PlayerReturnRestoreResult.FAILED -> onReturnFocusConsumed()
                 }
             }
             aiFocusReturnTick > 0 -> {
@@ -396,11 +407,37 @@ fun VideoTabContent(
     }
     val downToFirstRowModifier = Modifier.onPreviewKeyEvent { event ->
         if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-            recentFocus.requestEntryFocus() || historyFocus.requestEntryFocus()
+            recentFocus.requestEntryFocus() ||
+                historyFocus.requestEntryFocus() ||
+                genreFocus.requestEntryFocus()
         } else {
             false
         }
     }
+    val upToBannerIfDetachedModifier = Modifier.onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+            val isBannerDetached = listState.layoutInfo.visibleItemsInfo.none { it.index == 0 }
+            if (isBannerDetached) {
+                val targetBanner = when (lastFocusedBanner) {
+                    VideoBannerFocus.RECORDINGS -> recordingsRequester
+                    VideoBannerFocus.ON_AIR -> onAirRequester
+                    VideoBannerFocus.SMB -> smbRequester
+                }
+                coroutineScope.launch {
+                    listState.scrollToItem(0)
+                    withFrameNanos { }
+                    targetBanner.safeRequestFocusWithRetry("VideoTabUpToBanner")
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+    val allContentRowsEmpty =
+        recentItems.isEmpty() && historyItems.isEmpty() && groupedSeries.isEmpty()
 
     val heroState = if (isTopNavFocused) {
         railHeroPreview
@@ -451,6 +488,7 @@ fun VideoTabContent(
                                 left = tabFocusRequester
                                 right = onAirRequester
                                 up = upTarget
+                                if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
                         onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
                         onFocus = {
@@ -474,6 +512,7 @@ fun VideoTabContent(
                                 left = recordingsRequester
                                 right = smbRequester
                                 up = upTarget
+                                if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
                         onClick = onShowOnAir,
                         onFocus = {
@@ -496,6 +535,7 @@ fun VideoTabContent(
                                 left = onAirRequester
                                 right = FocusRequester.Cancel
                                 up = upTarget
+                                if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
                         onClick = { onShowSmbLibrary() },
                         onFocus = {
@@ -573,10 +613,14 @@ fun VideoTabContent(
                                     allowNetworkImages = isNetworkAvailable,
                                     modifier = Modifier
                                         .then(recentFocus.itemModifier(program.id.toString()))
+                                        .then(upToBannerIfDetachedModifier)
                                         .focusProperties {
                                             if (index == 0) left = tabFocusRequester
                                             if (index == recentItems.lastIndex) right =
                                                 FocusRequester.Cancel
+                                            if (historyItems.isEmpty() && groupedSeries.isEmpty()) {
+                                                down = FocusRequester.Cancel
+                                            }
                                         },
                                     backendType = backendType,
                                 )
@@ -656,10 +700,17 @@ fun VideoTabContent(
                                     },
                                     modifier = Modifier
                                         .then(historyFocus.itemModifier(historyProgramId))
+                                        .then(
+                                            if (recentItems.isEmpty()) upToBannerIfDetachedModifier
+                                            else Modifier
+                                        )
                                         .focusProperties {
                                             if (index == 0) left = tabFocusRequester
                                             if (index == historyItems.lastIndex) right =
                                                 FocusRequester.Cancel
+                                            if (groupedSeries.isEmpty()) {
+                                                down = FocusRequester.Cancel
+                                            }
                                         },
                                     allowNetworkImages = isNetworkAvailable,
                                     backendType = backendType,
@@ -703,11 +754,21 @@ fun VideoTabContent(
                                     onClick = { recordViewModel.updateSeriesGenre(genre) },
                                     modifier = Modifier
                                         .then(genreFocus.itemModifier(genre ?: "All"))
+                                        .then(
+                                            if (recentItems.isEmpty() && historyItems.isEmpty()) {
+                                                upToBannerIfDetachedModifier
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
                                         .height(40.dp)
                                         .focusProperties {
                                             if (index == 0) left = tabFocusRequester
                                             if (index == genreList.lastIndex) right =
                                                 FocusRequester.Cancel
+                                            if (seriesPreviewItems.isEmpty()) {
+                                                down = FocusRequester.Cancel
+                                            }
                                         }
                                         .onFocusChanged {
                                             isFocused = it.hasFocus

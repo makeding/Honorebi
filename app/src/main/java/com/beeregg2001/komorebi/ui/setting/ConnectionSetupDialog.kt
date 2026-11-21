@@ -12,7 +12,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.setup.ConnectionSetupUiState
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
@@ -20,6 +20,7 @@ import com.beeregg2001.komorebi.ui.components.DialogQrCard
 import com.beeregg2001.komorebi.ui.components.DialogUrlBox
 import com.beeregg2001.komorebi.ui.components.ThemedDialogSurface
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import kotlinx.coroutines.delay
 
 @Composable
 fun ConnectionSetupDialog(
@@ -38,9 +39,9 @@ fun ConnectionSetupDialog(
     val closeR = remember { FocusRequester() }
     DisposableEffect(Unit) { onStart(); onDispose { onStop() } }
     LaunchedEffect(initialSetup) {
-        withFrameNanos { }
-        if (initialSetup) manualR.safeRequestFocus("ConnectionSetup_Initial")
-        else closeR.safeRequestFocus("ConnectionSetup_Close")
+        delay(120)
+        if (initialSetup) manualR.safeRequestFocusWithRetry("ConnectionSetup_Initial")
+        else closeR.safeRequestFocusWithRetry("ConnectionSetup_Close")
     }
     val session = state.session
     val url = session?.let {

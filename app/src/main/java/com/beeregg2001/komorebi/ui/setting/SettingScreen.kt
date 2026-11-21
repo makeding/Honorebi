@@ -26,6 +26,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.StreamQuality
@@ -290,14 +292,22 @@ private fun SettingsMenuScreen(
         uiState.activeDialog = SettingDialogState.None
         scope.launch {
             delay(300)
-            uiState.restoreFocusRequester?.safeRequestFocus("SettingScreen_Restore")
+            val restored = uiState.restoreFocusRequester
+                ?.safeRequestFocusWithRetry("SettingScreen_Restore", maxRetries = 3, delayMillis = 50)
+                ?: false
             delay(100)
             uiState.isRestoringFocus = false
+            if (!restored) {
+                delay(50)
+                categoryFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
+                    ?.safeRequestFocusWithRetry("SettingScreen_Restore_Fallback")
+            }
         }
     }
 
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
+            uiState.selectedCategoryIndex = 11
             uiState.restoreFocusRequester = itemFocusRequesters[11][5]
             uiState.restoreCategoryIndex = 11
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
@@ -399,7 +409,9 @@ private fun SettingsMenuScreen(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(sidebarScrollState),
+                        .graphicsLayer { clip = false }
+                        .verticalScroll(sidebarScrollState)
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     sidebarRows.forEachIndexed { index, row ->
@@ -449,7 +461,7 @@ private fun SettingsMenuScreen(
                         .focusRequester(homeBackRequester)
                         .focusProperties {
                             left = FocusRequester.Cancel // ★ 修正: こちらも左キーへの防波堤を追加
-                            up = categoryFocusRequesters.lastOrNull() ?: FocusRequester.Default
+                            up = sidebarRowRequesters.lastOrNull() ?: FocusRequester.Default
                             down = FocusRequester.Cancel
                             right = itemFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
                                 ?.firstOrNull() ?: FocusRequester.Default
@@ -480,7 +492,9 @@ private fun SettingsMenuScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .graphicsLayer { clip = false }
                         .verticalScroll(mainScrollState)
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
                 ) {
                     when (uiState.selectedCategoryIndex) {
                         0 -> GeneralSettingsContent(

@@ -99,6 +99,7 @@ class VideoPlayerState {
     var wasPlayingBeforeSceneSearch = false
     var downKeyDownTime = 0L
     var isDownKeyLongPressed = false
+    private var suppressDownKeyUp = false
 
     internal val directionalSeek = RecordedDirectionalSeek()
     private val mediaKeys = RecordedMediaKeys()
@@ -145,13 +146,14 @@ class VideoPlayerState {
         onSpeedUp: () -> Unit = {},
         onSpeedDown: () -> Unit = {}
     ): Boolean {
-        if (isPiPMode) { directionalSeek.cancel(); resetMediaKeys(); return false }
+        if (isPiPMode) { directionalSeek.cancel(); resetMediaKeys(); suppressDownKeyUp = false; return false }
         val keyCode = keyEvent.nativeKeyEvent.keyCode
         val isActionDown = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_DOWN
         val isActionUp = keyEvent.nativeKeyEvent.action == NativeKeyEvent.ACTION_UP
         val isHorizontal = keyCode == NativeKeyEvent.KEYCODE_DPAD_LEFT ||
             keyCode == NativeKeyEvent.KEYCODE_DPAD_RIGHT
         if (!isHorizontal) directionalSeek.cancel()
+        if (keyCode != NativeKeyEvent.KEYCODE_DPAD_DOWN) suppressDownKeyUp = false
 
         fun openModernSettingsMenu(): Boolean {
             if (isActionDown) {
@@ -177,7 +179,12 @@ class VideoPlayerState {
             )
         }
 
-        if (isSubOverlayOpen) { directionalSeek.cancel(); resetMediaKeys(); return false }
+        if (isSubOverlayOpen) { directionalSeek.cancel(); resetMediaKeys(); suppressDownKeyUp = false; return false }
+
+        if (keyCode == NativeKeyEvent.KEYCODE_DPAD_DOWN && suppressDownKeyUp) {
+            if (isActionUp) suppressDownKeyUp = false
+            return true
+        }
 
         // CH+/CH- で再生速度を変更 (1.0 → 1.25 → 1.5 → 1.75 → 2.0 → 0.8)
         if (keyCode == NativeKeyEvent.KEYCODE_CHANNEL_UP || keyCode == NativeKeyEvent.KEYCODE_CHANNEL_DOWN) {
@@ -250,11 +257,9 @@ class VideoPlayerState {
                 }
             }
 
-            if (keyCode in listOf(
-                    NativeKeyEvent.KEYCODE_DPAD_DOWN
-                )
-            ) {
-                if (isActionUp) {
+            if (keyCode == NativeKeyEvent.KEYCODE_DPAD_DOWN) {
+                if (isActionDown && keyEvent.nativeKeyEvent.repeatCount == 0) {
+                    suppressDownKeyUp = true
                     onShowControlsChange(true)
                 }
                 return true

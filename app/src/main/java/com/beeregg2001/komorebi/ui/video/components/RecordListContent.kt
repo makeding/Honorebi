@@ -30,6 +30,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
@@ -159,10 +160,11 @@ fun RecordListContent(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp, end = 28.dp),
+            contentPadding = PaddingValues(start = 12.dp, top = 16.dp, end = 28.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer { clip = false }
                 .focusRequester(contentContainerFocusRequester)
                 .focusGroup()
                 .focusProperties { canFocus = !isAnyMenuOpen }
