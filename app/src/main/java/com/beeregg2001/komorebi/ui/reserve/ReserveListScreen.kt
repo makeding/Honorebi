@@ -99,6 +99,7 @@ fun ReserveListScreen(
     groupedChannels: Map<String, List<Channel>> = emptyMap(),
     contentFirstItemRequester: FocusRequester? = null,
     topNavFocusRequester: FocusRequester? = null,
+    topBarFocusRequester: FocusRequester? = null,
     isReserveOverlayOpen: Boolean = false,
     isReturningFromPlayer: Boolean = false,
     onReturnFocusConsumed: () -> Unit = {},
@@ -323,7 +324,7 @@ fun ReserveListScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 40.dp, vertical = 20.dp)
+            .padding(start = 32.dp, end = 32.dp, top = 68.dp, bottom = 20.dp)
             .onKeyEvent { event ->
                 if (event.key == Key.Back) {
                     if (event.type == KeyEventType.KeyDown) return@onKeyEvent true
@@ -416,7 +417,7 @@ fun ReserveListScreen(
                             )
                             .focusProperties {
                                 down = listFocusRequester
-                                up = topNavFocusRequester ?: FocusRequester.Default
+                                up = topBarFocusRequester ?: topNavFocusRequester ?: FocusRequester.Default
                                 if (index == 0) left = topNavFocusRequester ?: FocusRequester.Cancel
                                 if (index == tabs.lastIndex) right = FocusRequester.Cancel
                             }
@@ -424,9 +425,9 @@ fun ReserveListScreen(
                                 if (event.key == Key.DirectionUp && event.type == KeyEventType.KeyDown) {
                                     Log.i(
                                         "KomorebiFocus",
-                                        "[ReserveList] 内部タブから上キー -> TopNavへ強制移動"
+                                        "[ReserveList] 内部タブから上キー -> TopBar/TopNavへ強制移動"
                                     )
-                                    topNavFocusRequester?.requestFocus()
+                                    (topBarFocusRequester ?: topNavFocusRequester)?.requestFocus()
                                     viewModel.clearFocusMemory()
                                     return@onKeyEvent true
                                 }
@@ -473,7 +474,7 @@ fun ReserveListScreen(
                             LazyColumn(
                                 state = allListState,
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp),
+                                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .focusRequester(listFocusRequester)
@@ -539,7 +540,7 @@ fun ReserveListScreen(
                             LazyColumn(
                                 state = normalListState,
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp),
+                                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .focusRequester(listFocusRequester)
@@ -604,7 +605,7 @@ fun ReserveListScreen(
                             LazyColumn(
                                 state = conditionListState,
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp),
+                                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .focusRequester(listFocusRequester)

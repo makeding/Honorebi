@@ -58,7 +58,7 @@ private const val TAG = "AppsTabContent"
 internal object AppsTabLayout {
     val horizontalPadding = TvContentPaddingStart
     val endPadding = TvContentPaddingEnd
-    val topPadding = 12.dp
+    val topPadding = 16.dp
     val viewportBottomPadding = 12.dp
     val cardWidth = 160.dp
 
@@ -235,7 +235,7 @@ fun AppsTabContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(56.dp)
                 .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -301,6 +301,7 @@ fun AppsTabContent(
                 LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Fixed(columnCount),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(AppsTabLayout.horizontalSpacing),
                     verticalArrangement = Arrangement.spacedBy(AppsTabLayout.verticalSpacing),
                     modifier = Modifier

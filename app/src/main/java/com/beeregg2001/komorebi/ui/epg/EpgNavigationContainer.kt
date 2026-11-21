@@ -66,6 +66,7 @@ fun EpgNavigationContainer(
     uiState: EpgUiState,
     logoUrls: List<String>,
     mainTabFocusRequester: FocusRequester,
+    topBarFocusRequester: FocusRequester? = null,
     contentRequester: FocusRequester,
     selectedProgram: EpgProgram?,
     onProgramSelected: (EpgProgram?) -> Unit,
@@ -208,6 +209,7 @@ fun EpgNavigationContainer(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .padding(top = 68.dp)
             .background(Color.Transparent)
     ) {
 
@@ -231,7 +233,7 @@ fun EpgNavigationContainer(
                     uiState = uiState,
                     logoUrls = logoUrls,
                     onProgramSelected = { onProgramSelected(it) },
-                    topTabFocusRequester = mainTabFocusRequester,
+                    topTabFocusRequester = topBarFocusRequester ?: mainTabFocusRequester,
                     headerFocusRequester = headerFocusRequester,
                     jumpButtonFocusRequester = jumpButtonRequester,
                     searchButtonFocusRequester = searchButtonRequester,
