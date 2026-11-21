@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -118,10 +119,11 @@ fun RecordSeriesContent(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp, end = 28.dp),
+            contentPadding = PaddingValues(start = 12.dp, top = 16.dp, end = 28.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer { clip = false }
                 .focusRequester(contentContainerFocusRequester)
                 // ★ 修正: クラッシュの原因だった focusRestorer を安全な focusGroup に変更
                 .focusGroup()

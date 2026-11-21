@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -109,7 +110,9 @@ fun DayOfWeekSelectionDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    contentPadding = PaddingValues(horizontal = 4.dp, top = 4.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.graphicsLayer { clip = false }
                 ) {
                     items(dayOrder) { dayValue ->
                         val isSelected = selected.contains(dayValue)
@@ -229,11 +232,13 @@ fun NumberSelectionDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 LazyColumn(
                     state = listState,
+                    contentPadding = PaddingValues(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
+                        .graphicsLayer { clip = false }
                 ) {
                     items(range.toList()) { num ->
                         val isInitial = num == initialValue

@@ -60,6 +60,7 @@ fun RecordSearchHistoryDropdown(
             )
     ) {
         LazyColumn(
+            contentPadding = PaddingValues(bottom = 4.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .focusGroup() // ★重要：グループ化してフォーカスを逃がさないようにする

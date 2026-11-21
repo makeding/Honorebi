@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -891,8 +892,9 @@ fun BoxScope.RecordSortMenuOverlay(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                         .padding(start = 28.dp, top = 24.dp, end = 12.dp, bottom = 24.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .graphicsLayer { clip = false },
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
