@@ -213,7 +213,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     subtitleCue: NativeCaptionCue?,
     superimposeCue: NativeCaptionCue?,
     subtitleAvoidanceObstacles: List<Rect>,
-    subtitleAvoidanceProgress: Float,
+    subtitleAvoidanceProgressProvider: () -> Float,
     onAvoidanceObstaclesChanged: (List<Rect>) -> Unit,
     infoFocusRequester: FocusRequester,
     presentation: RecordedProgramPresentation,
@@ -347,7 +347,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
             visible = state.isSubtitleEnabled,
             modifier = Modifier.fillMaxSize(),
             avoidanceObstacles = subtitleAvoidanceObstacles,
-            avoidanceProgress = subtitleAvoidanceProgress,
+            avoidanceProgressProvider = subtitleAvoidanceProgressProvider,
         )
     }
 
@@ -404,13 +404,14 @@ internal fun BoxScope.RecordedPlaybackOverlays(
         }
     }
 
+    val programGenreMajors = remember(program.genres) { program.genres?.map { it.major } }
     if (showControls && !isSubOverlayOpen && state.crop.mode == PlayerCropMode.HIDDEN) {
         RecordedProgramStatus(program, timeFormat, presentation)
         RecordedWallClock(
             timeFormat, Modifier.align(Alignment.TopStart).padding(24.dp),
             positionMs = controlsPositionMs, durationMs = totalDurationMs,
             speed = state.currentSpeed,
-            showCurrentTime = playerClockMode.showsCurrentTime(program.genres?.map { it.major }),
+            showCurrentTime = playerClockMode.showsCurrentTime(programGenreMajors),
         )
     }
 
@@ -594,9 +595,10 @@ internal fun RecordedPlayerMenus(
         )
     }
 
+    val menuMediaInfo = remember(program) { PlaybackMediaInfo.recorded(program) }
     Box(modifier = Modifier.fillMaxSize()) {
         VideoTopSubMenuUI(
-            mediaInfo = PlaybackMediaInfo.recorded(program),
+            mediaInfo = menuMediaInfo,
             currentProgram = program,
             seriesPrograms = seriesPrograms,
             quickPrograms = quickPrograms,

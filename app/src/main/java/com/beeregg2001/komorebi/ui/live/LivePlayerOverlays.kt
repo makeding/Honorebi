@@ -20,11 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
@@ -213,15 +215,9 @@ fun LiveOverlayUI(
     val durationMs = if (hasTiming) timeline.durationMs else null
     val density = LocalDensity.current
     val obstaclePaddingPx = with(density) { 8.dp.toPx() }
-    val animatedBounds = remember { mutableStateMapOf<String, Rect>() }
-    var overlayRootOrigin by remember { mutableStateOf(Offset.Zero) }
-    val recordAvoidanceBounds: (String, Rect) -> Unit = { key, bounds ->
-        animatedBounds[key] = bounds
-    }
-    val recordTextBounds: (String, List<Rect>) -> Unit = { prefix, lineBounds ->
-        animatedBounds.keys.filter { it.startsWith("$prefix-") }.forEach(animatedBounds::remove)
-        lineBounds.forEachIndexed { index, bounds -> recordAvoidanceBounds("$prefix-$index", bounds) }
-    }
+    var rootSize by remember { mutableStateOf(IntSize.Zero) }
+    var bottomBarSize by remember { mutableStateOf(IntSize.Zero) }
+    val latestOnAvoidanceObstaclesChanged by rememberUpdatedState(onAvoidanceObstaclesChanged)
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val panelObstacle = remember(configuration.screenWidthDp, configuration.screenHeightDp, density) {
@@ -237,20 +233,28 @@ fun LiveOverlayUI(
             )
         )
     }
-
-    LaunchedEffect(
-        showDesc, restingRootOrigin, overlayRootOrigin, animatedBounds.toMap(), panelObstacle
+    val restingBottomBarObstacle = remember(
+        restingRootOrigin, rootSize, bottomBarSize, obstaclePaddingPx
     ) {
-        val currentBounds = animatedBounds.values.map { bounds ->
-            val restingBounds = bounds.translate(restingRootOrigin - overlayRootOrigin)
-            Rect(
-                left = restingBounds.left - obstaclePaddingPx,
-                top = restingBounds.top - obstaclePaddingPx,
-                right = restingBounds.right + obstaclePaddingPx,
-                bottom = restingBounds.bottom + obstaclePaddingPx,
+        if (rootSize == IntSize.Zero || bottomBarSize == IntSize.Zero) {
+            emptyList()
+        } else {
+            val left = restingRootOrigin.x + ((rootSize.width - bottomBarSize.width) / 2f)
+            val top = restingRootOrigin.y + (rootSize.height - bottomBarSize.height).coerceAtLeast(0)
+            listOf(
+                Rect(
+                    left = (left - obstaclePaddingPx).coerceAtLeast(restingRootOrigin.x),
+                    top = (top - obstaclePaddingPx).coerceAtLeast(restingRootOrigin.y),
+                    right = left + bottomBarSize.width + obstaclePaddingPx,
+                    bottom = top + bottomBarSize.height + obstaclePaddingPx,
+                )
             )
         }
-        onAvoidanceObstaclesChanged(if (showDesc) panelObstacle else currentBounds)
+    }
+    val activeObstacles = if (showDesc) panelObstacle else restingBottomBarObstacle
+
+    LaunchedEffect(activeObstacles) {
+        latestOnAvoidanceObstaclesChanged(activeObstacles)
     }
 
     // Read once immediately on entry/EPG change, then update only this visible timeline.
@@ -286,23 +290,26 @@ fun LiveOverlayUI(
         return
     }
 
+    val bottomBarGradient = remember {
+        Brush.verticalGradient(
+            listOf(
+                Color.Transparent,
+                Color.Black.copy(0.95f)
+            )
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { coordinates -> overlayRootOrigin = coordinates.positionInRoot() },
+            .onSizeChanged { if (it != rootSize) rootSize = it },
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
-                            Color.Black.copy(0.95f)
-                        )
-                    )
-                )
+                .onSizeChanged { if (it != bottomBarSize) bottomBarSize = it }
+                .background(bottomBarGradient)
                 .padding(
                     horizontal = PlayerOverlayEdgePaddingHorizontal,
                     vertical = PlayerOverlayEdgePaddingVertical
@@ -310,18 +317,13 @@ fun LiveOverlayUI(
         ) {
             PlayerTimelineTitle(
                 programTitle, Modifier.testTag("live-title"),
-                onBoundsChanged = { bounds -> recordTextBounds("program-title", bounds) },
             )
             Spacer(Modifier.height(8.dp))
             PlayerTimelineRow(
                 positionMs, durationMs,
-                onElapsedBoundsChanged = { recordTextBounds("start-time", it) },
-                onDurationBoundsChanged = { recordTextBounds("end-time", it) },
             ) {
                 PlayerTimelineTrack(
                     positionMs ?: 0, durationMs ?: 0,
-                    onTrackBoundsChanged = { recordAvoidanceBounds("program-progress", it) },
-                    onPlayHeadBoundsChanged = { recordAvoidanceBounds("program-play-head", it) },
                 )
             }
         }

@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 
 private suspend fun awaitPlayerPanelFrame(operation: () -> Unit) {
     withFrameNanos { operation() }
@@ -58,6 +59,9 @@ internal fun PreparedPlayerPanel(
 
     LaunchedEffect(layoutState, prepare, visible, size, foregroundDrawn) {
         if (!prepare || visible || !foregroundDrawn || size == IntSize.Zero) return@LaunchedEffect
+        // Defer precomposition until the foreground overlay's entry animation settles
+        // so DOWN #1 does not stall on low-end TVs.
+        delay(350)
         // Preparation follows a real draw, then starts on a later frame.
         awaitPreparationFrame { }
         val handle = layoutState.precompose(slot, panelContent)

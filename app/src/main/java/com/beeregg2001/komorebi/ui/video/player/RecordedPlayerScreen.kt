@@ -409,7 +409,7 @@ internal fun RecordedPlayerScreen(
 
     val isSubOverlayOpen =
         isSubMenuOpen || isSceneSearchOpen || ui.isChapterListOpen || ui.isKeyframeGridOpen || ui.isProgramInfoOpen || ui.isModernSettingsOpen || showSourceFeedback
-    val subtitleAvoidanceProgress by animateFloatAsState(
+    val subtitleAvoidanceProgressState = animateFloatAsState(
         targetValue = if (
             showControls &&
             !isSubOverlayOpen &&
@@ -1474,7 +1474,17 @@ internal fun RecordedPlayerScreen(
         showSourceFeedback,
     ) {
         if (isPiPMode) return@LaunchedEffect
-        delay(150)
+        val isImmediateModernControlsFocus =
+            sourceRequest == PlaybackSourceRequest.Ready &&
+                !isSubMenuOpen &&
+                showControls &&
+                isModern &&
+                !isSubOverlayOpen
+        if (isImmediateModernControlsFocus) {
+            withFrameNanos { }
+        } else {
+            delay(150)
+        }
         if (sourceRequest != PlaybackSourceRequest.Ready) {
             // The retry surface owns focus until it disappears. Re-entering modern
             // controls must restore focus even if they were already visible before it.
@@ -1848,9 +1858,11 @@ internal fun RecordedPlayerScreen(
                 subtitleCue = subtitleCue.value,
                 superimposeCue = superimposeCue.value,
                 subtitleAvoidanceObstacles = subtitleAvoidanceObstacles,
-                subtitleAvoidanceProgress = subtitleAvoidanceProgress,
+                subtitleAvoidanceProgressProvider = { subtitleAvoidanceProgressState.value },
                 onAvoidanceObstaclesChanged = { obstacles ->
-                    if (obstacles.isNotEmpty()) subtitleAvoidanceObstacles = obstacles
+                    if (obstacles.isNotEmpty() && subtitleAvoidanceObstacles != obstacles) {
+                        subtitleAvoidanceObstacles = obstacles
+                    }
                 },
                 infoFocusRequester = ui.infoFocusRequester,
                 presentation = rememberRecordedProgramPresentation(currentProgram, videoPlayerViewModel, backendType),
@@ -1871,7 +1883,7 @@ internal fun RecordedPlayerScreen(
                 onPlayNextEpisodeNow = playNextEpisodeNow,
                 onCancelNextEpisodeCountdown = cancelNextEpisodeCountdown,
                 program = currentProgram,
-                mediaInfo = PlaybackMediaInfo.recorded(currentProgram),
+                mediaInfo = remember(currentProgram) { PlaybackMediaInfo.recorded(currentProgram) },
                 timeFormat = timeFormat,
                 playerClockMode = playerClockMode,
                 tiledThumbnailUrl = tiledThumbnailUrl,
