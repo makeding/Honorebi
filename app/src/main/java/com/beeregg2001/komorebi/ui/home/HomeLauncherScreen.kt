@@ -313,9 +313,12 @@ fun HomeLauncherScreen(
         }
     }
 
-    HomeOverlayReturnFocusEffect(isFullScreenMode, isReturningFromPlayer || aiFocusReturnTick > 0) {
-        applyReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS)
-    }
+    HomeOverlayReturnFocusEffect(
+        isFullScreen = isFullScreenMode,
+        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0,
+        onInitialEntry = { focusMemory.requestContent(tabController.selectedIndex) },
+        onRestore = { applyReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS) },
+    )
 
     LaunchedEffect(triggerBack) {
         if (triggerBack) {
