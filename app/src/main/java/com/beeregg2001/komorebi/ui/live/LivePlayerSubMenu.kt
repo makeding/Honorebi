@@ -226,10 +226,10 @@ fun LiveTopSubMenuUI(
 
             // --- メインタイルメニュー行 ---
             Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 32.dp, vertical = 8.dp)
+                    .padding(horizontal = 48.dp, vertical = 8.dp)
             ) {
                 LiveMenuTileItem(
                     title = "クイック選局", icon = Icons.Default.Tv,
@@ -641,8 +641,8 @@ fun LiveMenuTileItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    width: Dp = 160.dp,
-    height: Dp = 100.dp,
+    width: Dp = 136.dp,
+    height: Dp = 86.dp,
     contentColor: Color = Color.White
 ) {
     PlayerMenuTile(

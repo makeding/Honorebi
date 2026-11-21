@@ -310,6 +310,16 @@ internal fun BoxScope.RecordedPlaybackOverlays(
             state.manualCmSkipPromptRestartUntilMs = 0L
         }
     }
+    val isOsdOrMenuOpen = showControls || isSubOverlayOpen || isProgramInfoOpen ||
+        isSceneSearchOpen || isKeyframeGridOpen || isChapterListOpen ||
+        state.crop.mode != PlayerCropMode.HIDDEN
+    val effectiveCommentOpacity = if (isOsdOrMenuOpen) {
+        (commentOpacity * 0.14f).coerceAtMost(0.14f)
+    } else {
+        commentOpacity
+    }
+    val effectiveCommentPlaybackActive = isCommentPlaybackActive && !isSubOverlayOpen
+
     val commentLayerReady = rememberRecordedCommentLayerReady(recordedPlaybackFence, comments.isNotEmpty())
     val commentLayer = @Composable {
         if (commentLayerReady && state.isCommentEnabled) {
@@ -317,11 +327,11 @@ internal fun BoxScope.RecordedPlaybackOverlays(
                 modifier = Modifier.fillMaxSize(),
                 comments = comments,
                 currentPositionProvider = commentPositionMs,
-                isPlaying = isCommentPlaybackActive,
+                isPlaying = effectiveCommentPlaybackActive,
                 isCommentEnabled = state.isCommentEnabled,
                 commentSpeed = commentSpeed,
                 commentFontSizeScale = commentFontSizeScale,
-                commentOpacity = commentOpacity,
+                commentOpacity = effectiveCommentOpacity,
                 commentMaxLines = commentMaxLines,
                 useSoftwareRendering = isEmulator,
                 recordedPlaybackFence = recordedPlaybackFence

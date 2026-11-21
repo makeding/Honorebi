@@ -70,10 +70,20 @@ fun PlayerProgramPanel(
         Text("番組情報  ·  上下キーでスクロール  ·  戻るで閉じる", color = Color.White.copy(0.7f))
     }
 ) {
-    var titleOverflows by remember(title) { mutableStateOf(false) }
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.fillMaxWidth().height(440.dp)
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.95f))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0x00000000),
+                        Color(0xEE0B0C10),
+                        Color(0xFA0B0C10),
+                        Color(0xFF0B0C10)
+                    ),
+                    startY = 0f,
+                    endY = 180f
+                )
+            )
             .padding(horizontal = 64.dp, vertical = 24.dp).testTag("program-panel")) {
             Row(Modifier.fillMaxWidth().height(45.dp), verticalAlignment = Alignment.CenterVertically) {
                 PlayerChannelLogo(logoUrl, channelName, shouldCropLogo, Modifier.size(80.dp, 45.dp))
@@ -85,11 +95,8 @@ fun PlayerProgramPanel(
             }
             Text(title, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold,
                 maxLines = 2, lineHeight = 34.sp, overflow = TextOverflow.Ellipsis,
-                onTextLayout = { titleOverflows = it.hasVisualOverflow },
                 modifier = Modifier.fillMaxWidth().height(84.dp).padding(vertical = 8.dp))
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState).testTag("program-body")) {
-                // Full title remains accessible even when it exceeds the fixed header.
-                if (titleOverflows) Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium)
                 metadata.forEach { (label, value) ->
                     Text("$label: $value", color = Color.White.copy(0.75f),
                         modifier = Modifier.padding(top = 4.dp))

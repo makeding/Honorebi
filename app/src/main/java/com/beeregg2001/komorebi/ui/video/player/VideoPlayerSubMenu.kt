@@ -222,10 +222,10 @@ fun VideoTopSubMenuUI(
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 32.dp, vertical = 8.dp)
+                    .padding(horizontal = 48.dp, vertical = 8.dp)
             ) {
                 VideoMenuTileItem(
                     title = "クイック選局",
@@ -816,8 +816,8 @@ fun VideoMenuTileItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    width: Dp = 160.dp,
-    height: Dp = 100.dp,
+    width: Dp = 136.dp,
+    height: Dp = 86.dp,
     contentColor: Color = Color.White
 ) {
     PlayerMenuTile(

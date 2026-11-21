@@ -26,7 +26,11 @@ fun PlayerSubMenuContainer(
             .wrapContentHeight()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(colors.background.copy(alpha = 0.9f), Color.Transparent)
+                    colors = listOf(
+                        colors.background.copy(alpha = 0.96f),
+                        colors.background.copy(alpha = 0.85f),
+                        Color.Transparent
+                    )
                 )
             )
             .padding(top = 24.dp, bottom = 48.dp),

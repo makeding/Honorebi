@@ -111,9 +111,9 @@ fun RecordedCard(
         scale = ClickableSurfaceDefaults.scale(focusedScale = if (isPlayable) focusSpec.focusedScale else 1.0f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface,
-            focusedContainerColor = colors.textPrimary,
+            focusedContainerColor = colors.surface,
             contentColor = colors.textPrimary,
-            focusedContentColor = inverseColor
+            focusedContentColor = Color.White
         ),
         border = ClickableSurfaceDefaults.border(
             focusedBorder = focusSpec.focusedBorder

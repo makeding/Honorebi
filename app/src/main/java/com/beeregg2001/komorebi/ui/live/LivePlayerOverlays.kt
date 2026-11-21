@@ -51,7 +51,7 @@ import kotlinx.coroutines.delay
 import java.util.*
 
 /**
- * REGZA風の信号情報オーバーレイ
+ * REGZA風の信号情報オーバーレイ (コンパクト2カラムHUD)
  */
 @Composable
 fun SignalInfoOverlay(info: SignalMetadata) {
@@ -67,55 +67,76 @@ fun SignalInfoOverlay(info: SignalMetadata) {
     ) {
         Column(
             modifier = Modifier
-                .background(colors.background.copy(alpha = 0.75f), RoundedCornerShape(4.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                .padding(24.dp)
-                .width(320.dp)
+                .background(com.beeregg2001.komorebi.ui.theme.OsdHudSurface, RoundedCornerShape(8.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                .padding(14.dp)
+                .width(460.dp)
         ) {
             Text(
                 text = "信号情報",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
                 color = colors.accent,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 10.dp)
             )
 
-            SignalRow("解像度", info.videoRes)
-            SignalRow("垂直周波数", info.verticalFreq)
-            SignalRow("映像形式", info.videoCodec)
-            SignalRow("ビットレート", info.videoBitrate)
-            SignalRow("音声形式", info.audioCodec)
-            SignalRow("音声出力", info.audioChannels)
-            SignalRow("サンプリング", info.audioSampleRate)
-            SignalRow("バッファ量", info.bufferDuration)
-            SignalRow("ドロップ数", info.droppedFrames)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Column 1 (Video)
+                Column(modifier = Modifier.weight(1f)) {
+                    CompactSignalRow("解像度", info.videoRes)
+                    CompactSignalRow("周波数", info.verticalFreq)
+                    CompactSignalRow("映像形式", info.videoCodec)
+                    CompactSignalRow("ビットレート", info.videoBitrate)
+                    val isDropped = (info.droppedFrames.toIntOrNull() ?: 0) > 0
+                    CompactSignalRow(
+                        "ドロップ数",
+                        info.droppedFrames,
+                        valueColor = if (isDropped) colors.danger else Color.White
+                    )
+                }
+
+                // Column 2 (Audio & Buffer)
+                Column(modifier = Modifier.weight(1f)) {
+                    CompactSignalRow("音声形式", info.audioCodec)
+                    CompactSignalRow("音声出力", info.audioChannels)
+                    CompactSignalRow("サンプリング", info.audioSampleRate)
+                    CompactSignalRow("バッファ量", info.bufferDuration)
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun SignalRow(label: String, value: String) {
+private fun CompactSignalRow(
+    label: String,
+    value: String,
+    valueColor: Color = Color.White
+) {
     val colors = KomorebiTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            modifier = Modifier.width(100.dp),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp),
-            color = colors.textSecondary.copy(alpha = 0.8f)
+            modifier = Modifier.width(68.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 13.sp),
+            color = colors.textSecondary.copy(alpha = 0.85f),
+            maxLines = 1
         )
         Text(
             text = ": $value",
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 14.sp,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 13.sp,
                 fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.SemiBold,
+                fontFeatureSettings = "tnum"
             ),
-            color = colors.textPrimary
+            color = valueColor,
+            maxLines = 1
         )
     }
 }
@@ -202,8 +223,23 @@ fun LiveOverlayUI(
         lineBounds.forEachIndexed { index, bounds -> recordAvoidanceBounds("$prefix-$index", bounds) }
     }
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val panelObstacle = remember(configuration.screenWidthDp, configuration.screenHeightDp, density) {
+        val rootWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+        val rootHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+        val panelHeightPx = with(density) { 440.dp.toPx() }
+        listOf(
+            Rect(
+                left = 0f,
+                top = (rootHeightPx - panelHeightPx).coerceAtLeast(0f),
+                right = rootWidthPx,
+                bottom = rootHeightPx
+            )
+        )
+    }
+
     LaunchedEffect(
-        showDesc, restingRootOrigin, overlayRootOrigin, animatedBounds.toMap()
+        showDesc, restingRootOrigin, overlayRootOrigin, animatedBounds.toMap(), panelObstacle
     ) {
         val currentBounds = animatedBounds.values.map { bounds ->
             val restingBounds = bounds.translate(restingRootOrigin - overlayRootOrigin)
@@ -214,7 +250,7 @@ fun LiveOverlayUI(
                 bottom = restingBounds.bottom + obstaclePaddingPx,
             )
         }
-        onAvoidanceObstaclesChanged(if (showDesc) emptyList() else currentBounds)
+        onAvoidanceObstaclesChanged(if (showDesc) panelObstacle else currentBounds)
     }
 
     // Read once immediately on entry/EPG change, then update only this visible timeline.

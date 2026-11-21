@@ -944,6 +944,15 @@ fun LivePlayerScreen(
             )
 
             if (!isPiPMode) {
+                val isOsdOrMenuOpen = isSubMenuOpen || isMiniListOpen || isManualOverlay ||
+                    showOverlay || isPinnedOverlay || ps.isSignalInfoVisible ||
+                    ps.crop.mode != PlayerCropMode.HIDDEN
+                val effectiveCommentOpacity = if (isOsdOrMenuOpen) {
+                    (commentOpacity * 0.14f).coerceAtMost(0.14f)
+                } else {
+                    commentOpacity
+                }
+                val isModalMenuOpen = isSubMenuOpen || isManualOverlay
                 // DanmakuOverlay は SurfaceView なので、自分の領域に先に描かれたウィンドウ内容を
                 // 消去する (hole punch)。字幕の Canvas より先に置き、字幕が常に上に描かれるようにする。
                 if (isHeavyUiReady && isCommentEnabled) {
@@ -951,10 +960,10 @@ fun LivePlayerScreen(
                         modifier = Modifier.fillMaxSize(),
                         useSoftwareRendering = isEmulator,
                         speed = commentSpeed,
-                        opacity = commentOpacity,
+                        opacity = effectiveCommentOpacity,
                         maxLines = commentMaxLines,
                         sessionKey = mainSessionToken,
-                        running = ps.isPlayerPlaying && isCommentEnabled && isHeavyUiReady && !ps.isDualDisplayMode,
+                        running = ps.isPlayerPlaying && isCommentEnabled && isHeavyUiReady && !ps.isDualDisplayMode && !isModalMenuOpen,
                         onViewCreated = { handle ->
                             if (mainSessionToken != null) danmakuViewRef.value = handle.view
                         },
@@ -973,7 +982,7 @@ fun LivePlayerScreen(
                             .zIndex(
                                 when {
                                     isDataBroadcastingActive -> 4f
-                                    showOverlay || isPinnedOverlay || isMiniListOpen -> 3f
+                                    showOverlay || isPinnedOverlay || isMiniListOpen || isManualOverlay -> 3f
                                     else -> 0f
                                 }
                             ),

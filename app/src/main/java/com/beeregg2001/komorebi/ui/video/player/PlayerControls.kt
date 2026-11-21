@@ -553,16 +553,20 @@ fun OsdIconButton(
     val colors = KomorebiTheme.colors
     var lastRepeatTime by remember { mutableLongStateOf(0L) }
 
+    val shape = RoundedCornerShape(8.dp)
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        shape = ClickableSurfaceDefaults.shape(shape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.15f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (isPrimary) colors.accent else Color.White.copy(alpha = 0.1f),
-            focusedContainerColor = Color.White,
+            focusedContainerColor = Color(0xFF2E3244),
             contentColor = if (enabled) Color.White else Color.White.copy(alpha = 0.35f),
-            focusedContentColor = Color.Black,
+            focusedContentColor = Color.White,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = Border(androidx.compose.foundation.BorderStroke(2.dp, colors.accent), shape = shape)
         ),
         modifier = modifier
             .size(buttonSize)

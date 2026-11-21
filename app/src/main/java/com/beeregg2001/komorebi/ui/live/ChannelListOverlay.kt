@@ -368,16 +368,15 @@ fun ChannelCardItem(
     }
 
     val backgroundColor = if (isFocused) {
-        colors.textPrimary
+        Color(0xFF282C3D)
     } else if (isSelected) {
-        colors.surface
+        colors.surface.copy(alpha = 0.95f)
     } else {
-        colors.surface.copy(alpha = 0.6f)
+        colors.surface.copy(alpha = 0.75f)
     }
-    val contentColor =
-        if (isFocused) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary
+    val contentColor = Color.White
 
-    val borderWidth = if (isFocused) 3.dp else 0.dp
+    val borderWidth = if (isFocused) 2.5.dp else 0.dp
     val borderColor = if (isFocused) colors.accent else Color.Transparent
 
     Box(
