@@ -32,7 +32,9 @@ import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,6 +76,7 @@ import com.beeregg2001.komorebi.ui.theme.TvRailCollapsedWidth
 import com.beeregg2001.komorebi.ui.theme.TvRailExpandedWidth
 import com.beeregg2001.komorebi.ui.theme.TvRailSelectedIndicatorVerticalInset
 import com.beeregg2001.komorebi.ui.theme.TvRailSelectedIndicatorWidth
+import kotlinx.coroutines.delay
 
 private val RAIL_ITEM_HEIGHT = 48.dp
 private val RAIL_ICON_SIZE = 24.dp
@@ -81,6 +84,7 @@ private val RAIL_ITEM_HORIZONTAL_INSET = 8.dp
 private val RAIL_ITEM_VERTICAL_INSET = 2.dp
 private const val RAIL_WIDTH_ANIM_MS = 140
 private const val RAIL_LABEL_ANIM_MS = 120
+private const val RAIL_AUTO_COLLAPSE_MS = 15_000L
 
 private fun railIcon(tab: LauncherTab): ImageVector = when (tab) {
     LauncherTab.HOME -> Icons.Default.Home
@@ -117,19 +121,31 @@ internal fun LauncherNavRail(
     val selectedTab = controller.selectedTab
 
     var railHasFocus by remember { mutableStateOf(false) }
+    var interactionTick by remember { mutableIntStateOf(0) }
+    var isAutoCollapsed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(railHasFocus, interactionTick) {
+        isAutoCollapsed = false
+        if (railHasFocus) {
+            delay(RAIL_AUTO_COLLAPSE_MS)
+            isAutoCollapsed = true
+        }
+    }
+
+    val isExpanded = railHasFocus && !isAutoCollapsed
 
     val railWidth by animateDpAsState(
-        targetValue = if (railHasFocus) TvRailExpandedWidth else TvRailCollapsedWidth,
+        targetValue = if (isExpanded) TvRailExpandedWidth else TvRailCollapsedWidth,
         animationSpec = tween(durationMillis = RAIL_WIDTH_ANIM_MS, easing = FastOutSlowInEasing),
         label = "launcher_rail_width",
     )
     val labelAlpha by animateFloatAsState(
-        targetValue = if (railHasFocus) 1f else 0f,
+        targetValue = if (isExpanded) 1f else 0f,
         animationSpec = tween(durationMillis = RAIL_LABEL_ANIM_MS, easing = FastOutSlowInEasing),
         label = "launcher_rail_label_alpha",
     )
     val railSurfaceColor by animateColorAsState(
-        targetValue = if (railHasFocus) colors.overlay.copy(alpha = 0.98f) else colors.surface1,
+        targetValue = if (isExpanded) colors.overlay.copy(alpha = 0.98f) else colors.surface1,
         animationSpec = tween(durationMillis = RAIL_LABEL_ANIM_MS, easing = FastOutSlowInEasing),
         label = "launcher_rail_surface",
     )
@@ -150,17 +166,18 @@ internal fun LauncherNavRail(
             }
             .onFocusChanged { focusState ->
                 railHasFocus = focusState.hasFocus
+                if (focusState.hasFocus) interactionTick++
                 onHasFocusChanged(focusState.hasFocus)
             }
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Back || event.key == Key.Escape)
-                ) {
-                    onBack()
-                    true
-                } else {
-                    false
+                if (event.type == KeyEventType.KeyDown) {
+                    interactionTick++
+                    if (event.key == Key.Back || event.key == Key.Escape) {
+                        onBack()
+                        return@onPreviewKeyEvent true
+                    }
                 }
+                false
             }
             .focusGroup()
             .focusProperties {
@@ -239,6 +256,7 @@ internal fun LauncherNavRail(
                     .onFocusChanged { focusState ->
                         isItemFocused = focusState.isFocused
                         if (focusState.isFocused) {
+                            interactionTick++
                             onTabFocused(tab)
                         }
                     }
@@ -298,6 +316,7 @@ internal fun LauncherNavRail(
                 }
                 .onFocusChanged { focusState ->
                     isSettingsFocused = focusState.isFocused
+                    if (focusState.isFocused) interactionTick++
                 }
                 .clickable(
                     enabled = settingsCanFocus,
