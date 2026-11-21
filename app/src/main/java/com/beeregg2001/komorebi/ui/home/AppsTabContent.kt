@@ -235,7 +235,8 @@ fun AppsTabContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
+                .height(48.dp)
+                .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

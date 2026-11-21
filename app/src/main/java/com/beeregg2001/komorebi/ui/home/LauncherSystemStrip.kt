@@ -5,6 +5,8 @@ package com.beeregg2001.komorebi.ui.home
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -225,15 +227,18 @@ internal fun LauncherSystemStrip(
     onHasFocusChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    clockFocusRequester: FocusRequester = remember { FocusRequester() },
+    onClockClick: () -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val focusSpec = tvCardFocus(TvCardFamily.SYSTEM_ICON)
+    val stripShape = RoundedCornerShape(14.dp)
 
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .height(TvTopStripHeight)
-            .padding(top = 8.dp, end = TvContentPaddingEnd)
+            .background(colors.overlay, stripShape)
+            .border(1.dp, colors.borderSubtle, stripShape)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
             .onFocusChanged { onHasFocusChanged(it.hasFocus) }
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown &&
@@ -245,71 +250,63 @@ internal fun LauncherSystemStrip(
                     false
                 }
             },
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Always reserve the fixed slot width so neighbors never reflow when playback toggles.
-        Box(
-            modifier = Modifier
-                .width(RETURN_PLAYER_SLOT_WIDTH)
-                .height(48.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (hasActivePlayer) {
-                val pillShape = RoundedCornerShape(20.dp)
-                Surface(
-                    onClick = onReturnToPlayerClick,
-                    modifier = Modifier
-                        .height(40.dp)
-                        .focusRequester(returnPlayerFocusRequester)
-                        .focusProperties {
-                            left = leftEdgeFocusRequester
-                            right = if (inputSourceApp != null) {
-                                inputSourceFocusRequester
-                            } else {
-                                wifiSettingsFocusRequester
-                            }
-                            down = downFocusRequester
-                            up = FocusRequester.Cancel
-                            canFocus = canTakeFocus
-                        },
-                    shape = ClickableSurfaceDefaults.shape(pillShape),
-                    scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleSystemIcon),
-                    border = ClickableSurfaceDefaults.border(
-                        border = Border(
-                            border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.35f)),
-                            shape = pillShape,
-                        ),
-                        focusedBorder = Border(
-                            border = BorderStroke(TvCardFocusBorderWidth, colors.accent),
-                            shape = pillShape,
-                        ),
+        if (hasActivePlayer) {
+            val pillShape = RoundedCornerShape(20.dp)
+            Surface(
+                onClick = onReturnToPlayerClick,
+                modifier = Modifier
+                    .height(40.dp)
+                    .focusRequester(returnPlayerFocusRequester)
+                    .focusProperties {
+                        left = leftEdgeFocusRequester
+                        right = if (inputSourceApp != null) {
+                            inputSourceFocusRequester
+                        } else {
+                            wifiSettingsFocusRequester
+                        }
+                        down = downFocusRequester
+                        up = FocusRequester.Cancel
+                        canFocus = canTakeFocus
+                    },
+                shape = ClickableSurfaceDefaults.shape(pillShape),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleSystemIcon),
+                border = ClickableSurfaceDefaults.border(
+                    border = Border(
+                        border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.35f)),
+                        shape = pillShape,
                     ),
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = colors.accentSoft,
-                        focusedContainerColor = colors.surface2,
-                        contentColor = colors.accent,
-                        focusedContentColor = colors.textPrimary,
+                    focusedBorder = Border(
+                        border = BorderStroke(TvCardFocusBorderWidth, colors.accent),
+                        shape = pillShape,
                     ),
+                ),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = colors.accentSoft,
+                    focusedContainerColor = colors.surface2,
+                    contentColor = colors.accent,
+                    focusedContentColor = colors.textPrimary,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "再生中",
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "再生中",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false,
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "再生中",
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "再生中",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                 }
             }
         }
@@ -351,7 +348,7 @@ internal fun LauncherSystemStrip(
                 .focusRequester(systemSettingsFocusRequester)
                 .focusProperties {
                     left = wifiSettingsFocusRequester
-                    right = FocusRequester.Cancel
+                    right = clockFocusRequester
                     down = downFocusRequester
                     up = FocusRequester.Cancel
                     canFocus = canTakeFocus
@@ -378,8 +375,37 @@ internal fun LauncherSystemStrip(
             }
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        DigitalClock(timeFormat = timeFormat)
+        Surface(
+            onClick = onClockClick,
+            modifier = Modifier
+                .height(48.dp)
+                .focusRequester(clockFocusRequester)
+                .focusProperties {
+                    left = systemSettingsFocusRequester
+                    right = FocusRequester.Cancel
+                    down = downFocusRequester
+                    up = FocusRequester.Cancel
+                    canFocus = canTakeFocus
+                },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
+            border = ClickableSurfaceDefaults.border(
+                border = focusSpec.restBorder,
+                focusedBorder = focusSpec.focusedBorder,
+            ),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = colors.surface1,
+                focusedContainerColor = colors.surface2,
+                contentColor = colors.textPrimary,
+                focusedContentColor = colors.textPrimary,
+            ),
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                DigitalClock(timeFormat = timeFormat)
+            }
+        }
     }
 }

@@ -469,7 +469,7 @@ fun QuickShortcutsGrid(
                     },
             )
             QuickShortcutTile(
-                title = "番組表・予約",
+                title = "番組表",
                 subtitle = if (upcomingReserves.isNotEmpty()) "予約 ${upcomingReserves.size}件" else null,
                 icon = Icons.Default.DateRange,
                 badgeText = nextReserveBadge,

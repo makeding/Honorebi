@@ -108,6 +108,7 @@ fun HomeLauncherScreen(
     isBackendRecoveryInProgress: Boolean = false,
     hasActivePlayer: Boolean = false,
     onReturnToPlayerClick: () -> Unit = {},
+    onClockClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {}
 ) {
@@ -216,6 +217,7 @@ fun HomeLauncherScreen(
     val inputSourceFocusRequester = remember { FocusRequester() }
     val railSettingsFocusRequester = remember { FocusRequester() }
     val wifiSettingsFocusRequester = remember { FocusRequester() }
+    val clockFocusRequester = remember { FocusRequester() }
     var railHasFocus by remember { mutableStateOf(false) }
     var stripHasFocus by remember { mutableStateOf(false) }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
@@ -321,46 +323,20 @@ fun HomeLauncherScreen(
             FocusRequester.Default
         }
 
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = if (!isFullScreenMode) TvRailCollapsedWidth else 0.dp)
         ) {
-            if (!isFullScreenMode) {
-                LauncherSystemStrip(
-                    timeFormat = timeFormat,
-                    hasActivePlayer = hasActivePlayer,
-                    inputSourceApp = inputSourceApp,
-                    networkConnectionStatus = networkConnectionStatus,
-                    canTakeFocus = !isEpgJumpingActive,
-                    returnPlayerFocusRequester = returnPlayerFocusRequester,
-                    inputSourceFocusRequester = inputSourceFocusRequester,
-                    wifiSettingsFocusRequester = wifiSettingsFocusRequester,
-                    systemSettingsFocusRequester = ui.settingsFocusRequester,
-                    leftEdgeFocusRequester = tabController.tabRequester(tabController.selectedTab),
-                    downFocusRequester = stripDownRequester,
-                    onReturnToPlayerClick = onReturnToPlayerClick,
-                    onLaunchInputSourcePicker = { app -> homeViewModel.launchInputSourcePicker(app) },
-                    onLaunchWifiSettings = { homeViewModel.launchWifiSettings() },
-                    onLaunchSystemSettings = { homeViewModel.launchSystemSettings() },
-                    onHasFocusChanged = { hasFocus ->
-                        stripHasFocus = hasFocus
-                        ui.topNavHasFocus = railHasFocus || hasFocus
-                    },
-                    onBack = { scope.launch { handleLauncherBack() } },
-                )
-            }
-
-            Box(modifier = Modifier.weight(1f)) {
-                AnimatedContent(
-                    targetState = tabController.activeSnapshot,
-                    transitionSpec = {
-                        launcherTabContentTransform(tabController.transitionDirection)
-                    },
-                    contentKey = { "${it.tab.name}-${it.generation}" },
-                    label = "launcher_tab_content",
-                    modifier = Modifier.fillMaxSize(),
-                ) { snapshot ->
+            AnimatedContent(
+                targetState = tabController.activeSnapshot,
+                transitionSpec = {
+                    launcherTabContentTransform(tabController.transitionDirection)
+                },
+                contentKey = { "${it.tab.name}-${it.generation}" },
+                label = "launcher_tab_content",
+                modifier = Modifier.fillMaxSize(),
+            ) { snapshot ->
                     val isCurrentSnapshot = snapshot.generation == tabController.generation
                     val snapshotTabIndex = visibleTabs.indexOf(snapshot.tab).coerceAtLeast(0)
                     val snapshotTabRequester = tabController.tabRequester(snapshot.tab)
@@ -557,6 +533,36 @@ fun HomeLauncherScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 8.dp, start = 48.dp, end = 48.dp),
+                )
+
+            if (!isFullScreenMode) {
+                LauncherSystemStrip(
+                    timeFormat = timeFormat,
+                    hasActivePlayer = hasActivePlayer,
+                    inputSourceApp = inputSourceApp,
+                    networkConnectionStatus = networkConnectionStatus,
+                    canTakeFocus = !isEpgJumpingActive,
+                    returnPlayerFocusRequester = returnPlayerFocusRequester,
+                    inputSourceFocusRequester = inputSourceFocusRequester,
+                    wifiSettingsFocusRequester = wifiSettingsFocusRequester,
+                    systemSettingsFocusRequester = ui.settingsFocusRequester,
+                    leftEdgeFocusRequester = tabController.tabRequester(tabController.selectedTab),
+                    downFocusRequester = stripDownRequester,
+                    onReturnToPlayerClick = onReturnToPlayerClick,
+                    onLaunchInputSourcePicker = { app -> homeViewModel.launchInputSourcePicker(app) },
+                    onLaunchWifiSettings = { homeViewModel.launchWifiSettings() },
+                    onLaunchSystemSettings = { homeViewModel.launchSystemSettings() },
+                    onHasFocusChanged = { hasFocus ->
+                        stripHasFocus = hasFocus
+                        ui.topNavHasFocus = railHasFocus || hasFocus
+                    },
+                    onBack = { scope.launch { handleLauncherBack() } },
+                    clockFocusRequester = clockFocusRequester,
+                    onClockClick = onClockClick,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 24.dp)
+                        .zIndex(25f),
                 )
             }
         }

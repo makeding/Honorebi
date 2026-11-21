@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,19 +56,23 @@ fun PlayerMenuTile(
 ) {
     val colors = KomorebiTheme.colors
     val shape = RoundedCornerShape(12.dp)
+    val pressedContainer = lerp(OsdSurfaceFocused, colors.accent, 0.25f)
     Surface(
         onClick = onClick,
         enabled = enabled,
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f, pressedScale = 0.98f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = OsdSurface,
             contentColor = if (enabled) contentColor else colors.textPrimary.copy(alpha = 0.3f),
             focusedContainerColor = OsdSurfaceFocused,
-            focusedContentColor = Color.White
+            focusedContentColor = Color.White,
+            pressedContainerColor = pressedContainer,
+            pressedContentColor = Color.White,
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(BorderStroke(1.dp, OsdBorderSubtle), shape = shape),
-            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent), shape = shape)
+            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent), shape = shape),
+            pressedBorder = Border(BorderStroke(2.5.dp, colors.accent), shape = shape),
         ),
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         modifier = modifier.width(width).height(height).alpha(if (enabled) 1f else style.disabledAlpha)

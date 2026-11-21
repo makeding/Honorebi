@@ -18,6 +18,10 @@ internal class InAppScreensaverState {
     var isVisible by mutableStateOf(false)
         internal set
 
+    fun showNow() {
+        isVisible = true
+    }
+
     fun dismiss() {
         isVisible = false
         ScreensaverInteractionTracker.onUserInteraction()

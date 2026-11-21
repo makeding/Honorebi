@@ -202,9 +202,9 @@ fun LiveContent(
                             .fillMaxWidth()
                             .padding(
                                 start = TvContentPaddingStart,
-                                end = TvContentPaddingEnd,
-                                top = 4.dp,
-                                bottom = 8.dp
+                                end = 280.dp,
+                                top = 16.dp,
+                                bottom = 12.dp
                             )
                     )
                 }
@@ -214,7 +214,7 @@ fun LiveContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
+                    contentPadding = PaddingValues(top = if (showGenreChips) 4.dp else 68.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     visibleRows.forEachIndexed { rowIdx, row ->

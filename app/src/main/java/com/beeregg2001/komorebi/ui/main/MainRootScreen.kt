@@ -789,7 +789,27 @@ fun MainRootScreen(
                         backendFailureReason = channelErrorReason,
                         isBackendRecoveryInProgress = isNetworkAvailable && state.isOfflineMode &&
                                 (isChannelLoading || state.isConnectionRetryPending),
-                        onExitApp = { showExitDialog = true }
+                        onExitApp = { showExitDialog = true },
+                        onTriggerScreensaver = {
+                            if (screensaverEnabled && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
+                                screensaverState.showNow()
+                            } else {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                                    component = android.content.ComponentName(
+                                        "com.android.systemui",
+                                        "com.android.systemui.Somnambulator",
+                                    )
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                try {
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    if (screensaverImages.isNotEmpty() || pausedPlayback != null) {
+                                        screensaverState.showNow()
+                                    }
+                                }
+                            }
+                        },
                     )
 
                     if (state.playbackState.isPlaybackActive) {

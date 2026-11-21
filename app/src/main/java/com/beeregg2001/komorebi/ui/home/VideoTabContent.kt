@@ -432,7 +432,7 @@ fun VideoTabContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            contentPadding = PaddingValues(bottom = 56.dp),
+            contentPadding = PaddingValues(top = 68.dp, bottom = 56.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // Item 0: Compact Quick Entry Pills (index 0 keeps VideoFocusPolicy.columnItemIndex intact)

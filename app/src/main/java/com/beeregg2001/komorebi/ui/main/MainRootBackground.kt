@@ -55,7 +55,8 @@ fun MainRootBackground(
     hasBackendFailure: Boolean,
     backendFailureReason: String?,
     isBackendRecoveryInProgress: Boolean,
-    onExitApp: () -> Unit
+    onExitApp: () -> Unit,
+    onTriggerScreensaver: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val onAirInitialFocusRequester = remember { FocusRequester() }
@@ -278,6 +279,7 @@ fun MainRootBackground(
                         isBackendRecoveryInProgress = isBackendRecoveryInProgress,
                         hasActivePlayer = state.playbackState.isMiniPlayerMode,
                         onReturnToPlayerClick = { state.playbackState.isMiniPlayerMode = false },
+                        onClockClick = onTriggerScreensaver,
                         aiFocusReturnTick = state.aiFocusReturnTick,
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 }
                     )
