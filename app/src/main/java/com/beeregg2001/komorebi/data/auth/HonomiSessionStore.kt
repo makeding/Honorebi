@@ -5,6 +5,10 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.UUID
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -21,12 +25,36 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
     private val preferences = context.getSharedPreferences("honomi_session", Context.MODE_PRIVATE)
 
     @Volatile
-    private var cachedSession: HonomiSession? = load()
+    private var cachedSession: HonomiSession? = null
 
-    fun current(): HonomiSession? = cachedSession
+    @Volatile
+    private var isLoaded: Boolean = false
+
+    init {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            ensureLoaded()
+        }
+    }
+
+    private fun ensureLoaded() {
+        if (isLoaded) return
+        synchronized(this) {
+            if (isLoaded) return
+            cachedSession = load()
+            isLoaded = true
+        }
+    }
+
+    fun current(): HonomiSession? {
+        ensureLoaded()
+        return cachedSession
+    }
 
     /** A background request is only valid for the exact authenticated session that queued it. */
-    fun isCurrent(session: HonomiSession): Boolean = cachedSession == session
+    fun isCurrent(session: HonomiSession): Boolean {
+        ensureLoaded()
+        return cachedSession == session
+    }
 
     /** HonomiTV 側で複数台のテレビを区別する、インストール単位の固定 ID。 */
     fun remoteDeviceId(): String {
@@ -56,6 +84,7 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
             .putString(KEY_USER_NAME, session.userName)
             .apply()
         cachedSession = session
+        isLoaded = true
     }
 
     @Synchronized
@@ -68,6 +97,7 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
             .remove(KEY_USER_NAME)
             .apply()
         cachedSession = null
+        isLoaded = true
     }
 
     private fun load(): HonomiSession? = runCatching {

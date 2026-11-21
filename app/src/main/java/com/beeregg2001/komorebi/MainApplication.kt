@@ -10,6 +10,11 @@ import coil.memory.MemoryCache
 import okhttp3.OkHttpClient
 import com.beeregg2001.komorebi.data.worker.RecordSyncWorker
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -20,13 +25,18 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
     lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
+    lateinit var apiHttpClient: dagger.Lazy<OkHttpClient>
+
+    @Inject
     @Named("image")
-    lateinit var imageHttpClient: OkHttpClient
+    lateinit var imageHttpClient: dagger.Lazy<OkHttpClient>
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val appImageLoader by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ImageLoader.Builder(this)
             .okHttpClient {
-                imageHttpClient
+                imageHttpClient.get()
             }
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -71,11 +81,21 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
     override fun onCreate() {
         super.onCreate()
 
-        // バックグラウンド同期スケジュールを登録
-        RecordSyncWorker.schedule(this)
+        appScope.launch {
+            runCatching {
+                apiHttpClient.get()
+                imageHttpClient.get()
+            }
+        }
+        appScope.launch {
+            delay(RECORD_SYNC_SCHEDULE_DELAY_MS)
+            // バックグラウンド同期スケジュールを登録
+            runCatching { RecordSyncWorker.schedule(this@MainApplication) }
+        }
     }
 
     private companion object {
+        const val RECORD_SYNC_SCHEDULE_DELAY_MS = 10_000L
         const val IMAGE_CACHE_DIRECTORY = "image_cache"
         const val IMAGE_MEMORY_CACHE_SIZE_BYTES = 12 * 1024 * 1024
         const val IMAGE_DISK_CACHE_SIZE_BYTES = 32L * 1024 * 1024

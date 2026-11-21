@@ -20,52 +20,52 @@ import javax.inject.Singleton
 @Singleton
 class DtvProviderProxy @Inject constructor(
     private val settingsRepository: SettingsRepository,
-    private val konomiRepository: KonomiRepository,
-    private val epgStationRepository: EpgStationRepository,
+    private val konomiRepository: dagger.Lazy<KonomiRepository>,
+    private val epgStationRepository: dagger.Lazy<EpgStationRepository>,
     // ★ 修正: 旧 EdcbRepository を削除し、分割した4つのRepositoryをInjectする
-    private val edcbLiveRepository: EdcbLiveRepository,
-    private val edcbRecordRepository: EdcbRecordRepository,
-    private val edcbReserveRepository: EdcbReserveRepository,
-    private val edcbEpgRepository: EdcbEpgRepository
+    private val edcbLiveRepository: dagger.Lazy<EdcbLiveRepository>,
+    private val edcbRecordRepository: dagger.Lazy<EdcbRecordRepository>,
+    private val edcbReserveRepository: dagger.Lazy<EdcbReserveRepository>,
+    private val edcbEpgRepository: dagger.Lazy<EdcbEpgRepository>
 ) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider, OnAirProvider {
 
     // --- ルーティングロジック（インターフェースごとに特化） ---
 
     private suspend fun getLiveProvider(): LiveProvider {
         return when (settingsRepository.backendType.first()) {
-            "EDCB" -> edcbLiveRepository
-            "EPGSTATION" -> epgStationRepository
-            else -> konomiRepository
+            "EDCB" -> edcbLiveRepository.get()
+            "EPGSTATION" -> epgStationRepository.get()
+            else -> konomiRepository.get()
         }
     }
 
     private suspend fun getRecordProvider(): RecordProvider {
         return when (settingsRepository.backendType.first()) {
-            "EDCB" -> edcbRecordRepository
-            "EPGSTATION" -> epgStationRepository
-            else -> konomiRepository
+            "EDCB" -> edcbRecordRepository.get()
+            "EPGSTATION" -> epgStationRepository.get()
+            else -> konomiRepository.get()
         }
     }
 
     private suspend fun getReserveProvider(): ReserveProvider {
         return when (settingsRepository.backendType.first()) {
-            "EDCB" -> edcbReserveRepository
-            "EPGSTATION" -> epgStationRepository
-            else -> konomiRepository
+            "EDCB" -> edcbReserveRepository.get()
+            "EPGSTATION" -> epgStationRepository.get()
+            else -> konomiRepository.get()
         }
     }
 
     private suspend fun getEpgProvider(): EpgProvider {
         return when (settingsRepository.backendType.first()) {
-            "EDCB" -> edcbEpgRepository
-            "EPGSTATION" -> epgStationRepository
-            else -> konomiRepository
+            "EDCB" -> edcbEpgRepository.get()
+            "EPGSTATION" -> epgStationRepository.get()
+            else -> konomiRepository.get()
         }
     }
 
     private suspend fun getOnAirProvider(): OnAirProvider {
         return when (settingsRepository.backendType.first()) {
-            "KONOMITV" -> konomiRepository
+            "KONOMITV" -> konomiRepository.get()
             else -> throw OnAirUnsupportedException()
         }
     }
@@ -99,7 +99,7 @@ class DtvProviderProxy @Inject constructor(
 
     // ネットテレビのセッションは、放送の直接視聴先に関係なく HonomiTV が所有する。
     override suspend fun createLiveStreamSession(channelId: String, config: BackendConfig): LiveStreamSessionLease =
-        konomiRepository.createLiveStreamSession(channelId, config)
+        konomiRepository.get().createLiveStreamSession(channelId, config)
 
     override suspend fun getChannelLogoUrl(channelId: String): String {
         return try {

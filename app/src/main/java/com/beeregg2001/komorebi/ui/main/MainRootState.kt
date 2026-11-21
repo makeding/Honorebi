@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import com.beeregg2001.komorebi.ui.player.PlaybackSessionState
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
+import com.beeregg2001.komorebi.viewmodel.StartupSettingsSnapshot
 
 enum class AiFocusTicket { NONE, PANEL_DEFAULT }
 
@@ -87,6 +88,7 @@ class MainRootState {
     var isOfflineMode by mutableStateOf(false)
     var isConnectionRetryPending by mutableStateOf(false)
     var hasAppliedStartupTab by mutableStateOf(false)
+    var startupSettings by mutableStateOf<StartupSettingsSnapshot?>(null)
 
     var hasAppliedStartupChannel by mutableStateOf(false)
 

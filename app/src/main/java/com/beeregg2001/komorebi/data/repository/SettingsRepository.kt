@@ -47,14 +47,23 @@ class SettingsRepository @Inject constructor(
     private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val networkSettingsMutex = Mutex()
     private val _cloudflareAccessConfiguration = MutableStateFlow(CloudflareAccessConfiguration())
-    val cloudflareAccessConfiguration: StateFlow<CloudflareAccessConfiguration> = _cloudflareAccessConfiguration
+    val cloudflareAccessConfiguration: StateFlow<CloudflareAccessConfiguration> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        // Load once on first access (warmed asynchronously in init) so the first network request
+        // observes persisted credentials without blocking the main thread during DI construction.
+        _cloudflareAccessConfiguration.value = runBlocking {
+            context.dataStore.data.first().toCloudflareAccessConfiguration()
+        }
+        settingsScope.launch {
+            context.dataStore.data.collect {
+                _cloudflareAccessConfiguration.value = it.toCloudflareAccessConfiguration()
+            }
+        }
+        _cloudflareAccessConfiguration
+    }
 
     init {
-        // Load once synchronously so the first network request observes persisted credentials;
-        // subsequent requests read the in-memory snapshot without blocking an OkHttp thread.
-        runBlocking { _cloudflareAccessConfiguration.value = context.dataStore.data.first().toCloudflareAccessConfiguration() }
-        settingsScope.launch {
-            context.dataStore.data.collect { _cloudflareAccessConfiguration.value = it.toCloudflareAccessConfiguration() }
+        settingsScope.launch(Dispatchers.IO) {
+            runCatching { cloudflareAccessConfiguration }
         }
     }
     companion object {

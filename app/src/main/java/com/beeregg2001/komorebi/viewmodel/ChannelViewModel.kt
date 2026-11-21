@@ -89,6 +89,32 @@ class ChannelViewModel @Inject constructor(
         appContentStore.refreshChannels(afterNetworkRecovery)
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun refreshChannelsIfStale() {
+        appContentStore.refreshChannelsIfStale()
+    }
+
+    suspend fun lastWatchedChannelIdOnce(): String? {
+        nhkExclusionRepository.state.first { it.isLoaded }
+        val entities = watchHistoryRepository.getLastChannels().first()
+        return entities.map { entity ->
+            Channel(
+                id = entity.channelId,
+                name = entity.name,
+                type = entity.type,
+                channelNumber = entity.channelNumber ?: "",
+                displayChannelId = entity.channelId,
+                networkId = entity.networkId,
+                serviceId = entity.serviceId,
+                isWatchable = true,
+                isDisplay = true,
+                programPresent = null,
+                programFollowing = null,
+                remocon_Id = 0,
+            )
+        }.filterNot(nhkExclusionRepository::isExcluded).firstOrNull()?.id
+    }
+
     fun setNetworkAvailable(available: Boolean) = appContentStore.setNetworkAvailable(available)
 
     fun refreshAfterRecovery() {

@@ -28,6 +28,7 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -188,13 +189,6 @@ fun MainRootScreen(
     // ★ 追加: アプリのバックグラウンド移行（スリープ）と復帰を検知する機構
     // =========================================================================================
     val appWakeState = rememberAppWakeState(channelViewModel::setAppAwake)
-    LaunchedEffect(appWakeState.isAwake, appWakeState.generation) {
-        if (appWakeState.isAwake) {
-            nhkExclusionRepository.refreshExpiry()
-            homeViewModel.checkForUpdatesAutomatically()
-            if (appWakeState.generation > 0) homeViewModel.refreshLauncherApps()
-        }
-    }
 
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState(initial = "")
@@ -484,16 +478,18 @@ fun MainRootScreen(
     val defaultLiveQuality by settingsViewModel.liveQuality.collectAsState(initial = "1080p-60fps")
     val defaultVideoQuality by settingsViewModel.videoQuality.collectAsState(initial = "1080p-60fps")
 
-    val startupChannelSetting by settingsViewModel.startupChannel.collectAsState()
+    val startupChannelSetting = state.startupSettings?.startupChannel
+    val startupTabs = state.getVisibleTabs(state.startupSettings?.hideAppsTab ?: hideAppsTab)
     var isLongPressHandled by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (!state.hasAppliedStartupTab) {
-            val tab = settingsViewModel.getStartupTabOnce()
-            val index = tabs.indexOf(tab)
+            val snap = settingsViewModel.loadStartupSettings()
+            state.startupSettings = snap
+            val index = state.getVisibleTabs(snap.hideAppsTab).indexOf(snap.startupTab)
             state.currentTabIndex = if (index != -1) index else 0
-            if (tab == "番組表") epgViewModel.ensureInitialDataLoaded()
-            channelViewModel.fetchChannels()
+            if (snap.startupTab == "番組表") epgViewModel.ensureInitialDataLoaded()
+            channelViewModel.refreshChannelsIfStale()
             state.hasAppliedStartupTab = true
         }
     }
@@ -501,28 +497,34 @@ fun MainRootScreen(
     LaunchedEffect(
         groupedChannels,
         state.hasAppliedStartupTab,
+        startupChannelSetting,
         homeIntentVersion,
         isSettingsInitialized,
         isChannelLoading,
         isHomeLoading,
-        lastChannels
     ) {
         if (homeIntentVersion == 0 && isSettingsInitialized && state.hasAppliedStartupTab && !state.hasAppliedStartupChannel && !isChannelLoading && !isHomeLoading && groupedChannels.isNotEmpty()) {
-            state.hasAppliedStartupChannel = true
+            val desiredStartupChannel = startupChannelSetting ?: return@LaunchedEffect
             val flatChannels = groupedChannels.values.flatten()
-            if (flatChannels.isNotEmpty() && startupChannelSetting != "OFF") {
-                val targetChannel = if (startupChannelSetting == "LAST_WATCHED") {
-                    val lastHistory = lastChannels.firstOrNull()
-                    flatChannels.find { it.id == lastHistory?.id } ?: flatChannels.first()
-                } else flatChannels.find { it.id == startupChannelSetting } ?: flatChannels.first()
-
-                state.playbackState.enterLive(targetChannel)
-                homeViewModel.saveLastChannel(targetChannel)
-
-                val liveIndex = tabs.indexOf("ライブ")
-                if (liveIndex != -1) state.currentTabIndex = liveIndex
-                state.isUiReady = true
+            if (flatChannels.isEmpty() || desiredStartupChannel == "OFF") {
+                state.hasAppliedStartupChannel = true
+                return@LaunchedEffect
             }
+            val lastWatchedId = if (desiredStartupChannel == "LAST_WATCHED") {
+                channelViewModel.lastWatchedChannelIdOnce()
+            } else null
+            if (state.hasAppliedStartupChannel) return@LaunchedEffect
+            state.hasAppliedStartupChannel = true
+            val targetChannel = if (desiredStartupChannel == "LAST_WATCHED") {
+                flatChannels.find { it.id == lastWatchedId } ?: flatChannels.first()
+            } else flatChannels.find { it.id == desiredStartupChannel } ?: flatChannels.first()
+
+            state.playbackState.enterLive(targetChannel)
+            homeViewModel.saveLastChannel(targetChannel)
+
+            val liveIndex = startupTabs.indexOf("ライブ")
+            if (liveIndex != -1) state.currentTabIndex = liveIndex
+            state.isUiReady = true
         }
     }
 
@@ -648,9 +650,15 @@ fun MainRootScreen(
         }
     }
 
-    LaunchedEffect(isChannelLoading, isHomeLoading, isChannelError, isNetworkAvailable, appWakeState.isAwake) {
-        if (appWakeState.isAwake && !isChannelLoading && (state.isDataReady || !isHomeLoading)) {
-            delay(300)
+    LaunchedEffect(
+        isChannelLoading,
+        isHomeLoading,
+        isChannelError,
+        isNetworkAvailable,
+        appWakeState.isAwake,
+        state.hasAppliedStartupTab,
+    ) {
+        if (appWakeState.isAwake && state.hasAppliedStartupTab && !isChannelLoading && (state.isDataReady || !isHomeLoading)) {
             val presentation = offlinePresentation(
                 isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady,
             )
@@ -679,16 +687,24 @@ fun MainRootScreen(
         }
     }
 
-    LaunchedEffect(isEpgReady, state.isDataReady, isSettingsInitialized, state.currentTabIndex) {
+    LaunchedEffect(
+        isEpgReady,
+        state.isDataReady,
+        isSettingsInitialized,
+        state.hasAppliedStartupTab,
+        state.currentTabIndex,
+        startupTabs,
+    ) {
+        if (!state.hasAppliedStartupTab) return@LaunchedEffect
         if (!isSettingsInitialized) {
-            delay(500); state.isSplashFinished = true
-        } else if (state.currentTabIndex == tabs.indexOf("番組表")) {
+            state.isSplashFinished = true
+        } else if (startupTabs.getOrNull(state.currentTabIndex) == "番組表") {
             if (isEpgReady && state.isDataReady) {
-                delay(300); state.isSplashFinished = true
+                state.isSplashFinished = true
             }
         } else {
             if (state.isDataReady) {
-                delay(300); state.isSplashFinished = true
+                state.isSplashFinished = true
             }
         }
     }
@@ -708,6 +724,25 @@ fun MainRootScreen(
         startupRenderPlan.showMainContent ||
             state.showConnectionErrorDialog ||
             !isSettingsInitialized && state.isSplashFinished
+    }
+
+    val latestStartupUpdateGate by rememberUpdatedState(
+        startupRenderPlan.showMainContent ||
+            state.showConnectionErrorDialog ||
+            !isSettingsInitialized
+    )
+    LaunchedEffect(appWakeState.isAwake, appWakeState.generation) {
+        if (appWakeState.isAwake) {
+            nhkExclusionRepository.refreshExpiry()
+            if (appWakeState.generation > 0) {
+                homeViewModel.checkForUpdatesAutomatically()
+                homeViewModel.refreshLauncherApps()
+            } else {
+                snapshotFlow { latestStartupUpdateGate }.first { it }
+                delay(5_000)
+                homeViewModel.checkForUpdatesAutomatically()
+            }
+        }
     }
 
     KomorebiTheme(theme = currentTheme) {

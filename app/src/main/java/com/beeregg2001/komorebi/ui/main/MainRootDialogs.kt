@@ -82,13 +82,26 @@ fun MainRootDialogs(
     // AIコンシェルジュ 音声入力ロジック
     // ========================================================================
     val aiTicketManager = state.aiTicketManager
-    val isSpeechSupported = remember {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        context.packageManager.resolveActivity(intent, 0) != null
+    val isSpeechSupported = remember(state.isAiConciergeOpen) {
+        state.isAiConciergeOpen &&
+            context.packageManager.resolveActivity(
+                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH),
+                0
+            ) != null
     }
 
-    val audioRecorderHelper = remember { AudioRecorderHelper(context) }
+    val audioRecorderHelper = remember(context) {
+        lazy { AudioRecorderHelper(context) }
+    }
     var isRecordingVoice by remember { mutableStateOf(false) }
+
+    DisposableEffect(audioRecorderHelper) {
+        onDispose {
+            if (audioRecorderHelper.isInitialized()) {
+                audioRecorderHelper.value.stopRecording()
+            }
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -100,7 +113,11 @@ fun MainRootDialogs(
 
     val stopRecordingAndSend = {
         if (isRecordingVoice) {
-            val file = audioRecorderHelper.stopRecording()
+            val file = if (audioRecorderHelper.isInitialized()) {
+                audioRecorderHelper.value.stopRecording()
+            } else {
+                null
+            }
             isRecordingVoice = false
 
             if (file != null && file.exists() && file.length() > 0) {
@@ -517,7 +534,7 @@ fun MainRootDialogs(
                     Manifest.permission.RECORD_AUDIO
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
-                audioRecorderHelper.startRecording()
+                audioRecorderHelper.value.startRecording()
                 isRecordingVoice = true
             } else {
                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)

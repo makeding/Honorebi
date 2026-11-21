@@ -35,6 +35,7 @@ import javax.inject.Inject
 
 private val PINNED_SYSTEM_APP_PACKAGES = setOf("com.mitv.livetv")
 private val STRING_LIST_TYPE = object : TypeToken<List<String>>() {}.type
+private const val LAUNCHER_STARTUP_DEDUPE_MS = 3_000L
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(FlowPreview::class)
@@ -65,6 +66,7 @@ class HomeViewModel @Inject constructor(
     private val _isFallbackTriggered = MutableStateFlow(false)
     val isFallbackTriggered: StateFlow<Boolean> = _isFallbackTriggered.asStateFlow()
 
+    private val createdAtNanos = System.nanoTime()
     private val _rawLauncherApps = MutableStateFlow<List<LauncherApp>>(emptyList())
     private val launcherRefreshRequests = CoroutineChannel<Unit>(CoroutineChannel.CONFLATED)
     val launcherApps: StateFlow<List<LauncherApp>> = combine(
@@ -114,6 +116,8 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refreshLauncherApps() {
+        val elapsedMs = (System.nanoTime() - createdAtNanos) / 1_000_000L
+        if (elapsedMs < LAUNCHER_STARTUP_DEDUPE_MS) return
         launcherRefreshRequests.trySend(Unit)
     }
 

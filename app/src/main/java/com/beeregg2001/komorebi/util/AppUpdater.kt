@@ -61,7 +61,7 @@ class AppUpdater @Inject constructor(
     private val _updateState = MutableStateFlow(restoreInstallState())
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
-    private val client = OkHttpClient()
+    private val client by lazy { OkHttpClient() }
 
     private var versionJsonUrl = VERSION_JSON_URL
 

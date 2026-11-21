@@ -69,13 +69,19 @@ data class SmbServer(
     val password: String
 )
 
+data class StartupSettingsSnapshot(
+    val startupTab: String,
+    val startupChannel: String,
+    val hideAppsTab: Boolean,
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val syncEngine: RecordSyncEngine,
     private val db: AppDatabase,
-    private val honomiAuthRepository: HonomiAuthRepository,
+    private val honomiAuthRepository: dagger.Lazy<HonomiAuthRepository>,
     private val watchHistoryRepository: WatchHistoryRepository,
     private val playbackQualityCatalog: PlaybackQualityCatalog,
     private val cacheManager: CacheManager,
@@ -99,7 +105,7 @@ class SettingsViewModel @Inject constructor(
     private val gson = Gson()
 
     private val _dynamicQualities = MutableStateFlow<List<StreamQuality>?>(null)
-    val honomiSession: StateFlow<HonomiSession?> = honomiAuthRepository.session
+    val honomiSession: StateFlow<HonomiSession?> by lazy { honomiAuthRepository.get().session }
     private val _honomiLoginInProgress = MutableStateFlow(false)
     val honomiLoginInProgress: StateFlow<Boolean> = _honomiLoginInProgress
 
@@ -128,16 +134,16 @@ class SettingsViewModel @Inject constructor(
 
     suspend fun createHonomiPairing(): Result<DeviceAuthRequest> {
         _honomiLoginInProgress.value = true
-        return honomiAuthRepository.createPairing().also { _honomiLoginInProgress.value = false }
+        return honomiAuthRepository.get().createPairing().also { _honomiLoginInProgress.value = false }
     }
 
     suspend fun pollHonomiPairing(pairing: DeviceAuthRequest): Result<HonomiSession?> {
-        return honomiAuthRepository.pollPairing(pairing).onSuccess { session ->
+        return honomiAuthRepository.get().pollPairing(pairing).onSuccess { session ->
             if (session != null) watchHistoryRepository.syncWithServer()
         }
     }
 
-    fun logoutHonomi() = honomiAuthRepository.logout()
+    fun logoutHonomi() = honomiAuthRepository.get().logout()
 
     val backendType: StateFlow<String> = settingsRepository.backendType.stateIn(
         viewModelScope,
@@ -708,6 +714,12 @@ class SettingsViewModel @Inject constructor(
         return settingsRepository.getStartupTabOnce()
     }
 
+    suspend fun loadStartupSettings(): StartupSettingsSnapshot = StartupSettingsSnapshot(
+        startupTab = settingsRepository.getStartupTabOnce(),
+        startupChannel = settingsRepository.startupChannel.first(),
+        hideAppsTab = settingsRepository.hideAppsTab.first(),
+    )
+
     fun updateStartupChannel(value: String) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(
             SettingsRepository.STARTUP_CHANNEL,
@@ -817,7 +829,7 @@ class SettingsViewModel @Inject constructor(
                     },
                     create = { createHonomiPairing().getOrThrow() },
                     poll = { pairing, active ->
-                        honomiAuthRepository.pollPairing(pairing) { active.accepts(active.token) }.getOrThrow()?.let {
+                        honomiAuthRepository.get().pollPairing(pairing) { active.accepts(active.token) }.getOrThrow()?.let {
                             viewModelScope.launch { watchHistoryRepository.syncWithServer() }
                             com.beeregg2001.komorebi.data.ConnectionAccountSettings(it.userName)
                         }

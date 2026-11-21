@@ -115,6 +115,7 @@ class AppContentStore internal constructor(
     private var pollingJob: Job? = null
     private var progressUpdateJob: Job? = null
     private var lastChannelsFetchedAtMillis = 0L
+    private var hasFetchedChannels = false
     private var lastRecordingsFetchedAtMillis = 0L
     private var appAwake = true
     private val wakeGeneration = MutableStateFlow(0)
@@ -164,6 +165,19 @@ class AppContentStore internal constructor(
         scope.launch {
             fetchChannelsInternal(queueIfRunning = afterNetworkRecovery)
         }
+    }
+
+    fun refreshChannelsIfStale() {
+        if (channelRefreshRunner.isRunning) return
+        val elapsed = elapsedRealtime() - lastChannelsFetchedAtMillis
+        if (hasFetchedChannels &&
+            elapsed < CHANNEL_REFRESH_INTERVAL_MS &&
+            !_connectionError.value &&
+            _groupedChannels.value.isNotEmpty()
+        ) {
+            return
+        }
+        refreshChannels()
     }
 
     fun refreshRecentRecordings(afterRecovery: Boolean = false) {
@@ -370,6 +384,7 @@ class AppContentStore internal constructor(
             return e
         } finally {
             lastChannelsFetchedAtMillis = elapsedRealtime()
+            hasFetchedChannels = true
         }
     }
 

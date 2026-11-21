@@ -123,8 +123,8 @@ android {
 
     buildTypes {
         release {
-//            isMinifyEnabled = true       // コード圧縮を有効化
-//            isShrinkResources = true     // 未使用の画像やリソースも削除
+            isMinifyEnabled = true       // コード圧縮を有効化
+            isShrinkResources = true     // 未使用の画像やリソースも削除
             if (hasReleaseSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }

@@ -16,6 +16,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -248,14 +250,16 @@ class HonomiRemoteControlClient @Inject constructor(
         if (connectionJob?.isActive == true) return
         connectionJob = scope.launch {
             while (currentCoroutineContext().isActive) {
-                val session = sessionStore.current()
-                if (session == null) {
+                val sessionAndDeviceId = withContext(Dispatchers.IO) {
+                    sessionStore.current()?.let { it to sessionStore.remoteDeviceId() }
+                }
+                if (sessionAndDeviceId == null) {
                     delay(RECONNECT_DELAY_MILLISECONDS)
                     continue
                 }
+                val (session, deviceId) = sessionAndDeviceId
 
                 val completed = CompletableDeferred<Unit>()
-                val deviceId = sessionStore.remoteDeviceId()
                 val configuredDeviceName = Settings.Global.getString(context.contentResolver, "device_name")
                     ?: Settings.Secure.getString(context.contentResolver, "bluetooth_name")
                 val deviceName = configuredDeviceName?.takeIf { it.isNotBlank() } ?: listOf(Build.MANUFACTURER, Build.MODEL)
