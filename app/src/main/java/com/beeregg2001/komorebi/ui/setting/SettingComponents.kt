@@ -163,11 +163,13 @@ fun CategoryItem(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
+    val itemShape = MaterialTheme.shapes.medium
     Surface(
         selected = isSelected,
         onClick = { if (enabled) onClick() },
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 3.dp, vertical = 3.dp)
             .focusProperties { canFocus = enabled }
             .onFocusChanged { if (it.isFocused && enabled) onFocused() },
         interactionSource = interactionSource,
@@ -182,13 +184,13 @@ fun CategoryItem(
             focusedSelectedContentColor = colors.textPrimary,
         ),
         border = SelectableSurfaceDefaults.border(
-            focusedBorder = Border(BorderStroke(2.dp, colors.accent)),
-            focusedSelectedBorder = Border(BorderStroke(2.dp, colors.accent)),
+            focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = itemShape),
+            focusedSelectedBorder = Border(BorderStroke(2.dp, colors.accent), shape = itemShape),
         ),
-        shape = SelectableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
+        shape = SelectableSurfaceDefaults.shape(itemShape),
         scale = SelectableSurfaceDefaults.scale(
-            focusedScale = if (enabled) 1.02f else 1.0f,
-            focusedSelectedScale = if (enabled) 1.02f else 1.0f,
+            focusedScale = 1.0f,
+            focusedSelectedScale = 1.0f,
         )
     ) {
         Row(
@@ -244,11 +246,13 @@ fun SettingItem(
     val focusedBgColor = focusedContainerColor ?: colors.surface2
     val focusedTextColor = focusedContentColor ?: if (customHighlight) dialogForeground(focusedBgColor) else colors.textPrimary
 
+    val itemShape = MaterialTheme.shapes.medium
     Surface(
         enabled = enabled,
         onClick = { if (enabled) onClick() },
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 3.dp, vertical = 3.dp)
             .focusProperties { canFocus = enabled },
         interactionSource = interactionSource,
         colors = ClickableSurfaceDefaults.colors(
@@ -258,11 +262,11 @@ fun SettingItem(
             focusedContentColor = focusedTextColor
         ),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(1.dp, colors.borderSubtle)),
-            focusedBorder = if (customHighlight) Border.None else Border(BorderStroke(2.dp, colors.accent))
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = itemShape),
+            focusedBorder = if (customHighlight) Border.None else Border(BorderStroke(2.dp, colors.accent), shape = itemShape)
         ),
-        shape = ClickableSurfaceDefaults.shape(MaterialTheme.shapes.medium),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = if (enabled) 1.015f else 1.0f)
+        shape = ClickableSurfaceDefaults.shape(itemShape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
