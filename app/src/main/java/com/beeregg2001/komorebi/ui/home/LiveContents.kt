@@ -214,7 +214,7 @@ fun LiveContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(top = if (showGenreChips) 4.dp else 68.dp, bottom = 16.dp),
+                    contentPadding = PaddingValues(top = if (showGenreChips) 4.dp else 68.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     visibleRows.forEachIndexed { rowIdx, row ->

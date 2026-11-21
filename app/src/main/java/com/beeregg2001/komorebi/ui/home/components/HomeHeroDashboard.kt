@@ -82,7 +82,7 @@ private sealed interface QuickResumeTarget {
         val history: KonomiHistoryProgram,
         val channelName: String?,
         val dateLabel: String,
-        val remainingMinutes: Int,
+        val remainingMinutes: Int?,
         val resumePositionLabel: String,
         val progress: Float,
     ) : QuickResumeTarget
@@ -145,14 +145,21 @@ fun QuickResumeHeroCard(
                 val matched = recentRecordings.find { it.id.toString() == program.id }
                 val channelName = matched?.channel?.name
                     ?: allChannels.find { it.id == program.channel_id }?.name
-                val (progress, remainingMin) = runCatching {
-                    val start = Instant.parse(program.start_time).epochSecond
-                    val end = Instant.parse(program.end_time).epochSecond
-                    val total = (end - start).coerceAtLeast(1L).toDouble()
-                    val prog = (firstHistory.playback_position / total).toFloat().coerceIn(0f, 1f)
-                    val rem = ((total - firstHistory.playback_position).coerceAtLeast(0.0) / 60.0).toInt()
-                    prog to rem
-                }.getOrDefault(0f to 0)
+                val totalSeconds = matched?.duration?.takeIf { it > 0.0 }
+                    ?: matched?.recordedVideo?.duration?.takeIf { it > 0.0 }
+                    ?: runCatching {
+                        val start = OffsetDateTime.parse(program.start_time).toEpochSecond()
+                        val end = OffsetDateTime.parse(program.end_time).toEpochSecond()
+                        (end - start).toDouble()
+                    }.getOrDefault(0.0)
+                val progress = if (totalSeconds > 0.0) {
+                    (firstHistory.playback_position / totalSeconds).toFloat().coerceIn(0f, 1f)
+                } else 0f
+                val remainingMin = if (totalSeconds > 0.0) {
+                    ((totalSeconds - firstHistory.playback_position).coerceAtLeast(0.0) / 60.0)
+                        .toInt()
+                        .takeIf { it >= 1 }
+                } else null
                 val dateLabel = runCatching {
                     val start = OffsetDateTime.parse(program.start_time).toDeviceTime()
                     ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd")
@@ -262,20 +269,19 @@ fun QuickResumeHeroCard(
 
                     when (target) {
                         is QuickResumeTarget.Recorded -> {
-                            val rightMeta = buildString {
-                                if (!target.channelName.isNullOrBlank()) {
-                                    append(target.channelName)
-                                    append(" · ")
-                                }
-                                append("残り ${target.remainingMinutes}分")
+                            val rightMeta = listOfNotNull(
+                                target.channelName?.takeIf { it.isNotBlank() },
+                                target.remainingMinutes?.let { "残り ${it}分" },
+                            ).joinToString(" · ")
+                            if (rightMeta.isNotBlank()) {
+                                Text(
+                                    text = rightMeta,
+                                    style = MaterialTheme.typography.labelMedium.tnum,
+                                    color = colors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
-                            Text(
-                                text = rightMeta,
-                                style = MaterialTheme.typography.labelMedium.tnum,
-                                color = colors.textSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
                         }
 
                         is QuickResumeTarget.Live -> {

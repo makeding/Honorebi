@@ -218,6 +218,7 @@ fun HomeLauncherScreen(
     val railSettingsFocusRequester = remember { FocusRequester() }
     val wifiSettingsFocusRequester = remember { FocusRequester() }
     val clockFocusRequester = remember { FocusRequester() }
+    var pendingEnterContentTab by remember { mutableStateOf<LauncherTab?>(null) }
     var railHasFocus by remember { mutableStateOf(false) }
     var stripHasFocus by remember { mutableStateOf(false) }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
@@ -293,6 +294,15 @@ fun HomeLauncherScreen(
         contentReadyGeneration = tabController.readyGeneration,
         isContentReady = { tabController.isContentReadyAt(it) },
     )
+
+    LaunchedEffect(pendingEnterContentTab, tabController.activeTab, tabController.readyGeneration) {
+        val target = pendingEnterContentTab ?: return@LaunchedEffect
+        if (tabController.isContentReadyFor(target)) {
+            pendingEnterContentTab = null
+            withFrameNanos { }
+            tabController.contentRequester(target).safeRequestFocusWithRetry("RailEnterContent_${target.name}")
+        }
+    }
 
     LaunchedEffect(focusMemory.completedId) {
         if (focusMemory.completedId > 0 && isReturningFromPlayer &&
@@ -575,6 +585,9 @@ fun HomeLauncherScreen(
                 settingsItemFocusRequester = railSettingsFocusRequester,
                 settingsCanFocus = !isEpgJumpingActive,
                 onTabFocused = { tab ->
+                    if (pendingEnterContentTab != null && pendingEnterContentTab != tab) {
+                        pendingEnterContentTab = null
+                    }
                     tabController.selectTab(tab)
                     val targetIndex = tabController.selectedIndex
                     ui.selectedTabIndex = targetIndex
@@ -586,7 +599,12 @@ fun HomeLauncherScreen(
                     val targetIndex = tabController.selectedIndex
                     ui.selectedTabIndex = targetIndex
                     ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
-                    ui.topNavHasFocus = true
+                    if (tabController.isContentReadyFor(tab)) {
+                        pendingEnterContentTab = null
+                        tabController.contentRequester(tab).safeRequestFocus(TAG)
+                    } else {
+                        pendingEnterContentTab = tab
+                    }
                 },
                 onOpenSettings = { onSettingsToggle(true) },
                 onHasFocusChanged = { hasFocus ->

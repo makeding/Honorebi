@@ -694,8 +694,8 @@ fun VideoTabContent(
                             contentPadding = PaddingValues(
                                 start = TvContentPaddingStart,
                                 end = TvContentPaddingEnd,
-                                top = 8.dp,
-                                bottom = 8.dp,
+                                top = 10.dp,
+                                bottom = 10.dp,
                             ),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {

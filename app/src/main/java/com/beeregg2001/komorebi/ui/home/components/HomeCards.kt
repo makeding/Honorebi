@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -281,19 +282,21 @@ fun WatchHistoryCard(
     val primaryUrl = matchedProgram?.directThumbnailUrl ?: fallbackUrl
     var currentThumbnailUrl by remember(program.id, primaryUrl) { mutableStateOf(primaryUrl) }
 
-    val (progress, remainingMinutes) = remember(history) {
-        runCatching {
-            val start = Instant.parse(program.start_time).epochSecond
-            val end = Instant.parse(program.end_time).epochSecond
-            val total = (end - start).toDouble()
-            if (total > 0) {
-                val prog = (history.playback_position / total).toFloat().coerceIn(0f, 1f)
-                val rem = ((total - history.playback_position).coerceAtLeast(0.0) / 60.0).toInt()
-                prog to rem
-            } else {
-                0f to 0
-            }
-        }.getOrDefault(0f to 0)
+    val (progress, remainingMinutes) = remember(history, matchedProgram) {
+        val total = matchedProgram?.duration?.takeIf { it > 0.0 }
+            ?: matchedProgram?.recordedVideo?.duration?.takeIf { it > 0.0 }
+            ?: runCatching {
+                val start = OffsetDateTime.parse(program.start_time).toEpochSecond()
+                val end = OffsetDateTime.parse(program.end_time).toEpochSecond()
+                (end - start).toDouble()
+            }.getOrDefault(0.0)
+        if (total > 0.0) {
+            val prog = (history.playback_position / total).toFloat().coerceIn(0f, 1f)
+            val rem = ((total - history.playback_position).coerceAtLeast(0.0) / 60.0).toInt()
+            prog to rem
+        } else {
+            0f to 0
+        }
     }
 
     LaunchedEffect(currentThumbnailUrl, isFocused) {
@@ -325,7 +328,7 @@ fun WatchHistoryCard(
                 isFocused = it.isFocused
                 if (it.isFocused) onFocus(progress, currentThumbnailUrl)
             },
-        shape = ClickableSurfaceDefaults.shape(thumbShape),
+        shape = ClickableSurfaceDefaults.shape(RectangleShape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleGrid),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,

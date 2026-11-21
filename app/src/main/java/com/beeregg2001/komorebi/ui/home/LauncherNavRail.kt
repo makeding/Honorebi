@@ -242,6 +242,18 @@ internal fun LauncherNavRail(
                             onTabFocused(tab)
                         }
                     }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown &&
+                            event.key == Key.DirectionRight &&
+                            canFocusTab &&
+                            !(isSelected && controller.isContentReadyFor(tab))
+                        ) {
+                            onTabActivated(tab)
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     .selectable(
                         selected = isSelected,
                         enabled = canFocusTab,

@@ -21,6 +21,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -232,7 +233,7 @@ fun VideoRecentRecordCard(
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(thumbShape),
+        shape = ClickableSurfaceDefaults.shape(RectangleShape),
         border = ClickableSurfaceDefaults.border(
             border = Border.None,
             focusedBorder = Border.None
@@ -392,7 +393,7 @@ fun VideoWatchHistoryCard(
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(thumbShape),
+        shape = ClickableSurfaceDefaults.shape(RectangleShape),
         border = ClickableSurfaceDefaults.border(
             border = Border.None,
             focusedBorder = Border.None
@@ -474,7 +475,7 @@ fun VideoSeriesCard(
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary
         ),
-        shape = ClickableSurfaceDefaults.shape(thumbShape),
+        shape = ClickableSurfaceDefaults.shape(RectangleShape),
         border = ClickableSurfaceDefaults.border(
             border = Border.None,
             focusedBorder = Border.None

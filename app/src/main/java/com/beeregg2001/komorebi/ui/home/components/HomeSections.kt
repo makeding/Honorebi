@@ -28,6 +28,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -97,7 +98,11 @@ fun NavigationLinkButton(
 ) {
     val colors = KomorebiTheme.colors
     val shape = RoundedCornerShape(TvCardRadiusListRow)
-    Box(modifier = Modifier.padding(start = TvContentPaddingStart, top = 8.dp)) {
+    Box(
+        modifier = Modifier
+            .padding(start = TvContentPaddingStart, top = 8.dp, bottom = 8.dp)
+            .graphicsLayer { clip = false }
+    ) {
         Button(
             onClick = onClick,
             shape = ButtonDefaults.shape(shape),
@@ -115,6 +120,7 @@ fun NavigationLinkButton(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
             modifier = Modifier
                 .height(40.dp)
+                .graphicsLayer { clip = false }
                 .focusProperties {
                     left = leftEdgeFocusRequester
                     right = FocusRequester.Cancel
@@ -353,8 +359,8 @@ fun LastWatchedSection(
             contentPadding = PaddingValues(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
-                bottom = 8.dp
+                top = 12.dp,
+                bottom = 12.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -446,8 +452,8 @@ fun HotChannelSection(
             contentPadding = PaddingValues(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
-                bottom = 8.dp
+                top = 12.dp,
+                bottom = 12.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -534,8 +540,8 @@ fun WatchHistorySection(
             contentPadding = PaddingValues(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
-                bottom = 8.dp
+                top = 12.dp,
+                bottom = 12.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -631,8 +637,8 @@ fun UpcomingReserveSection(
             contentPadding = PaddingValues(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
-                bottom = 8.dp
+                top = 12.dp,
+                bottom = 12.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -731,8 +737,8 @@ fun GenrePickupSection(
             contentPadding = PaddingValues(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
-                bottom = 8.dp
+                top = 12.dp,
+                bottom = 12.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -826,8 +832,8 @@ fun LauncherAppSection(
             contentPadding = PaddingValues(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
-                bottom = 8.dp
+                top = 12.dp,
+                bottom = 12.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
