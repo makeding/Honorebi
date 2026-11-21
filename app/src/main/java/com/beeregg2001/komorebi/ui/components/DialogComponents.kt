@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -171,12 +172,17 @@ fun DialogActionButton(
     }
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
-    val focusBorder = Border(BorderStroke(2.dp, colors.textPrimary), inset = 4.dp)
+    val buttonShape = RoundedCornerShape(10.dp)
+    val focusBorder = Border(BorderStroke(2.dp, colors.accent), shape = buttonShape)
     Button(
         onClick = onClick,
-        modifier = modifier.hoverable(interactionSource, enabled),
+        modifier = modifier
+            .graphicsLayer { clip = false }
+            .hoverable(interactionSource, enabled),
         interactionSource = interactionSource,
         enabled = enabled,
+        shape = ButtonDefaults.shape(shape = buttonShape),
+        scale = ButtonDefaults.scale(focusedScale = 1.0f),
         colors = ButtonDefaults.colors(
             containerColor = background,
             contentColor = foreground,

@@ -1,9 +1,9 @@
 package com.beeregg2001.komorebi.data
 
 enum class PlayerClockMode(val label: String) {
-    ALWAYS_ON("Always On"),
-    ONLY_NEWS("Only news"),
-    ALWAYS_OFF("Always off");
+    ALWAYS_ON("常に表示"),
+    ONLY_NEWS("ニュースのみ"),
+    ALWAYS_OFF("表示しない");
 
     fun showsCurrentTime(majorGenres: List<String>?): Boolean = when (this) {
         ALWAYS_ON -> true

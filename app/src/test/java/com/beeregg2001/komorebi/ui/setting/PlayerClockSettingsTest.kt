@@ -126,6 +126,6 @@ class PlayerClockSettingsTest {
         compose.mainClock.advanceTimeBy(300)
         compose.waitForIdle()
         compose.waitUntil(3000) { clock.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Focused) == true }
-        clock.assertIsFocused().assertTextContains("Always off")
+        clock.assertIsFocused().assertTextContains("表示しない")
     }
 }

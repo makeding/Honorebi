@@ -644,44 +644,45 @@ fun DefaultHomeGuideDialog(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // 1080p の Android TV は概ね 540dp 高。固定高の大きい QR を置くと
-        // ダイアログが画面からはみ出し、下端の閉じるボタンが切れる。
+        // 1080p の Android TV は概ね 540dp 高。横並びレイアウトで画面内に収める。
         val dialogMaxHeight = maxHeight * 0.9f
+        val dialogWidth = if (environment == HomeEnvironment.GOOGLE_TV) 640.dp else 560.dp
 
         ThemedDialogSurface(
-            width = 560.dp,
+            width = dialogWidth,
             modifier = Modifier.heightIn(max = dialogMaxHeight),
         ) {
             Column(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 2.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    AppStrings.DIALOG_DEFAULT_HOME_TITLE,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        "検出された環境: $environmentLabel",
-                        color = colors.textSecondary,
-                        modifier = Modifier.weight(1f)
+                        AppStrings.DIALOG_DEFAULT_HOME_TITLE,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
                     )
                     Text(
-                        if (isDefaultHome) AppStrings.SETTINGS_VALUE_DEFAULT_HOME_ON
+                        "$environmentLabel ・ " + if (isDefaultHome) AppStrings.SETTINGS_VALUE_DEFAULT_HOME_ON
                         else AppStrings.SETTINGS_VALUE_DEFAULT_HOME_OFF,
+                        style = MaterialTheme.typography.labelLarge,
                         color = if (isDefaultHome) colors.accent else colors.textSecondary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
 
                 when (environment) {
                     HomeEnvironment.ANDROID_TV -> {
                         Text(
-                            "Android TV ではシステムのホーム設定から直接このアプリを既定のホームに指定できます。",
-                            color = colors.textSecondary
+                            "システムのホーム設定からこのアプリを既定のホームに指定できます。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
                         )
                         DialogActionButton(
                             DialogActionRole.Primary,
@@ -691,34 +692,53 @@ fun DefaultHomeGuideDialog(
                     }
 
                     HomeEnvironment.GOOGLE_TV -> {
-                        Text(
-                            "Google TV では標準の設定画面からホームアプリを変更できません。tvtweaks などのツールを使って ADB 経由で設定してください。",
-                            color = colors.textSecondary
-                        )
-                        if (qrBitmap != null) Image(
-                            bitmap = qrBitmap,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(180.dp)
-                                .align(Alignment.CenterHorizontally)
-                        )
-                        Text(
-                            LauncherEnvironmentDetector.TV_TWEAKS_URL,
-                            color = colors.accent,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Text(
+                                    "Google TV は標準設定から変更できないため、tvtweaks などの ADB ツールで設定します。",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colors.textSecondary,
+                                )
+                                DialogUrlBox(
+                                    url = LauncherEnvironmentDetector.TV_TWEAKS_URL,
+                                    label = "ガイドURL",
+                                )
+                            }
+                            DialogQrCard(
+                                bitmap = qrBitmap,
+                                contentDescription = "tvtweaks QRコード",
+                                size = 160.dp,
+                            )
+                        }
                     }
 
                     HomeEnvironment.UNKNOWN -> {
                         Text(
-                            "この端末ではホームアプリの変更がサポートされていない可能性があります。テレビ端末でご利用ください。",
-                            color = colors.textSecondary
+                            "この端末ではホームアプリの変更がサポートされていない可能性があります。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
                         )
                     }
                 }
 
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.focusRequester(closeRequester)) { Text("閉じる") }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 2.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    DialogActionButton(
+                        DialogActionRole.Secondary,
+                        onDismiss,
+                        Modifier.focusRequester(closeRequester),
+                    ) { Text("閉じる") }
                 }
             }
         }
@@ -991,6 +1011,7 @@ fun SelectionDialog(
             )
             LazyColumn(
                 state = listState,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.heightIn(max = 400.dp)
             ) {
@@ -1120,6 +1141,7 @@ fun MultiSelectionDialog(
             )
             LazyColumn(
                 state = listState,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.heightIn(max = 350.dp)
             ) {
