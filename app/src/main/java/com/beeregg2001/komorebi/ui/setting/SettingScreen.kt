@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.setting
 
 import com.beeregg2001.komorebi.data.PlayerClockMode
+import com.beeregg2001.komorebi.data.StartupFocusTarget
 
 import android.os.Build
 import android.view.KeyEvent as NativeKeyEvent
@@ -220,7 +221,7 @@ private fun SettingsMenuScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: startupTab, startupChannel, excludePaid, NHK exclusion
+    // [0] 基本設定: startupTab, startupFocusTarget, startupChannel, excludePaid, NHK exclusion
     // [1] 接続設定
     // [2] 再生設定
     // [3] 録画設定: recordView, addBatch
@@ -499,6 +500,7 @@ private fun SettingsMenuScreen(
                     when (uiState.selectedCategoryIndex) {
                         0 -> GeneralSettingsContent(
                             prefs.startupTab,
+                            prefs.startupFocusTarget.label,
                             when (prefs.startupChannel) {
                                 "OFF" -> AppStrings.SETTINGS_VALUE_STARTUP_OFF
                                 "LAST_WATCHED" -> AppStrings.SETTINGS_VALUE_STARTUP_LAST
@@ -508,6 +510,7 @@ private fun SettingsMenuScreen(
                             prefs.excludePaid,
                             itemFocusRequesters[0][0],
                             itemFocusRequesters[0][1],
+                            itemFocusRequesters[0][2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_STARTUP_TAB,
@@ -531,6 +534,13 @@ private fun SettingsMenuScreen(
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
+                                    AppStrings.SETTINGS_ITEM_STARTUP_FOCUS_TARGET,
+                                    StartupFocusTarget.entries.map { it.label to it.name },
+                                    prefs.startupFocusTarget.name
+                                ) { viewModel.updateStartupFocusTarget(it) }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.DIALOG_STARTUP_CHANNEL_TITLE,
                                     (listOf(
                                         AppStrings.SETTINGS_VALUE_STARTUP_OFF to "OFF",
@@ -539,7 +549,7 @@ private fun SettingsMenuScreen(
                                     prefs.startupChannel
                                 ) { viewModel.updateStartupChannel(it) }
                             },
-                            itemFocusRequesters[0][2],
+                            itemFocusRequesters[0][3],
                             {
                                 scope.launch {
                                     repository.saveString(
@@ -549,7 +559,7 @@ private fun SettingsMenuScreen(
                                 }
                             },
                             viewModel.nhkExclusionState.collectAsState().value.mode.displayLabel,
-                            itemFocusRequesters[0][3],
+                            itemFocusRequesters[0][4],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "N〇K除外モード",

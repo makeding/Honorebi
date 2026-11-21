@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.ui.setting
 
 import com.beeregg2001.komorebi.data.PlayerClockMode
+import com.beeregg2001.komorebi.data.StartupFocusTarget
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
@@ -50,6 +51,7 @@ class SettingPreferences(
     val excludePaid: String,
     val pickupTime: String,
     val startupTab: String,
+    val startupFocusTarget: StartupFocusTarget = StartupFocusTarget.SIDEBAR,
     val startupChannel: String,
     val timeFormat: String,
     val currentThemeName: String,
@@ -129,6 +131,7 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         excludePaid = repository.excludePaidBroadcasts.collectAsState(initial = "ON").value,
         pickupTime = repository.homePickupTime.collectAsState(initial = "自動").value,
         startupTab = repository.startupTab.collectAsState(initial = "ホーム").value,
+        startupFocusTarget = repository.startupFocusTarget.collectAsState(initial = StartupFocusTarget.SIDEBAR).value,
         startupChannel = repository.startupChannel.collectAsState(initial = "OFF").value,
         playerClockMode = repository.playerClockMode.collectAsState(initial = PlayerClockMode.ALWAYS_ON).value,
         timeFormat = repository.timeFormat.collectAsState(initial = "24H").value,

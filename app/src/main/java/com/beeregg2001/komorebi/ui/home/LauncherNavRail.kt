@@ -118,6 +118,8 @@ internal fun LauncherNavRail(
     onSettingsFocused: () -> Unit = {},
     onHasFocusChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
+    startCollapsed: Boolean = false,
+    onStartCollapsedConsumed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
@@ -131,16 +133,17 @@ internal fun LauncherNavRail(
     var railHasFocus by remember { mutableStateOf(false) }
     var interactionTick by remember { mutableIntStateOf(0) }
     var isAutoCollapsed by remember { mutableStateOf(false) }
+    var suppressInitialExpand by remember(startCollapsed) { mutableStateOf(startCollapsed) }
 
-    LaunchedEffect(railHasFocus, interactionTick) {
+    LaunchedEffect(railHasFocus, suppressInitialExpand, interactionTick) {
         isAutoCollapsed = false
-        if (railHasFocus) {
+        if (railHasFocus && !suppressInitialExpand) {
             delay(RAIL_AUTO_COLLAPSE_MS)
             isAutoCollapsed = true
         }
     }
 
-    val isExpanded = railHasFocus && !isAutoCollapsed
+    val isExpanded = railHasFocus && !isAutoCollapsed && !suppressInitialExpand
 
     val railWidth by animateDpAsState(
         targetValue = if (isExpanded) TvRailExpandedWidth else TvRailCollapsedWidth,
@@ -160,6 +163,7 @@ internal fun LauncherNavRail(
 
     Column(
         modifier = modifier
+            .testTag("launcher-nav-rail")
             .width(railWidth)
             .fillMaxHeight()
             .clipToBounds()
@@ -173,13 +177,32 @@ internal fun LauncherNavRail(
                 )
             }
             .onFocusChanged { focusState ->
+                val hadFocus = railHasFocus
                 railHasFocus = focusState.hasFocus
-                if (focusState.hasFocus) interactionTick++
+                if (hadFocus && !focusState.hasFocus && suppressInitialExpand) {
+                    suppressInitialExpand = false
+                    onStartCollapsedConsumed()
+                }
+                if (focusState.hasFocus && !suppressInitialExpand) {
+                    interactionTick++
+                }
                 onHasFocusChanged(focusState.hasFocus)
             }
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
-                    interactionTick++
+                    if ((event.key == Key.DirectionUp || event.key == Key.DirectionDown) && suppressInitialExpand) {
+                        suppressInitialExpand = false
+                        onStartCollapsedConsumed()
+                    }
+                    if (event.key != Key.DirectionRight &&
+                        event.key != Key.DirectionCenter &&
+                        event.key != Key.Enter &&
+                        event.key != Key.NumPadEnter &&
+                        event.key != Key.Escape &&
+                        event.key != Key.Back
+                    ) {
+                        interactionTick++
+                    }
                     if (event.key == Key.Escape) {
                         onBack()
                         return@onPreviewKeyEvent true
@@ -272,7 +295,7 @@ internal fun LauncherNavRail(
                     .onFocusChanged { focusState ->
                         isItemFocused = focusState.isFocused
                         if (focusState.isFocused) {
-                            interactionTick++
+                            if (!suppressInitialExpand) interactionTick++
                             onTabFocused(tab)
                         }
                     }
@@ -338,7 +361,7 @@ internal fun LauncherNavRail(
                 .onFocusChanged { focusState ->
                     isSettingsFocused = focusState.isFocused
                     if (focusState.isFocused) {
-                        interactionTick++
+                        if (!suppressInitialExpand) interactionTick++
                         onSettingsFocused()
                     }
                 }

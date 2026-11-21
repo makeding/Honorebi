@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi.viewmodel
 
 import com.beeregg2001.komorebi.data.PlayerClockMode
+import com.beeregg2001.komorebi.data.StartupFocusTarget
 
 import android.content.Context
 import android.util.Log
@@ -73,6 +74,7 @@ data class StartupSettingsSnapshot(
     val startupTab: String,
     val startupChannel: String,
     val hideAppsTab: Boolean,
+    val startupFocusTarget: StartupFocusTarget = StartupFocusTarget.SIDEBAR,
 )
 
 @HiltViewModel
@@ -320,6 +322,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         "ホーム"
+    )
+    val startupFocusTarget: StateFlow<StartupFocusTarget> = settingsRepository.startupFocusTarget.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        StartupFocusTarget.SIDEBAR
     )
     val appTheme: StateFlow<String> = settingsRepository.appTheme.stateIn(
         viewModelScope,
@@ -718,7 +725,15 @@ class SettingsViewModel @Inject constructor(
         startupTab = settingsRepository.getStartupTabOnce(),
         startupChannel = settingsRepository.startupChannel.first(),
         hideAppsTab = settingsRepository.hideAppsTab.first(),
+        startupFocusTarget = settingsRepository.startupFocusTarget.first(),
     )
+
+    fun updateStartupFocusTarget(value: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(
+            SettingsRepository.STARTUP_FOCUS_TARGET,
+            StartupFocusTarget.fromPreference(value).name
+        )
+    }
 
     fun updateStartupChannel(value: String) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(

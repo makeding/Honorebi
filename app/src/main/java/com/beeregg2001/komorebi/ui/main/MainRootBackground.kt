@@ -218,6 +218,8 @@ fun MainRootBackground(
                         konomiIp = konomiIp,
                         konomiPort = konomiPort,
                         initialTabIndex = safeTabIndex,
+                        startupFocusTarget = state.startupSettings?.startupFocusTarget
+                            ?: com.beeregg2001.komorebi.data.StartupFocusTarget.SIDEBAR,
                         launcherHomeFocusTick = state.launcherHomeFocusTick,
                         onTabChange = { state.currentTabIndex = it },
                         selectedChannel = state.playbackState.livePlayback?.channel,

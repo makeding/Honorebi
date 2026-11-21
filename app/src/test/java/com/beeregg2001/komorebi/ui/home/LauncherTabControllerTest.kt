@@ -13,12 +13,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.unit.dp
+import com.beeregg2001.komorebi.data.StartupFocusTarget
+import com.beeregg2001.komorebi.ui.theme.TvRailCollapsedWidth
+import com.beeregg2001.komorebi.ui.theme.TvRailExpandedWidth
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -342,5 +346,99 @@ class LauncherTabControllerTest {
         compose.waitForIdle()
         compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionRight) }
         compose.onNodeWithTag("home-content").assertIsFocused()
+    }
+
+    @Test
+    fun startupFocusTargetDefaultsToSidebarAndParsesKnownValues() {
+        assertEquals(StartupFocusTarget.SIDEBAR, StartupFocusTarget.fromPreference(null))
+        assertEquals(StartupFocusTarget.SIDEBAR, StartupFocusTarget.fromPreference("UNKNOWN"))
+        assertEquals(StartupFocusTarget.SIDEBAR, StartupFocusTarget.fromPreference("SIDEBAR"))
+        assertEquals(StartupFocusTarget.CONTENT, StartupFocusTarget.fromPreference("CONTENT"))
+    }
+
+    @Test
+    fun navRailStartsCollapsedOnInitialFocusAndExpandsOnDownOrSubsequentReturn() {
+        val controller = LauncherTabController(initialTab = LauncherTab.HOME)
+        assertTrue(controller.markContentReady(controller.generation))
+        val upEdgeRequester = FocusRequester()
+        val settingsRequester = FocusRequester()
+        val startCollapsed = mutableStateOf(true)
+
+        compose.setContent {
+            Row {
+                LauncherNavRail(
+                    controller = controller,
+                    isEpgJumping = false,
+                    upEdgeFocusRequester = upEdgeRequester,
+                    settingsItemFocusRequester = settingsRequester,
+                    settingsCanFocus = true,
+                    onTabFocused = { controller.selectTab(it) },
+                    onOpenSettings = {},
+                    onHasFocusChanged = {},
+                    onBack = {},
+                    startCollapsed = startCollapsed.value,
+                    onStartCollapsedConsumed = { startCollapsed.value = false },
+                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("home-content")
+                        .focusRequester(controller.contentRequester(LauncherTab.HOME))
+                        .focusable(),
+                )
+            }
+        }
+
+        // Initial focus on rail keeps it collapsed at 68dp.
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailCollapsedWidth)
+        assertTrue(startCollapsed.value)
+
+        // Pressing RIGHT enters content directly and consumes initial collapsed suppression.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("home-content").assertIsFocused()
+        compose.waitForIdle()
+        assertFalse(startCollapsed.value)
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailCollapsedWidth)
+
+        // Returning focus to the rail now expands it normally.
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
+    }
+
+    @Test
+    fun navRailStartingCollapsedExpandsImmediatelyWhenPressingDown() {
+        val controller = LauncherTabController(initialTab = LauncherTab.HOME)
+        val upEdgeRequester = FocusRequester()
+        val settingsRequester = FocusRequester()
+        val startCollapsed = mutableStateOf(true)
+
+        compose.setContent {
+            LauncherNavRail(
+                controller = controller,
+                isEpgJumping = false,
+                upEdgeFocusRequester = upEdgeRequester,
+                settingsItemFocusRequester = settingsRequester,
+                settingsCanFocus = true,
+                onTabFocused = { controller.selectTab(it) },
+                onOpenSettings = {},
+                onHasFocusChanged = {},
+                onBack = {},
+                startCollapsed = startCollapsed.value,
+                onStartCollapsedConsumed = { startCollapsed.value = false },
+            )
+        }
+
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailCollapsedWidth)
+
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("launcher-tab-live").assertIsFocused()
+        compose.waitForIdle()
+        assertFalse(startCollapsed.value)
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
     }
 }

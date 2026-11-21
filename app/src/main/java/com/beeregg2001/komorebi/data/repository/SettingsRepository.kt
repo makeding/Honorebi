@@ -116,6 +116,7 @@ class SettingsRepository @Inject constructor(
         val NHK_EXCLUSION_EXPIRES_AT = longPreferencesKey("nhk_exclusion_expires_at")
         val HOME_PICKUP_TIME = stringPreferencesKey("home_pickup_time")
         val STARTUP_TAB = stringPreferencesKey("startup_tab")
+        val STARTUP_FOCUS_TARGET = stringPreferencesKey("startup_focus_target")
         val STARTUP_CHANNEL = stringPreferencesKey("startup_channel")
         val PLAYER_CLOCK_MODE = stringPreferencesKey("player_clock_mode")
         val TIME_FORMAT = stringPreferencesKey("time_format")
@@ -241,6 +242,9 @@ class SettingsRepository @Inject constructor(
     val homePickupTime: Flow<String> = context.dataStore.data.map { it[HOME_PICKUP_TIME] ?: "自動" }
     val startupTab: Flow<String> = context.dataStore.data.map {
         normalizeStartupTab(it[STARTUP_TAB])
+    }
+    val startupFocusTarget: Flow<StartupFocusTarget> = context.dataStore.data.map {
+        StartupFocusTarget.fromPreference(it[STARTUP_FOCUS_TARGET])
     }
     val startupChannel: Flow<String> = context.dataStore.data.map { it[STARTUP_CHANNEL] ?: "OFF" }
     val playerClockMode: Flow<PlayerClockMode> = context.dataStore.data.map {

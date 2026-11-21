@@ -75,11 +75,14 @@ private fun ValidationErrorText(message: String) {
 @Composable
 fun GeneralSettingsContent(
     startupTab: String,
+    startupFocusTargetLabel: String,
     startupChannelName: String,
     excludePaid: String,
     startupTabR: FocusRequester,
+    startupFocusTargetR: FocusRequester,
     startupChannelR: FocusRequester,
     onEditStartupTab: () -> Unit,
+    onEditStartupFocusTarget: () -> Unit,
     onEditStartupChannel: () -> Unit,
     exPaidR: FocusRequester,
     onToggleExcludePaid: () -> Unit,
@@ -107,9 +110,22 @@ fun GeneralSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = FocusRequester.Cancel
-                        down = startupChannelR
+                        down = startupFocusTargetR
                     },
                 onClick = { onClick(startupTabR); onEditStartupTab() }
+            )
+            SettingItem(
+                title = AppStrings.SETTINGS_ITEM_STARTUP_FOCUS_TARGET,
+                value = startupFocusTargetLabel,
+                icon = Icons.Default.CenterFocusStrong,
+                modifier = Modifier
+                    .focusRequester(startupFocusTargetR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = startupTabR
+                        down = startupChannelR
+                    },
+                onClick = { onClick(startupFocusTargetR); onEditStartupFocusTarget() }
             )
             SettingItem(
                 title = AppStrings.SETTINGS_ITEM_STARTUP_CHANNEL,
@@ -119,7 +135,7 @@ fun GeneralSettingsContent(
                     .focusRequester(startupChannelR)
                     .focusProperties {
                         left = sidebarR
-                        up = startupTabR
+                        up = startupFocusTargetR
                         down = exPaidR
                     },
                 onClick = { onClick(startupChannelR); onEditStartupChannel() }

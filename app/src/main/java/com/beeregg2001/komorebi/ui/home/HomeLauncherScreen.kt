@@ -27,6 +27,7 @@ import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.beeregg2001.komorebi.data.StartupFocusTarget
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
@@ -74,6 +75,7 @@ fun HomeLauncherScreen(
     selectedChannel: Channel?,
     onTabChange: (Int) -> Unit,
     initialTabIndex: Int = 0,
+    startupFocusTarget: StartupFocusTarget = StartupFocusTarget.SIDEBAR,
     launcherHomeFocusTick: Int = 0,
     selectedProgram: RecordedProgram?,
     onProgramSelected: (RecordedProgram?) -> Unit,
@@ -183,10 +185,14 @@ fun HomeLauncherScreen(
     var pendingEnterContentTab by remember { mutableStateOf<LauncherTab?>(null) }
     var railHasFocus by remember { mutableStateOf(false) }
     var stripHasFocus by remember { mutableStateOf(false) }
+    var suppressInitialRailExpand by remember {
+        mutableStateOf(startupFocusTarget == StartupFocusTarget.SIDEBAR)
+    }
 
     LaunchedEffect(isFullScreenMode) {
         if (isFullScreenMode) {
             pendingEnterContentTab = null
+            suppressInitialRailExpand = false
         }
     }
 
@@ -316,7 +322,13 @@ fun HomeLauncherScreen(
     HomeOverlayReturnFocusEffect(
         isFullScreen = isFullScreenMode,
         returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0,
-        onInitialEntry = { focusMemory.requestContent(tabController.selectedIndex) },
+        onInitialEntry = {
+            if (startupFocusTarget == StartupFocusTarget.CONTENT) {
+                focusMemory.requestContent(tabController.selectedIndex)
+            } else {
+                focusMemory.remember(tabController.selectedIndex)
+            }
+        },
         onRestore = { applyReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS) },
     )
 
@@ -672,6 +684,8 @@ fun HomeLauncherScreen(
                     ui.topNavHasFocus = hasFocus || stripHasFocus
                 },
                 onBack = { scope.launch { handleLauncherBack() } },
+                startCollapsed = suppressInitialRailExpand,
+                onStartCollapsedConsumed = { suppressInitialRailExpand = false },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
