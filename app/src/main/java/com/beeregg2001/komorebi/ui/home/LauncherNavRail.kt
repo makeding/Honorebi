@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -57,13 +58,15 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusListRow
@@ -177,27 +180,14 @@ internal fun LauncherNavRail(
                     .fillMaxHeight(),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .background(
-                            color = colors.accentSoft,
-                            shape = RoundedCornerShape(8.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "K",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.accent,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                }
+                Image(
+                    painter = painterResource(R.drawable.honorebi_mark),
+                    contentDescription = null,
+                    modifier = Modifier.size(34.dp),
+                )
             }
             Text(
-                text = "Komorebi",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleMedium,
                 color = colors.textPrimary,
                 maxLines = 1,
@@ -280,7 +270,7 @@ internal fun LauncherNavRail(
             isSelected = false,
             isFocused = isSettingsFocused,
             icon = Icons.Default.Tune,
-            label = "Komorebi 設定",
+            label = "アプリ設定",
             contentColor = if (isSettingsFocused) colors.textPrimary else colors.textSecondary,
             labelAlpha = labelAlpha,
             modifier = Modifier
