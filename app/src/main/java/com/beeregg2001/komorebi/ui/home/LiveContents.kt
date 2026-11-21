@@ -8,12 +8,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Whatshot
@@ -31,9 +30,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import coil.ImageLoader
@@ -201,10 +203,8 @@ fun LiveContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(
-                                start = TvContentPaddingStart,
-                                end = 280.dp,
-                                top = 16.dp,
-                                bottom = 12.dp
+                                top = 68.dp,
+                                bottom = 4.dp
                             )
                     )
                 }
@@ -396,15 +396,23 @@ private fun LiveGenreFilterStrip(
         }
     }
 
-    Row(
+    LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        contentPadding = PaddingValues(
+            start = TvContentPaddingStart,
+            end = TvContentPaddingEnd,
+            top = 6.dp,
+            bottom = 6.dp
+        ),
         modifier = modifier
-            .height(36.dp)
-            .horizontalScroll(rememberScrollState())
-            .graphicsLayer(clip = false)
+            .fillMaxWidth()
+            .graphicsLayer { clip = false }
     ) {
-        chips.forEachIndexed { index, (genreId, label) ->
+        itemsIndexed(
+            items = chips,
+            key = { _, (genreId, _) -> genreId ?: "all" }
+        ) { index, (genreId, label) ->
             val isSelected = selectedGenreId == genreId
             val isLast = index == chips.lastIndex
             LiveGenreChip(
@@ -467,13 +475,21 @@ private fun LiveGenreChip(
         )
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium
+                    fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Medium,
+                    lineHeight = 14.sp,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both
+                    )
                 ),
                 color = when {
                     isFocused -> colors.textPrimary
@@ -607,7 +623,14 @@ private fun WideLiveChannelCard(
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = force.toString(),
-                            style = MaterialTheme.typography.labelSmall.tnum,
+                            style = MaterialTheme.typography.labelSmall.tnum.copy(
+                                lineHeight = 13.sp,
+                                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                lineHeightStyle = LineHeightStyle(
+                                    alignment = LineHeightStyle.Alignment.Center,
+                                    trim = LineHeightStyle.Trim.Both
+                                )
+                            ),
                             color = heatColor,
                             maxLines = 1
                         )
@@ -708,11 +731,19 @@ private fun LiveNextProgramBar(
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .background(colors.accentSoft)
-                .padding(horizontal = 8.dp, vertical = 3.dp)
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center
         ) {
             Text(
                 text = "次の番組",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    lineHeight = 13.sp,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both
+                    )
+                ),
                 color = colors.accent,
                 maxLines = 1
             )

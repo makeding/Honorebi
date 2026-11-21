@@ -16,20 +16,25 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.*
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
@@ -236,30 +241,11 @@ fun VideoTabContent(
     val genreFocus = rememberVideoRowFocus(genreList.map { it ?: "All" }, genreRowState)
     val seriesFocus = rememberVideoRowFocus(seriesPreviewItems.map { it.displayTitle }, seriesRowState)
 
-    val defaultHeroPreview = remember(
-        recentItems.firstOrNull(),
-        historyItems.firstOrNull(),
-        historyByProgramId,
-        recentByProgramId,
-        timeFormat,
-        isNetworkAvailable,
-    ) {
-        val firstRecent = recentItems.firstOrNull()
-        val firstHistory = historyItems.firstOrNull()
-        when {
-            firstRecent != null -> buildRecordedHeroPreview(
-                program = firstRecent,
-                history = historyByProgramId[firstRecent.id.toString()],
-                timeFormat = timeFormat,
-                isNetworkAvailable = isNetworkAvailable,
-            )
-            firstHistory != null -> buildHistoryHeroPreview(
-                historyItem = firstHistory,
-                matchedProgram = recentByProgramId[firstHistory.program.id.toString()],
-                timeFormat = timeFormat,
-            )
-            else -> VideoHeroPreview(title = "録画番組がありません")
-        }
+    val railHeroPreview = remember(recentRecordings.size) {
+        VideoHeroPreview(
+            title = "ビデオ",
+            metaLine = if (recentRecordings.isNotEmpty()) "${recentRecordings.size} 番組" else "",
+        )
     }
 
     var focusedHeroPreview by remember { mutableStateOf<VideoHeroPreview?>(null) }
@@ -416,13 +402,19 @@ fun VideoTabContent(
         }
     }
 
+    val heroState = if (isTopNavFocused) {
+        railHeroPreview
+    } else {
+        focusedHeroPreview ?: railHeroPreview
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         VideoCompactHero(
-            state = focusedHeroPreview ?: defaultHeroPreview,
+            state = heroState,
             modifier = Modifier.padding(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 8.dp,
+                top = 68.dp,
                 bottom = 8.dp,
             ),
         )
@@ -432,7 +424,7 @@ fun VideoTabContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            contentPadding = PaddingValues(top = 68.dp, bottom = 56.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 56.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // Item 0: Compact Quick Entry Pills (index 0 keeps VideoFocusPolicy.columnItemIndex intact)
@@ -444,7 +436,8 @@ fun VideoTabContent(
                             top = 4.dp,
                             end = TvContentPaddingEnd,
                         )
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .graphicsLayer { clip = false },
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     RecordListBannerButton(
@@ -690,7 +683,7 @@ fun VideoTabContent(
                         )
                         LazyRow(
                             state = genreRowState,
-                            modifier = genreFocus.groupModifier(),
+                            modifier = genreFocus.groupModifier().graphicsLayer { clip = false },
                             contentPadding = PaddingValues(
                                 start = TvContentPaddingStart,
                                 end = TvContentPaddingEnd,
@@ -742,15 +735,26 @@ fun VideoTabContent(
                                         ),
                                     ),
                                 ) {
-                                    Text(
-                                        text = genre ?: "すべて",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(
-                                            horizontal = 20.dp,
-                                            vertical = 9.dp,
-                                        ),
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .padding(horizontal = 20.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = genre ?: "すべて",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 16.sp,
+                                                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                                lineHeightStyle = LineHeightStyle(
+                                                    alignment = LineHeightStyle.Alignment.Center,
+                                                    trim = LineHeightStyle.Trim.Both,
+                                                ),
+                                            ),
+                                            maxLines = 1,
+                                        )
+                                    }
                                 }
                             }
                         }
