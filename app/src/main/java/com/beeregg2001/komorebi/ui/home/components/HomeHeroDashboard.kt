@@ -91,7 +91,6 @@ private sealed interface QuickResumeTarget {
         val channel: Channel,
         val programTitle: String,
         val subtitle: String,
-        val hintLabel: String,
         val forceLabel: String? = null,
     ) : QuickResumeTarget
 
@@ -184,7 +183,6 @@ fun QuickResumeHeroCard(
                     channel = firstLastWatched,
                     programTitle = programTitle,
                     subtitle = subtitle,
-                    hintLabel = "前回のライブ: ${firstLastWatched.name}",
                 )
             }
 
@@ -193,7 +191,6 @@ fun QuickResumeHeroCard(
                     channel = firstHot.channel,
                     programTitle = firstHot.programTitle.ifBlank { firstHot.name },
                     subtitle = firstHot.name,
-                    hintLabel = "注目のライブ: ${firstHot.name}",
                     forceLabel = "${firstHot.jikkyoForce ?: 0} コメ/分",
                 )
             }
@@ -235,19 +232,19 @@ fun QuickResumeHeroCard(
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             // Top row: accent pill + right status/meta
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
+            if (target !is QuickResumeTarget.Empty) {
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.accentSoft)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    if (target !is QuickResumeTarget.Empty) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(colors.accentSoft)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
@@ -255,70 +252,70 @@ fun QuickResumeHeroCard(
                             modifier = Modifier.size(14.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                    }
-                    Text(
-                        text = if (target is QuickResumeTarget.Empty) "ホーム" else "クイック再開",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.accent,
-                        maxLines = 1,
-                    )
-                }
-
-                when (target) {
-                    is QuickResumeTarget.Recorded -> {
-                        val rightMeta = buildString {
-                            if (!target.channelName.isNullOrBlank()) {
-                                append(target.channelName)
-                                append(" · ")
-                            }
-                            append("残り ${target.remainingMinutes}分")
-                        }
                         Text(
-                            text = rightMeta,
-                            style = MaterialTheme.typography.labelMedium.tnum,
-                            color = colors.textSecondary,
+                            text = "続きから見る",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.accent,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
 
-                    is QuickResumeTarget.Live -> {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (target.forceLabel != null) {
-                                Text(
-                                    text = target.forceLabel,
-                                    style = MaterialTheme.typography.labelMedium.tnum,
-                                    color = colors.textSecondary,
-                                    maxLines = 1,
-                                )
+                    when (target) {
+                        is QuickResumeTarget.Recorded -> {
+                            val rightMeta = buildString {
+                                if (!target.channelName.isNullOrBlank()) {
+                                    append(target.channelName)
+                                    append(" · ")
+                                }
+                                append("残り ${target.remainingMinutes}分")
                             }
+                            Text(
+                                text = rightMeta,
+                                style = MaterialTheme.typography.labelMedium.tnum,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+
+                        is QuickResumeTarget.Live -> {
                             Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(StatusRecordingColor.copy(alpha = 0.18f))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Box(
+                                if (target.forceLabel != null) {
+                                    Text(
+                                        text = target.forceLabel,
+                                        style = MaterialTheme.typography.labelMedium.tnum,
+                                        color = colors.textSecondary,
+                                        maxLines = 1,
+                                    )
+                                }
+                                Row(
                                     modifier = Modifier
-                                        .size(6.dp)
-                                        .background(StatusRecordingColor, CircleShape)
-                                )
-                                Spacer(Modifier.width(5.dp))
-                                Text(
-                                    text = "LIVE",
-                                    style = MaterialTheme.typography.labelSmall.tnum,
-                                    color = StatusRecordingColor,
-                                    maxLines = 1,
-                                )
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(StatusRecordingColor.copy(alpha = 0.18f))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(StatusRecordingColor, CircleShape)
+                                    )
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(
+                                        text = "LIVE",
+                                        style = MaterialTheme.typography.labelSmall.tnum,
+                                        color = StatusRecordingColor,
+                                        maxLines = 1,
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    QuickResumeTarget.Empty -> Unit
+                        QuickResumeTarget.Empty -> Unit
+                    }
                 }
             }
 
@@ -332,10 +329,10 @@ fun QuickResumeHeroCard(
                 val subLine = when (target) {
                     is QuickResumeTarget.Recorded -> listOfNotNull(
                         target.dateLabel.takeIf { it.isNotBlank() },
-                        "${target.resumePositionLabel} から再開",
+                        target.resumePositionLabel,
                     ).joinToString(" · ")
                     is QuickResumeTarget.Live -> target.subtitle
-                    QuickResumeTarget.Empty -> "ライブまたは録画から再生を開始"
+                    QuickResumeTarget.Empty -> ""
                 }
                 Text(
                     text = mainTitle,
@@ -345,45 +342,33 @@ fun QuickResumeHeroCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.tvCardMarquee(isFocused),
                 )
-                Text(
-                    text = subLine,
-                    style = MaterialTheme.typography.bodyMedium.tnum,
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (subLine.isNotBlank()) {
+                    Text(
+                        text = subLine,
+                        style = MaterialTheme.typography.bodyMedium.tnum,
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
 
-            // Bottom: progress bar (if recorded) + subtle hint row
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (target is QuickResumeTarget.Recorded) {
+            // Bottom: progress bar (if recorded)
+            if (target is QuickResumeTarget.Recorded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors.textPrimary.copy(alpha = 0.14f))
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(colors.textPrimary.copy(alpha = 0.14f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(target.progress)
-                                .fillMaxHeight()
-                                .background(colors.accent)
-                        )
-                    }
+                            .fillMaxWidth(target.progress)
+                            .fillMaxHeight()
+                            .background(colors.accent)
+                    )
                 }
-                val hintText = when (target) {
-                    is QuickResumeTarget.Recorded -> "OK 続きから再生"
-                    is QuickResumeTarget.Live -> target.hintLabel
-                    QuickResumeTarget.Empty -> "OK ライブへ移動"
-                }
-                Text(
-                    text = hintText,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isFocused) colors.accent else colors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
     }
@@ -428,8 +413,8 @@ fun QuickShortcutsGrid(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             QuickShortcutTile(
-                title = "ライブ視聴",
-                subtitle = lastWatchedChannelName ?: "放送中のチャンネル",
+                title = "ライブ",
+                subtitle = lastWatchedChannelName,
                 icon = Icons.Default.LiveTv,
                 badgeText = "LIVE",
                 badgeIsRecording = true,
@@ -447,7 +432,7 @@ fun QuickShortcutsGrid(
             )
             QuickShortcutTile(
                 title = "放送中",
-                subtitle = "今期アニメ・番組",
+                subtitle = null,
                 icon = Icons.Default.Schedule,
                 onClick = onShowOnAir,
                 modifier = Modifier
@@ -470,7 +455,7 @@ fun QuickShortcutsGrid(
         ) {
             QuickShortcutTile(
                 title = "録画リスト",
-                subtitle = if (recentRecordingsCount > 0) "全 ${recentRecordingsCount} 番組" else "すべての録画",
+                subtitle = if (recentRecordingsCount > 0) "${recentRecordingsCount} 番組" else null,
                 icon = Icons.Default.VideoLibrary,
                 onClick = onShowAllRecordings,
                 modifier = Modifier
@@ -485,7 +470,7 @@ fun QuickShortcutsGrid(
             )
             QuickShortcutTile(
                 title = "番組表・予約",
-                subtitle = "予約 ${upcomingReserves.size}件",
+                subtitle = if (upcomingReserves.isNotEmpty()) "予約 ${upcomingReserves.size}件" else null,
                 icon = Icons.Default.DateRange,
                 badgeText = nextReserveBadge,
                 badgeIsRecording = false,
@@ -510,7 +495,7 @@ fun QuickShortcutsGrid(
 @Composable
 private fun QuickShortcutTile(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -520,6 +505,7 @@ private fun QuickShortcutTile(
     val colors = KomorebiTheme.colors
     var isFocused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(TvCardRadiusGrid)
+    val hasSubtitle = !subtitle.isNullOrBlank()
 
     Surface(
         onClick = onClick,
@@ -541,7 +527,7 @@ private fun QuickShortcutTile(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = if (hasSubtitle) Arrangement.SpaceBetween else Arrangement.Center,
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -591,13 +577,15 @@ private fun QuickShortcutTile(
                 }
             }
 
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelMedium.tnum,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (hasSubtitle) {
+                Text(
+                    text = subtitle.orEmpty(),
+                    style = MaterialTheme.typography.labelMedium.tnum,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

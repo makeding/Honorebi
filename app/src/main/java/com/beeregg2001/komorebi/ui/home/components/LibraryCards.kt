@@ -501,12 +501,6 @@ fun VideoSeriesCard(
                     modifier = Modifier.fillMaxSize(),
                     allowNetworkImages = allowNetworkImages,
                 )
-                CornerDurationBadge(
-                    text = "${series.programCount}件",
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 6.dp, bottom = 7.dp),
-                )
             }
             BelowCardMetadata(
                 title = series.displayTitle,
@@ -611,7 +605,7 @@ fun SmbLibraryBannerButton(
     modifier: Modifier = Modifier
 ) {
     VideoQuickEntryPill(
-        label = "ファイルライブラリ",
+        label = "ファイル",
         icon = Icons.Default.FolderShared,
         onClick = onClick,
         onFocus = onFocus,

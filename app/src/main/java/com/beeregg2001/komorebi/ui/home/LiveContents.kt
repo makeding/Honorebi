@@ -187,26 +187,27 @@ fun LiveContent(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
-                LiveGenreFilterStrip(
-                    liveRows = liveRows,
-                    selectedGenreId = selectedGenreId,
-                    showChips = showGenreChips,
-                    activeChipFocusRequester = activeChipFocusRequester,
-                    upEdgeRequester = upEdgeRequester,
-                    leftEdgeRequester = topNavFocusRequester,
-                    downEdgeRequester = contentFirstItemRequester,
-                    onSelectGenre = { genreId ->
-                        selectedGenreId = genreId
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = TvContentPaddingStart,
-                            end = TvContentPaddingEnd,
-                            top = 4.dp,
-                            bottom = 8.dp
-                        )
-                )
+                if (showGenreChips) {
+                    LiveGenreFilterStrip(
+                        liveRows = liveRows,
+                        selectedGenreId = selectedGenreId,
+                        activeChipFocusRequester = activeChipFocusRequester,
+                        upEdgeRequester = upEdgeRequester,
+                        leftEdgeRequester = topNavFocusRequester,
+                        downEdgeRequester = contentFirstItemRequester,
+                        onSelectGenre = { genreId ->
+                            selectedGenreId = genreId
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                start = TvContentPaddingStart,
+                                end = TvContentPaddingEnd,
+                                top = 4.dp,
+                                bottom = 8.dp
+                            )
+                    )
+                }
 
                 LazyColumn(
                     state = listState,
@@ -381,7 +382,6 @@ private fun formatLiveTime(timeStr: String?, timeFormat: String): String {
 private fun LiveGenreFilterStrip(
     liveRows: List<LiveRowState>,
     selectedGenreId: String?,
-    showChips: Boolean,
     activeChipFocusRequester: FocusRequester,
     upEdgeRequester: FocusRequester,
     leftEdgeRequester: FocusRequester,
@@ -389,7 +389,6 @@ private fun LiveGenreFilterStrip(
     onSelectGenre: (String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colors = KomorebiTheme.colors
     val chips = remember(liveRows) {
         buildList {
             add(null to "すべて")
@@ -398,48 +397,33 @@ private fun LiveGenreFilterStrip(
     }
 
     Row(
-        modifier = modifier.height(36.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(36.dp)
+            .horizontalScroll(rememberScrollState())
+            .graphicsLayer(clip = false)
     ) {
-        Text(
-            text = "ライブ視聴",
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.textPrimary,
-            maxLines = 1
-        )
-
-        if (showChips) {
-            Spacer(modifier = Modifier.width(16.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        chips.forEachIndexed { index, (genreId, label) ->
+            val isSelected = selectedGenreId == genreId
+            val isLast = index == chips.lastIndex
+            LiveGenreChip(
+                label = label,
+                isSelected = isSelected,
+                onClick = { onSelectGenre(genreId) },
                 modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState())
-                    .graphicsLayer(clip = false)
-            ) {
-                chips.forEachIndexed { index, (genreId, label) ->
-                    val isSelected = selectedGenreId == genreId
-                    val isLast = index == chips.lastIndex
-                    LiveGenreChip(
-                        label = label,
-                        isSelected = isSelected,
-                        onClick = { onSelectGenre(genreId) },
-                        modifier = Modifier
-                            .then(
-                                if (isSelected) {
-                                    Modifier.focusRequester(activeChipFocusRequester)
-                                } else Modifier
-                            )
-                            .focusProperties {
-                                up = upEdgeRequester
-                                down = downEdgeRequester
-                                if (index == 0) left = leftEdgeRequester
-                                if (isLast) right = FocusRequester.Cancel
-                            }
+                    .then(
+                        if (isSelected) {
+                            Modifier.focusRequester(activeChipFocusRequester)
+                        } else Modifier
                     )
-                }
-            }
+                    .focusProperties {
+                        up = upEdgeRequester
+                        down = downEdgeRequester
+                        if (index == 0) left = leftEdgeRequester
+                        if (isLast) right = FocusRequester.Cancel
+                    }
+            )
         }
     }
 }
@@ -783,14 +767,5 @@ private fun LiveNextProgramBar(
         } else {
             Spacer(modifier = Modifier.weight(1f))
         }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Text(
-            text = "OK 視聴",
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.textSecondary,
-            maxLines = 1
-        )
     }
 }

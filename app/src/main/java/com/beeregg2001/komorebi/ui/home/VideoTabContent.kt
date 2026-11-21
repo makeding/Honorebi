@@ -289,7 +289,7 @@ fun VideoTabContent(
     LaunchedEffect(programDetail, focusedProgramId) {
         val detail = programDetail
         if (detail != null && detail.id == focusedProgramId) {
-            val newDesc = detail.description.ifBlank { "番組概要がありません" }
+            val newDesc = detail.description
             val current = focusedHeroPreview
             if (current != null && current.title == detail.title) {
                 focusedHeroPreview = current.copy(description = newDesc)
@@ -408,6 +408,13 @@ fun VideoTabContent(
             false
         }
     }
+    val downToFirstRowModifier = Modifier.onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+            recentFocus.requestEntryFocus() || historyFocus.requestEntryFocus()
+        } else {
+            false
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         VideoCompactHero(
@@ -445,6 +452,7 @@ fun VideoTabContent(
                             .weight(1f)
                             .focusRequester(recordingsRequester)
                             .onGloballyPositioned { onContentReady() }
+                            .then(downToFirstRowModifier)
                             .then(upToTopBarModifier)
                             .focusProperties {
                                 left = tabFocusRequester
@@ -458,8 +466,7 @@ fun VideoTabContent(
                             lastFocusedBanner = VideoBannerFocus.RECORDINGS
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "録画リスト",
-                                metaLine = if (recentRecordings.isNotEmpty()) "${recentRecordings.size} 番組" else "録画一覧",
-                                description = "すべての録画番組を一覧・検索",
+                                metaLine = if (recentRecordings.isNotEmpty()) "${recentRecordings.size} 番組" else "",
                             )
                         },
                     )
@@ -468,13 +475,7 @@ fun VideoTabContent(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(onAirRequester)
-                            .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                                    recentFocus.requestEntryFocus() || historyFocus.requestEntryFocus()
-                                } else {
-                                    false
-                                }
-                            }
+                            .then(downToFirstRowModifier)
                             .then(upToTopBarModifier)
                             .focusProperties {
                                 left = recordingsRequester
@@ -488,8 +489,6 @@ fun VideoTabContent(
                             lastFocusedBanner = VideoBannerFocus.ON_AIR
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "放送中",
-                                metaLine = "放送中シリーズ",
-                                description = "放送中の番組をシリーズごとに表示",
                             )
                         },
                     )
@@ -498,6 +497,7 @@ fun VideoTabContent(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(smbRequester)
+                            .then(downToFirstRowModifier)
                             .then(upToTopBarModifier)
                             .focusProperties {
                                 left = onAirRequester
@@ -510,9 +510,7 @@ fun VideoTabContent(
                             lastFocusedCard = null
                             lastFocusedBanner = VideoBannerFocus.SMB
                             focusedHeroPreview = VideoHeroPreview(
-                                title = "ファイルライブラリ",
-                                metaLine = "SMB ネットワーク",
-                                description = "共有フォルダ内の動画ファイルを再生",
+                                title = "ファイル",
                             )
                         },
                     )
@@ -784,10 +782,8 @@ fun VideoTabContent(
                                         focusedProgramId = null
                                         focusedHeroPreview = VideoHeroPreview(
                                             title = series.displayTitle,
-                                            metaLine = "シリーズ · ${series.programCount} エピソード",
-                                            description = series.description.ifBlank {
-                                                "「${series.displayTitle}」の録画一覧"
-                                            },
+                                            metaLine = "${series.programCount} エピソード",
+                                            description = series.description,
                                         )
                                     },
                                     modifier = Modifier

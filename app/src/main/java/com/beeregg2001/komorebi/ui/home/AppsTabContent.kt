@@ -238,31 +238,11 @@ fun AppsTabContent(
                 .padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(colors.accentSoft)
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            ) {
-                Text(
-                    text = "アプリ",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.accent,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Spacer(Modifier.width(10.dp))
             Text(
                 text = if (isHiddenCatalog) "非表示一覧" else "${catalogApps.size} アプリ",
                 style = MaterialTheme.typography.titleMedium.tnum,
                 color = colors.textPrimary,
                 fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "OKで起動 · 長押しで並び替え",
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.textMuted,
             )
         }
 
@@ -554,13 +534,6 @@ private fun LauncherAppActionDialog(
                 )
             }
         },
-        text = {
-            Text(
-                text = "アプリ操作",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary
-            )
-        },
         confirmButton = {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -667,13 +640,6 @@ private fun HiddenLauncherAppActionDialog(
                     color = colors.textSecondary
                 )
             }
-        },
-        text = {
-            Text(
-                text = "非表示アプリ操作",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary
-            )
         },
         confirmButton = {
             Row(

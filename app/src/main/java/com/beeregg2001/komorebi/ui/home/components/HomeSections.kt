@@ -148,32 +148,11 @@ fun HomeQuickAppsStrip(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Default.Apps,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = colors.textSecondary,
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "よく使うアプリ",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.textPrimary,
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "ランチャー固定アプリ",
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.textMuted,
-            )
-        }
+        SectionHeader(
+            title = "よく使うアプリ",
+            icon = Icons.Default.Apps,
+            modifier = Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
+        )
 
         Row(
             modifier = Modifier
@@ -587,7 +566,7 @@ fun WatchHistorySection(
                         onUpdateHeroInfo(
                             HomeHeroInfo(
                                 title = history.program.title,
-                                subtitle = "視聴履歴から再開",
+                                subtitle = "",
                                 description = history.program.description,
                                 imageUrl = thumbnailUrl,
                                 isThumbnail = true,

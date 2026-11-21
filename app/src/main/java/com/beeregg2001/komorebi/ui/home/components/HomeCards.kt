@@ -412,14 +412,16 @@ fun WatchHistoryCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.tvCardMarquee(isFocused)
                 )
-                val metaText = matchedProgram?.channel?.name ?: "続きから再生"
-                Text(
-                    text = metaText,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isFocused) colors.accent else colors.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                val metaText = matchedProgram?.channel?.name.orEmpty()
+                if (metaText.isNotBlank()) {
+                    Text(
+                        text = metaText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isFocused) colors.accent else colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
