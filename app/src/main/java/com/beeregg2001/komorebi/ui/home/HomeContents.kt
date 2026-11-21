@@ -130,7 +130,7 @@ fun HomeContents(
                 state = lazyListState,
                 color = colors.textPrimary,
             ),
-        contentPadding = PaddingValues(top = 68.dp, bottom = 56.dp),
+        contentPadding = PaddingValues(top = 76.dp, bottom = 56.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Zone 1: Quick Resume Hero (58%) + 2x2 Quick Shortcuts Grid (42%)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -124,14 +125,14 @@ private fun PinnedSystemAppButton(
                 up = FocusRequester.Cancel
                 canFocus = canTakeFocus
             },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         border = ClickableSurfaceDefaults.border(
-            border = focusSpec.restBorder,
-            focusedBorder = focusSpec.focusedBorder,
+            border = Border.None,
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
         ),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = colors.surface1,
+            containerColor = Color.Transparent,
             focusedContainerColor = colors.surface2,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary,
@@ -179,14 +180,14 @@ internal fun NetworkStatusButton(
                 up = FocusRequester.Cancel
                 canFocus = canTakeFocus
             },
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
         border = ClickableSurfaceDefaults.border(
-            border = focusSpec.restBorder,
-            focusedBorder = focusSpec.focusedBorder,
+            border = Border.None,
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
         ),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (status.isAvailable) colors.surface1 else colors.accentSoft,
+            containerColor = if (status.isAvailable) Color.Transparent else colors.accentSoft,
             focusedContainerColor = colors.surface2,
             contentColor = if (status.isAvailable) colors.textSecondary else colors.accent,
             focusedContentColor = if (status.isAvailable) colors.textPrimary else colors.accent,
@@ -353,14 +354,14 @@ internal fun LauncherSystemStrip(
                     up = FocusRequester.Cancel
                     canFocus = canTakeFocus
                 },
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
             scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
             border = ClickableSurfaceDefaults.border(
-                border = focusSpec.restBorder,
-                focusedBorder = focusSpec.focusedBorder,
+                border = Border.None,
+                focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
             ),
             colors = ClickableSurfaceDefaults.colors(
-                containerColor = colors.surface1,
+                containerColor = Color.Transparent,
                 focusedContainerColor = colors.surface2,
                 contentColor = colors.textSecondary,
                 focusedContentColor = colors.textPrimary,
@@ -387,21 +388,23 @@ internal fun LauncherSystemStrip(
                     up = FocusRequester.Cancel
                     canFocus = canTakeFocus
                 },
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(TvCardRadiusGrid)),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
             scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
             border = ClickableSurfaceDefaults.border(
-                border = focusSpec.restBorder,
-                focusedBorder = focusSpec.focusedBorder,
+                border = Border.None,
+                focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
             ),
             colors = ClickableSurfaceDefaults.colors(
-                containerColor = colors.surface1,
+                containerColor = Color.Transparent,
                 focusedContainerColor = colors.surface2,
                 contentColor = colors.textPrimary,
                 focusedContentColor = colors.textPrimary,
             ),
         ) {
             Box(
-                modifier = Modifier.padding(horizontal = 12.dp),
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 DigitalClock(timeFormat = timeFormat)
