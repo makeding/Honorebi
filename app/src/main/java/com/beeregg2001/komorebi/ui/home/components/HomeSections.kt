@@ -524,6 +524,8 @@ fun WatchHistorySection(
     watchHistory: List<KonomiHistoryProgram>,
     recentRecordings: List<RecordedProgram>,
     konomiIp: String, konomiPort: String,
+    getLogoUrl: suspend (String) -> String = { "" },
+    shouldCropLogo: Boolean = false,
     modifier: Modifier = Modifier,
     contentFirstItemRequester: FocusRequester? = null,
     leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
@@ -577,6 +579,8 @@ fun WatchHistorySection(
                     matchedProgram = matchedProgram,
                     konomiIp = konomiIp,
                     konomiPort = konomiPort,
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
                     onClick = { onHistoryClick(history) },
                     onFocus = { progressVal, thumbnailUrl ->
                         onUpdateHeroInfo(

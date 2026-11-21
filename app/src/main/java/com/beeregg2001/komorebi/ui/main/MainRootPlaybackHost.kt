@@ -58,6 +58,8 @@ fun MainRootPlaybackHost(
     onSaveLastChannel: (Channel) -> Unit,
     onPlaybackEnded: () -> Unit,
     suppressChrome: Boolean = false,
+    onLaunchSystemSettings: () -> Unit = {},
+    onTriggerScreensaver: () -> Unit = {},
 ) {
     val settingsViewModel: com.beeregg2001.komorebi.viewmodel.SettingsViewModel = hiltViewModel()
     val exclusion by settingsViewModel.nhkExclusionState.collectAsState()
@@ -118,7 +120,13 @@ fun MainRootPlaybackHost(
                     showOverlay = state.playbackState.playerShowOverlay && !suppressChrome,
                     onShowOverlayChange = { state.playbackState.playerShowOverlay = it },
                     initialCaptions = subtitle == "ON",
-                    onExit = { state.playbackState.leavePlayback() },
+                    timeFormat = data.timeFormat,
+                    onLaunchSystemSettings = onLaunchSystemSettings,
+                    onClockClick = onTriggerScreensaver,
+                    onExit = {
+                        val isPassthrough = state.backendType != "TIF" || target.channel.id.startsWith("tif:input:")
+                        state.playbackState.leavePlayback(returningFromPlayer = !isPassthrough)
+                    },
                 )
             } else {
                 val livePlayerViewModel: com.beeregg2001.komorebi.ui.live.LivePlayerViewModel = hiltViewModel()

@@ -263,6 +263,8 @@ fun WatchHistoryCard(
     matchedProgram: RecordedProgram?,
     konomiIp: String,
     konomiPort: String,
+    getLogoUrl: suspend (String) -> String = { "" },
+    shouldCropLogo: Boolean = false,
     settingViewModel: SettingsViewModel = hiltViewModel(),
     onClick: () -> Unit,
     onFocus: (progress: Float, thumbnailUrl: String) -> Unit = { _, _ -> },
@@ -272,6 +274,8 @@ fun WatchHistoryCard(
     val colors = KomorebiTheme.colors
     val program = history.program
     val backendType by settingViewModel.backendType.collectAsState()
+    val channelId = matchedProgram?.channel?.id.orEmpty()
+    val logoUrl = if (channelId.isNotBlank()) rememberChannelLogoUrl(channelId, getLogoUrl) else ""
 
     val fallbackUrl = matchedProgram?.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
         backendType,
@@ -417,13 +421,31 @@ fun WatchHistoryCard(
                 )
                 val metaText = matchedProgram?.channel?.name.orEmpty()
                 if (metaText.isNotBlank()) {
-                    Text(
-                        text = metaText,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (isFocused) colors.accent else colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (logoUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = logoUrl,
+                                contentDescription = null,
+                                contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit,
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .height(14.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                            )
+                        }
+                        Text(
+                            text = metaText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isFocused) colors.accent else colors.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }

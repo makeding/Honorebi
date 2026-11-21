@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputHdmi
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -32,8 +33,10 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -56,6 +59,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.repository.tif.TifInput
+import com.beeregg2001.komorebi.ui.home.DigitalClock
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -83,7 +87,7 @@ private fun videoUnavailableMessage(reason: Int, isPassthrough: Boolean): String
  * Android TV Input Frameworkのライブ視聴画面。
  * ネットワーク配信/Media3/Komorebiネイティブライブラリには依存しない。
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun TifLivePlayerScreen(
     channel: Channel,
@@ -96,6 +100,9 @@ fun TifLivePlayerScreen(
     onShowOverlayChange: (Boolean) -> Unit,
     initialCaptions: Boolean,
     standaloneInput: Boolean = false,
+    timeFormat: String = "24H",
+    onLaunchSystemSettings: () -> Unit = {},
+    onClockClick: () -> Unit = {},
     onExit: () -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
@@ -175,7 +182,11 @@ fun TifLivePlayerScreen(
     val firstControlFocus = remember { FocusRequester() }
     val captionControlFocus = remember { FocusRequester() }
     val hideControlFocus = remember { FocusRequester() }
+    val exitControlFocus = remember { FocusRequester() }
+    val systemSettingsFocus = remember { FocusRequester() }
+    val clockFocus = remember { FocusRequester() }
     var controlHasFocus by remember { mutableStateOf(false) }
+    var consumeNextOkKeyUp by remember { mutableStateOf(false) }
     var overlayInteractionTick by remember { mutableIntStateOf(0) }
     val displaySettingsIntent = remember(context) {
         Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
@@ -296,20 +307,33 @@ fun TifLivePlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onPreviewKeyEvent { event ->
+                val isOkKey = event.key == Key.DirectionCenter ||
+                    event.key == Key.Enter ||
+                    event.key == Key.NumPadEnter
+                if (isOkKey && event.type == KeyEventType.KeyUp && consumeNextOkKeyUp) {
+                    consumeNextOkKeyUp = false
+                    return@onPreviewKeyEvent true
+                }
+                false
+            }
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown || isMiniListOpen || controlHasFocus) {
                     return@onKeyEvent false
                 }
                 when (event.key) {
-                    Key.DirectionCenter, Key.Enter -> {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        consumeNextOkKeyUp = true
                         if (showOverlay) {
                             when {
                                 standaloneInput || allChannels.isNotEmpty() -> firstControlFocus.requestFocus()
                                 !isPassthroughInput -> captionControlFocus.requestFocus()
                                 else -> hideControlFocus.requestFocus()
                             }
+                        } else {
+                            overlayInteractionTick++
+                            onShowOverlayChange(true)
                         }
-                        else onShowOverlayChange(true)
                         true
                     }
                     Key.DirectionLeft, Key.DirectionRight -> {
@@ -326,6 +350,12 @@ fun TifLivePlayerScreen(
                 }
             }
             .focusRequester(rootFocus)
+            .focusProperties {
+                up = FocusRequester.Cancel
+                down = FocusRequester.Cancel
+                left = FocusRequester.Cancel
+                right = FocusRequester.Cancel
+            }
             .focusable()
     ) {
         if (target == null) {
@@ -432,7 +462,7 @@ fun TifLivePlayerScreen(
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(horizontal = 24.dp, vertical = 18.dp)
+                    .padding(start = 24.dp, end = 180.dp, top = 18.dp, bottom = 18.dp)
                     .background(colors.surface1.copy(alpha = 0.72f), barShape)
                     .horizontalScroll(rememberScrollState())
                     .onPreviewKeyEvent { event ->
@@ -442,6 +472,10 @@ fun TifLivePlayerScreen(
                     .onFocusChanged {
                         controlHasFocus = it.hasFocus
                         if (it.hasFocus) overlayInteractionTick++
+                    }
+                    .focusProperties {
+                        up = FocusRequester.Cancel
+                        down = FocusRequester.Cancel
                     }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -558,8 +592,30 @@ fun TifLivePlayerScreen(
                     label = "終了",
                     icon = Icons.Default.Close,
                     onClick = onExit,
+                    modifier = Modifier
+                        .focusRequester(exitControlFocus)
+                        .focusProperties { right = systemSettingsFocus },
                 )
             }
+
+            TifTopSystemStrip(
+                timeFormat = timeFormat,
+                settingsFocusRequester = systemSettingsFocus,
+                clockFocusRequester = clockFocus,
+                leftFocusRequester = exitControlFocus,
+                onLaunchSystemSettings = onLaunchSystemSettings,
+                onClockClick = onClockClick,
+                onInteraction = { overlayInteractionTick++ },
+                onHasFocusChanged = { hasFocus ->
+                    if (hasFocus) {
+                        controlHasFocus = true
+                        overlayInteractionTick++
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(horizontal = 24.dp, vertical = 18.dp),
+            )
         }
 
         // input/URI未解決時は解決失敗だけを表示し、映像受信待ちを重ねない。
@@ -598,6 +654,122 @@ fun TifLivePlayerScreen(
                     shouldCropLogo = false,
                     focusRequester = listFocus
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
+@Composable
+private fun TifTopSystemStrip(
+    timeFormat: String,
+    settingsFocusRequester: FocusRequester,
+    clockFocusRequester: FocusRequester,
+    leftFocusRequester: FocusRequester,
+    onLaunchSystemSettings: () -> Unit,
+    onClockClick: () -> Unit,
+    onInteraction: () -> Unit,
+    onHasFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val barShape = RoundedCornerShape(14.dp)
+    val itemShape = RoundedCornerShape(10.dp)
+    val settingsInteraction = remember { MutableInteractionSource() }
+    val clockInteraction = remember { MutableInteractionSource() }
+    val isSettingsFocused by settingsInteraction.collectIsFocusedAsState()
+
+    Row(
+        modifier = modifier
+            .background(colors.surface1.copy(alpha = 0.72f), barShape)
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) onInteraction()
+                false
+            }
+            .onFocusChanged { onHasFocusChanged(it.hasFocus) }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            onClick = {
+                onInteraction()
+                onLaunchSystemSettings()
+            },
+            modifier = Modifier
+                .size(44.dp)
+                .focusRequester(settingsFocusRequester)
+                .focusProperties {
+                    left = leftFocusRequester
+                    right = clockFocusRequester
+                    up = FocusRequester.Cancel
+                    down = FocusRequester.Cancel
+                },
+            interactionSource = settingsInteraction,
+            shape = ClickableSurfaceDefaults.shape(itemShape),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = colors.surface2.copy(alpha = 0.92f),
+                pressedContainerColor = colors.accentSoft,
+                contentColor = colors.textSecondary,
+                focusedContentColor = colors.textPrimary,
+                pressedContentColor = colors.textPrimary,
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = Border.None,
+                focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = itemShape),
+                pressedBorder = Border(BorderStroke(2.dp, colors.accent), shape = itemShape),
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "システム設定",
+                    tint = if (isSettingsFocused) colors.accent else colors.textSecondary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+
+        Surface(
+            onClick = {
+                onInteraction()
+                onClockClick()
+            },
+            modifier = Modifier
+                .height(44.dp)
+                .focusRequester(clockFocusRequester)
+                .focusProperties {
+                    left = settingsFocusRequester
+                    right = FocusRequester.Cancel
+                    up = FocusRequester.Cancel
+                    down = FocusRequester.Cancel
+                },
+            interactionSource = clockInteraction,
+            shape = ClickableSurfaceDefaults.shape(itemShape),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = Color.Transparent,
+                focusedContainerColor = colors.surface2.copy(alpha = 0.92f),
+                pressedContainerColor = colors.accentSoft,
+                contentColor = colors.textPrimary,
+                focusedContentColor = colors.textPrimary,
+                pressedContentColor = colors.textPrimary,
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = Border.None,
+                focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = itemShape),
+                pressedBorder = Border(BorderStroke(2.dp, colors.accent), shape = itemShape),
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                DigitalClock(timeFormat = timeFormat)
             }
         }
     }
@@ -649,14 +821,17 @@ private fun TifOsdActionChip(
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (active) colors.accentSoft else Color.Transparent,
             focusedContainerColor = colors.surface2.copy(alpha = 0.92f),
+            pressedContainerColor = colors.accentSoft,
             disabledContainerColor = Color.Transparent,
             contentColor = if (active) colors.accent else colors.textPrimary,
             focusedContentColor = colors.textPrimary,
+            pressedContentColor = colors.textPrimary,
             disabledContentColor = colors.textSecondary.copy(alpha = 0.45f),
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border.None,
             focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
+            pressedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {

@@ -192,7 +192,7 @@ fun LiveContent(
             if (targetId != null) {
                 val flatIdx = findFlatChunkIndex(visibleRows, targetId)
                 if (flatIdx != -1) {
-                    listState.scrollToItem(flatIdx)
+                    listState.scrollToItem(flatIdx + if (showGenreChips) 1 else 0)
                     withFrameNanos { }
                     if (targetChannelFocusRequester.safeRequestFocusWithRetry("LiveChannelTarget")) {
                         consumeReturn()
@@ -236,38 +236,37 @@ fun LiveContent(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
-                if (showGenreChips) {
-                    LiveGenreFilterStrip(
-                        liveRows = liveRows,
-                        selectedGenreId = selectedGenreId,
-                        activeChipFocusRequester = activeChipFocusRequester,
-                        upEdgeRequester = upEdgeRequester,
-                        leftEdgeRequester = topNavFocusRequester,
-                        downEdgeRequester = if (hasVisibleChannels) null else contentFirstItemRequester,
-                        onSelectGenre = { genreId ->
-                            selectedGenreId = genreId
-                        },
-                        onChipFocused = { requester ->
-                            lastFocusedChipRequester = requester
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                top = 68.dp,
-                                bottom = 4.dp
-                            )
-                    )
-                }
-
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(top = if (showGenreChips) 4.dp else 68.dp, bottom = 48.dp),
+                    contentPadding = PaddingValues(top = if (showGenreChips) 14.dp else 68.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (!hasVisibleChannels) {
+                if (showGenreChips) {
+                    item(key = "genre-strip") {
+                        LiveGenreFilterStrip(
+                            liveRows = liveRows,
+                            selectedGenreId = selectedGenreId,
+                            activeChipFocusRequester = activeChipFocusRequester,
+                            upEdgeRequester = upEdgeRequester,
+                            leftEdgeRequester = topNavFocusRequester,
+                            downEdgeRequester = if (hasVisibleChannels) null else contentFirstItemRequester,
+                            onSelectGenre = { genreId ->
+                                selectedGenreId = genreId
+                            },
+                            onChipFocused = { requester ->
+                                lastFocusedChipRequester = requester
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 260.dp)
+                        )
+                    }
+                }
+
+                if (!hasVisibleChannels) {
                         item(key = "empty-genre") {
                             Box(
                                 modifier = Modifier

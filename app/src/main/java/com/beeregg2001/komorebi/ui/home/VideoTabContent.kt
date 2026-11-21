@@ -249,11 +249,8 @@ fun VideoTabContent(
     val genreFocus = rememberVideoRowFocus(genreList.map { it ?: "All" }, genreRowState)
     val seriesFocus = rememberVideoRowFocus(seriesPreviewItems.map { it.displayTitle }, seriesRowState)
 
-    val railHeroPreview = remember(recentRecordings.size) {
-        VideoHeroPreview(
-            title = "ビデオ",
-            metaLine = if (recentRecordings.isNotEmpty()) "${recentRecordings.size} 番組" else "",
-        )
+    val railHeroPreview = remember {
+        VideoHeroPreview(title = "ビデオ")
     }
 
     var focusedHeroPreview by remember { mutableStateOf<VideoHeroPreview?>(null) }
@@ -502,7 +499,6 @@ fun VideoTabContent(
                             lastFocusedBanner = VideoBannerFocus.RECORDINGS
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "録画リスト",
-                                metaLine = if (recentRecordings.isNotEmpty()) "${recentRecordings.size} 番組" else "",
                             )
                         },
                     )

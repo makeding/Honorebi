@@ -843,6 +843,26 @@ fun MainRootScreen(
             }
 
             if (startupRenderPlan.showMainContent) {
+                val triggerScreensaver: () -> Unit = {
+                    if (screensaverEnabled && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
+                        screensaverState.showNow()
+                    } else {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                            component = android.content.ComponentName(
+                                "com.android.systemui",
+                                "com.android.systemui.Somnambulator",
+                            )
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            if (screensaverImages.isNotEmpty() || pausedPlayback != null) {
+                                screensaverState.showNow()
+                            }
+                        }
+                    }
+                }
                 Box(modifier = Modifier.fillMaxSize()) {
 
                     MainRootBackground(
@@ -871,26 +891,7 @@ fun MainRootScreen(
                         isBackendRecoveryInProgress = isNetworkAvailable &&
                                 (isChannelRecovering || state.isConnectionRetryPending),
                         onExitApp = { showExitDialog = true },
-                        onTriggerScreensaver = {
-                            if (screensaverEnabled && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
-                                screensaverState.showNow()
-                            } else {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                                    component = android.content.ComponentName(
-                                        "com.android.systemui",
-                                        "com.android.systemui.Somnambulator",
-                                    )
-                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                try {
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {
-                                    if (screensaverImages.isNotEmpty() || pausedPlayback != null) {
-                                        screensaverState.showNow()
-                                    }
-                                }
-                            }
-                        },
+                        onTriggerScreensaver = triggerScreensaver,
                     )
 
                     if (state.playbackState.isPlaybackActive) {
@@ -911,6 +912,8 @@ fun MainRootScreen(
                                 recordViewModel.fetchRecentRecordings(forceRefresh = true)
                                 channelViewModel.fetchChannels()
                             },
+                            onLaunchSystemSettings = homeViewModel::launchSystemSettings,
+                            onTriggerScreensaver = triggerScreensaver,
                         )
                     }
                 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
@@ -34,6 +35,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -107,7 +109,7 @@ fun TvInputSourceDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     val repository = remember(context) { TifRepository(context.applicationContext) }
-    var tunerChannels by remember(generation) { mutableStateOf<Map<String, List<Channel>>>(emptyMap()) }
+    var tunerChannels by remember { mutableStateOf<Map<String, List<Channel>>>(emptyMap()) }
     val inputs = remember(generation) { TifInput.inputs(context) }
     val inputsById = remember(inputs) { inputs.associateBy { it.id } }
     val tvInputManager = remember(context) { context.getSystemService(TvInputManager::class.java) }
@@ -135,6 +137,14 @@ fun TvInputSourceDialog(
     val firstItemFocus = remember { FocusRequester() }
     val refreshFocus = remember { FocusRequester() }
     var hasRequestedInitialFocus by remember { mutableStateOf(false) }
+    var autoPromptedPermission by remember { mutableStateOf(false) }
+
+    LaunchedEffect(granted, tunerInputs.isNotEmpty()) {
+        if (!granted && tunerInputs.isNotEmpty() && !autoPromptedPermission) {
+            autoPromptedPermission = true
+            permission.launch(TifInput.READ_LISTINGS_PERMISSION)
+        }
+    }
 
     DisposableEffect(lifecycle, tvInputManager) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) generation++ }
@@ -197,7 +207,12 @@ fun TvInputSourceDialog(
                     .align(Alignment.CenterEnd)
                     .width(380.dp)
                     .fillMaxHeight()
-                    .background(colors.surface1),
+                    .background(colors.surface1)
+                    .focusProperties {
+                        left = FocusRequester.Cancel
+                        right = FocusRequester.Cancel
+                    }
+                    .focusGroup(),
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
@@ -241,7 +256,7 @@ fun TvInputSourceDialog(
                             contentPadding = PaddingValues(vertical = 4.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            if (loading) {
+                            if (loading && ports.isEmpty() && !(hasAirPlay && airPlayLaunchIntent != null) && tunerChannels.isEmpty()) {
                                 item(key = "loading") {
                                     Text(
                                         text = "TV入力を読み込み中…",
@@ -279,33 +294,6 @@ fun TvInputSourceDialog(
 
                             var firstAssigned = false
 
-                            if (!granted && tunerInputs.isNotEmpty()) {
-                                val isFirst = !firstAssigned && ports.isEmpty() && !(hasAirPlay && airPlayLaunchIntent != null)
-                                if (isFirst) firstAssigned = true
-                                item(key = "permission") {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(colors.surface2, RoundedCornerShape(12.dp))
-                                            .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
-                                            .padding(14.dp),
-                                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    ) {
-                                        Text(
-                                            text = "チューナーのチャンネル一覧を表示するには、TV番組一覧へのアクセス許可が必要です。",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = colors.textSecondary,
-                                        )
-                                        TvInputDrawerRow(
-                                            label = "TV番組一覧を許可",
-                                            icon = Icons.Default.LockOpen,
-                                            onClick = { permission.launch(TifInput.READ_LISTINGS_PERMISSION) },
-                                            modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
-                                        )
-                                    }
-                                }
-                            }
-
                             if (hasAirPlay && airPlayLaunchIntent != null) {
                                 item(key = "airplay_item") {
                                     val isFirst = !firstAssigned
@@ -313,8 +301,6 @@ fun TvInputSourceDialog(
                                     TvInputDrawerRow(
                                         label = "AirPlay",
                                         icon = Icons.Default.Cast,
-                                        statusBadge = "待機中",
-                                        isConnected = false,
                                         onClick = {
                                             runCatching { context.startActivity(airPlayLaunchIntent) }
                                                 .onSuccess { onDismiss() }
@@ -331,18 +317,27 @@ fun TvInputSourceDialog(
                                     if (isFirst) firstAssigned = true
                                     val rawInputId = Uri.decode(channel.id.removePrefix("tif:input:"))
                                     val state = inputStates[rawInputId]
-                                    val stateBadge = when (state) {
-                                        TvInputManager.INPUT_STATE_CONNECTED -> "接続中"
-                                        TvInputManager.INPUT_STATE_CONNECTED_STANDBY -> "待機中"
-                                        TvInputManager.INPUT_STATE_DISCONNECTED -> "未接続"
-                                        else -> null
-                                    }
+                                    val isConnected = state == TvInputManager.INPUT_STATE_CONNECTED
                                     TvInputDrawerRow(
                                         label = channel.name,
                                         icon = passthroughIcon(inputsById[rawInputId]),
-                                        statusBadge = stateBadge,
-                                        isConnected = state == TvInputManager.INPUT_STATE_CONNECTED,
+                                        statusBadge = if (isConnected) "接続中" else null,
+                                        isConnected = isConnected,
                                         onClick = { onOpenChannel(channel) },
+                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+                                    )
+                                }
+                            }
+
+                            if (!granted && tunerInputs.isNotEmpty()) {
+                                item(key = "permission") {
+                                    val isFirst = !firstAssigned
+                                    if (isFirst) firstAssigned = true
+                                    TvInputDrawerRow(
+                                        label = "TV番組一覧を許可",
+                                        icon = Icons.Default.LockOpen,
+                                        statusBadge = "未許可",
+                                        onClick = { permission.launch(TifInput.READ_LISTINGS_PERMISSION) },
                                         modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
                                     )
                                 }
@@ -446,12 +441,15 @@ private fun TvInputDrawerRow(
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface2,
             focusedContainerColor = colors.accentSoft,
+            pressedContainerColor = colors.accentSoft,
             contentColor = colors.textPrimary,
             focusedContentColor = colors.textPrimary,
+            pressedContentColor = colors.textPrimary,
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
             focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
+            pressedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {
@@ -540,12 +538,15 @@ private fun DrawerFooterAction(
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface2,
             focusedContainerColor = colors.accentSoft,
+            pressedContainerColor = colors.accentSoft,
             contentColor = colors.textSecondary,
             focusedContentColor = colors.textPrimary,
+            pressedContentColor = colors.textPrimary,
         ),
         border = ClickableSurfaceDefaults.border(
             border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
             focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
+            pressedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {

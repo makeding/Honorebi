@@ -431,7 +431,7 @@ fun HomeLauncherScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .focusProperties { canFocus = isCurrentSnapshot && !isFullScreenMode },
+                            .focusProperties { canFocus = isCurrentSnapshot && !isFullScreenMode && !showTvInputs },
                     ) {
                         when (snapshot.tab) {
                             LauncherTab.HOME -> HomeContents(

@@ -252,6 +252,8 @@ fun HomeContents(
                     recentRecordings = recentRecordings,
                     konomiIp = konomiIp,
                     konomiPort = konomiPort,
+                    getLogoUrl = getLogoUrl,
+                    shouldCropLogo = shouldCropLogo,
                     leftEdgeFocusRequester = tabFocusRequester,
                     onHistoryClick = onHistoryClick,
                     homeViewModel = homeViewModel,
