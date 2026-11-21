@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputHdmi
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -181,7 +180,6 @@ fun TifLivePlayerScreen(
     val listFocus = remember { FocusRequester() }
     val firstControlFocus = remember { FocusRequester() }
     val captionControlFocus = remember { FocusRequester() }
-    val hideControlFocus = remember { FocusRequester() }
     val exitControlFocus = remember { FocusRequester() }
     val systemSettingsFocus = remember { FocusRequester() }
     val clockFocus = remember { FocusRequester() }
@@ -295,7 +293,7 @@ fun TifLivePlayerScreen(
                     when {
                         standaloneInput || allChannels.isNotEmpty() -> firstControlFocus.requestFocus()
                         !isPassthroughInput -> captionControlFocus.requestFocus()
-                        else -> hideControlFocus.requestFocus()
+                        else -> exitControlFocus.requestFocus()
                     }
                 }
                 else -> rootFocus.requestFocus()
@@ -328,7 +326,7 @@ fun TifLivePlayerScreen(
                             when {
                                 standaloneInput || allChannels.isNotEmpty() -> firstControlFocus.requestFocus()
                                 !isPassthroughInput -> captionControlFocus.requestFocus()
-                                else -> hideControlFocus.requestFocus()
+                                else -> exitControlFocus.requestFocus()
                             }
                         } else {
                             overlayInteractionTick++
@@ -462,7 +460,7 @@ fun TifLivePlayerScreen(
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 24.dp, end = 180.dp, top = 18.dp, bottom = 18.dp)
+                    .padding(start = 24.dp, end = 168.dp, top = 18.dp, bottom = 18.dp)
                     .background(colors.surface1.copy(alpha = 0.72f), barShape)
                     .horizontalScroll(rememberScrollState())
                     .onPreviewKeyEvent { event ->
@@ -477,8 +475,8 @@ fun TifLivePlayerScreen(
                         up = FocusRequester.Cancel
                         down = FocusRequester.Cancel
                     }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
@@ -579,13 +577,6 @@ fun TifLivePlayerScreen(
                     label = if (isPassthroughInput) "再接続" else "再選局",
                     icon = Icons.Default.Refresh,
                     onClick = { retuneGeneration++ },
-                )
-
-                TifOsdActionChip(
-                    label = "操作を隠す",
-                    icon = Icons.Default.VisibilityOff,
-                    onClick = { onShowOverlayChange(false) },
-                    modifier = Modifier.focusRequester(hideControlFocus),
                 )
 
                 TifOsdActionChip(
@@ -836,9 +827,9 @@ private fun TifOsdActionChip(
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             Icon(
                 imageVector = icon,
