@@ -426,6 +426,10 @@ fun HomeLauncherScreen(
                                 timeFormat = timeFormat,
                                 focusMemory = focusMemory,
                                 tabIndex = snapshotTabIndex,
+                                topBarFocusRequester = topBarEntryRequester,
+                                onShowAllRecordings = onShowAllRecordings,
+                                onShowOnAir = onShowOnAir,
+                                hideAppsTab = hideAppsTab,
                             )
 
                             LauncherTab.LIVE -> LiveContent(
@@ -439,6 +443,7 @@ fun HomeLauncherScreen(
                                 konomiIp = konomiIp,
                                 konomiPort = konomiPort,
                                 topNavFocusRequester = snapshotTabRequester,
+                                topBarFocusRequester = topBarEntryRequester,
                                 contentFirstItemRequester = snapshotContentRequester,
                                 lastFocusedChannelId = ui.internalLastPlayerChannelId
                                     ?: lastPlayerChannelId,
@@ -453,6 +458,7 @@ fun HomeLauncherScreen(
                             LauncherTab.APPS -> AppsTabContent(
                                 homeViewModel = homeViewModel,
                                 tabFocusRequester = snapshotTabRequester,
+                                topBarFocusRequester = topBarEntryRequester,
                                 contentFirstItemRequester = snapshotContentRequester,
                                 onUiReady = snapshotReady,
                                 focusMemory = focusMemory,
@@ -466,6 +472,7 @@ fun HomeLauncherScreen(
                                 onShowSeriesList = onShowSeriesList,
                                 onShowSmbLibrary = onShowSmbLibrary,
                                 onShowOnAir = onShowOnAir,
+                                topBarFocusRequester = topBarEntryRequester,
                                 openedSeriesTitle = ui.openedSeriesTitle,
                                 onOpenedSeriesTitleChange = { ui.openedSeriesTitle = it },
                                 tabFocusRequester = snapshotTabRequester,
