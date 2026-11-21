@@ -56,6 +56,7 @@ fun ModernEpgCanvasEngine_Smooth(
     uiState: EpgUiState,
     logoUrls: List<String>,
     topTabFocusRequester: FocusRequester,
+    mainTabFocusRequester: FocusRequester = topTabFocusRequester,
     headerFocusRequester: FocusRequester,
     jumpButtonFocusRequester: FocusRequester,
     gridFocusRequester: FocusRequester,
@@ -256,6 +257,7 @@ fun ModernEpgCanvasEngine_Smooth(
             ) {
                 EpgHeaderSection(
                     topTabFocusRequester = topTabFocusRequester,
+                    mainTabFocusRequester = mainTabFocusRequester,
                     headerFocusRequester = headerFocusRequester,
                     jumpMenuFocusRequester = jumpButtonFocusRequester,
                     searchButtonFocusRequester = searchButtonFocusRequester,
@@ -445,6 +447,7 @@ fun ModernEpgCanvasEngine_Smooth(
 @Composable
 fun EpgHeaderSection(
     topTabFocusRequester: FocusRequester,
+    mainTabFocusRequester: FocusRequester = topTabFocusRequester,
     headerFocusRequester: FocusRequester,
     jumpMenuFocusRequester: FocusRequester,
     searchButtonFocusRequester: FocusRequester,
@@ -599,6 +602,7 @@ fun EpgHeaderSection(
                 )
                 .focusRequester(jumpMenuFocusRequester)
                 .focusProperties {
+                    left = mainTabFocusRequester
                     right =
                         if (subTabFocusRequesters.isNotEmpty()) subTabFocusRequesters[0] else searchButtonFocusRequester
                     down = gridFocusRequester; up = topTabFocusRequester

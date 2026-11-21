@@ -47,6 +47,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.EpgProgram
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.epg.components.EpgSearchResultsScreen
@@ -134,10 +135,28 @@ fun EpgNavigationContainer(
             wasProgramDetailOpen = true
         } else if (wasProgramDetailOpen) {
             wasProgramDetailOpen = false
-            epgViewModel.triggerRestore()
+            if (activeSearchQuery.isEmpty()) {
+                epgViewModel.triggerRestore()
+            }
         }
     }
     LaunchedEffect(isInternalJumping) { onJumpStateChanged(isInternalJumping) }
+
+    var wasJumpMenuOpen by remember { mutableStateOf(isJumpMenuOpen) }
+    LaunchedEffect(isJumpMenuOpen) {
+        if (wasJumpMenuOpen && !isJumpMenuOpen && !isInternalJumping) {
+            delay(50)
+            if (!jumpButtonRequester.safeRequestFocusWithRetry(
+                    tag = "EpgNav_JumpDismiss",
+                    maxRetries = 2,
+                    delayMillis = 50
+                )
+            ) {
+                gridFocusRequester.safeRequestFocusWithRetry("EpgNav_JumpDismissFallback")
+            }
+        }
+        wasJumpMenuOpen = isJumpMenuOpen
+    }
 
     var wasProgramSelected by remember { mutableStateOf(false) }
     LaunchedEffect(selectedProgram) {
@@ -173,6 +192,20 @@ fun EpgNavigationContainer(
         onClearSearch()
     }
 
+    val closeSearchBar: () -> Unit = {
+        isSearchBarVisible = false
+        scope.launch {
+            if (!searchButtonRequester.safeRequestFocusWithRetry(
+                    tag = "SearchClose",
+                    maxRetries = 2,
+                    delayMillis = 50
+                )
+            ) {
+                gridFocusRequester.safeRequestFocusWithRetry("SearchCloseFallback")
+            }
+        }
+    }
+
     LaunchedEffect(isSearchBarVisible) {
         if (isSearchBarVisible) {
             delay(50)
@@ -185,7 +218,14 @@ fun EpgNavigationContainer(
             wasSearching = true
         } else if (activeSearchQuery.isEmpty() && wasSearching) {
             delay(300)
-            searchButtonRequester.safeRequestFocus("BackFromSearch")
+            if (!searchButtonRequester.safeRequestFocusWithRetry(
+                    tag = "BackFromSearch",
+                    maxRetries = 2,
+                    delayMillis = 50
+                )
+            ) {
+                gridFocusRequester.safeRequestFocusWithRetry("BackFromSearchFallback")
+            }
             wasSearching = false
         }
     }
@@ -234,6 +274,7 @@ fun EpgNavigationContainer(
                     logoUrls = logoUrls,
                     onProgramSelected = { onProgramSelected(it) },
                     topTabFocusRequester = topBarFocusRequester ?: mainTabFocusRequester,
+                    mainTabFocusRequester = mainTabFocusRequester,
                     headerFocusRequester = headerFocusRequester,
                     jumpButtonFocusRequester = jumpButtonRequester,
                     searchButtonFocusRequester = searchButtonRequester,
@@ -343,8 +384,7 @@ fun EpgNavigationContainer(
                 .align(Alignment.TopCenter)
         ) {
             BackHandler(enabled = true) {
-                isSearchBarVisible = false
-                searchButtonRequester.safeRequestFocus("SearchClose")
+                closeSearchBar()
             }
 
             Box(
@@ -354,8 +394,7 @@ fun EpgNavigationContainer(
                         if (event.key == Key.Back || event.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK) {
                             if (event.type == KeyEventType.KeyDown) return@onKeyEvent true
                             if (event.type == KeyEventType.KeyUp) {
-                                isSearchBarVisible = false
-                                searchButtonRequester.safeRequestFocus("SearchClose")
+                                closeSearchBar()
                                 return@onKeyEvent true
                             }
                         }
@@ -376,14 +415,12 @@ fun EpgNavigationContainer(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = {
-                                isSearchBarVisible = false
-                                searchButtonRequester.safeRequestFocus("SearchClose")
-                            },
+                            onClick = { closeSearchBar() },
                             modifier = Modifier
                                 .focusRequester(searchCloseButtonFocusRequester)
                                 .focusProperties {
-                                    up = FocusRequester.Cancel; left = FocusRequester.Cancel
+                                    up = topBarFocusRequester ?: mainTabFocusRequester
+                                    left = mainTabFocusRequester
                                 },
                             colors = IconButtonDefaults.colors(
                                 containerColor = colors.surface.copy(alpha = 0.5f),
@@ -536,7 +573,6 @@ fun EpgNavigationContainer(
                 },
                 onDismiss = {
                     onJumpMenuStateChanged(false)
-                    jumpButtonRequester.safeRequestFocus("EpgNav_JumpDismiss")
                 }
             )
         }
