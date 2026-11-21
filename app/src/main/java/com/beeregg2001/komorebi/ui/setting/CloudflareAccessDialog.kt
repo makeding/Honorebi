@@ -17,6 +17,7 @@ import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
+import com.beeregg2001.komorebi.ui.components.DialogBackdropScrim
 import com.beeregg2001.komorebi.ui.components.ThemedDialogSurface
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.delay
@@ -47,7 +48,7 @@ fun CloudflareAccessDialog(
     val clientIdFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(150); clientIdFocus.safeRequestFocus() }
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(0.8f)).focusGroup().onKeyEvent {
+        Modifier.fillMaxSize().background(DialogBackdropScrim).focusGroup().onKeyEvent {
             if (it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK || it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_ESCAPE) {
                 if (!saving && it.type == KeyEventType.KeyUp) onDismiss()
                 true
@@ -58,11 +59,15 @@ fun CloudflareAccessDialog(
         ThemedDialogSurface(width = 620.dp) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Cloudflare Access", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("保護する HTTPS バックエンドだけにサービス トークンを送信します。ID と Secret は両方入力するか、両方消去してください。")
+                Text(
+                    "HTTPSバックエンド向けのサービストークンを設定します（両方入力または両方消去）。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
                 DialogTextField(clientId, { if (!saving) { clientId = it; error = null } }, "Client ID", focusRequester = clientIdFocus)
                 DialogTextField(clientSecret, { if (!saving) { clientSecret = it; error = null } }, "Client Secret", focusRequester = remember { FocusRequester() })
                 Box(Modifier.fillMaxWidth().height(48.dp).testTag("access-status"), contentAlignment = Alignment.CenterStart) {
-                    Text(status, color = if (error != null || !valid) Color(0xFFE53935) else colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+                    Text(status, color = if (error != null || !valid) colors.danger else colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f), enabled = !saving) { Text("キャンセル") }

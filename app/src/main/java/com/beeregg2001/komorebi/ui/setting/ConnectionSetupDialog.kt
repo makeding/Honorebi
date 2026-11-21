@@ -1,25 +1,23 @@
 package com.beeregg2001.komorebi.ui.setting
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.tv.material3.Text
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.setup.ConnectionSetupUiState
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
+import com.beeregg2001.komorebi.ui.components.DialogQrCard
+import com.beeregg2001.komorebi.ui.components.DialogUrlBox
 import com.beeregg2001.komorebi.ui.components.ThemedDialogSurface
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
@@ -45,52 +43,110 @@ fun ConnectionSetupDialog(
         else closeR.safeRequestFocus("ConnectionSetup_Close")
     }
     val session = state.session
-    val url = session?.let { "http://$serverIp:8081/connections/" +
-        (it.source?.let { source -> "?source=$source" } ?: "") + "#${it.token}" }
-    val bitmap = url?.let { rememberQrBitmap(it, 300, margin = 4) }
-    Dialog(onDismissRequest = if (initialSetup && !canFinishInitialSetup) ({}) else onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = !initialSetup)) {
+    val url = session?.let {
+        "http://$serverIp:8081/connections/" +
+            (it.source?.let { source -> "?source=$source" } ?: "") + "#${it.token}"
+    }
+    val bitmap = url?.let { rememberQrBitmap(it, 300, margin = 1) }
+
+    Dialog(
+        onDismissRequest = if (initialSetup && !canFinishInitialSetup) ({}) else onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = !initialSetup,
+        ),
+    ) {
         ThemedDialogSurface(width = 680.dp) {
-            Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("スマホで接続設定", style = MaterialTheme.typography.titleLarge)
-                        Text("同じネットワークのスマホでQRコードを読み取り、設定を入力して保存してください。",
-                            color = colors.textSecondary)
-                        Box(Modifier.fillMaxWidth().height(72.dp), contentAlignment = Alignment.CenterStart) {
-                            Text(state.error ?: if (session == null) "設定ページを準備しています…"
-                                else if (initialSetup && !canFinishInitialSetup) "接続設定を保存すると、初期設定を完了できます。"
-                                else "テレビに設定を反映します。",
-                                color = if (state.error != null) Color(0xFFE53935) else colors.textSecondary,
-                                style = MaterialTheme.typography.bodyMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Text(
+                            text = "同じネットワークの端末で読み取るか、URLを開いて設定",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                        )
+
+                        DialogUrlBox(
+                            url = url ?: "設定ページを準備しています…",
+                            label = "設定URL",
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 24.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            when {
+                                state.error != null -> Text(
+                                    text = state.error,
+                                    color = colors.danger,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                initialSetup && !canFinishInitialSetup -> Text(
+                                    text = "接続設定を保存すると初期設定を完了できます。",
+                                    color = colors.textMuted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
-                        Box(Modifier.fillMaxWidth().height(48.dp)) {
-                            if (state.error != null) DialogActionButton(DialogActionRole.Secondary, onStart) { Text("再試行") }
+
+                        if (state.error != null) {
+                            DialogActionButton(DialogActionRole.Secondary, onStart) {
+                                Text("再試行")
+                            }
                         }
                     }
-                    Box(Modifier.size(220.dp).background(Color.White, RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center) {
-                        if (bitmap != null) Image(bitmap, "接続設定のQRコード", Modifier.fillMaxSize())
-                        else Text("QRコードを準備中", color = Color.Black)
-                    }
+
+                    DialogQrCard(
+                        bitmap = bitmap,
+                        contentDescription = "接続設定のQRコード",
+                        size = 212.dp,
+                    )
                 }
+
                 if (initialSetup) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        DialogActionButton(DialogActionRole.Secondary, onDismiss, Modifier.weight(1f),
-                            enabled = canFinishInitialSetup) {
-                            Text("設定を完了")
-                        }
-                        DialogActionButton(DialogActionRole.Primary, onManualInput,
-                            Modifier.weight(1f).focusRequester(manualR)) { Text("リモコンで手動入力") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        DialogActionButton(
+                            role = DialogActionRole.Secondary,
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f),
+                            enabled = canFinishInitialSetup,
+                        ) { Text("設定を完了") }
+                        DialogActionButton(
+                            role = DialogActionRole.Primary,
+                            onClick = onManualInput,
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(manualR),
+                        ) { Text("リモコンで手動入力") }
                     }
                 } else {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
                         DialogActionButton(
-                            DialogActionRole.Secondary,
-                            onDismiss,
-                            Modifier.focusRequester(closeR),
+                            role = DialogActionRole.Secondary,
+                            onClick = onDismiss,
+                            modifier = Modifier.focusRequester(closeR),
                         ) { Text("閉じる") }
                     }
                 }
