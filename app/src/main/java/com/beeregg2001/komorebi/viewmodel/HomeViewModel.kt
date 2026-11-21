@@ -27,6 +27,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.Channel as CoroutineChannel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
@@ -275,6 +276,7 @@ class HomeViewModel @Inject constructor(
     @Volatile
     private var isRefreshingHomeData = false
     private var lastBackendHealthCheckMillis = 0L
+    private var genrePickupJob: Job? = null
 
     fun getHotChannels(liveRows: List<LiveRowState>): List<UiChannelState> {
         return liveRows.flatMap { it.channels }
@@ -300,16 +302,18 @@ class HomeViewModel @Inject constructor(
         // Room/JSON flows for three broadcast types resume into this parent scope.
         // Keep flattening and list construction off the UI thread as well as the
         // filtering below; this job starts shortly after app launch.
-        viewModelScope.launch(Dispatchers.Default) {
+        genrePickupJob?.cancel()
+        genrePickupJob = viewModelScope.launch(Dispatchers.Default) {
+            val backend = settingsRepository.backendType.first()
             val genre = pickupGenreLabel.value
             val timeSetting = pickupTimeSetting.value
-            val isExcludePaid = excludePaidBroadcasts.value == "ON"
+            val isExcludePaid = backend != "TIF" && excludePaidBroadcasts.value == "ON"
 
             val now = OffsetDateTime.now()
             val startSearch = now.minusHours(1)
             val endSearch = now.plusHours(24)
 
-            val types = listOf("GR", "BS", "CS")
+            val types = if (backend == "TIF") listOf("GR", "BS", "CS", "TV") else listOf("GR", "BS", "CS")
 
             val genreCandidates = mutableListOf<Pair<EpgProgram, String>>()
 
@@ -330,6 +334,7 @@ class HomeViewModel @Inject constructor(
                 )
             }
 
+            if (settingsRepository.backendType.first() != backend) return@launch
             _genrePickupPrograms.value = genreCandidates
                 .sortedBy { it.first.start_time }
                 .take(15)
@@ -400,6 +405,15 @@ class HomeViewModel @Inject constructor(
     }
 
     init {
+        viewModelScope.launch {
+            settingsRepository.backendType.drop(1).collect {
+                genrePickupJob?.cancel()
+                _genrePickupPrograms.value = emptyList()
+                _sharedEpgData.value = emptyList()
+                lastBackendHealthCheckMillis = 0L
+                fetchAllTypeGenrePickup()
+            }
+        }
         viewModelScope.launch {
             combine(
                 pickupGenreLabel,
@@ -493,8 +507,8 @@ class HomeViewModel @Inject constructor(
     }
 
     fun saveLastChannel(channel: Channel) {
-        val networkId = channel.networkId ?: return
-        val serviceId = channel.serviceId ?: return
+        val networkId = channel.networkId ?: if (channel.id.startsWith("tif:")) 0L else return
+        val serviceId = channel.serviceId ?: if (channel.id.startsWith("tif:")) 0L else return
         viewModelScope.launch {
             lastChannelRepository.saveLastChannel(
                 LastChannelEntity(

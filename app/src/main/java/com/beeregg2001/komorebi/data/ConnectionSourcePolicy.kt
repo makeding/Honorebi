@@ -6,6 +6,7 @@ enum class ConnectionSource(val backend: String, val label: String) {
     KONOMITV("KONOMITV", "KonomiTV"),
     EDCB("EDCB", "EDCB"),
     MIRAKURUN("MIRAKURUN_ONLY", "Mirakurun"),
+    TIF("TIF", "TV Input Framework"),
 }
 
 /** The same configured-source rule owns the settings choices and the active backend. */
@@ -24,7 +25,7 @@ object ConnectionSourcePolicy {
     }
 
     fun resolve(selected: String?, configured: List<ConnectionSource>): String =
-        configured.firstOrNull { it.backend == selected }?.backend
+        if (selected == ConnectionSource.TIF.backend) ConnectionSource.TIF.backend else configured.firstOrNull { it.backend == selected }?.backend
             ?: configured.firstOrNull()?.backend ?: selected ?: "KONOMITV"
 }
 
@@ -57,6 +58,10 @@ data class ConnectionSettingsSnapshot(
     val smbServers: List<ConnectionSmbSettings> = emptyList(),
     val account: ConnectionAccountSettings = ConnectionAccountSettings(),
 )
+
+internal fun ConnectionSettingsSnapshot.recordCacheIdentity(): String? =
+    if (mainSystem == "TIF") null
+    else mainSystem + ":" + com.google.gson.Gson().toJson(sources.firstOrNull { it.id == mainSystem })
 
 @androidx.annotation.Keep
 data class ConnectionAccessSettings(

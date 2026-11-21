@@ -33,6 +33,7 @@ fun ConnectionSetupDialog(
     onManualInput: () -> Unit,
     initialSetup: Boolean = false,
     canFinishInitialSetup: Boolean = false,
+    onSelectTvInput: (() -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val manualR = remember { FocusRequester() }
@@ -121,6 +122,15 @@ fun ConnectionSetupDialog(
                 }
 
                 if (initialSetup) {
+                    if (onSelectTvInput != null) {
+                        DialogActionButton(
+                            role = DialogActionRole.Secondary,
+                            onClick = onSelectTvInput,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("本体のテレビ入力を使う")
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),

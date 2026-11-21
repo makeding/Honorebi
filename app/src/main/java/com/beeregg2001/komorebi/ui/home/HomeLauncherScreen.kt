@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -125,6 +126,11 @@ fun HomeLauncherScreen(
 
     val focusMemory = rememberFocusMemory()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val supportsTvInput = remember(context) {
+        context.getSystemService(android.media.tv.TvInputManager::class.java) != null
+    }
+    var showTvInputs by remember { mutableStateOf(false) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         homeViewModel.refreshLauncherApps()
@@ -139,7 +145,9 @@ fun HomeLauncherScreen(
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
-    val visibleTabs = remember(hideAppsTab) { LauncherTab.visibleTabs(hideAppsTab) }
+    val visibleTabs = remember(hideAppsTab, backendType) {
+        LauncherTab.visibleTabs(hideAppsTab, tif = backendType == "TIF")
+    }
 
     val safeTabIndex = initialTabIndex.coerceIn(0, (visibleTabs.size - 1).coerceAtLeast(0))
     val requestedTab = visibleTabs.getOrNull(safeTabIndex) ?: LauncherTab.HOME
@@ -261,10 +269,11 @@ fun HomeLauncherScreen(
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
     val translatedLastChannels = remember(ui.lastChannels, displayFlatChannels) {
-        ui.lastChannels.map { savedChannel ->
+        ui.lastChannels.mapNotNull { savedChannel ->
             displayFlatChannels.find {
-                it.networkId == savedChannel.networkId && it.serviceId == savedChannel.serviceId
-            } ?: savedChannel
+                if (savedChannel.id.startsWith("tif:")) it.id == savedChannel.id
+                else it.networkId == savedChannel.networkId && it.serviceId == savedChannel.serviceId
+            } ?: savedChannel.takeUnless { it.id.startsWith("tif:") }
         }
     }
 
@@ -383,7 +392,7 @@ fun HomeLauncherScreen(
         val topBarEntryRequester = when {
             hasActivePlayer -> returnPlayerFocusRequester
             !showStripActions -> wifiSettingsFocusRequester
-            inputSourceApp != null -> inputSourceFocusRequester
+            supportsTvInput || inputSourceApp != null -> inputSourceFocusRequester
             else -> ui.settingsFocusRequester
         }
         val stripDownRequester = if (tabController.isActiveContentReady) {
@@ -617,7 +626,7 @@ fun HomeLauncherScreen(
                 LauncherSystemStrip(
                     timeFormat = timeFormat,
                     hasActivePlayer = hasActivePlayer,
-                    inputSourceApp = inputSourceApp,
+                    showInputSource = supportsTvInput || inputSourceApp != null,
                     networkConnectionStatus = networkConnectionStatus,
                     canTakeFocus = !isEpgJumpingActive,
                     returnPlayerFocusRequester = returnPlayerFocusRequester,
@@ -627,7 +636,10 @@ fun HomeLauncherScreen(
                     leftEdgeFocusRequester = tabController.tabRequester(tabController.selectedTab),
                     downFocusRequester = stripDownRequester,
                     onReturnToPlayerClick = onReturnToPlayerClick,
-                    onLaunchInputSourcePicker = { app -> homeViewModel.launchInputSourcePicker(app) },
+                    onLaunchInputSourcePicker = {
+                        if (supportsTvInput) showTvInputs = true
+                        else inputSourceApp?.let(homeViewModel::launchInputSourcePicker)
+                    },
                     onLaunchWifiSettings = { homeViewModel.launchWifiSettings() },
                     onLaunchSystemSettings = { homeViewModel.launchSystemSettings() },
                     onHasFocusChanged = { hasFocus ->
@@ -692,6 +704,24 @@ fun HomeLauncherScreen(
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
                     .zIndex(30f),
+            )
+        }
+        if (showTvInputs) {
+            TvInputSourceDialog(
+                onOpenChannel = { channel ->
+                    showTvInputs = false
+                    onChannelClick(channel)
+                },
+                onSystemPicker = inputSourceApp?.let { app ->
+                    { showTvInputs = false; homeViewModel.launchInputSourcePicker(app) }
+                },
+                onDismiss = {
+                    showTvInputs = false
+                    scope.launch {
+                        androidx.compose.runtime.withFrameNanos { }
+                        inputSourceFocusRequester.safeRequestFocus("TvInputDismiss")
+                    }
+                },
             )
         }
     }

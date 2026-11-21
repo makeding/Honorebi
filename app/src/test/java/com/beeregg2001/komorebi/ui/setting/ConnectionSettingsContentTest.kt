@@ -111,7 +111,7 @@ class ConnectionSettingsContentTest {
                 entryFocus = requesters.first()
                 Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
                     ConnectionSettingsContent(preferences, "huggy", { accountClicks++ }, {}, {}, emptyList(), {},
-                        { _, _ -> }, { webSource = it; webClicks++ }, { selected = it }, {}, {}, requesters,
+                        { _, _ -> }, { webSource = it; webClicks++ }, { selected = it }, {}, {}, {}, requesters,
                         remember { FocusRequester() }, scroll, false, {})
                 }
             }
@@ -126,9 +126,10 @@ class ConnectionSettingsContentTest {
         row("スマホで設定").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(1, webClicks)
         assertNull(webSource)
-        row("メインシステム").assertIsNotEnabled()
+        row("メインシステム").assertIsEnabled()
         val mainBounds = row("メインシステム").getUnclippedBoundsInRoot()
         row("Mirakurun").requestFocus().performKeyInput { pressKey(Key.DirectionDown) }
+        row("メインシステム").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
         row("優先ソース").assertIsFocused()
         row("KonomiTV").requestFocus().performKeyInput { pressKey(Key.DirectionCenter) }
         row("スマホで設定").assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
@@ -148,6 +149,15 @@ class ConnectionSettingsContentTest {
         compose.waitUntil { row("メインシステム").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled).not() }
         assertEquals(mainBounds, row("メインシステム").getUnclippedBoundsInRoot())
         row("メインシステム").requestFocus().performKeyInput { pressKey(Key.DirectionCenter) }
-        assertEquals(listOf(ConnectionSource.KONOMITV, ConnectionSource.EDCB), selected)
+        assertEquals(listOf(ConnectionSource.KONOMITV, ConnectionSource.EDCB, ConnectionSource.TIF), selected)
+        runBlocking { repository.saveString(SettingsRepository.BACKEND_TYPE, "TIF") }
+        compose.waitUntil {
+            compose.onAllNodesWithText("TV入力を再読み込み").fetchSemanticsNodes().isNotEmpty()
+        }
+        row("メインシステム").requestFocus().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithText("TV入力を再読み込み").assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        row("優先ソース").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithText("TV入力を再読み込み").assertIsFocused()
     }
 }

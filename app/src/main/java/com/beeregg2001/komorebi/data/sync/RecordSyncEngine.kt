@@ -23,6 +23,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -67,6 +69,14 @@ class RecordSyncEngine @Inject constructor(
     private val smartSyncMutex = Mutex()
     private var activeSyncJob: Job? = null
 
+    init {
+        engineScope.launch {
+            settingsRepository.backendType.collect {
+                jobMutex.withLock { activeSyncJob?.cancel() }
+            }
+        }
+    }
+
     private val isLowRamDevice: Boolean by lazy {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         am.isLowRamDevice
@@ -98,6 +108,7 @@ class RecordSyncEngine @Inject constructor(
     }
 
     suspend fun syncAllRecords(forceFullSync: Boolean = false) {
+        if (!settingsRepository.recordCacheEligible.first()) return
         val currentJob = currentCoroutineContext().job
 
         var jobToJoin: Job? = null
@@ -112,6 +123,7 @@ class RecordSyncEngine @Inject constructor(
         var isSyncSuccessful = false
 
         syncMutex.withLock {
+            if (!settingsRepository.recordCacheEligible.first()) return
             jobMutex.withLock {
                 activeSyncJob = currentJob
             }

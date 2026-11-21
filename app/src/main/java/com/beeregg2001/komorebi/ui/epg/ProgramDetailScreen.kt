@@ -531,6 +531,17 @@ fun ProgramDetailScreen(
 fun ProgramDetailedInfo(program: EpgProgram) {
     val colors = KomorebiTheme.colors
     Column {
+        if (program.channel_id.startsWith("tif:")) {
+            Text(
+                text = "スクランブル: " + when (program.is_scrambled) {
+                    true -> "あり"
+                    false -> "なし"
+                    null -> "情報なし"
+                } + "　料金区分: 不明",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
+            )
+        }
         program.detail?.forEach { (label, content) ->
             if (content.isNotBlank()) {
                 Spacer(modifier = Modifier.height(24.dp))

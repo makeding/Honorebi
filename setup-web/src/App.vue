@@ -52,12 +52,12 @@ const reopenSetupMessage =
 const configuredSources = computed(() =>
   snapshot.value.sources.filter(isConfigured),
 );
-const canChooseMain = computed(() => configuredSources.value.length >= 2);
+const canChooseMain = computed(() => configuredSources.value.length >= 1);
 const controlsLocked = computed(() => saving.value || expired.value || accountState.value === 'pairing');
 const mainSystem = computed({
   get: () =>
     resolveMainSystem(snapshot.value.sources, snapshot.value.mainSystem),
-  set: (value: SourceId | null) => {
+  set: (value: SourceId | "TIF" | null) => {
     snapshot.value.mainSystem = value;
   },
 });
@@ -75,7 +75,9 @@ const canSave = computed(
     !controlsLocked.value,
 );
 const mainPrompt = computed(() =>
-  configuredSources.value.length === 0
+  mainSystem.value === "TIF"
+    ? "TV Input Framework を利用します"
+    : configuredSources.value.length === 0
     ? "未設定"
     : configuredSources.value.length === 1
       ? `${configuredSources.value[0].label} を自動で利用します`
@@ -581,7 +583,7 @@ onBeforeUnmount(stopPolling);
           <p class="field-error field-feedback">{{ !validAccess(snapshot.cloudflareAccess) ? "Client ID と Client Secret を両方入力するか、両方消去してください。" : "" }}</p>
           <button class="secondary" type="button" :disabled="controlsLocked" @click="snapshot.cloudflareAccess.clientId = ''; snapshot.cloudflareAccess.clientSecret = ''">トークンを消去</button>
         </section>
-        <section class="main-picker" :class="{ disabled: !canChooseMain }">
+        <section class="main-picker">
           <div>
             <h2>メインシステム</h2>
             <p>{{ mainPrompt }}</p>
@@ -599,6 +601,7 @@ onBeforeUnmount(stopPolling);
                 :disabled="!canChooseMain || controlsLocked"
               /><span>{{ source.label }}</span></label
             >
+            <label class="radio-option"><input v-model="mainSystem" type="radio" name="main-system" value="TIF" :disabled="controlsLocked" /><span>TV Input Framework</span></label>
           </div>
         </section>
         <section class="settings-block">

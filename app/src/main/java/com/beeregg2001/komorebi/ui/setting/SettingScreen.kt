@@ -618,6 +618,7 @@ private fun SettingsMenuScreen(
                                     prefs.backendType,
                                 ) { viewModel.updateBackendType(it) }
                             },
+                            onRefreshTif = { channelViewModel.fetchChannels() },
                             onSelectSrc = {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_PREFERRED_SOURCE,

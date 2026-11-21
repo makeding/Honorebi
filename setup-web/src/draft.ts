@@ -78,7 +78,7 @@ export function applyDraft(
     }
   }
   if (
-    (current.mainSystem === null || sourceIds.includes(current.mainSystem)) &&
+    (current.mainSystem === null || current.mainSystem === "TIF" || sourceIds.includes(current.mainSystem)) &&
     changed(current.mainSystem, base?.mainSystem)
   )
     result.mainSystem = current.mainSystem;

@@ -32,6 +32,7 @@ import javax.inject.Singleton
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 private val LEGACY_FAVORITE_BASEBALL_TEAMS = stringPreferencesKey("favorite_baseball_teams")
+private val RECORD_CACHE_OWNER = stringPreferencesKey("record_cache_owner")
 private const val LEGACY_BASEBALL_STARTUP_TAB = "プロ野球"
 private const val DEFAULT_STARTUP_TAB = "ホーム"
 
@@ -157,11 +158,20 @@ class SettingsRepository @Inject constructor(
     val isInitialized: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             val backend = preferences.resolvedBackendType()
-            if (backend == "EPGSTATION") !preferences[EPGSTATION_IP].isNullOrBlank()
+            if (backend == "TIF") true
+            else if (backend == "EPGSTATION") !preferences[EPGSTATION_IP].isNullOrBlank()
             else preferences.configuredConnectionSources().any { it.backend == backend }
         }
 
     val backendType: Flow<String> = context.dataStore.data.map { it.resolvedBackendType() }
+    val recordCacheOwner: Flow<String?> = context.dataStore.data.map { it[RECORD_CACHE_OWNER] }
+    val recordCacheEligible: Flow<Boolean> = context.dataStore.data.map {
+        val current = it.connectionSettingsSnapshot().recordCacheIdentity()
+        current != null && (it[RECORD_CACHE_OWNER] == null || it[RECORD_CACHE_OWNER] == current)
+    }
+    suspend fun setRecordCacheOwner(owner: String) {
+        context.dataStore.edit { it[RECORD_CACHE_OWNER] = owner }
+    }
     val edcbIp: Flow<String> = context.dataStore.data.map { it[EDCB_IP] ?: "" }
     val edcbPort: Flow<String> = context.dataStore.data.map { it[EDCB_PORT] ?: "4510" }
     val edcbHttpPort: Flow<String> = context.dataStore.data.map { it[EDCB_HTTP_PORT] ?: "5510" }
@@ -326,8 +336,9 @@ class SettingsRepository @Inject constructor(
     /** All source fields and the main system become visible in one DataStore transaction. */
     suspend fun saveConnectionSettings(snapshot: ConnectionSettingsSnapshot, beforeCommit: () -> Unit = {}): ConnectionSettingsSnapshot = networkSettingsMutex.withLock {
         val sources = requireNotNull(snapshot.sources) { "接続先を入力してください。" }
-        require(sources.size == ConnectionSource.entries.size &&
-            sources.map { it.id }.toSet() == ConnectionSource.entries.map { it.backend }.toSet()) {
+        val networkSources = ConnectionSource.entries.filter { it != ConnectionSource.TIF }
+        require(sources.size == networkSources.size &&
+            sources.map { it.id }.toSet() == networkSources.map { it.backend }.toSet()) {
             "接続先の種類が不正です。ページを開き直してください。"
         }
         fun port(value: String?, http: Boolean = false): String {
@@ -348,8 +359,8 @@ class SettingsRepository @Inject constructor(
         val e = normalized.getValue("EDCB")
         val m = normalized.getValue("MIRAKURUN_ONLY")
         val configured = ConnectionSourcePolicy.configured(k.host, k.port, e.host, e.port, m.host, m.port)
-        require(configured.isNotEmpty()) { "少なくとも1つの接続先を入力してください。" }
-        require(configured.size == 1 || configured.any { it.backend == snapshot.mainSystem }) {
+        require(configured.isNotEmpty() || snapshot.mainSystem == "TIF") { "少なくとも1つの接続先を入力してください。" }
+        require(snapshot.mainSystem == "TIF" || configured.size == 1 || configured.any { it.backend == snapshot.mainSystem }) {
             "設定済みの接続先からメインシステムを選んでください。"
         }
         require(snapshot.preferredSource in listOf("KONOMITV", "EDCB", "MIRAKURUN")) { "ライブ視聴の優先ソースを確認してください。" }

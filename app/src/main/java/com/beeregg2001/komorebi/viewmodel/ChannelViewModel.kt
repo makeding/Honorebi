@@ -38,10 +38,11 @@ class ChannelViewModel @Inject constructor(
     val lastWatchedChannels: StateFlow<List<Channel>> =
         combine(watchHistoryRepository.getLastChannels(), groupedChannels, nhkExclusionRepository.state) { history, grouped, exclusion ->
             val liveChannels = grouped.values.flatten()
-            if (!exclusion.isLoaded) emptyList() else history.map { entity ->
+            if (!exclusion.isLoaded) emptyList() else history.mapNotNull { entity ->
                 liveChannels.firstOrNull { channel ->
-                    channel.networkId == entity.networkId && channel.serviceId == entity.serviceId
-                } ?: Channel(
+                    if (entity.channelId.startsWith("tif:")) channel.id == entity.channelId
+                    else channel.networkId == entity.networkId && channel.serviceId == entity.serviceId
+                } ?: if (entity.channelId.startsWith("tif:")) null else Channel(
                     id = entity.channelId,
                     displayChannelId = entity.channelId,
                     name = entity.name,
@@ -97,7 +98,8 @@ class ChannelViewModel @Inject constructor(
     suspend fun lastWatchedChannelIdOnce(): String? {
         nhkExclusionRepository.state.first { it.isLoaded }
         val entities = watchHistoryRepository.getLastChannels().first()
-        return entities.map { entity ->
+        val liveIds = groupedChannels.value.values.flatten().map { it.id }.toSet()
+        return entities.filter { !it.channelId.startsWith("tif:") || it.channelId in liveIds }.map { entity ->
             Channel(
                 id = entity.channelId,
                 name = entity.name,

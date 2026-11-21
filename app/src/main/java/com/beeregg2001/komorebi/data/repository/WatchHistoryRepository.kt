@@ -16,6 +16,7 @@ import com.beeregg2001.komorebi.data.model.HistoryPlaybackProgress
 import com.beeregg2001.komorebi.data.model.LiveHistoryPlaybackProgress
 import com.beeregg2001.komorebi.data.auth.HonomiSessionStore
 import com.beeregg2001.komorebi.data.auth.HonomiSession
+import com.beeregg2001.komorebi.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -35,6 +37,7 @@ class WatchHistoryRepository @Inject constructor(
     private val lastChannelDao: LastChannelDao,
     private val konomiRepository: KonomiRepository,
     private val sessionStore: HonomiSessionStore,
+    private val settingsRepository: SettingsRepository,
 ) {
     private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingSaveJobs = ConcurrentHashMap<Int, Job>()
@@ -180,7 +183,10 @@ class WatchHistoryRepository @Inject constructor(
     /**
      * アプリ内で最後に視聴したチャンネル（放送局）のリストをローカルDBから取得します。
      */
-    fun getLastChannels() = lastChannelDao.getLastChannels()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun getLastChannels() = settingsRepository.backendType.flatMapLatest {
+        lastChannelDao.getLastChannelsForBackend(it == "TIF")
+    }
 
     /**
      * 複数の録画番組の視聴履歴をローカルDBから一括で取得します。

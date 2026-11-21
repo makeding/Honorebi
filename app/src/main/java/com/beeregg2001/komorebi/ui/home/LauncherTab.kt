@@ -44,8 +44,8 @@ enum class LauncherTab(
     companion object {
         fun fromTitle(title: String?): LauncherTab? = entries.firstOrNull { it.title == title }
 
-        fun visibleTabs(hideAppsTab: Boolean): List<LauncherTab> =
-            if (hideAppsTab) entries.filterNot { it == APPS } else entries.toList()
+        fun visibleTabs(hideAppsTab: Boolean, tif: Boolean = false): List<LauncherTab> =
+            entries.filterNot { (hideAppsTab && it == APPS) || (tif && it == RESERVE) }
     }
 }
 

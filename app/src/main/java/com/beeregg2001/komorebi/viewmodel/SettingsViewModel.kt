@@ -23,6 +23,9 @@ import com.beeregg2001.komorebi.data.auth.HonomiAuthRepository
 import com.beeregg2001.komorebi.data.auth.HonomiSession
 import com.beeregg2001.komorebi.data.model.DeviceAuthRequest
 import com.google.gson.Gson
+import com.beeregg2001.komorebi.data.recordCacheIdentity
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,6 +108,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private val gson = Gson()
+    private val connectionUpdateMutex = Mutex()
 
     private val _dynamicQualities = MutableStateFlow<List<StreamQuality>?>(null)
     val honomiSession: StateFlow<HonomiSession?> by lazy { honomiAuthRepository.get().session }
@@ -147,7 +151,8 @@ class SettingsViewModel @Inject constructor(
 
     fun logoutHonomi() = honomiAuthRepository.get().logout()
 
-    val backendType: StateFlow<String> = settingsRepository.backendType.stateIn(
+    val configuredBackend = settingsRepository.backendType
+    val backendType: StateFlow<String> = configuredBackend.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         "KONOMITV"
@@ -567,25 +572,25 @@ class SettingsViewModel @Inject constructor(
         before: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot,
         saved: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot,
     ) {
-        try {
-            if (before.mainSystem != saved.mainSystem) {
-                withContext(Dispatchers.IO) { db.clearAllTables() }
-                context.imageLoader.memoryCache?.clear()
-                context.imageLoader.diskCache?.clear()
-            } else if (before.sources.firstOrNull { it.id == before.mainSystem } != saved.sources.firstOrNull { it.id == saved.mainSystem }) {
-                syncEngine.clearDatabase()
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-        catch (error: Exception) { Log.e("SettingsViewModel", "Connection cache refresh failed", error) }
+        val owner = settingsRepository.recordCacheOwner.first()
+        val previousOwner = owner ?: before.recordCacheIdentity()
+        val nextOwner = saved.recordCacheIdentity()
+        if (nextOwner != null && previousOwner != null && previousOwner != nextOwner) {
+            syncEngine.clearDatabase()
+        }
+        if (nextOwner != null) settingsRepository.setRecordCacheOwner(nextOwner)
         viewModelScope.launch { forceSyncStreamQualities() }
     }
 
     fun updateConnectionField(key: androidx.datastore.preferences.core.Preferences.Key<String>, value: String) =
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) { connectionUpdateMutex.withLock {
             val before = settingsRepository.connectionSettings()
+            if (settingsRepository.recordCacheOwner.first() == null) {
+                settingsRepository.setRecordCacheOwner(before.recordCacheIdentity() ?: "unowned")
+            }
             settingsRepository.saveString(key, value)
             connectionConfigurationChanged(before, settingsRepository.connectionSettings())
-        }
+        } }
 
     fun updateBackendType(newType: String) = updateConnectionField(SettingsRepository.BACKEND_TYPE, newType)
     fun updateEdcbIp(ip: String) = updateConnectionField(SettingsRepository.EDCB_IP, ip)
@@ -796,14 +801,17 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun saveWebConnectionSettings(snapshot: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot): com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot {
+    private suspend fun saveWebConnectionSettings(snapshot: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot): com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot = connectionUpdateMutex.withLock {
         val before = settingsRepository.connectionSettings()
+        if (settingsRepository.recordCacheOwner.first() == null) {
+            settingsRepository.setRecordCacheOwner(before.recordCacheIdentity() ?: "unowned")
+        }
         val active = _connectionSetupState.value.session ?: throw SetupExpiredException()
         val saved = settingsRepository.saveConnectionSettings(snapshot) {
             if (!active.accepts(active.token) || _connectionSetupState.value.session !== active) throw SetupExpiredException()
         }
         connectionConfigurationChanged(before, saved)
-        return saved.copy(account = com.beeregg2001.komorebi.data.ConnectionAccountSettings(honomiSession.value?.userName))
+        saved.copy(account = com.beeregg2001.komorebi.data.ConnectionAccountSettings(honomiSession.value?.userName))
     }
 
     fun startGeminiLocalServer() {

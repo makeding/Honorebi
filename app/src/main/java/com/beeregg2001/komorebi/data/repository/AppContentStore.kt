@@ -122,6 +122,8 @@ class AppContentStore internal constructor(
     private var channelRecoveryPending = false
     private var recordingRecoveryPending = false
     private var networkAvailable = true
+    private var activeBackend = ""
+    private fun channelSourceAvailable() = networkAvailable || activeBackend == "TIF"
     private val _recoveryVersion = MutableStateFlow(0)
     val recoveryVersion = _recoveryVersion.asStateFlow()
 
@@ -134,6 +136,25 @@ class AppContentStore internal constructor(
     private var isRecordingPollingEnabled = false
 
     init {
+        scope.launch {
+            settingsRepository.backendType.collect { backend ->
+                // startMaintenance already owns the initial channel request.
+                if (activeBackend.isEmpty()) {
+                    activeBackend = backend
+                    return@collect
+                }
+                if (activeBackend != backend) {
+                    activeBackend = backend
+                    wakeGeneration.value++
+                    hasFetchedChannels = false
+                    _groupedChannels.value = emptyMap()
+                    _liveRows.value = emptyList()
+                    _recentRecordings.value = emptyList()
+                    refreshChannels(afterNetworkRecovery = true)
+                    if (isRecordingPollingEnabled && backend != "TIF") refreshRecentRecordings(afterRecovery = true)
+                }
+            }
+        }
         scope.launch {
             nhkExclusionRepository.state.drop(1).collect { exclusion ->
                 if (exclusion.isLoaded && isRecordingPollingEnabled) refreshRecentRecordings()
@@ -237,7 +258,7 @@ class AppContentStore internal constructor(
 
                 if (!isActive) break
                 val now = elapsedRealtime()
-                if (appAwake && networkAvailable && channelRetry.canAttempt(now - lastChannelsFetchedAtMillis)) {
+                if (appAwake && channelSourceAvailable() && channelRetry.canAttempt(now - lastChannelsFetchedAtMillis)) {
                     fetchChannelsInternal()
                 }
             }
@@ -268,13 +289,13 @@ class AppContentStore internal constructor(
                 try {
                     var retry = 0
                     val generation = wakeGeneration.value
-                    while (appAwake && networkAvailable && generation == wakeGeneration.value) {
+                    while (appAwake && channelSourceAvailable() && generation == wakeGeneration.value) {
                         val hasMoreRetries = recovering && retry < RECOVERY_RETRY_DELAYS_MS.size
                         val failure = fetchChannelsOnce(deferRetryableError = hasMoreRetries)
                         if (failure == null || !recovering ||
                             failure.backendApiFailure()?.automaticallyRetryable == false ||
                             retry >= RECOVERY_RETRY_DELAYS_MS.size ||
-                            !appAwake || !networkAvailable || generation != wakeGeneration.value
+                            !appAwake || !channelSourceAvailable() || generation != wakeGeneration.value
                         ) break
                         // A new sleep/wake or physical network restore cancels the old wait immediately.
                         withTimeoutOrNull(RECOVERY_RETRY_DELAYS_MS[retry++]) {
@@ -295,11 +316,11 @@ class AppContentStore internal constructor(
     }
 
     private suspend fun fetchChannelsOnce(deferRetryableError: Boolean = false): Throwable? {
-        if (!appAwake || !networkAvailable) return null
+        if (!appAwake || !channelSourceAvailable()) return null
         val generation = wakeGeneration.value
         try {
             val response = withContext(ioDispatcher) { liveProvider.getChannels() }
-            if (!appAwake || !networkAvailable || generation != wakeGeneration.value) return null
+            if (!appAwake || !channelSourceAvailable() || generation != wakeGeneration.value) return null
             val hideSubChannels = settingsRepository.hideSubChannels.first()
 
             val processed = withContext(Dispatchers.Default) {
@@ -310,6 +331,8 @@ class AppContentStore internal constructor(
                     response.sky,
                     response.bs4k,
                     response.iptv,
+                    response.others,
+                    response.inputs,
                 ).flatten()
 
                 val channels = rawChannels.map { apiChannel ->
@@ -346,7 +369,7 @@ class AppContentStore internal constructor(
             }
 
             val newRows = transformToUiState(processed)
-            if (!appAwake || !networkAvailable || generation != wakeGeneration.value) return null
+            if (!appAwake || !channelSourceAvailable() || generation != wakeGeneration.value) return null
             val serverRecovered = _connectionError.value
             _connectionError.value = false
             if (serverRecovered) {
@@ -370,7 +393,7 @@ class AppContentStore internal constructor(
             throw e
         } catch (e: Throwable) {
             Log.e(TAG, "Error fetching channels", e)
-            if (!appAwake || !networkAvailable || generation != wakeGeneration.value) return null
+            if (!appAwake || !channelSourceAvailable() || generation != wakeGeneration.value) return null
             val retryable = e.backendApiFailure()?.automaticallyRetryable != false
             if (!deferRetryableError || !retryable) {
                 _connectionError.value = true
@@ -453,7 +476,7 @@ class AppContentStore internal constructor(
             val now = System.currentTimeMillis()
             // Lists within each type retain /api/channels order; only the existing category
             // positions are fixed here. ネット sits directly to the right of BS4K.
-            val orderedTypes = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY")
+            val orderedTypes = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY", "TV", "INPUT")
 
             grouped.keys.sortedBy { key ->
                 val index = orderedTypes.indexOf(key)
@@ -469,6 +492,8 @@ class AppContentStore internal constructor(
                         "BS4K" -> "BS4K"
                         "SKY" -> "スカパー"
                         "IPTV" -> "ネットテレビ"
+                        "TV" -> "その他の放送"
+                        "INPUT" -> "外部入力"
                         else -> type
                     },
                     channels = channels.map { channel ->

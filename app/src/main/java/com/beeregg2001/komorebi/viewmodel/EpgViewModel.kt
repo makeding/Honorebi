@@ -76,6 +76,11 @@ class EpgViewModel @OptIn(UnstableApi::class)
 
     private var hasInitialFetched = false
     private var epgJob: Job? = null
+    private var preloadJob: Job? = null
+    private var sliceJob: Job? = null
+    private var searchJob: Job? = null
+    private var backendGeneration = 0L
+    private var currentBackend: String? = null
 
     // ★ 追加: DB検索待ちをゼロにするためのメモリキャッシュ群
     private val epgMemoryCache = mutableMapOf<String, List<EpgChannelWrapper>>()
@@ -125,6 +130,27 @@ class EpgViewModel @OptIn(UnstableApi::class)
 
     init {
         viewModelScope.launch { nhkExclusionRepository.state.collect { exclusionState = it } }
+        viewModelScope.launch {
+            settingsRepository.backendType.distinctUntilChanged().collect { backend ->
+                if (currentBackend != null && currentBackend != backend) {
+                    backendGeneration++
+                    epgJob?.cancel()
+                    preloadJob?.cancel()
+                    sliceJob?.cancel()
+                    searchJob?.cancel()
+                    repository.clearMemoryCache()
+                    epgMemoryCache.clear()
+                    logoMemoryCache.clear()
+                    fullEpgData = emptyList()
+                    fullLogoUrls = emptyList()
+                    _searchResults.value = emptyList()
+                    _isSearching.value = false
+                    uiState = EpgUiState.Loading
+                    if (hasStartedInitialLoad) refreshEpgData()
+                }
+                currentBackend = backend
+            }
+        }
         loadSearchHistory()
 
         viewModelScope.launch {
@@ -202,7 +228,9 @@ class EpgViewModel @OptIn(UnstableApi::class)
         isLiveOnly: Boolean = false,
         channelName: String? = null
     ) {
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            val generation = backendGeneration
             _isSearching.value = true
             val displayQuery = listOfNotNull(
                 keyword.takeIf { it.isNotBlank() },
@@ -245,12 +273,13 @@ class EpgViewModel @OptIn(UnstableApi::class)
                     }.awaitAll()
                 }
 
-                _searchResults.value = results
+                if (generation == backendGeneration) _searchResults.value = results
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e("EpgViewModel", "Search Error", e)
-                _searchResults.value = emptyList()
+                if (generation == backendGeneration) _searchResults.value = emptyList()
             } finally {
-                _isSearching.value = false
+                if (generation == backendGeneration) _isSearching.value = false
             }
         }
     }
@@ -302,7 +331,8 @@ class EpgViewModel @OptIn(UnstableApi::class)
         val start = now.withHour(0).withMinute(0).withSecond(0).withNano(0)
         val end = now.plusDays(7)
 
-        viewModelScope.launch(Dispatchers.IO) {
+        preloadJob?.cancel()
+        preloadJob = viewModelScope.launch(Dispatchers.IO) {
             availableTypes.map { type ->
                 async {
                     if (!repository.hasCacheForType(type)) {
@@ -330,7 +360,9 @@ class EpgViewModel @OptIn(UnstableApi::class)
 
                     viewModelScope.launch {
                         delay(10000)
-                        preloadEpgDataForSearch(listOf("GR", "BS", "CS", "SKY", "BS4K", "IPTV"))
+                        val types = if (settingsRepository.backendType.first() == "TIF")
+                            listOf("GR", "BS", "CS", "TV") else listOf("GR", "BS", "CS", "SKY", "BS4K", "IPTV")
+                        preloadEpgDataForSearch(types)
                     }
 
                 } else if (isInit && hasInitialFetched) {
@@ -347,6 +379,7 @@ class EpgViewModel @OptIn(UnstableApi::class)
     fun refreshEpgData(channelType: String? = null) {
         epgJob?.cancel()
         epgJob = viewModelScope.launch {
+            val generation = backendGeneration
             val typeToFetch = channelType ?: _selectedBroadcastingType.value
             val now = OffsetDateTime.now()
             val start = now.withHour(0).withMinute(0).withSecond(0).withNano(0)
@@ -366,6 +399,7 @@ class EpgViewModel @OptIn(UnstableApi::class)
             // キャッシュ表示後も、裏側でRoomから最新情報を取得してキャッシュを更新する
             repository.getEpgDataStream(start, end, typeToFetch).collect { result ->
                 result.onSuccess { data ->
+                    if (generation != backendGeneration) return@onSuccess
                     fullEpgData = data
                     epgMemoryCache[typeToFetch] = data
 
@@ -378,6 +412,17 @@ class EpgViewModel @OptIn(UnstableApi::class)
                     _isInitialLoadComplete.value = true
                     _isPreloading.value = false
                 }.onFailure { e ->
+                    if (generation != backendGeneration) return@onFailure
+                    if (settingsRepository.backendType.first() == "TIF") {
+                        epgMemoryCache.clear()
+                        logoMemoryCache.clear()
+                        repository.clearMemoryCache()
+                        fullEpgData = emptyList()
+                        fullLogoUrls = emptyList()
+                        uiState = EpgUiState.Error(e.message ?: "Unknown Error")
+                        _isInitialLoadComplete.value = true
+                        return@onFailure
+                    }
                     if (uiState !is EpgUiState.Success) {
                         uiState = EpgUiState.Error(e.message ?: "Unknown Error")
                         _isInitialLoadComplete.value = true
@@ -397,13 +442,16 @@ class EpgViewModel @OptIn(UnstableApi::class)
     }
 
     private fun sliceAndEmitEpgData() {
-        if (fullEpgData.isEmpty()) return
-        viewModelScope.launch(Dispatchers.Default) {
+        sliceJob?.cancel()
+        val generation = backendGeneration
+        val data = fullEpgData
+        val logos = fullLogoUrls
+        sliceJob = viewModelScope.launch(Dispatchers.Default) {
 
             val tvDayStart = getTvDayStart(currentTargetTime)
             val tvDayEnd = tvDayStart.plusHours(24)
 
-            val slicedData = fullEpgData.map { wrapper ->
+            val slicedData = data.map { wrapper ->
                 val filteredPrograms = wrapper.programs.filter { prog ->
                     try {
                         val pStart = OffsetDateTime.parse(prog.start_time)
@@ -416,9 +464,10 @@ class EpgViewModel @OptIn(UnstableApi::class)
                 wrapper.copy(programs = filteredPrograms)
             }
 
+            if (generation != backendGeneration) return@launch
             uiState = EpgUiState.Success(
                 data = slicedData,
-                logoUrls = fullLogoUrls,
+                logoUrls = logos,
                 mirakurunIp = mirakurunIp,
                 mirakurunPort = mirakurunPort,
                 targetTime = currentTargetTime

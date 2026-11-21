@@ -208,8 +208,30 @@ fun MainRootScreen(
         epgViewModel.clearSearch()
     }
 
-    val backendType by homeViewModel.backendType.collectAsState()
-    LaunchedEffect(backendType) { state.backendType = backendType }
+    val backendType by settingsViewModel.configuredBackend.collectAsState(initial = null)
+    val tif = backendType == "TIF"
+    var lastBackend by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(backendType) {
+        val selected = backendType ?: return@LaunchedEffect
+        state.backendType = selected
+        if (lastBackend != null && lastBackend != selected) {
+            if (state.playbackState.renderPlaybackTarget !is PlaybackTarget.Smb) {
+                state.playbackState.resetPlayback()
+            }
+            state.epgSelectedProgram = null
+            state.selectedReserve = null
+            state.editingReserveItem = null
+            state.editingNewProgram = null
+            state.selectedConditionReserveItem = null
+            state.editingCondition = null
+            state.reserveToDelete = null
+            state.selectedProgramForAutoReserve = null
+            state.isRecordListOpen = false
+            state.isSeriesListOpen = false
+            state.currentTabIndex = 0
+        }
+        lastBackend = selected
+    }
 
     val tabs = state.getVisibleTabs(hideAppsTab)
 
@@ -482,8 +504,8 @@ fun MainRootScreen(
     val startupTabs = state.getVisibleTabs(state.startupSettings?.hideAppsTab ?: hideAppsTab)
     var isLongPressHandled by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        if (!state.hasAppliedStartupTab) {
+    LaunchedEffect(backendType) {
+        if (backendType != null && !state.hasAppliedStartupTab) {
             val snap = settingsViewModel.loadStartupSettings()
             state.startupSettings = snap
             val index = state.getVisibleTabs(snap.hideAppsTab).indexOf(snap.startupTab)
@@ -515,9 +537,9 @@ fun MainRootScreen(
             } else null
             if (state.hasAppliedStartupChannel) return@LaunchedEffect
             state.hasAppliedStartupChannel = true
-            val targetChannel = if (desiredStartupChannel == "LAST_WATCHED") {
-                flatChannels.find { it.id == lastWatchedId } ?: flatChannels.first()
-            } else flatChannels.find { it.id == desiredStartupChannel } ?: flatChannels.first()
+            val savedId = if (desiredStartupChannel == "LAST_WATCHED") lastWatchedId else desiredStartupChannel
+            val targetChannel = flatChannels.find { it.id == savedId }
+                ?: if (tif || savedId?.startsWith("tif:") == true) return@LaunchedEffect else flatChannels.first()
 
             state.playbackState.enterLive(targetChannel)
             homeViewModel.saveLastChannel(targetChannel)
@@ -629,8 +651,15 @@ fun MainRootScreen(
     }
 
     val reconnectGate = remember { NetworkReconnectGate() }
-    LaunchedEffect(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation) {
+    LaunchedEffect(tif, isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation) {
         channelViewModel.setNetworkAvailable(isNetworkAvailable)
+        if (tif) {
+            if (appWakeState.isAwake && isSettingsInitialized) {
+                channelViewModel.fetchChannels(afterNetworkRecovery = true)
+                epgViewModel.refreshEpgData()
+            }
+            return@LaunchedEffect
+        }
         if (reconnectGate.shouldRecheck(isNetworkAvailable, isSettingsInitialized, appWakeState.isAwake, appWakeState.generation)) {
             if (state.showConnectionErrorDialog) state.isConnectionRetryPending = true
             channelViewModel.refreshAfterRecovery()
@@ -651,6 +680,7 @@ fun MainRootScreen(
     }
 
     LaunchedEffect(
+        tif,
         isChannelLoading,
         isHomeLoading,
         isChannelError,
@@ -659,6 +689,12 @@ fun MainRootScreen(
         state.hasAppliedStartupTab,
     ) {
         if (appWakeState.isAwake && state.hasAppliedStartupTab && !isChannelLoading && (state.isDataReady || !isHomeLoading)) {
+            if (tif) {
+                state.isOfflineMode = false
+                state.showConnectionErrorDialog = false
+                state.isDataReady = true
+                return@LaunchedEffect
+            }
             val presentation = offlinePresentation(
                 isNetworkAvailable, isChannelError, state.isOfflineMode, state.isDataReady,
             )
@@ -711,13 +747,13 @@ fun MainRootScreen(
 
     val isSystemReady =
         ((state.isDataReady && state.isSplashFinished) || (!isSettingsInitialized && state.isSplashFinished)) &&
-                state.hasAppliedStartupTab && (startupChannelSetting == "OFF" || state.hasAppliedStartupChannel || state.isOfflineMode)
+                state.hasAppliedStartupTab && (startupChannelSetting == "OFF" || state.hasAppliedStartupChannel || state.isOfflineMode || (tif && !isChannelLoading && groupedChannels.isEmpty()))
 
     val startupRenderPlan = startupRenderPlan(
         isSystemReady = isSystemReady,
         isSettingsInitialized = isSettingsInitialized,
         hasConnectionError = state.showConnectionErrorDialog,
-        isSyncingInitial = isSyncingInitial,
+        isSyncingInitial = isSyncingInitial && !tif,
         isPlaybackActive = state.playbackState.isPlaybackActive,
     )
     ReportDrawnWhen {

@@ -110,7 +110,7 @@ fun DigitalClock(timeFormat: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun PinnedSystemAppButton(
-    app: LauncherApp,
+    label: String,
     focusRequester: FocusRequester,
     leftFocusRequester: FocusRequester,
     rightFocusRequester: FocusRequester,
@@ -151,7 +151,7 @@ private fun PinnedSystemAppButton(
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Default.SettingsInputHdmi,
-                contentDescription = app.label,
+                contentDescription = label,
                 modifier = Modifier.size(24.dp),
             )
         }
@@ -224,7 +224,7 @@ internal fun NetworkStatusButton(
 internal fun LauncherSystemStrip(
     timeFormat: String,
     hasActivePlayer: Boolean,
-    inputSourceApp: LauncherApp?,
+    showInputSource: Boolean,
     networkConnectionStatus: NetworkConnectionStatus,
     canTakeFocus: Boolean,
     returnPlayerFocusRequester: FocusRequester,
@@ -234,7 +234,7 @@ internal fun LauncherSystemStrip(
     leftEdgeFocusRequester: FocusRequester,
     downFocusRequester: FocusRequester,
     onReturnToPlayerClick: () -> Unit,
-    onLaunchInputSourcePicker: (LauncherApp) -> Unit,
+    onLaunchInputSourcePicker: () -> Unit,
     onLaunchWifiSettings: () -> Unit,
     onLaunchSystemSettings: () -> Unit,
     onHasFocusChanged: (Boolean) -> Unit,
@@ -255,16 +255,16 @@ internal fun LauncherSystemStrip(
     var inputSourceFocused by remember { mutableStateOf(false) }
     val showActionButtons = !isCompactStatusOnly || stripFocused
 
-    LaunchedEffect(hasActivePlayer, inputSourceApp, showActionButtons) {
+    LaunchedEffect(hasActivePlayer, showInputSource, showActionButtons) {
         if (!hasActivePlayer && returnPlayerFocused) {
             returnPlayerFocused = false
             val target = when {
-                showActionButtons && inputSourceApp != null -> inputSourceFocusRequester
+                showActionButtons && showInputSource -> inputSourceFocusRequester
                 showActionButtons -> systemSettingsFocusRequester
                 else -> wifiSettingsFocusRequester
             }
             target.safeRequestFocus("StripHandoff_Player")
-        } else if (inputSourceApp == null && inputSourceFocused) {
+        } else if (!showInputSource && inputSourceFocused) {
             inputSourceFocused = false
             val target = if (showActionButtons) systemSettingsFocusRequester else wifiSettingsFocusRequester
             target.safeRequestFocus("StripHandoff_Input")
@@ -311,7 +311,7 @@ internal fun LauncherSystemStrip(
                     .focusProperties {
                         left = leftEdgeFocusRequester
                         right = when {
-                            showActionButtons && inputSourceApp != null -> inputSourceFocusRequester
+                            showActionButtons && showInputSource -> inputSourceFocusRequester
                             showActionButtons -> systemSettingsFocusRequester
                             else -> wifiSettingsFocusRequester
                         }
@@ -360,13 +360,13 @@ internal fun LauncherSystemStrip(
         }
 
         AnimatedVisibility(
-            visible = showActionButtons && inputSourceApp != null,
+            visible = showActionButtons && showInputSource,
             enter = fadeIn() + expandHorizontally(),
             exit = fadeOut() + shrinkHorizontally(),
         ) {
-            if (inputSourceApp != null) {
+            if (showInputSource) {
                 PinnedSystemAppButton(
-                    app = inputSourceApp,
+                    label = "TV入力",
                     focusRequester = inputSourceFocusRequester,
                     leftFocusRequester = if (hasActivePlayer) {
                         returnPlayerFocusRequester
@@ -376,7 +376,7 @@ internal fun LauncherSystemStrip(
                     rightFocusRequester = systemSettingsFocusRequester,
                     downFocusRequester = FocusRequester.Cancel,
                     canTakeFocus = canTakeFocus,
-                    onClick = { onLaunchInputSourcePicker(inputSourceApp) },
+                    onClick = onLaunchInputSourcePicker,
                     onFocusedChanged = { inputSourceFocused = it },
                 )
             }
@@ -394,7 +394,7 @@ internal fun LauncherSystemStrip(
                     .focusRequester(systemSettingsFocusRequester)
                     .focusProperties {
                         left = when {
-                            inputSourceApp != null -> inputSourceFocusRequester
+                            showInputSource -> inputSourceFocusRequester
                             hasActivePlayer -> returnPlayerFocusRequester
                             else -> leftEdgeFocusRequester
                         }

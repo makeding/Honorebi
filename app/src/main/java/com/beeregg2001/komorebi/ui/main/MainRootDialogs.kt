@@ -467,6 +467,12 @@ fun MainRootDialogs(
             onStop = { setupViewModel.stopGeminiLocalServer() },
             onDismiss = { if (isSettingsInitialized) initialQrOpen = false }, initialSetup = true,
             canFinishInitialSetup = isSettingsInitialized,
+            onSelectTvInput = {
+                setupViewModel.updateBackendType("TIF")
+                initialQrOpen = false
+                state.settingsInitialCategoryIndex = 1
+                state.isSettingsOpen = true
+            },
             onManualInput = {
                 initialQrOpen = false
                 state.settingsInitialCategoryIndex = 1

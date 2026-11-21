@@ -10,6 +10,8 @@ data class ChannelApiResponse(
     @SerializedName("SKY") val sky: List<Channel>? = null,
     @SerializedName("BS4K") val bs4k: List<Channel>? = null,
     @SerializedName("IPTV") val iptv: List<Channel>? = null,
+    val others: List<Channel>? = null,
+    val inputs: List<Channel>? = null,
     // Kept in memory only.  /api/channels is a channel-array object; source
     // errors travel in X-Channel-Source-Errors so older strict clients keep parsing it.
     val sourceErrors: Map<String, String?> = emptyMap()
@@ -55,7 +57,7 @@ data class Channel(
 ) {
     // ★追加: どのバックエンドでも変わらない全国共通の識別子
     val uniqueId: String get() =
-        if (networkId != null && serviceId != null) "${networkId}_${serviceId}" else id
+        if (id.startsWith("tif:")) id else if (networkId != null && serviceId != null) "${networkId}_${serviceId}" else id
     val isJellyfin: Boolean get() = source.equals("Jellyfin", ignoreCase = true)
     fun supportsLiveStreamSession(): Boolean = capabilities.liveStreamSession
 }

@@ -20,6 +20,14 @@ const source = (
 ): ConnectionSource => ({ id, label: id, host, port, httpPort });
 
 describe("connection form behavior", () => {
+  it("preserves and saves TIF without a network source", () => {
+    const snapshot = normalizeSnapshot({ ...blankSnapshot(), mainSystem: "TIF" });
+    expect(snapshot.mainSystem).toBe("TIF");
+    expect(canSave(snapshot.sources, snapshot.mainSystem)).toBe(true);
+    expect(saveBody(snapshot).mainSystem).toBe("TIF");
+    snapshot.sources[0].host = "tv.local";
+    expect(resolveMainSystem(snapshot.sources, snapshot.mainSystem)).toBe("TIF");
+  });
   it("always starts with all three source cards and expected ports", () => {
     expect(blankSnapshot().sources.map(({ id, port }) => [id, port])).toEqual([
       ["KONOMITV", "7000"],

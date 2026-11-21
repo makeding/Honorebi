@@ -1,5 +1,6 @@
 export const sourceIds = ["KONOMITV", "EDCB", "MIRAKURUN_ONLY"] as const;
 export type SourceId = (typeof sourceIds)[number];
+export type MainSystem = SourceId | "TIF";
 export const preferredSourceIds = ["KONOMITV", "EDCB", "MIRAKURUN"] as const;
 export type PreferredSource = (typeof preferredSourceIds)[number];
 export type PlayMethod = "DIRECT" | "API";
@@ -27,7 +28,7 @@ export interface SmbServer {
 }
 export interface ConnectionSnapshot {
   sources: ConnectionSource[];
-  mainSystem: SourceId | null;
+  mainSystem: MainSystem | null;
   preferredSource: PreferredSource;
   edcbRecordPlayMethod: PlayMethod;
   cloudflareAccess: CloudflareAccess;
@@ -133,8 +134,8 @@ export function normalizeSnapshot(
           : {}),
       };
     }),
-    mainSystem: sourceIds.includes(input.mainSystem as SourceId)
-      ? (input.mainSystem as SourceId)
+    mainSystem: input.mainSystem === "TIF" || sourceIds.includes(input.mainSystem as SourceId)
+      ? (input.mainSystem as MainSystem)
       : null,
     preferredSource: preferredSourceIds.includes(
       input.preferredSource as PreferredSource,
@@ -170,8 +171,9 @@ export function normalizeSnapshot(
 }
 export function resolveMainSystem(
   sources: ConnectionSource[],
-  selected: SourceId | null,
-): SourceId | null {
+  selected: MainSystem | null,
+): MainSystem | null {
+  if (selected === "TIF") return selected;
   const available = sources.filter(isConfigured).map((s) => s.id);
   if (available.length === 1) return available[0];
   return selected !== null && available.includes(selected)
@@ -180,10 +182,10 @@ export function resolveMainSystem(
 }
 export function canSave(
   sources: ConnectionSource[],
-  selected: SourceId | null,
+  selected: MainSystem | null,
 ): boolean {
   return (
-    sources.some(isConfigured) &&
+    (selected === "TIF" || sources.some(isConfigured)) &&
     resolveMainSystem(sources, selected) !== null &&
     sources.every(validSource)
   );

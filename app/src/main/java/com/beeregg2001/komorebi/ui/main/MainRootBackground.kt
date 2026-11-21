@@ -226,7 +226,7 @@ fun MainRootBackground(
                         onChannelClick = { channel ->
                             if (channel != null) {
                                 state.playbackState.enterLive(channel)
-                                homeViewModel.saveLastChannel(channel)
+                                if (!channel.id.startsWith("tif:")) homeViewModel.saveLastChannel(channel)
                             } else if (state.playbackState.livePlayback != null) {
                                 state.playbackState.leavePlayback(returningFromPlayer = false)
                             }

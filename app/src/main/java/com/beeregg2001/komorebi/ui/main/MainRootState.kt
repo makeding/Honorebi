@@ -141,7 +141,7 @@ class MainRootState {
     }
 
     fun getVisibleTabs(hideAppsTab: Boolean = false): List<String> =
-        com.beeregg2001.komorebi.ui.home.visibleHomeTabs(hideAppsTab)
+        com.beeregg2001.komorebi.ui.home.LauncherTab.visibleTabs(hideAppsTab, tif = backendType == "TIF").map { it.title }
 }
 
 @Composable

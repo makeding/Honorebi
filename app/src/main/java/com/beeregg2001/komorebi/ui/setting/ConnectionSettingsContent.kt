@@ -39,6 +39,7 @@ fun ConnectionSettingsContent(
     onEdit: (String, String) -> Unit,
     onWebSetup: (ConnectionSource?) -> Unit,
     onSelectBackend: (List<ConnectionSource>) -> Unit,
+    onRefreshTif: () -> Unit,
     onSelectSrc: () -> Unit,
     onEditCloudflareAccess: () -> Unit,
     itemRs: List<FocusRequester>,
@@ -54,8 +55,11 @@ fun ConnectionSettingsContent(
         prefs.konomiIp, prefs.konomiPort, prefs.edcbIp, prefs.edcbPort,
         prefs.mirakurunIp, prefs.mirakurunPort,
     )
-    val canSelectMain = configured.size > 1
+    val selectable = configured + ConnectionSource.TIF
+    val canSelectMain = true
     val colors = KomorebiTheme.colors
+    val tifFirst = remember { FocusRequester() }
+    val tifLast = remember { FocusRequester() }
 
     fun returnToSources() { source = null; navigating = true }
     BackHandler(enabled = source != null && !isDialogOpen) { returnToSources() }
@@ -105,11 +109,13 @@ fun ConnectionSettingsContent(
                     ConnectionSource.KONOMITV -> prefs.konomiIp.takeUnless { it == ConnectionSourcePolicy.KONOMI_PLACEHOLDER }.orEmpty()
                     ConnectionSource.EDCB -> prefs.edcbIp
                     ConnectionSource.MIRAKURUN -> prefs.mirakurunIp
+                    ConnectionSource.TIF -> error("TV input has no network address")
                 }
                 val port = when (detail) {
                     ConnectionSource.KONOMITV -> prefs.konomiPort
                     ConnectionSource.EDCB -> prefs.edcbPort
                     ConnectionSource.MIRAKURUN -> prefs.mirakurunPort
+                    ConnectionSource.TIF -> error("TV input has no network port")
                 }
                 row(2, "IPアドレス", host.ifBlank { AppStrings.SETTINGS_VALUE_UNSET }, Icons.Default.Link,
                     itemRs[1], itemRs[3]) { onEdit("${detail.label} (IPアドレス)", host) }
@@ -141,7 +147,7 @@ fun ConnectionSettingsContent(
         } else {
             row(0, "スマホで設定", "", Icons.Default.QrCode, FocusRequester.Cancel, itemRs[1]) { onWebSetup(null) }
             SettingsSection("接続先") {
-                ConnectionSource.entries.forEachIndexed { index, entry ->
+                ConnectionSource.entries.filter { it != ConnectionSource.TIF }.forEachIndexed { index, entry ->
                     row(index + 1, entry.label, if (entry in configured) "設定済み" else AppStrings.SETTINGS_VALUE_UNSET,
                         Icons.Default.Dns,
                         itemRs[index],
@@ -151,11 +157,16 @@ fun ConnectionSettingsContent(
                 }
             }
             SettingsSection("メインシステム") {
-                val selected = ConnectionSourcePolicy.resolve(prefs.backendType, configured)
+                val selected = ConnectionSourcePolicy.resolve(prefs.backendType, selectable)
                 row(4, "メインシステム",
-                    configured.firstOrNull { it.backend == selected }?.label ?: AppStrings.SETTINGS_VALUE_UNSET,
-                    Icons.Default.CheckCircle, itemRs[3], itemRs[5], enabled = canSelectMain) {
-                    onSelectBackend(configured)
+                    selectable.firstOrNull { it.backend == selected }?.label ?: AppStrings.SETTINGS_VALUE_UNSET,
+                    Icons.Default.CheckCircle, itemRs[3],
+                    if (selected == ConnectionSource.TIF.backend) tifFirst else itemRs[5], enabled = canSelectMain) {
+                    onSelectBackend(selectable)
+                }
+                if (selected == ConnectionSource.TIF.backend) {
+                    TifInputSettings(onRefresh = onRefreshTif, first = tifFirst, last = tifLast,
+                        before = itemRs[4], after = itemRs[5], sidebar = sidebarR)
                 }
             }
             SettingsSection("ライブ視聴") {
@@ -163,7 +174,8 @@ fun ConnectionSettingsContent(
                     "MIRAKURUN" -> "Mirakurun を優先"
                     "EDCB" -> "EDCB (ダイレクトストリーミング)"
                     else -> "メインシステムに従う（トランスコード）"
-                }, Icons.Default.PriorityHigh, itemRs[if (canSelectMain) 4 else 3], itemRs[6],
+                }, Icons.Default.PriorityHigh,
+                    if (prefs.backendType == ConnectionSource.TIF.backend) tifLast else itemRs[4], itemRs[6],
                     action = onSelectSrc)
             }
             SettingsSection("Cloudflare Access") {

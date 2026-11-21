@@ -28,6 +28,7 @@ import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
+import com.beeregg2001.komorebi.ui.live.TifLivePlayerScreen
 import com.beeregg2001.komorebi.ui.video.player.RecordedProgramSelectionReason
 import com.beeregg2001.komorebi.ui.video.player.VideoPlayerScreen
 
@@ -59,15 +60,6 @@ fun MainRootPlaybackHost(
     suppressChrome: Boolean = false,
 ) {
     val settingsViewModel: com.beeregg2001.komorebi.viewmodel.SettingsViewModel = hiltViewModel()
-    val livePlayerViewModel: com.beeregg2001.komorebi.ui.live.LivePlayerViewModel = hiltViewModel()
-    DisposableEffect(state.playbackState, livePlayerViewModel) {
-        val unregister = state.playbackState.registerBeforePlayerRemoval { previous ->
-            if (previous is PlaybackTarget.Live) {
-                livePlayerViewModel.releasePlayers("before_player_removal")
-            }
-        }
-        onDispose { unregister() }
-    }
     val exclusion by settingsViewModel.nhkExclusionState.collectAsState()
     val target = state.playbackState.renderPlaybackTarget
     if (!exclusion.isLoaded || when (target) {
@@ -78,7 +70,8 @@ fun MainRootPlaybackHost(
     // Keep MediaRouter2 route discovery alive for the whole playback session.
     // A recorded-program transition replaces the keyed VideoPlayerScreen below,
     // but must not make Cast targets disappear while the next episode starts.
-    CastRouteDiscovery()
+    val isTif = target is PlaybackTarget.Live && target.channel.id.startsWith("tif:")
+    if (!isTif) CastRouteDiscovery()
 
     val playbackFocusRequester = remember { FocusRequester() }
     LaunchedEffect(state.remotePlaybackFocusTick) {
@@ -112,7 +105,32 @@ fun MainRootPlaybackHost(
         // Switching retains the committed target for the session/Cast lease,
         // while the host materializes the incoming recording until READY.
         when (val target = state.playbackState.renderPlaybackTarget) {
-            is PlaybackTarget.Live -> LivePlayerScreen(
+            is PlaybackTarget.Live -> if (target.channel.id.startsWith("tif:")) {
+                val subtitle by settingsViewModel.liveSubtitleDefault.collectAsState()
+                TifLivePlayerScreen(
+                    standaloneInput = state.backendType != "TIF",
+                    channel = target.channel,
+                    groupedChannels = data.groupedChannels,
+                    isMiniListOpen = state.playbackState.isPlayerMiniListOpen && !suppressChrome,
+                    onMiniListToggle = { state.playbackState.isPlayerMiniListOpen = it },
+                    onChannelSelect = { state.playbackState.enterLive(it, exitMiniPlayer = false) },
+                    onChannelPlaybackCommitted = onSaveLastChannel,
+                    showOverlay = state.playbackState.playerShowOverlay && !suppressChrome,
+                    onShowOverlayChange = { state.playbackState.playerShowOverlay = it },
+                    initialCaptions = subtitle == "ON",
+                )
+            } else {
+                val livePlayerViewModel: com.beeregg2001.komorebi.ui.live.LivePlayerViewModel = hiltViewModel()
+                DisposableEffect(state.playbackState, livePlayerViewModel) {
+                    val unregister = state.playbackState.registerBeforePlayerRemoval { previous ->
+                        if (previous is PlaybackTarget.Live) livePlayerViewModel.releasePlayers("before_player_removal")
+                    }
+                    onDispose {
+                        unregister()
+                        livePlayerViewModel.releasePlayers("network_live_disposed")
+                    }
+                }
+                LivePlayerScreen(
                 channelViewModel = hiltViewModel(),
                 reserveViewModel = hiltViewModel(),
                 recordViewModel = hiltViewModel(),
@@ -159,7 +177,8 @@ fun MainRootPlaybackHost(
                     state.playbackState.enterMiniPlayer()
                 },
                 timeFormat = data.timeFormat,
-            )
+                )
+            }
 
             is PlaybackTarget.Recorded -> {
                 val selectedProgram = target.program

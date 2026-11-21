@@ -226,7 +226,9 @@ class RecordViewModel @Inject constructor(
     ) { recordings, exclusion ->
         if (!exclusion.isLoaded) emptyList() else recordings.filterNot(nhkExclusionRepository::isExcluded)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val localRecordedCount: StateFlow<Int> = programDao.getTotalCountFlow()
+    val localRecordedCount: StateFlow<Int> = combine(programDao.getTotalCountFlow(), settingsRepository.recordCacheEligible) { count, eligible ->
+        if (eligible) count else 0
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     /** Safe, user-facing reason for the last recent-recordings failure. */
@@ -303,9 +305,12 @@ class RecordViewModel @Inject constructor(
     val pagedRecordings: Flow<PagingData<RecordedProgram>> = combine(
         pagingFilterState,
         nhkExclusionRepository.state,
-    ) { state, exclusion -> state to exclusion }.flatMapLatest { (state, exclusion) ->
+        settingsRepository.backendType,
+        settingsRepository.recordCacheEligible,
+    ) { state, exclusion, backend, eligible -> Triple(state, exclusion, backend to eligible) }.flatMapLatest { (state, exclusion, backendState) ->
         flow {
-            if (!exclusion.isLoaded) {
+            val (backend, eligible) = backendState
+            if (!exclusion.isLoaded || backend == "TIF" || !eligible) {
                 emit(PagingData.empty())
                 return@flow
             }
@@ -525,7 +530,7 @@ class RecordViewModel @Inject constructor(
         channel: Channel,
         recordings: List<RecordedProgram> = recentRecordings.value
     ): RecordedProgram? {
-        if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return null
+        if (channel.id.startsWith("tif:") || !nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return null
         val present = channel.programPresent
         val recordingCandidates = recordings.filter {
             !nhkExclusionRepository.isExcluded(it) &&
@@ -553,6 +558,7 @@ class RecordViewModel @Inject constructor(
 
     suspend fun fetchCurrentRecordingForChannel(channel: Channel): ChaseRecordingLookupResult =
         withContext(Dispatchers.IO) {
+            if (channel.id.startsWith("tif:")) return@withContext ChaseRecordingLookupResult.Unavailable
             if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) {
                 return@withContext ChaseRecordingLookupResult.Unavailable
             }

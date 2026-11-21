@@ -9,6 +9,7 @@ import com.beeregg2001.komorebi.data.repository.edcb.EdcbLiveRepository
 import com.beeregg2001.komorebi.data.repository.edcb.EdcbRecordRepository
 import com.beeregg2001.komorebi.data.repository.edcb.EdcbReserveRepository
 import com.beeregg2001.komorebi.data.repository.edcb.EdcbEpgRepository
+import com.beeregg2001.komorebi.data.repository.tif.TifRepository
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,13 +27,15 @@ class DtvProviderProxy @Inject constructor(
     private val edcbLiveRepository: dagger.Lazy<EdcbLiveRepository>,
     private val edcbRecordRepository: dagger.Lazy<EdcbRecordRepository>,
     private val edcbReserveRepository: dagger.Lazy<EdcbReserveRepository>,
-    private val edcbEpgRepository: dagger.Lazy<EdcbEpgRepository>
+    private val edcbEpgRepository: dagger.Lazy<EdcbEpgRepository>,
+    private val tifRepository: dagger.Lazy<TifRepository>
 ) : LiveProvider, RecordProvider, ReserveProvider, EpgProvider, OnAirProvider {
 
     // --- ルーティングロジック（インターフェースごとに特化） ---
 
     private suspend fun getLiveProvider(): LiveProvider {
         return when (settingsRepository.backendType.first()) {
+            "TIF" -> tifRepository.get()
             "EDCB" -> edcbLiveRepository.get()
             "EPGSTATION" -> epgStationRepository.get()
             else -> konomiRepository.get()
@@ -41,6 +44,7 @@ class DtvProviderProxy @Inject constructor(
 
     private suspend fun getRecordProvider(): RecordProvider {
         return when (settingsRepository.backendType.first()) {
+            "TIF" -> tifRepository.get()
             "EDCB" -> edcbRecordRepository.get()
             "EPGSTATION" -> epgStationRepository.get()
             else -> konomiRepository.get()
@@ -49,6 +53,7 @@ class DtvProviderProxy @Inject constructor(
 
     private suspend fun getReserveProvider(): ReserveProvider {
         return when (settingsRepository.backendType.first()) {
+            "TIF" -> tifRepository.get()
             "EDCB" -> edcbReserveRepository.get()
             "EPGSTATION" -> epgStationRepository.get()
             else -> konomiRepository.get()
@@ -56,7 +61,12 @@ class DtvProviderProxy @Inject constructor(
     }
 
     private suspend fun getEpgProvider(): EpgProvider {
-        return when (settingsRepository.backendType.first()) {
+        return getEpgProvider(settingsRepository.backendType.first())
+    }
+
+    internal fun getEpgProvider(backend: String): EpgProvider {
+        return when (backend) {
+            "TIF" -> tifRepository.get()
             "EDCB" -> edcbEpgRepository.get()
             "EPGSTATION" -> epgStationRepository.get()
             else -> konomiRepository.get()

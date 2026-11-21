@@ -89,6 +89,8 @@ fun LiveContent(
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val liveRows by channelViewModel.liveRows.collectAsState()
+    val isLoading by channelViewModel.isLoading.collectAsState()
+    val channelError by channelViewModel.channelError.collectAsState()
     val sourceErrors by channelViewModel.sourceErrors.collectAsState()
     val channelLogoUrls by channelViewModel.channelLogoUrls.collectAsState()
     val backendType by settingsViewModel.backendType.collectAsState(initial = "KONOMITV")
@@ -226,7 +228,11 @@ fun LiveContent(
                     .focusable(),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = colors.textPrimary.copy(alpha = 0.5f))
+                if (backendType == "TIF" && !isLoading) {
+                    Text(channelError ?: "テレビ入力がありません。設定から入力の登録とチャンネルスキャンを行ってください。", color = colors.textPrimary)
+                } else {
+                    CircularProgressIndicator(color = colors.textPrimary.copy(alpha = 0.5f))
+                }
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
