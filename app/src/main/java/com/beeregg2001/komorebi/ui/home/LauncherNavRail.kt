@@ -106,6 +106,7 @@ internal fun LauncherNavRail(
     settingsItemFocusRequester: FocusRequester,
     settingsCanFocus: Boolean,
     onTabFocused: (LauncherTab) -> Unit,
+    onTabActivated: (LauncherTab) -> Unit = onTabFocused,
     onOpenSettings: () -> Unit,
     onHasFocusChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
@@ -247,7 +248,7 @@ internal fun LauncherNavRail(
                         role = Role.Tab,
                         interactionSource = interactionSource,
                         indication = null,
-                        onClick = { onTabFocused(tab) },
+                        onClick = { onTabActivated(tab) },
                     ),
             )
         }

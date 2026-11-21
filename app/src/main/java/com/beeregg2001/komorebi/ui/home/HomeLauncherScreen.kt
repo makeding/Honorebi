@@ -575,6 +575,13 @@ fun HomeLauncherScreen(
                     ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
                     ui.topNavHasFocus = true
                 },
+                onTabActivated = { tab ->
+                    tabController.selectTab(tab, immediate = true)
+                    val targetIndex = tabController.selectedIndex
+                    ui.selectedTabIndex = targetIndex
+                    ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
+                    ui.topNavHasFocus = true
+                },
                 onOpenSettings = { onSettingsToggle(true) },
                 onHasFocusChanged = { hasFocus ->
                     railHasFocus = hasFocus

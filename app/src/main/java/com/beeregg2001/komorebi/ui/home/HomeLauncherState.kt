@@ -25,7 +25,7 @@ internal fun visibleHomeTabs(hideAppsTab: Boolean): List<String> =
     LauncherTab.visibleTabs(hideAppsTab).map { it.title }
 
 /** Rapid D-pad tab changes share one render; only the latest quiet target is committed. */
-internal const val TAB_RENDER_COALESCE_MS = 60L
+internal const val TAB_RENDER_COALESCE_MS = 260L
 
 @Stable
 internal class HomeTabRenderState(initialIndex: Int, initialContentKey: String) {
