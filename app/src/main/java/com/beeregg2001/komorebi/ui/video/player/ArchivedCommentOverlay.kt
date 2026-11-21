@@ -9,13 +9,13 @@ import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
 import com.beeregg2001.komorebi.ui.player.DanmakuItem
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
-import com.beeregg2001.komorebi.ui.player.DanmakuType
+import com.beeregg2001.komorebi.ui.player.jikkyoDanmaku
+import com.beeregg2001.komorebi.ui.player.jikkyoDanmakuType
 import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import android.graphics.Color as AndroidColor
 
 private const val TAG = "ArchivedCommentOverlay"
 
@@ -30,7 +30,7 @@ fun ArchivedCommentOverlay(
     commentFontSizeScale: Float,
     commentOpacity: Float,
     commentMaxLines: Int,
-    commentEngine: DanmakuEngineMode = DanmakuEngineMode.GLES,
+    commentEngine: DanmakuEngineMode = DanmakuEngineMode.DFM,
     useSoftwareRendering: Boolean = false,
     recordedPlaybackFence: RecordedPlaybackFence,
 ) {
@@ -136,16 +136,7 @@ private fun createDanmakuItem(
     density: Float,
     colorCache: MutableMap<String, Int>,
     showTimeMs: Long,
-): DanmakuItem {
-    val textColor = colorCache.getOrPut(comment.color) {
-        runCatching { AndroidColor.parseColor(comment.color) }
-            .getOrDefault(AndroidColor.WHITE)
-    }
-    return DanmakuItem(
-        text = comment.text,
-        textColor = textColor,
-        textSizePx = (32f * fontSizeScale) * density,
-        type = DanmakuType.SCROLL_RL,
-        showTimeMs = showTimeMs,
-    )
-}
+): DanmakuItem = jikkyoDanmaku(
+    comment.text, comment.color, comment.size, jikkyoDanmakuType(comment.type),
+    32f * fontSizeScale * density, showTimeMs, colorCache,
+)

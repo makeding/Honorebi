@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
 import kotlinx.coroutines.delay
@@ -33,7 +35,8 @@ data class OssLibrary(
     val name: String,
     val author: String,
     val licenseName: String,
-    val licenseText: String
+    val licenseText: String,
+    val licenseResource: Int? = null,
 )
 
 val ossLibraries = listOf(
@@ -232,6 +235,13 @@ val ossLibraries = listOf(
             See the License for the specific language governing permissions and
             limitations under the License.
         """.trimIndent()
+    ),
+    OssLibrary(
+        name = "libwtfdanmaku (コメント配置)",
+        author = "xqq",
+        licenseName = "GNU Lesser General Public License v2.1",
+        licenseText = "Copyright (C) 2015 xqq <xqq@0ginr.com>\nhttps://github.com/xqq/libwtfdanmaku\nAndroid/Kotlin port for Komorebi.",
+        licenseResource = R.raw.libwtfdanmaku_license,
     ),
     OssLibrary(
         name = "DanmakuFlameMaster",
@@ -860,8 +870,13 @@ fun OpenSourceLicensesScreen(onBack: () -> Unit) {
                     color = colors.accent,
                     modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
                 )
+                val resources = LocalContext.current.resources
                 Text(
-                    text = selectedLib.licenseText,
+                    text = remember(selectedLib, resources) {
+                        selectedLib.licenseResource?.let { id ->
+                            selectedLib.licenseText + "\n\n" + resources.openRawResource(id).bufferedReader().use { it.readText() }
+                        } ?: selectedLib.licenseText
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = colors.textPrimary.copy(alpha = 0.8f),
                     lineHeight = 28.sp

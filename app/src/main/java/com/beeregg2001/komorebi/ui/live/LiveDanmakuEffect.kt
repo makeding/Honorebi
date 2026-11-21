@@ -1,6 +1,5 @@
 package com.beeregg2001.komorebi.ui.live
 
-import android.graphics.Color as AndroidColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -8,7 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
-import com.beeregg2001.komorebi.ui.player.DanmakuItem
+import com.beeregg2001.komorebi.ui.player.jikkyoDanmaku
+import com.beeregg2001.komorebi.ui.player.jikkyoDanmakuType
 import com.beeregg2001.komorebi.ui.player.DanmakuType
 import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
 import kotlinx.coroutines.flow.SharedFlow
@@ -53,11 +53,7 @@ internal fun LiveDanmakuEffect(
                 scrollDanmakuCount = 0
                 fixedDanmakuCount = 0
             }
-            val danmakuType = when (comment.position) {
-                "top" -> DanmakuType.FIX_TOP
-                "bottom" -> DanmakuType.FIX_BOTTOM
-                else -> DanmakuType.SCROLL_RL
-            }
+            val danmakuType = jikkyoDanmakuType(comment.position)
             if (danmakuType == DanmakuType.SCROLL_RL) {
                 if (scrollDanmakuCount >= SCROLL_DANMAKU_LIMIT_PER_WINDOW) return@collect
                 scrollDanmakuCount++
@@ -65,24 +61,12 @@ internal fun LiveDanmakuEffect(
                 if (fixedDanmakuCount >= FIXED_DANMAKU_LIMIT_PER_WINDOW) return@collect
                 fixedDanmakuCount++
             }
-            val sizeFactor = when (comment.size) {
-                "big" -> 1.5f
-                "small" -> 0.8f
-                else -> 1.0f
-            }
-            val textColor = colorCache.getOrPut(comment.color) {
-                runCatching { AndroidColor.parseColor(comment.color) }.getOrDefault(AndroidColor.WHITE)
-            }
-            val textSizePx = (32f * currentFontSizeScale * sizeFactor) * density
             danmakuView.value?.ifActive { controller ->
                 if (!controller.isPrepared) return@ifActive
                 controller.addDanmaku(
-                    DanmakuItem(
-                        text = comment.text,
-                        textColor = textColor,
-                        textSizePx = textSizePx,
-                        type = danmakuType,
-                        showTimeMs = controller.currentTimeMs + 10L,
+                    jikkyoDanmaku(
+                        comment.text, comment.color, comment.size, danmakuType,
+                        32f * currentFontSizeScale * density, controller.currentTimeMs + 10L, colorCache,
                     )
                 )
             }

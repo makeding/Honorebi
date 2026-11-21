@@ -17,7 +17,6 @@ import android.opengl.GLES30
 import android.opengl.GLUtils
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
 import android.view.SurfaceHolder
@@ -27,8 +26,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.ceil
 
 private const val TAG = "GlDanmakuSurfaceView"
@@ -36,14 +35,47 @@ private const val TAG = "GlDanmakuSurfaceView"
 private const val ATLAS_WIDTH = 2048
 private const val ATLAS_HEIGHT = 2048
 private const val NORMAL_SHELF_HEIGHT = 96
-private const val NORMAL_SHELF_COUNT = 16 // 16 * 96 = 1536
-private const val LARGE_SHELF_HEIGHT = 160
-private const val LARGE_SHELF_COUNT = 3 // 3 * 160 = 480; total = 2016 <= 2048
-private const val TOTAL_SHELF_COUNT = NORMAL_SHELF_COUNT + LARGE_SHELF_COUNT
-private const val DANMAKU_STROKE_WIDTH_PX = 8.0f
+private const val TOTAL_SHELF_COUNT = ATLAS_HEIGHT / NORMAL_SHELF_HEIGHT
+private fun danmakuStrokeWidth(textSize: Float): Float = (textSize / 18f).coerceAtLeast(1f)
 private const val DANMAKU_PADDING_PX = 10
+internal const val TILE_WIDTH = 510
+internal const val TILE_HEIGHT = NORMAL_SHELF_HEIGHT - 2
+private const val MAX_ATLAS_QUADS = ATLAS_WIDTH / 128 * TOTAL_SHELF_COUNT
 
-private val BUCKET_WIDTHS = intArrayOf(128, 256, 512, 1024, ATLAS_WIDTH)
+internal fun measureDanmakuText(text: String, paint: Paint): Pair<Float, Float> {
+    var start = 0
+    var count = 0
+    var width = 0f
+    do {
+        val end = text.indexOf('\n', start).let { if (it < 0) text.length else it }
+        width = maxOf(width, paint.measureText(text, start, end))
+        count++
+        start = end + 1
+    } while (start <= text.length)
+    val fm = paint.fontMetrics
+    return (ceil(width) + DANMAKU_PADDING_PX * 2) to
+        (ceil((fm.descent - fm.ascent) * count) + DANMAKU_PADDING_PX)
+}
+
+internal fun drawDanmakuText(canvas: Canvas, text: String, x: Float, y: Float, stroke: Paint, fill: Paint) {
+    val fm = stroke.fontMetrics
+    val lineHeight = fm.descent - fm.ascent
+    var start = 0
+    var index = 0
+    do {
+        val end = text.indexOf('\n', start).let { if (it < 0) text.length else it }
+        val baseline = y + DANMAKU_PADDING_PX * 0.5f - fm.ascent + index * lineHeight
+        canvas.drawText(text, start, end, x + DANMAKU_PADDING_PX, baseline, stroke)
+        canvas.drawText(text, start, end, x + DANMAKU_PADDING_PX, baseline, fill)
+        start = end + 1
+        index++
+    } while (start <= text.length)
+}
+
+internal fun drawDanmakuTile(canvas: Canvas, text: String, x: Int, y: Int, stroke: Paint, fill: Paint) =
+    drawDanmakuText(canvas, text, 1f - x, 1f - y, stroke, fill)
+
+private val BUCKET_WIDTHS = intArrayOf(128, 256, TILE_WIDTH + 2)
 
 private const val VERT_SHADER = """#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -61,7 +93,7 @@ void main() {
 """
 
 private const val FRAG_SHADER = """#version 300 es
-precision mediump float;
+precision highp float;
 uniform sampler2D uAtlas;
 in vec2 vUv;
 in float vAlpha;
@@ -92,16 +124,20 @@ internal class GlDanmakuSurfaceView(
         val y: Int,
         val drawW: Int,
         val drawH: Int,
+        val offsetX: Int = 0,
+        val offsetY: Int = 0,
     )
 
     private val engine = DanmakuEngine(MAX_VISIBLE_DANMAKU)
     private val released = AtomicBoolean(false)
+    private val surfaceGeneration = AtomicInteger(0)
+    private val releaseComplete = CountDownLatch(1)
 
     @Volatile
     private var preparedFlag = false
 
     override val currentTimeMs: Long
-        get() = engine.currentTimeMs
+        get() = clock.positionMs()
 
     override val isPrepared: Boolean
         get() = preparedFlag && !released.get()
@@ -118,7 +154,7 @@ internal class GlDanmakuSurfaceView(
     private var useGl = false
     private var surfaceWidth = 1920
     private var surfaceHeight = 1080
-    private var lastFrameNs = 0L
+    private val clock = DanmakuPlaybackClock()
     private var activeHolder: SurfaceHolder? = null
 
     // EGL / GLES 3.0 state (render thread only)
@@ -131,22 +167,20 @@ internal class GlDanmakuSurfaceView(
     private var atlasTexId = 0
     private var vboId = 0
 
-    private val vertexArray = FloatArray(MAX_VISIBLE_DANMAKU * 6 * 5)
+    private val vertexArray = FloatArray(MAX_ATLAS_QUADS * 6 * 5)
     private val vertexBuffer: FloatBuffer = ByteBuffer
-        .allocateDirect(MAX_VISIBLE_DANMAKU * 6 * 5 * 4)
+        .allocateDirect(MAX_ATLAS_QUADS * 6 * 5 * 4)
         .order(ByteOrder.nativeOrder())
         .asFloatBuffer()
 
     private val shelves = Array(TOTAL_SHELF_COUNT) { ArrayList<Span>(8) }
     private val normalBuckets = arrayOfNulls<Bitmap>(BUCKET_WIDTHS.size)
     private val normalCanvases = arrayOfNulls<Canvas>(BUCKET_WIDTHS.size)
-    private val largeBuckets = arrayOfNulls<Bitmap>(BUCKET_WIDTHS.size)
-    private val largeCanvases = arrayOfNulls<Canvas>(BUCKET_WIDTHS.size)
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.DEFAULT_BOLD
         style = Paint.Style.STROKE
-        strokeWidth = DANMAKU_STROKE_WIDTH_PX
+        strokeWidth = danmakuStrokeWidth(textSize)
         strokeJoin = Paint.Join.ROUND
         color = Color.BLACK
     }
@@ -168,7 +202,6 @@ internal class GlDanmakuSurfaceView(
                 choreographer?.postFrameCallback(this)
             } else {
                 frameLoopActive = false
-                lastFrameNs = 0L
                 if (surfaceReady && !surfaceCleared && !engine.hasWork()) {
                     drawCurrentFrame()
                 }
@@ -217,7 +250,9 @@ internal class GlDanmakuSurfaceView(
     override fun pause() {
         if (released.get()) return
         renderHandler.post {
+            if (released.get()) return@post
             running = false
+            clock.pause()
             stopFrameLoop()
         }
     }
@@ -227,7 +262,7 @@ internal class GlDanmakuSurfaceView(
         renderHandler.post {
             if (released.get()) return@post
             running = true
-            lastFrameNs = 0L
+            clock.resume()
             maybeStartFrameLoop()
         }
     }
@@ -236,7 +271,6 @@ internal class GlDanmakuSurfaceView(
         if (!released.compareAndSet(false, true)) return
         preparedFlag = false
         holder.removeCallback(this)
-        val latch = CountDownLatch(1)
         renderHandler.post {
             try {
                 running = false
@@ -247,21 +281,18 @@ internal class GlDanmakuSurfaceView(
                 releaseScratchBitmaps()
                 activeHolder = null
             } finally {
-                latch.countDown()
+                releaseComplete.countDown()
             }
         }
-        try {
-            latch.await(1_000L, TimeUnit.MILLISECONDS)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-        }
+        awaitCompletion(releaseComplete)
         renderThread.quitSafely()
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         if (released.get()) return
+        val generation = surfaceGeneration.incrementAndGet()
         renderHandler.post {
-            if (released.get()) return@post
+            if (released.get() || generation != surfaceGeneration.get()) return@post
             activeHolder = holder
             val frame = holder.surfaceFrame
             if (frame != null && frame.width() > 0 && frame.height() > 0) {
@@ -289,8 +320,9 @@ internal class GlDanmakuSurfaceView(
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         if (released.get()) return
+        val generation = surfaceGeneration.get()
         renderHandler.post {
-            if (released.get()) return@post
+            if (released.get() || generation != surfaceGeneration.get()) return@post
             surfaceWidth = width.coerceAtLeast(1)
             surfaceHeight = height.coerceAtLeast(1)
             engine.setViewport(surfaceWidth, surfaceHeight)
@@ -302,7 +334,12 @@ internal class GlDanmakuSurfaceView(
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        if (released.get()) return
+        if (released.get()) {
+            awaitCompletion(releaseComplete)
+            return
+        }
+        surfaceGeneration.incrementAndGet()
+        preparedFlag = false
         val latch = CountDownLatch(1)
         renderHandler.post {
             try {
@@ -315,18 +352,26 @@ internal class GlDanmakuSurfaceView(
                 latch.countDown()
             }
         }
-        try {
-            latch.await(1_000L, TimeUnit.MILLISECONDS)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+        awaitCompletion(latch)
+    }
+
+    private fun awaitCompletion(latch: CountDownLatch) {
+        var interrupted = false
+        while (true) {
+            try {
+                latch.await()
+                break
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
         }
+        if (interrupted) Thread.currentThread().interrupt()
     }
 
     private fun maybeStartFrameLoop() {
         if (!surfaceReady || !running || frameLoopActive || released.get()) return
         if (!engine.hasWork()) return
         frameLoopActive = true
-        lastFrameNs = 0L
         choreographer?.postFrameCallback(frameCallback)
     }
 
@@ -335,14 +380,11 @@ internal class GlDanmakuSurfaceView(
             choreographer?.removeFrameCallback(frameCallback)
             frameLoopActive = false
         }
-        lastFrameNs = 0L
     }
 
     private fun stepAndRender(frameTimeNanos: Long) {
-        val dtMs = if (lastFrameNs == 0L) 16L else ((frameTimeNanos - lastFrameNs) / 1_000_000L).coerceIn(1L, 100L)
-        lastFrameNs = frameTimeNanos
         engine.step(
-            dtMs = dtMs,
+            dtMs = clock.positionMs(frameTimeNanos) - engine.currentTimeMs,
             measureItem = ::measureItem,
             onActivate = ::activateItem,
             onExpired = ::recyclePayload,
@@ -353,48 +395,57 @@ internal class GlDanmakuSurfaceView(
     private fun measureItem(item: DanmakuItem): Pair<Float, Float> {
         val effectiveSize = item.textSizePx.coerceIn(12f, 128f)
         strokePaint.textSize = effectiveSize
-        val textW = strokePaint.measureText(item.text)
-        val fm = strokePaint.fontMetrics
-        val w = (ceil(textW) + DANMAKU_PADDING_PX * 2).coerceAtMost(ATLAS_WIDTH.toFloat())
-        val h = (ceil(fm.descent - fm.ascent) + DANMAKU_PADDING_PX).coerceAtMost(LARGE_SHELF_HEIGHT.toFloat())
-        return w to h
+        strokePaint.strokeWidth = danmakuStrokeWidth(effectiveSize)
+        return measureDanmakuText(item.text, strokePaint)
     }
 
     private fun activateItem(item: DanmakuItem, widthPx: Float, heightPx: Float): Any? {
         if (!useGl) return Unit
-        val w = widthPx.toInt().coerceIn(1, ATLAS_WIDTH)
-        val h = heightPx.toInt().coerceIn(1, LARGE_SHELF_HEIGHT)
-        val useLarge = h > NORMAL_SHELF_HEIGHT
-        val bucketIdx = pickBucketIndex(w)
-        val bucketW = BUCKET_WIDTHS[bucketIdx]
-        val slot = allocateSlot(bucketW, w, h, useLarge) ?: return null
-
-        val canvas = (if (useLarge) largeCanvases else normalCanvases)[bucketIdx] ?: return null
-        val bitmap = (if (useLarge) largeBuckets else normalBuckets)[bucketIdx] ?: return null
-
         val effectiveSize = item.textSizePx.coerceIn(12f, 128f)
         strokePaint.textSize = effectiveSize
+        strokePaint.strokeWidth = danmakuStrokeWidth(effectiveSize)
         fillPaint.textSize = effectiveSize
         fillPaint.color = item.textColor
-        val fm = strokePaint.fontMetrics
-
-        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        val baseline = DANMAKU_PADDING_PX * 0.5f - fm.ascent
-        canvas.drawText(item.text, DANMAKU_PADDING_PX.toFloat(), baseline, strokePaint)
-        canvas.drawText(item.text, DANMAKU_PADDING_PX.toFloat(), baseline, fillPaint)
-
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, atlasTexId)
-        GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, slot.x, slot.y, bitmap)
-        return slot
+        val slots = ArrayList<AtlasSlot>()
+        val w = widthPx.toInt()
+        val h = heightPx.toInt()
+        var y = 0
+        while (y < h) {
+            var x = 0
+            while (x < w) {
+                val tileW = minOf(TILE_WIDTH, w - x)
+                val tileH = minOf(TILE_HEIGHT, h - y)
+                val bucketIdx = pickBucketIndex(tileW + 2)
+                val allocated = allocateSlot(BUCKET_WIDTHS[bucketIdx], tileW, tileH)
+                if (allocated == null) {
+                    recyclePayload(slots)
+                    return null
+                }
+                val slot = AtlasSlot(allocated.shelf, allocated.x, allocated.y, tileW, tileH, x, y)
+                slots.add(slot)
+                val canvas = normalCanvases[bucketIdx]!!
+                val bitmap = normalBuckets[bucketIdx]!!
+                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                drawDanmakuTile(canvas, item.text, x, y, strokePaint, fillPaint)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, atlasTexId)
+                GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, slot.x, slot.y, bitmap)
+                x += tileW
+            }
+            y += TILE_HEIGHT
+        }
+        return slots
     }
 
     private fun recyclePayload(payload: Any?) {
-        val slot = payload as? AtlasSlot ?: return
-        val spans = shelves[slot.shelf]
-        for (i in 0 until spans.size) {
-            if (spans[i].x == slot.x) {
-                spans.removeAt(i)
-                return
+        val slots = payload as? List<*> ?: return
+        for (value in slots) {
+            val slot = value as AtlasSlot
+            val spans = shelves[slot.shelf]
+            for (i in 0 until spans.size) {
+                if (spans[i].x == slot.x) {
+                    spans.removeAt(i)
+                    break
+                }
             }
         }
     }
@@ -422,26 +473,28 @@ internal class GlDanmakuSurfaceView(
         val invH = 1f / ATLAS_HEIGHT
 
         engine.forEachActive { entry ->
-            val slot = entry.payload as? AtlasSlot ?: return@forEachActive
-            if (quadCount >= MAX_VISIBLE_DANMAKU) return@forEachActive
-            val x0 = entry.x
-            val y0 = entry.y
-            val x1 = x0 + slot.drawW
-            val y1 = y0 + slot.drawH
-            val u0 = slot.x * invW
-            val v0 = slot.y * invH
-            val u1 = (slot.x + slot.drawW) * invW
-            val v1 = (slot.y + slot.drawH) * invH
+            val slots = entry.payload as? List<*> ?: return@forEachActive
+            for (value in slots) {
+                val slot = value as AtlasSlot
+                val x0 = entry.x + slot.offsetX
+                val y0 = entry.y + slot.offsetY
+                val x1 = x0 + slot.drawW
+                val y1 = y0 + slot.drawH
+                val u0 = (slot.x + 1) * invW
+                val v0 = (slot.y + 1) * invH
+                val u1 = (slot.x + 1 + slot.drawW) * invW
+                val v1 = (slot.y + 1 + slot.drawH) * invH
 
-            // Triangle 1: TL, BL, TR
-            vertexArray[idx++] = x0; vertexArray[idx++] = y0; vertexArray[idx++] = u0; vertexArray[idx++] = v0; vertexArray[idx++] = alpha
-            vertexArray[idx++] = x0; vertexArray[idx++] = y1; vertexArray[idx++] = u0; vertexArray[idx++] = v1; vertexArray[idx++] = alpha
-            vertexArray[idx++] = x1; vertexArray[idx++] = y0; vertexArray[idx++] = u1; vertexArray[idx++] = v0; vertexArray[idx++] = alpha
-            // Triangle 2: TR, BL, BR
-            vertexArray[idx++] = x1; vertexArray[idx++] = y0; vertexArray[idx++] = u1; vertexArray[idx++] = v0; vertexArray[idx++] = alpha
-            vertexArray[idx++] = x0; vertexArray[idx++] = y1; vertexArray[idx++] = u0; vertexArray[idx++] = v1; vertexArray[idx++] = alpha
-            vertexArray[idx++] = x1; vertexArray[idx++] = y1; vertexArray[idx++] = u1; vertexArray[idx++] = v1; vertexArray[idx++] = alpha
-            quadCount++
+                // Triangle 1: TL, BL, TR
+                vertexArray[idx++] = x0; vertexArray[idx++] = y0; vertexArray[idx++] = u0; vertexArray[idx++] = v0; vertexArray[idx++] = alpha
+                vertexArray[idx++] = x0; vertexArray[idx++] = y1; vertexArray[idx++] = u0; vertexArray[idx++] = v1; vertexArray[idx++] = alpha
+                vertexArray[idx++] = x1; vertexArray[idx++] = y0; vertexArray[idx++] = u1; vertexArray[idx++] = v0; vertexArray[idx++] = alpha
+                // Triangle 2: TR, BL, BR
+                vertexArray[idx++] = x1; vertexArray[idx++] = y0; vertexArray[idx++] = u1; vertexArray[idx++] = v0; vertexArray[idx++] = alpha
+                vertexArray[idx++] = x0; vertexArray[idx++] = y1; vertexArray[idx++] = u0; vertexArray[idx++] = v1; vertexArray[idx++] = alpha
+                vertexArray[idx++] = x1; vertexArray[idx++] = y1; vertexArray[idx++] = u1; vertexArray[idx++] = v1; vertexArray[idx++] = alpha
+                quadCount++
+            }
         }
 
         if (quadCount > 0) {
@@ -485,13 +538,12 @@ internal class GlDanmakuSurfaceView(
             engine.forEachActive { entry ->
                 val effectiveSize = entry.item.textSizePx.coerceIn(12f, 128f)
                 strokePaint.textSize = effectiveSize
+                strokePaint.strokeWidth = danmakuStrokeWidth(effectiveSize)
                 strokePaint.alpha = alphaInt
                 fillPaint.textSize = effectiveSize
                 fillPaint.color = entry.item.textColor
                 fillPaint.alpha = alphaInt
-                val baseline = entry.y + DANMAKU_PADDING_PX * 0.5f - strokePaint.fontMetrics.ascent
-                canvas.drawText(entry.item.text, entry.x + DANMAKU_PADDING_PX, baseline, strokePaint)
-                canvas.drawText(entry.item.text, entry.x + DANMAKU_PADDING_PX, baseline, fillPaint)
+                drawDanmakuText(canvas, entry.item.text, entry.x, entry.y, strokePaint, fillPaint)
             }
             strokePaint.alpha = 255
             fillPaint.alpha = 255
@@ -510,11 +562,9 @@ internal class GlDanmakuSurfaceView(
         return BUCKET_WIDTHS.lastIndex
     }
 
-    private fun allocateSlot(allocW: Int, drawW: Int, drawH: Int, useLarge: Boolean): AtlasSlot? {
-        val startShelf = if (useLarge) NORMAL_SHELF_COUNT else 0
-        val endShelf = if (useLarge) TOTAL_SHELF_COUNT else NORMAL_SHELF_COUNT
+    private fun allocateSlot(allocW: Int, drawW: Int, drawH: Int): AtlasSlot? {
         val clampedAlloc = allocW.coerceAtMost(ATLAS_WIDTH)
-        for (shelf in startShelf until endShelf) {
+        for (shelf in 0 until TOTAL_SHELF_COUNT) {
             val spans = shelves[shelf]
             var cursor = 0
             var insertIdx = 0
@@ -535,12 +585,7 @@ internal class GlDanmakuSurfaceView(
         return null
     }
 
-    private fun shelfTopY(shelf: Int): Int =
-        if (shelf < NORMAL_SHELF_COUNT) {
-            shelf * NORMAL_SHELF_HEIGHT
-        } else {
-            NORMAL_SHELF_COUNT * NORMAL_SHELF_HEIGHT + (shelf - NORMAL_SHELF_COUNT) * LARGE_SHELF_HEIGHT
-        }
+    private fun shelfTopY(shelf: Int): Int = shelf * NORMAL_SHELF_HEIGHT
 
     private fun initGl(holder: SurfaceHolder): Boolean {
         val surface = holder.surface
@@ -631,7 +676,7 @@ internal class GlDanmakuSurfaceView(
         GLES30.glGenBuffers(1, vbo, 0)
         vboId = vbo[0]
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
-        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, MAX_VISIBLE_DANMAKU * 6 * 5 * 4, null, GLES30.GL_STREAM_DRAW)
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, MAX_ATLAS_QUADS * 6 * 5 * 4, null, GLES30.GL_STREAM_DRAW)
 
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE_MINUS_SRC_ALPHA)
@@ -662,11 +707,6 @@ internal class GlDanmakuSurfaceView(
                 normalBuckets[i] = bmp
                 normalCanvases[i] = Canvas(bmp)
             }
-            if (largeBuckets[i] == null) {
-                val bmp = Bitmap.createBitmap(BUCKET_WIDTHS[i], LARGE_SHELF_HEIGHT, Bitmap.Config.ARGB_8888)
-                largeBuckets[i] = bmp
-                largeCanvases[i] = Canvas(bmp)
-            }
         }
     }
 
@@ -675,9 +715,6 @@ internal class GlDanmakuSurfaceView(
             normalBuckets[i]?.recycle()
             normalBuckets[i] = null
             normalCanvases[i] = null
-            largeBuckets[i]?.recycle()
-            largeBuckets[i] = null
-            largeCanvases[i] = null
         }
     }
 
@@ -725,13 +762,13 @@ internal class SoftwareDanmakuView(
     private val engine = DanmakuEngine(MAX_VISIBLE_DANMAKU)
     private val released = AtomicBoolean(false)
     private var running = false
-    private var lastFrameMs = 0L
+    private val clock = DanmakuPlaybackClock()
 
     @Volatile
     private var preparedFlag = false
 
     override val currentTimeMs: Long
-        get() = engine.currentTimeMs
+        get() = clock.positionMs()
 
     override val isPrepared: Boolean
         get() = preparedFlag && !released.get()
@@ -739,7 +776,7 @@ internal class SoftwareDanmakuView(
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.DEFAULT_BOLD
         style = Paint.Style.STROKE
-        strokeWidth = DANMAKU_STROKE_WIDTH_PX
+        strokeWidth = danmakuStrokeWidth(textSize)
         strokeJoin = Paint.Join.ROUND
         color = Color.BLACK
     }
@@ -761,6 +798,11 @@ internal class SoftwareDanmakuView(
             preparedFlag = true
             onPreparedCallback()
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        preparedFlag = false
+        super.onDetachedFromWindow()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -798,8 +840,9 @@ internal class SoftwareDanmakuView(
     override fun pause() {
         if (released.get()) return
         post {
+            if (released.get()) return@post
             running = false
-            lastFrameMs = 0L
+            clock.pause()
         }
     }
 
@@ -808,7 +851,7 @@ internal class SoftwareDanmakuView(
         post {
             if (released.get()) return@post
             running = true
-            lastFrameMs = 0L
+            clock.resume()
             if (engine.hasWork()) postInvalidateOnAnimation()
         }
     }
@@ -824,18 +867,12 @@ internal class SoftwareDanmakuView(
         super.onDraw(canvas)
         if (released.get()) return
         if (running && engine.hasWork()) {
-            val nowMs = SystemClock.uptimeMillis()
-            val dtMs = if (lastFrameMs == 0L) 16L else (nowMs - lastFrameMs).coerceIn(1L, 100L)
-            lastFrameMs = nowMs
             engine.step(
-                dtMs = dtMs,
+                dtMs = clock.positionMs() - engine.currentTimeMs,
                 measureItem = { item ->
                     val sz = item.textSizePx.coerceIn(12f, 128f)
                     strokePaint.textSize = sz
-                    val w = ceil(strokePaint.measureText(item.text)) + DANMAKU_PADDING_PX * 2
-                    val fm = strokePaint.fontMetrics
-                    val h = ceil(fm.descent - fm.ascent) + DANMAKU_PADDING_PX
-                    w to h
+                    measureDanmakuText(item.text, strokePaint)
                 },
                 onActivate = { _, _, _ -> Unit },
                 onExpired = {},
@@ -846,13 +883,12 @@ internal class SoftwareDanmakuView(
         engine.forEachActive { entry ->
             val sz = entry.item.textSizePx.coerceIn(12f, 128f)
             strokePaint.textSize = sz
+            strokePaint.strokeWidth = danmakuStrokeWidth(sz)
             strokePaint.alpha = alphaInt
             fillPaint.textSize = sz
             fillPaint.color = entry.item.textColor
             fillPaint.alpha = alphaInt
-            val baseline = entry.y + DANMAKU_PADDING_PX * 0.5f - strokePaint.fontMetrics.ascent
-            canvas.drawText(entry.item.text, entry.x + DANMAKU_PADDING_PX, baseline, strokePaint)
-            canvas.drawText(entry.item.text, entry.x + DANMAKU_PADDING_PX, baseline, fillPaint)
+            drawDanmakuText(canvas, entry.item.text, entry.x, entry.y, strokePaint, fillPaint)
         }
         strokePaint.alpha = 255
         fillPaint.alpha = 255

@@ -1,14 +1,12 @@
 package com.beeregg2001.komorebi.ui.player
 
-import kotlin.math.max
-
 enum class DanmakuEngineMode(val id: String) {
     GLES("GLES"),
     DFM("DFM");
 
     companion object {
         fun fromId(id: String?): DanmakuEngineMode =
-            entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: GLES
+            entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: DFM
     }
 }
 
@@ -40,9 +38,6 @@ interface DanmakuController {
 internal const val MAX_VISIBLE_DANMAKU = 80
 private const val BASE_SCROLL_DURATION_MS = 5_500f
 private const val FIXED_DANMAKU_DURATION_MS = 3_800f
-private const val SCROLL_LANE_HORIZONTAL_GAP_PX = 48f
-private const val TOP_MARGIN_PX = 16f
-private const val LANE_VERTICAL_PADDING_PX = 6f
 private const val MAX_PENDING_DANMAKU = 256
 
 /**
@@ -61,7 +56,7 @@ internal class DanmakuEngine(
         val lane: Int,
         var x: Float,
         val y: Float,
-        val speedPxPerSec: Float,
+        var speedPxPerSec: Float,
         var remainingMs: Float,
         val payload: T,
     )
@@ -82,6 +77,7 @@ internal class DanmakuEngine(
 
     private val pending = ArrayList<DanmakuItem>(64)
     private val active = ArrayList<ActiveItem<Any?>>(maxVisible)
+    private val retainer = DanmakuLaneLayout()
 
     fun setViewport(width: Int, height: Int) {
         if (width > 0 && height > 0) {
@@ -91,7 +87,9 @@ internal class DanmakuEngine(
     }
 
     fun updateConfig(speed: Float, opacity: Float, maxLines: Int) {
-        this.speed = if (speed.isFinite() && speed > 0f) speed else 1.0f
+        val nextSpeed = if (speed.isFinite() && speed > 0f) speed else 1.0f
+        for (entry in active) entry.speedPxPerSec *= nextSpeed / this.speed
+        this.speed = nextSpeed
         this.opacity = opacity.coerceIn(0f, 1f)
         this.maxLines = maxLines.coerceAtLeast(0)
     }
@@ -110,6 +108,7 @@ internal class DanmakuEngine(
             onExpired(active[i].payload)
         }
         active.clear()
+        retainer.clear()
     }
 
     fun hasWork(): Boolean = active.isNotEmpty() || pending.isNotEmpty()
@@ -134,7 +133,7 @@ internal class DanmakuEngine(
         onActivate: (DanmakuItem, Float, Float) -> Any?,
         onExpired: (Any?) -> Unit,
     ) {
-        val clampedDtMs = dtMs.coerceIn(0L, 100L)
+        val clampedDtMs = dtMs.coerceAtLeast(0L)
         currentTimeMs += clampedDtMs
         val dtSec = clampedDtMs / 1_000f
 
@@ -153,6 +152,7 @@ internal class DanmakuEngine(
                 }
             }
             if (expired) {
+                retainer.remove(entry)
                 onExpired(entry.payload)
             } else {
                 active[writeIdx++] = entry
@@ -171,10 +171,6 @@ internal class DanmakuEngine(
                 pending[pendingWriteIdx++] = item
                 continue
             }
-            // Drop stale items that are already far behind the current clock.
-            if (currentTimeMs - item.showTimeMs > 2_500L) {
-                continue
-            }
             if (active.size >= maxVisible || activatedThisFrame >= 6) {
                 // Keep slightly delayed items for the next frame if under cap; drop if screen is full.
                 if (active.size < maxVisible) {
@@ -186,7 +182,11 @@ internal class DanmakuEngine(
             val (measuredW, measuredH) = measureItem(item)
             if (measuredW <= 0f || measuredH <= 0f) continue
 
-            val placement = allocateLane(item.type, measuredW, measuredH) ?: continue
+            val ageMs = (currentTimeMs - item.showTimeMs).coerceAtLeast(0L)
+            val durationMs = if (item.type == DanmakuType.SCROLL_RL) BASE_SCROLL_DURATION_MS / speed else FIXED_DANMAKU_DURATION_MS
+            if (ageMs >= durationMs) continue
+
+            val placement = retainer.allocateLane(item.type, measuredW, measuredH, ageMs, viewportWidth, viewportHeight, speed, maxLines) ?: continue
             val payload = onActivate(item, measuredW, measuredH) ?: continue
 
             val durationSec = (BASE_SCROLL_DURATION_MS / speed) / 1_000f
@@ -196,7 +196,7 @@ internal class DanmakuEngine(
                 0f
             }
             val startX = when (item.type) {
-                DanmakuType.SCROLL_RL -> viewportWidth
+                DanmakuType.SCROLL_RL -> viewportWidth - speedPxPerSec * ageMs / 1_000f
                 DanmakuType.FIX_TOP, DanmakuType.FIX_BOTTOM -> (viewportWidth - measuredW) * 0.5f
             }
             active.add(
@@ -208,10 +208,11 @@ internal class DanmakuEngine(
                     x = startX,
                     y = placement.y,
                     speedPxPerSec = speedPxPerSec,
-                    remainingMs = FIXED_DANMAKU_DURATION_MS,
+                    remainingMs = FIXED_DANMAKU_DURATION_MS - ageMs,
                     payload = payload,
                 )
             )
+            retainer.add(active.last())
             activatedThisFrame++
         }
         while (pending.size > pendingWriteIdx) {
@@ -219,75 +220,4 @@ internal class DanmakuEngine(
         }
     }
 
-    private data class LanePlacement(val lane: Int, val y: Float)
-
-    private fun allocateLane(type: DanmakuType, widthPx: Float, heightPx: Float): LanePlacement? {
-        val laneStep = max(heightPx + LANE_VERTICAL_PADDING_PX, 32f)
-        val availableHeight = max(laneStep, viewportHeight - TOP_MARGIN_PX * 2f)
-        val viewportLanes = max(1, (availableHeight / laneStep).toInt())
-
-        return when (type) {
-            DanmakuType.SCROLL_RL -> {
-                val laneCount = if (maxLines > 0) minOf(maxLines, viewportLanes) else viewportLanes
-                val durationSec = (BASE_SCROLL_DURATION_MS / speed) / 1_000f
-                val newSpeed = (viewportWidth + widthPx) / durationSec
-                for (lane in 0 until laneCount) {
-                    if (isScrollLaneAvailable(lane, newSpeed)) {
-                        return LanePlacement(lane, TOP_MARGIN_PX + lane * laneStep)
-                    }
-                }
-                null
-            }
-            DanmakuType.FIX_TOP -> {
-                val laneCount = minOf(max(1, viewportLanes / 2), viewportLanes)
-                for (lane in 0 until laneCount) {
-                    if (isFixedLaneAvailable(DanmakuType.FIX_TOP, lane)) {
-                        return LanePlacement(lane, TOP_MARGIN_PX + lane * laneStep)
-                    }
-                }
-                null
-            }
-            DanmakuType.FIX_BOTTOM -> {
-                val laneCount = minOf(max(1, viewportLanes / 2), viewportLanes)
-                for (lane in 0 until laneCount) {
-                    if (isFixedLaneAvailable(DanmakuType.FIX_BOTTOM, lane)) {
-                        val y = viewportHeight - TOP_MARGIN_PX - (lane + 1) * laneStep
-                        return LanePlacement(lane, y.coerceAtLeast(TOP_MARGIN_PX))
-                    }
-                }
-                null
-            }
-        }
-    }
-
-    private fun isScrollLaneAvailable(lane: Int, newSpeedPxPerSec: Float): Boolean {
-        for (i in 0 until active.size) {
-            val existing = active[i]
-            if (existing.item.type != DanmakuType.SCROLL_RL || existing.lane != lane) continue
-            val existingRight = existing.x + existing.widthPx
-            // Must have fully entered the screen with horizontal breathing room.
-            if (existingRight + SCROLL_LANE_HORIZONTAL_GAP_PX > viewportWidth) {
-                return false
-            }
-            // Prevent a faster new comment from catching up to the tail of an existing comment.
-            if (newSpeedPxPerSec > existing.speedPxPerSec && existing.speedPxPerSec > 0f) {
-                val existingTimeToExit = existingRight / existing.speedPxPerSec
-                val newTimeToLeftEdge = (viewportWidth - SCROLL_LANE_HORIZONTAL_GAP_PX) / newSpeedPxPerSec
-                if (newTimeToLeftEdge < existingTimeToExit) {
-                    return false
-                }
-            }
-        }
-        return true
-    }
-
-    private fun isFixedLaneAvailable(type: DanmakuType, lane: Int): Boolean {
-        for (i in 0 until active.size) {
-            val existing = active[i]
-            if (existing.item.type == type && existing.lane == lane) {
-                return false
-            }
-        }
-        return true
-    }
 }
