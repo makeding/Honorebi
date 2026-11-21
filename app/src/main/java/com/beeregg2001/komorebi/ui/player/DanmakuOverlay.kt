@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.ui.player
 
+import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
@@ -12,12 +13,27 @@ import androidx.compose.ui.viewinterop.AndroidView
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal fun createDanmakuBackend(
+    context: Context,
+    mode: DanmakuEngineMode,
+    useSoftwareRendering: Boolean,
+    onPrepared: () -> Unit,
+): Pair<View, DanmakuController> = when (mode) {
+    DanmakuEngineMode.GLES -> if (useSoftwareRendering) {
+        SoftwareDanmakuView(context, onPrepared).let { it to it }
+    } else {
+        GlDanmakuSurfaceView(context, onPrepared).let { it to it }
+    }
+    DanmakuEngineMode.DFM -> DfmDanmakuController(context, useSoftwareRendering, onPrepared).let { it.view to it }
+    DanmakuEngineMode.DFM_HARDWARE -> DfmDanmakuController(context, false, onPrepared, useHardwareView = true).let { it.view to it }
+}
+
 /** Common Android Danmaku view. Callers retain source-specific scheduling and session fencing. */
 @Composable
 fun DanmakuOverlay(
     modifier: Modifier = Modifier,
     useSoftwareRendering: Boolean = false,
-    engineMode: DanmakuEngineMode = DanmakuEngineMode.DFM,
+    engineMode: DanmakuEngineMode = DanmakuEngineMode.DFM_HARDWARE,
     speed: Float = 1.0f,
     opacity: Float = 1.0f,
     maxLines: Int = 0,
@@ -43,6 +59,7 @@ fun DanmakuOverlay(
 
                 val onPrepared: () -> Unit = {
                     hostView.post {
+                        if (!handle.view.isPrepared) return@post
                         val accepted = lifecycle.prepared(
                             running = latestRunning,
                             start = {
@@ -61,22 +78,8 @@ fun DanmakuOverlay(
                     }
                 }
 
-                val controller: DanmakuController = when (engineMode) {
-                    DanmakuEngineMode.GLES -> {
-                        val glOrSw: View = if (useSoftwareRendering) {
-                            SoftwareDanmakuView(context, onPrepared)
-                        } else {
-                            GlDanmakuSurfaceView(context, onPrepared)
-                        }
-                        hostView = glOrSw
-                        glOrSw as DanmakuController
-                    }
-                    DanmakuEngineMode.DFM -> {
-                        val dfm = DfmDanmakuController(context, useSoftwareRendering, onPrepared)
-                        hostView = dfm.view
-                        dfm
-                    }
-                }
+                val (createdView, controller) = createDanmakuBackend(context, engineMode, useSoftwareRendering, onPrepared)
+                hostView = createdView
 
                 handle = DanmakuViewHandle(controller, lifecycle)
                 hostView.layoutParams = ViewGroup.LayoutParams(
@@ -156,7 +159,7 @@ internal class DanmakuViewLifecycle {
     ): Boolean {
         var changed = false
         ifActive {
-            if (isPrepared && appliedRunning != running) {
+            if (isPrepared && appliedRunning != null && appliedRunning != running) {
                 if (running) resume() else pause()
                 appliedRunning = running
                 changed = true

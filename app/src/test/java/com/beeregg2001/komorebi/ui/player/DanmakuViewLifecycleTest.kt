@@ -45,6 +45,8 @@ class DanmakuViewLifecycleTest {
         val events = mutableListOf<String>()
 
         assertFalse(lifecycle.updateRunning(true, false, { events += "resume" }, { events += "pause" }))
+        // AndroidView.update can see the ready flag before the posted start callback.
+        assertFalse(lifecycle.updateRunning(true, true, { events += "resume" }, { events += "pause" }))
         lifecycle.prepared(false, { events += "start" }, { events += "pause" })
         assertFalse(lifecycle.updateRunning(false, true, { events += "resume" }, { events += "pause" }))
         assertTrue(lifecycle.updateRunning(true, true, { events += "resume" }, { events += "pause" }))

@@ -23,16 +23,12 @@ internal fun LiveDanmakuEffect(
     comments: SharedFlow<LiveComment>,
     sessionToken: LiveChannelSessionToken?,
     enabled: Boolean,
-    heavyUiReady: Boolean,
-    dualDisplay: Boolean,
     fontSizeScale: Float,
     danmakuView: MutableState<DanmakuViewHandle?>,
 ) {
     val context = LocalContext.current
     val density = remember(context) { context.resources.displayMetrics.density }
     val currentEnabled by rememberUpdatedState(enabled)
-    val currentHeavyUiReady by rememberUpdatedState(heavyUiReady)
-    val currentDualDisplay by rememberUpdatedState(dualDisplay)
     val currentFontSizeScale by rememberUpdatedState(fontSizeScale)
 
     LaunchedEffect(sessionToken) {
@@ -43,9 +39,7 @@ internal fun LiveDanmakuEffect(
         val colorCache = HashMap<String, Int>()
 
         comments.collect { comment ->
-            if (comment.sessionToken != sessionToken || !currentEnabled ||
-                !currentHeavyUiReady || currentDualDisplay
-            ) return@collect
+            if (comment.sessionToken != sessionToken || !currentEnabled) return@collect
 
             val nowMs = System.currentTimeMillis()
             if (nowMs - rateWindowStartMs >= DANMAKU_WINDOW_MS) {

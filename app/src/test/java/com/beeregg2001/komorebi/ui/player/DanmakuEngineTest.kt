@@ -57,13 +57,14 @@ class DanmakuEngineTest {
     }
 
     @Test
-    fun engineModeParsesKnownValuesAndDefaultsToDfm() {
+    fun engineModeParsesKnownValuesAndDefaultsToHardware() {
         assertEquals(DanmakuEngineMode.GLES, DanmakuEngineMode.fromId("GLES"))
         assertEquals(DanmakuEngineMode.GLES, DanmakuEngineMode.fromId("gles"))
         assertEquals(DanmakuEngineMode.DFM, DanmakuEngineMode.fromId("DFM"))
         assertEquals(DanmakuEngineMode.DFM, DanmakuEngineMode.fromId("dfm"))
-        assertEquals(DanmakuEngineMode.DFM, DanmakuEngineMode.fromId(null))
-        assertEquals(DanmakuEngineMode.DFM, DanmakuEngineMode.fromId("unknown"))
+        assertEquals(DanmakuEngineMode.DFM_HARDWARE, DanmakuEngineMode.fromId("dfm_hardware"))
+        assertEquals(DanmakuEngineMode.DFM_HARDWARE, DanmakuEngineMode.fromId(null))
+        assertEquals(DanmakuEngineMode.DFM_HARDWARE, DanmakuEngineMode.fromId("unknown"))
     }
 
     @Test

@@ -1,12 +1,13 @@
 package com.beeregg2001.komorebi.ui.player
 
 enum class DanmakuEngineMode(val id: String) {
+    DFM_HARDWARE("DFM_HARDWARE"),
     GLES("GLES"),
     DFM("DFM");
 
     companion object {
         fun fromId(id: String?): DanmakuEngineMode =
-            entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: DFM
+            entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: DFM_HARDWARE
     }
 }
 
@@ -75,7 +76,13 @@ internal class DanmakuEngine(
     private var viewportWidth: Float = 1920f
     private var viewportHeight: Float = 1080f
 
-    private val pending = ArrayList<DanmakuItem>(64)
+    private class Pending(val item: DanmakuItem) {
+        var attempted = false
+        var width = 0f
+        var height = 0f
+        var payload: Any? = null
+    }
+    private val pending = ArrayList<Pending>(64)
     private val active = ArrayList<ActiveItem<Any?>>(maxVisible)
     private val retainer = DanmakuLaneLayout()
 
@@ -94,15 +101,43 @@ internal class DanmakuEngine(
         this.maxLines = maxLines.coerceAtLeast(0)
     }
 
-    fun enqueue(item: DanmakuItem) {
+    fun enqueue(item: DanmakuItem, onExpired: (Any?) -> Unit = {}) {
         if (item.text.isBlank()) return
         if (pending.size >= MAX_PENDING_DANMAKU) {
-            pending.removeAt(0)
+            pending.removeAt(0).payload?.let(onExpired)
         }
-        pending.add(item)
+        pending.add(Pending(item))
+    }
+
+    fun prebuildNext(
+        measureItem: (DanmakuItem) -> Pair<Float, Float>,
+        onActivate: (DanmakuItem, Float, Float) -> Any?,
+    ) {
+        if (pending.count { it.payload != null } >= 2) return
+        for (entry in pending) {
+            if (entry.attempted || entry.item.showTimeMs <= currentTimeMs || entry.item.showTimeMs > currentTimeMs + 500) continue
+            entry.attempted = true
+            val (width, height) = measureItem(entry.item)
+            entry.width = width
+            entry.height = height
+            if (width > 0f && height > 0f) entry.payload = onActivate(entry.item, width, height)
+            break
+        }
+    }
+
+    fun discardPrebuilt(onExpired: (Any?) -> Unit): Boolean {
+        var discarded = false
+        for (entry in pending) {
+            val payload = entry.payload ?: continue
+            entry.payload = null
+            onExpired(payload)
+            discarded = true
+        }
+        return discarded
     }
 
     fun clearAll(onExpired: (Any?) -> Unit = {}) {
+        pending.forEach { it.payload?.let(onExpired) }
         pending.clear()
         for (i in 0 until active.size) {
             onExpired(active[i].payload)
@@ -166,28 +201,46 @@ internal class DanmakuEngine(
         var activatedThisFrame = 0
         var pendingWriteIdx = 0
         for (i in 0 until pending.size) {
-            val item = pending[i]
+            val entry = pending[i]
+            val item = entry.item
             if (item.showTimeMs > currentTimeMs) {
-                pending[pendingWriteIdx++] = item
+                pending[pendingWriteIdx++] = entry
                 continue
             }
             if (active.size >= maxVisible || activatedThisFrame >= 6) {
                 // Keep slightly delayed items for the next frame if under cap; drop if screen is full.
                 if (active.size < maxVisible) {
-                    pending[pendingWriteIdx++] = item
+                    pending[pendingWriteIdx++] = entry
+                } else {
+                    entry.payload?.let(onExpired)
+                    entry.payload = null
                 }
                 continue
             }
 
-            val (measuredW, measuredH) = measureItem(item)
-            if (measuredW <= 0f || measuredH <= 0f) continue
+            val (measuredW, measuredH) = if (entry.attempted) entry.width to entry.height else measureItem(item)
+            if (measuredW <= 0f || measuredH <= 0f) {
+                entry.payload?.let(onExpired)
+                entry.payload = null
+                continue
+            }
 
             val ageMs = (currentTimeMs - item.showTimeMs).coerceAtLeast(0L)
             val durationMs = if (item.type == DanmakuType.SCROLL_RL) BASE_SCROLL_DURATION_MS / speed else FIXED_DANMAKU_DURATION_MS
-            if (ageMs >= durationMs) continue
+            if (ageMs >= durationMs) {
+                entry.payload?.let(onExpired)
+                entry.payload = null
+                continue
+            }
 
-            val placement = retainer.allocateLane(item.type, measuredW, measuredH, ageMs, viewportWidth, viewportHeight, speed, maxLines) ?: continue
-            val payload = onActivate(item, measuredW, measuredH) ?: continue
+            val placement = retainer.allocateLane(item.type, measuredW, measuredH, ageMs, viewportWidth, viewportHeight, speed, maxLines)
+            if (placement == null) {
+                entry.payload?.let(onExpired)
+                entry.payload = null
+                continue
+            }
+            val payload = entry.payload ?: onActivate(item, measuredW, measuredH) ?: continue
+            entry.payload = null
 
             val durationSec = (BASE_SCROLL_DURATION_MS / speed) / 1_000f
             val speedPxPerSec = if (item.type == DanmakuType.SCROLL_RL) {

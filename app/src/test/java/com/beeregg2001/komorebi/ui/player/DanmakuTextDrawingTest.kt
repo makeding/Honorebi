@@ -53,5 +53,8 @@ class DanmakuTextDrawingTest {
         }
         assertTrue(hasPixels(2048, 0, bitmap.width, bitmap.height))
         assertTrue(hasPixels(0, 160, bitmap.width, bitmap.height))
+        val reference = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        drawDanmakuText(Canvas(reference), text, 0f, 0f, stroke, fill)
+        assertTrue("A tile seam changed the text pixels", bitmap.sameAs(reference))
     }
 }

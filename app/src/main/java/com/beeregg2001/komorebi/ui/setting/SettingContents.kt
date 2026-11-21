@@ -1090,10 +1090,10 @@ fun CommentSettingsContent(
             )
             SettingItem(
                 AppStrings.SETTINGS_ITEM_COMMENT_ENGINE,
-                if (commentEngine.equals("DFM", ignoreCase = true)) {
-                    AppStrings.DIALOG_COMMENT_ENGINE_DFM
-                } else {
-                    AppStrings.DIALOG_COMMENT_ENGINE_GLES
+                when {
+                    commentEngine.equals("DFM", ignoreCase = true) -> AppStrings.DIALOG_COMMENT_ENGINE_DFM
+                    commentEngine.equals("GLES", ignoreCase = true) -> AppStrings.DIALOG_COMMENT_ENGINE_GLES
+                    else -> AppStrings.DIALOG_COMMENT_ENGINE_DFM_HARDWARE
                 },
                 Icons.Default.Memory,
                 modifier = Modifier.focusRequester(engineR).focusProperties {

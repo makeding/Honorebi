@@ -25,6 +25,7 @@ internal class DfmDanmakuController(
     context: Context,
     private val useSoftwareRendering: Boolean,
     private val onPreparedCallback: () -> Unit,
+    private val useHardwareView: Boolean = false,
 ) : DanmakuController {
 
     private val danmakuContext: DanmakuContext = DanmakuContext.create().apply {
@@ -55,10 +56,10 @@ internal class DfmDanmakuController(
     private val danmakuView: IDanmakuView
 
     init {
-        val created: View = if (useSoftwareRendering) {
+        val created: View = if (useSoftwareRendering || useHardwareView) {
             DanmakuView(context).apply {
                 setBackgroundColor(AndroidColor.TRANSPARENT)
-                setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                setLayerType(if (useHardwareView) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_SOFTWARE, null)
             }
         } else {
             DanmakuSurfaceView(context)
@@ -133,7 +134,7 @@ internal class DfmDanmakuController(
             lastMaxLines = maxLines
         }
         if (view is DanmakuView) {
-            val layerType = if (useSoftwareRendering) View.LAYER_TYPE_SOFTWARE else View.LAYER_TYPE_HARDWARE
+            val layerType = if (useHardwareView) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_SOFTWARE
             if (view.layerType != layerType) view.setLayerType(layerType, null)
         }
     }

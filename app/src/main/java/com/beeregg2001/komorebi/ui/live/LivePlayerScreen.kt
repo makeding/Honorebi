@@ -592,12 +592,12 @@ fun LivePlayerScreen(
         livePlayerViewModel.setSubtitlesEnabled(isSubtitleEnabled)
     }
 
+    val runLiveComments = isCommentEnabled && isHeavyUiReady && ps.isPlayerPlaying &&
+        !ps.isDualDisplayMode && !isSubMenuOpen && !isManualOverlay
     LiveDanmakuEffect(
         comments = livePlayerViewModel.liveComments,
         sessionToken = mainSessionToken,
-        enabled = isCommentEnabled,
-        heavyUiReady = isHeavyUiReady,
-        dualDisplay = ps.isDualDisplayMode,
+        enabled = runLiveComments,
         fontSizeScale = commentFontSizeScale,
         danmakuView = danmakuViewRef,
     )
@@ -955,7 +955,6 @@ fun LivePlayerScreen(
                 } else {
                     commentOpacity
                 }
-                val isModalMenuOpen = isSubMenuOpen || isManualOverlay
                 // DanmakuOverlay は SurfaceView なので、自分の領域に先に描かれたウィンドウ内容を
                 // 消去する (hole punch)。字幕の Canvas より先に置き、字幕が常に上に描かれるようにする。
                 if (isHeavyUiReady && isCommentEnabled) {
@@ -967,7 +966,7 @@ fun LivePlayerScreen(
                         opacity = effectiveCommentOpacity,
                         maxLines = commentMaxLines,
                         sessionKey = mainSessionToken,
-                        running = ps.isPlayerPlaying && isCommentEnabled && isHeavyUiReady && !ps.isDualDisplayMode && !isModalMenuOpen,
+                        running = runLiveComments,
                         onViewCreated = { handle ->
                             if (mainSessionToken != null) danmakuViewRef.value = handle
                         },

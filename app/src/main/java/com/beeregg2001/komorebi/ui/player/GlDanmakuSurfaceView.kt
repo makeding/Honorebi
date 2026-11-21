@@ -17,6 +17,7 @@ import android.opengl.GLES30
 import android.opengl.GLUtils
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
 import android.view.SurfaceHolder
@@ -219,7 +220,7 @@ internal class GlDanmakuSurfaceView(
         if (released.get()) return
         renderHandler.post {
             if (released.get()) return@post
-            engine.enqueue(item)
+            engine.enqueue(item, ::recyclePayload)
             maybeStartFrameLoop()
         }
     }
@@ -271,7 +272,7 @@ internal class GlDanmakuSurfaceView(
         if (!released.compareAndSet(false, true)) return
         preparedFlag = false
         holder.removeCallback(this)
-        renderHandler.post {
+        val cleanup = {
             try {
                 running = false
                 surfaceReady = false
@@ -284,6 +285,7 @@ internal class GlDanmakuSurfaceView(
                 releaseComplete.countDown()
             }
         }
+        if (Looper.myLooper() == renderThread.looper) cleanup() else renderHandler.post(cleanup)
         awaitCompletion(releaseComplete)
         renderThread.quitSafely()
     }
@@ -341,7 +343,7 @@ internal class GlDanmakuSurfaceView(
         surfaceGeneration.incrementAndGet()
         preparedFlag = false
         val latch = CountDownLatch(1)
-        renderHandler.post {
+        val cleanup = {
             try {
                 surfaceReady = false
                 stopFrameLoop()
@@ -352,6 +354,7 @@ internal class GlDanmakuSurfaceView(
                 latch.countDown()
             }
         }
+        if (Looper.myLooper() == renderThread.looper) cleanup() else renderHandler.post(cleanup)
         awaitCompletion(latch)
     }
 
@@ -383,13 +386,28 @@ internal class GlDanmakuSurfaceView(
     }
 
     private fun stepAndRender(frameTimeNanos: Long) {
+        val startedNs = System.nanoTime()
         engine.step(
             dtMs = clock.positionMs(frameTimeNanos) - engine.currentTimeMs,
             measureItem = ::measureItem,
-            onActivate = ::activateItem,
+            onActivate = { item, width, height ->
+                activateItem(item, width, height) ?: if (engine.discardPrebuilt(::recyclePayload)) {
+                    activateItem(item, width, height)
+                } else null
+            },
             onExpired = ::recyclePayload,
         )
         drawCurrentFrame()
+        if (useGl && System.nanoTime() - startedNs < 4_000_000L) {
+            engine.prebuildNext(
+                measureItem = ::measureItem,
+                onActivate = { item, width, height ->
+                    if (item.text.length <= 512 && width <= TILE_WIDTH * 2 && height <= TILE_HEIGHT * 2) {
+                        activateItem(item, width, height)
+                    } else null
+                },
+            )
+        }
     }
 
     private fun measureItem(item: DanmakuItem): Pair<Float, Float> {

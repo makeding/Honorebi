@@ -337,10 +337,11 @@ private fun SettingsMenuScreen(
         uiState.activeDialog = SettingDialogState.Selection(
             AppStrings.DIALOG_COMMENT_ENGINE_TITLE,
             listOf(
-                AppStrings.DIALOG_COMMENT_ENGINE_DFM to "DFM",
-                AppStrings.DIALOG_COMMENT_ENGINE_GLES to "GLES"
+                AppStrings.DIALOG_COMMENT_ENGINE_DFM_HARDWARE to "DFM_HARDWARE",
+                AppStrings.DIALOG_COMMENT_ENGINE_GLES to "GLES",
+                AppStrings.DIALOG_COMMENT_ENGINE_DFM to "DFM"
             ),
-            prefs.commentEngine
+            com.beeregg2001.komorebi.ui.player.DanmakuEngineMode.fromId(prefs.commentEngine).id
         ) {
             scope.launch {
                 repository.saveString(

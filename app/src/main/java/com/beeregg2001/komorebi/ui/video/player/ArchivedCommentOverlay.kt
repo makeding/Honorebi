@@ -19,6 +19,9 @@ import kotlinx.coroutines.withContext
 
 private const val TAG = "ArchivedCommentOverlay"
 
+// A Surface can be recreated without replacing its Android View.
+private class PreparedCommentSurface(val handle: DanmakuViewHandle)
+
 @Composable
 fun ArchivedCommentOverlay(
     modifier: Modifier = Modifier,
@@ -30,12 +33,12 @@ fun ArchivedCommentOverlay(
     commentFontSizeScale: Float,
     commentOpacity: Float,
     commentMaxLines: Int,
-    commentEngine: DanmakuEngineMode = DanmakuEngineMode.DFM,
+    commentEngine: DanmakuEngineMode = DanmakuEngineMode.DFM_HARDWARE,
     useSoftwareRendering: Boolean = false,
     recordedPlaybackFence: RecordedPlaybackFence,
 ) {
     val danmakuViewRef = remember { mutableStateOf<DanmakuViewHandle?>(null) }
-    val preparedDanmakuViewRef = remember { mutableStateOf<DanmakuViewHandle?>(null) }
+    val preparedDanmakuViewRef = remember { mutableStateOf<PreparedCommentSurface?>(null) }
 
     // UIスレッドでしか取得できない画面密度(density)を事前に計算しておく
     val context = LocalContext.current
@@ -48,7 +51,7 @@ fun ArchivedCommentOverlay(
     val schedule = remember(
         snapshots,
         recordedPlaybackFence.identity,
-        preparedDanmakuViewRef.value?.view,
+        preparedDanmakuViewRef.value,
     ) { ArchivedCommentSchedule() }
     LaunchedEffect(snapshots, recordedPlaybackFence.identity) { snapshots.observe(recordedPlaybackFence) }
 
@@ -61,7 +64,8 @@ fun ArchivedCommentOverlay(
         isCommentEnabled,
         recordedPlaybackFence.identity,
     ) {
-        val view = preparedDanmakuViewRef.value ?: return@LaunchedEffect
+        val surface = preparedDanmakuViewRef.value ?: return@LaunchedEffect
+        val view = surface.handle
         if (!shouldPollArchivedComments(
                 isPlaying = isPlaying,
                 isCommentEnabled = isCommentEnabled,
@@ -72,7 +76,7 @@ fun ArchivedCommentOverlay(
             return@LaunchedEffect
         }
         while (isActive) {
-            if (!recordedPlaybackFence.accepts() || preparedDanmakuViewRef.value !== view) {
+            if (!recordedPlaybackFence.accepts() || preparedDanmakuViewRef.value !== surface) {
                 return@LaunchedEffect
             }
             val currentSec = latestPositionProvider() / 1000.0 // ExoPlayer access stays on Main.
@@ -80,7 +84,9 @@ fun ArchivedCommentOverlay(
             val fontScale = latestFontScale
             withContext(Dispatchers.Default) {
                 view.ifActive { activeView ->
-                    if (!recordedPlaybackFence.accepts()) return@ifActive
+                    if (!recordedPlaybackFence.accepts() || !activeView.isPrepared ||
+                        preparedDanmakuViewRef.value !== surface
+                    ) return@ifActive
                     val batch = schedule.next(commentsSnapshot, currentSec)
                     if (batch.reset) {
                         if (!recordedPlaybackFence.accepts()) return@ifActive
@@ -116,11 +122,14 @@ fun ArchivedCommentOverlay(
         },
         onViewPrepared = { handle ->
             if (recordedPlaybackFence.accepts() && danmakuViewRef.value === handle) {
-                preparedDanmakuViewRef.value = handle
+                handle.ifActive {
+                    if (preparedDanmakuViewRef.value?.handle === handle) it.clearAll()
+                    preparedDanmakuViewRef.value = PreparedCommentSurface(handle)
+                }
             }
         },
         onViewReleased = { handle ->
-            if (preparedDanmakuViewRef.value?.view === handle.view) preparedDanmakuViewRef.value = null
+            if (preparedDanmakuViewRef.value?.handle?.view === handle.view) preparedDanmakuViewRef.value = null
             if (danmakuViewRef.value?.view === handle.view) danmakuViewRef.value = null
         },
     )
