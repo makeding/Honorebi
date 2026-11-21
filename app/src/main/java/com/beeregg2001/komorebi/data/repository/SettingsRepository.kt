@@ -131,6 +131,7 @@ class SettingsRepository @Inject constructor(
 
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
+        val TIF_HIDE_EMPTY_INPUTS = booleanPreferencesKey("tif_hide_empty_inputs")
 
         val SCREENSAVER_ENABLED = booleanPreferencesKey("screensaver_enabled")
         val SCREENSAVER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_timeout_minutes")
@@ -278,6 +279,8 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[RECEIVE_BETA_UPDATES] ?: false }
     val hideSubChannels: Flow<Boolean> =
         context.dataStore.data.map { it[HIDE_SUB_CHANNELS] ?: false }
+    val tifHideEmptyInputs: Flow<Boolean> =
+        context.dataStore.data.map { it[TIF_HIDE_EMPTY_INPUTS] ?: true }
     val screensaverEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[SCREENSAVER_ENABLED] ?: false }
     val screensaverTimeoutMinutes: Flow<Int> =

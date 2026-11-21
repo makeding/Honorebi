@@ -235,7 +235,7 @@ private fun SettingsMenuScreen(
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(5) { FocusRequester() },
+            List(6) { FocusRequester() },
             List(8) { FocusRequester() },
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
@@ -568,6 +568,9 @@ private fun SettingsMenuScreen(
                                     viewModel.nhkExclusionState.value.mode.name,
                                 ) { viewModel.setNHKExclusionMode(com.beeregg2001.komorebi.data.model.NHKExclusionMode.fromPreference(it)) }
                             },
+                            prefs.tifHideEmptyInputs,
+                            itemFocusRequesters[0][5],
+                            { viewModel.toggleTifHideEmptyInputs() },
                             categoryFocusRequesters[0]
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
 

@@ -1,7 +1,12 @@
 package com.beeregg2001.komorebi.ui.home
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.tv.TvInputInfo
 import android.media.tv.TvInputManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,21 +14,27 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Input
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SettingsInputHdmi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -48,9 +59,37 @@ import com.beeregg2001.komorebi.data.repository.tif.TifInput
 import com.beeregg2001.komorebi.data.repository.tif.TifRepository
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
-import com.beeregg2001.komorebi.ui.components.ThemedDialogSurface
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.CancellationException
+
+private fun isAirPlayInput(context: Context, info: TvInputInfo): Boolean {
+    val id = info.id.lowercase()
+    val label = TifInput.label(context, info).lowercase()
+    return id.contains("airplay") || label.contains("airplay")
+}
+
+private fun resolveAirPlayLaunchIntent(context: Context): Intent? {
+    val pm = context.packageManager
+    val candidates = listOf(
+        Intent(Intent.ACTION_MAIN).apply {
+            component = ComponentName(
+                "com.mediatek.partner.airplay_sys",
+                "com.mediatek.partner.airplay_sys.AirPlayAwarenessActivity",
+            )
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        },
+        Intent("Show.Settings.AirplayAPK").apply {
+            setPackage("com.mediatek.partner.airplay_sys")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        },
+    )
+    return candidates.firstOrNull { pm.resolveActivity(it, 0) != null }
+}
+
+private fun passthroughIcon(info: TvInputInfo?): ImageVector = when (info?.type) {
+    TvInputInfo.TYPE_HDMI -> Icons.Default.SettingsInputHdmi
+    else -> Icons.Default.Input
+}
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -58,6 +97,7 @@ fun TvInputSourceDialog(
     onOpenChannel: (Channel) -> Unit,
     onSystemPicker: (() -> Unit)?,
     onDismiss: () -> Unit,
+    hideEmptyInputs: Boolean = true,
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
@@ -68,6 +108,7 @@ fun TvInputSourceDialog(
     val repository = remember(context) { TifRepository(context.applicationContext) }
     var tunerChannels by remember(generation) { mutableStateOf<Map<String, List<Channel>>>(emptyMap()) }
     val inputs = remember(generation) { TifInput.inputs(context) }
+    val inputsById = remember(inputs) { inputs.associateBy { it.id } }
     val tvInputManager = remember(context) { context.getSystemService(TvInputManager::class.java) }
     val inputStates = remember(generation, inputs) {
         inputs.associate { info ->
@@ -75,13 +116,23 @@ fun TvInputSourceDialog(
         }
     }
     val ports = remember(inputs) { repository.passthroughChannels(inputs) }
-    val tunerInputs = remember(inputs) { inputs.filterNot { it.isPassthroughInput } }
+    val airPlayLaunchIntent = remember(generation) { resolveAirPlayLaunchIntent(context) }
+    val hasAirPlay = remember(inputs, airPlayLaunchIntent) {
+        airPlayLaunchIntent != null || inputs.any { isAirPlayInput(context, it) }
+    }
+    val tunerInputs = remember(inputs) {
+        inputs.filterNot { it.isPassthroughInput || isAirPlayInput(context, it) }
+    }
+    val visibleTunerInputs = remember(tunerInputs, tunerChannels, hideEmptyInputs, loading) {
+        if (hideEmptyInputs) tunerInputs.filter { tunerChannels[it.id].orEmpty().isNotEmpty() }
+        else tunerInputs
+    }
     val granted = remember(generation) {
         ContextCompat.checkSelfPermission(context, TifInput.READ_LISTINGS_PERMISSION) == PackageManager.PERMISSION_GRANTED
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { generation++ }
     val firstItemFocus = remember { FocusRequester() }
-    val closeFocus = remember { FocusRequester() }
+    val refreshFocus = remember { FocusRequester() }
     var hasRequestedInitialFocus by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycle, tvInputManager) {
@@ -113,186 +164,276 @@ fun TvInputSourceDialog(
         }
     }
 
-    val hasAnySelectableItem = ports.isNotEmpty() || tunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() }
+    val hasAnySelectableItem = ports.isNotEmpty() ||
+        (hasAirPlay && airPlayLaunchIntent != null) ||
+        visibleTunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() }
+
     LaunchedEffect(loading, hasAnySelectableItem) {
         if (!loading && !hasRequestedInitialFocus) {
             hasRequestedInitialFocus = true
-            val target = if (hasAnySelectableItem) firstItemFocus else closeFocus
-            target.safeRequestFocusWithRetry("TvInputSourceDialog")
+            val target = if (hasAnySelectableItem) firstItemFocus else refreshFocus
+            target.safeRequestFocusWithRetry("TvInputSourceDrawer")
         }
     }
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
-        ThemedDialogSurface(width = 580.dp) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    text = "入力切替",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary,
-                )
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.42f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+        ) {
+            // Right-edge full-height TV Input Switcher drawer (zero blur, flat dark theme)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(380.dp)
+                    .fillMaxHeight()
+                    .background(colors.surface1)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
                 ) {
-                    if (loading) {
-                        item(key = "loading") {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .fillMaxHeight()
+                            .background(colors.borderSubtle),
+                    )
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(horizontal = 20.dp, vertical = 22.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SettingsInputHdmi,
+                                contentDescription = null,
+                                tint = colors.accent,
+                                modifier = Modifier.size(22.dp),
+                            )
                             Text(
-                                text = "TV入力を読み込み中…",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textSecondary,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                                text = "入力切替",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
                             )
                         }
-                    }
 
-                    error?.let { message ->
-                        item(key = "error") {
-                            Text(
-                                text = message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.danger,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(colors.danger.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                            )
-                        }
-                    }
-
-                    if (!loading && inputs.isEmpty()) {
-                        item(key = "empty") {
-                            Text(
-                                text = "TV入力がありません。端末の設定で入力を追加してください。",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textSecondary,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                            )
-                        }
-                    }
-
-                    if (!granted && tunerInputs.isNotEmpty()) {
-                        item(key = "permission") {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(colors.surface2, RoundedCornerShape(12.dp))
-                                    .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Text(
-                                    text = "チューナーのチャンネル一覧を表示するには、TV番組一覧へのアクセス許可が必要です。",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = colors.textSecondary,
-                                )
-                                DialogActionButton(
-                                    role = DialogActionRole.Primary,
-                                    onClick = { permission.launch(TifInput.READ_LISTINGS_PERMISSION) },
-                                ) { Text("TV番組一覧を許可") }
-                            }
-                        }
-                    }
-
-                    var firstAssigned = false
-
-                    if (ports.isNotEmpty()) {
-                        item(key = "ports_header") {
-                            Text(
-                                text = "外部入力",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = colors.textSecondary,
-                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp),
-                            )
-                        }
-                        itemsIndexed(ports, key = { _, ch -> ch.id }) { idx, channel ->
-                            val isFirst = !firstAssigned && idx == 0
-                            if (isFirst) firstAssigned = true
-                            val rawInputId = android.net.Uri.decode(channel.id.removePrefix("tif:input:"))
-                            val stateBadge = when (inputStates[rawInputId]) {
-                                TvInputManager.INPUT_STATE_CONNECTED -> "接続中"
-                                TvInputManager.INPUT_STATE_CONNECTED_STANDBY -> "待機中"
-                                TvInputManager.INPUT_STATE_DISCONNECTED -> "未接続"
-                                else -> null
-                            }
-                            TvInputChoiceRow(
-                                label = channel.name,
-                                icon = Icons.Default.SettingsInputHdmi,
-                                statusBadge = stateBadge,
-                                isConnected = inputStates[rawInputId] == TvInputManager.INPUT_STATE_CONNECTED,
-                                onClick = { onOpenChannel(channel) },
-                                modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
-                            )
-                        }
-                    }
-
-                    for (input in tunerInputs) {
-                        val matches = tunerChannels[input.id].orEmpty()
-                        item(key = "tuner_header_${input.id}") {
-                            Column(modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp)) {
-                                Text(
-                                    text = TifInput.label(context, input),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = colors.textSecondary,
-                                )
-                                if (granted && !loading && error == null && matches.isEmpty()) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (loading) {
+                                item(key = "loading") {
                                     Text(
-                                        text = "チャンネルがありません（設定でスキャンしてください）",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = colors.textMuted,
-                                        modifier = Modifier.padding(top = 2.dp),
+                                        text = "TV入力を読み込み中…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = colors.textSecondary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                    )
+                                }
+                            }
+
+                            error?.let { message ->
+                                item(key = "error") {
+                                    Text(
+                                        text = message,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = colors.danger,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(colors.danger.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    )
+                                }
+                            }
+
+                            if (!loading && ports.isEmpty() && !hasAirPlay && visibleTunerInputs.isEmpty()) {
+                                item(key = "empty") {
+                                    Text(
+                                        text = "利用可能なTV入力がありません。",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = colors.textSecondary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                    )
+                                }
+                            }
+
+                            if (!granted && tunerInputs.isNotEmpty() && !hideEmptyInputs) {
+                                item(key = "permission") {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(colors.surface2, RoundedCornerShape(12.dp))
+                                            .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        Text(
+                                            text = "チューナーのチャンネル一覧を表示するには、TV番組一覧へのアクセス許可が必要です。",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.textSecondary,
+                                        )
+                                        DialogActionButton(
+                                            role = DialogActionRole.Primary,
+                                            onClick = { permission.launch(TifInput.READ_LISTINGS_PERMISSION) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) { Text("TV番組一覧を許可") }
+                                    }
+                                }
+                            }
+
+                            var firstAssigned = false
+
+                            if (ports.isNotEmpty()) {
+                                item(key = "ports_header") {
+                                    DrawerSectionLabel("外部入力")
+                                }
+                                itemsIndexed(ports, key = { _, ch -> ch.id }) { idx, channel ->
+                                    val isFirst = !firstAssigned && idx == 0
+                                    if (isFirst) firstAssigned = true
+                                    val rawInputId = Uri.decode(channel.id.removePrefix("tif:input:"))
+                                    val state = inputStates[rawInputId]
+                                    val stateBadge = when (state) {
+                                        TvInputManager.INPUT_STATE_CONNECTED -> "接続中"
+                                        TvInputManager.INPUT_STATE_CONNECTED_STANDBY -> "待機中"
+                                        TvInputManager.INPUT_STATE_DISCONNECTED -> "未接続"
+                                        else -> null
+                                    }
+                                    TvInputDrawerRow(
+                                        label = channel.name,
+                                        icon = passthroughIcon(inputsById[rawInputId]),
+                                        statusBadge = stateBadge,
+                                        isConnected = state == TvInputManager.INPUT_STATE_CONNECTED,
+                                        onClick = { onOpenChannel(channel) },
+                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+                                    )
+                                }
+                            }
+
+                            if (hasAirPlay && airPlayLaunchIntent != null) {
+                                item(key = "airplay_header") {
+                                    DrawerSectionLabel("ワイヤレス表示")
+                                }
+                                item(key = "airplay_item") {
+                                    val isFirst = !firstAssigned
+                                    if (isFirst) firstAssigned = true
+                                    TvInputDrawerRow(
+                                        label = "AirPlay",
+                                        icon = Icons.Default.Cast,
+                                        statusBadge = "待機中",
+                                        isConnected = false,
+                                        onClick = {
+                                            runCatching { context.startActivity(airPlayLaunchIntent) }
+                                                .onSuccess { onDismiss() }
+                                                .onFailure { error = "AirPlay画面を開けませんでした" }
+                                        },
+                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+                                    )
+                                }
+                            }
+
+                            for (input in visibleTunerInputs) {
+                                val matches = tunerChannels[input.id].orEmpty()
+                                item(key = "tuner_header_${input.id}") {
+                                    Column {
+                                        DrawerSectionLabel(TifInput.label(context, input))
+                                        if (granted && !loading && error == null && matches.isEmpty()) {
+                                            Text(
+                                                text = "チャンネル未登録",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = colors.textMuted,
+                                                modifier = Modifier.padding(start = 6.dp, top = 2.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                                itemsIndexed(matches, key = { _, ch -> ch.id }) { idx, channel ->
+                                    val isFirst = !firstAssigned && idx == 0
+                                    if (isFirst) firstAssigned = true
+                                    TvInputDrawerRow(
+                                        label = channel.name,
+                                        icon = Icons.Default.LiveTv,
+                                        onClick = { onOpenChannel(channel) },
+                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
                                     )
                                 }
                             }
                         }
-                        itemsIndexed(matches, key = { _, ch -> ch.id }) { idx, channel ->
-                            val isFirst = !firstAssigned && idx == 0
-                            if (isFirst) firstAssigned = true
-                            TvInputChoiceRow(
-                                label = channel.name,
-                                icon = Icons.Default.LiveTv,
-                                onClick = { onOpenChannel(channel) },
-                                modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(colors.borderSubtle),
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            DrawerFooterAction(
+                                label = "再読み込み",
+                                icon = Icons.Default.Refresh,
+                                onClick = { generation++ },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(refreshFocus),
                             )
+                            if (onSystemPicker != null) {
+                                DrawerFooterAction(
+                                    label = "端末の入力切替",
+                                    icon = Icons.Default.Input,
+                                    onClick = onSystemPicker,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                ) {
-                    if (onSystemPicker != null) {
-                        DialogActionButton(
-                            role = DialogActionRole.Secondary,
-                            onClick = onSystemPicker,
-                        ) { Text("端末の入力切替") }
-                    }
-                    DialogActionButton(
-                        role = DialogActionRole.Secondary,
-                        onClick = { generation++ },
-                    ) { Text("再読み込み") }
-                    DialogActionButton(
-                        role = DialogActionRole.Secondary,
-                        onClick = onDismiss,
-                        modifier = Modifier.focusRequester(closeFocus),
-                    ) { Text("閉じる") }
                 }
             }
         }
     }
 }
 
+@Composable
+private fun DrawerSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = KomorebiTheme.colors.textSecondary,
+        modifier = Modifier.padding(start = 6.dp, top = 6.dp, bottom = 2.dp),
+    )
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TvInputChoiceRow(
+private fun TvInputDrawerRow(
     label: String,
     icon: ImageVector,
     onClick: () -> Unit,
@@ -327,45 +468,117 @@ private fun TvInputChoiceRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (isFocused) colors.accent else colors.textSecondary,
+                tint = if (isFocused || isConnected) colors.accent else colors.textSecondary,
                 modifier = Modifier.size(20.dp),
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
                 color = colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (statusBadge != null) {
-                Text(
-                    text = statusBadge,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isConnected) colors.accent else colors.textMuted,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier
                         .background(
                             color = if (isConnected) colors.accentSoft else colors.surface1,
                             shape = RoundedCornerShape(6.dp),
                         )
                         .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
+                ) {
+                    if (isConnected) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(colors.accent, CircleShape),
+                        )
+                    }
+                    Text(
+                        text = statusBadge,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isConnected) colors.accent else colors.textMuted,
+                    )
+                }
             }
-            if (isFocused) {
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = colors.accent,
-                    modifier = Modifier.size(20.dp),
-                )
+            Box(
+                modifier = Modifier.width(18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isFocused) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = colors.accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun DrawerFooterAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(10.dp)
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier.padding(2.dp),
+        interactionSource = interactionSource,
+        shape = ClickableSurfaceDefaults.shape(shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = colors.surface2,
+            focusedContainerColor = colors.accent,
+            contentColor = colors.textSecondary,
+            focusedContentColor = colors.onAccent,
+        ),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = shape),
+            focusedBorder = Border(BorderStroke(2.dp, colors.accent), shape = shape),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isFocused) colors.onAccent else colors.textSecondary,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isFocused) colors.onAccent else colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

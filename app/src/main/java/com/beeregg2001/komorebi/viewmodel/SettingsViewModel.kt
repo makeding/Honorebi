@@ -343,6 +343,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         false
     )
+    val tifHideEmptyInputs: StateFlow<Boolean> = settingsRepository.tifHideEmptyInputs.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        true
+    )
     val isSettingsInitialized: StateFlow<Boolean> = settingsRepository.isInitialized.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -763,6 +768,15 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.saveBoolean(
                 SettingsRepository.HIDE_SUB_CHANNELS,
                 !settingsRepository.hideSubChannels.first()
+            )
+        }
+    }
+
+    fun toggleTifHideEmptyInputs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.saveBoolean(
+                SettingsRepository.TIF_HIDE_EMPTY_INPUTS,
+                !settingsRepository.tifHideEmptyInputs.first()
             )
         }
     }

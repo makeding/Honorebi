@@ -89,6 +89,9 @@ fun GeneralSettingsContent(
     nhkExclusionLabel: String,
     nhkExclusionR: FocusRequester,
     onEditNHKExclusion: () -> Unit,
+    tifHideEmptyInputs: Boolean,
+    tifHideEmptyInputsR: FocusRequester,
+    onToggleTifHideEmptyInputs: () -> Unit,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -162,11 +165,22 @@ fun GeneralSettingsContent(
                 modifier = Modifier.focusRequester(nhkExclusionR).focusProperties {
                     left = sidebarR
                     up = exPaidR
-                    down = FocusRequester.Cancel
+                    down = tifHideEmptyInputsR
                 },
                 focusedContainerColor = Color(0xFFFFE600),
                 focusedContentColor = Color(0xFF0067A8),
                 onClick = { onClick(nhkExclusionR); onEditNHKExclusion() },
+            )
+            SettingItem(
+                title = "チャンネル未登録のTV入力を非表示",
+                value = if (tifHideEmptyInputs) "ON" else "OFF",
+                icon = Icons.Default.FilterList,
+                modifier = Modifier.focusRequester(tifHideEmptyInputsR).focusProperties {
+                    left = sidebarR
+                    up = nhkExclusionR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(tifHideEmptyInputsR); onToggleTifHideEmptyInputs() },
             )
         }
     }

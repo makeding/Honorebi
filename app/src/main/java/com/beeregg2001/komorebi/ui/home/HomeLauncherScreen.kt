@@ -145,6 +145,7 @@ fun HomeLauncherScreen(
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
+    val tifHideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
     val visibleTabs = remember(hideAppsTab, backendType) {
         LauncherTab.visibleTabs(hideAppsTab, tif = backendType == "TIF")
     }
@@ -715,6 +716,7 @@ fun HomeLauncherScreen(
                 onSystemPicker = inputSourceApp?.let { app ->
                     { showTvInputs = false; homeViewModel.launchInputSourcePicker(app) }
                 },
+                hideEmptyInputs = tifHideEmptyInputs,
                 onDismiss = {
                     showTvInputs = false
                     scope.launch {
