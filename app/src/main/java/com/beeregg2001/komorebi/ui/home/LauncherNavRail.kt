@@ -145,7 +145,7 @@ internal fun LauncherNavRail(
         label = "launcher_rail_label_alpha",
     )
     val railSurfaceColor by animateColorAsState(
-        targetValue = if (isExpanded) colors.overlay.copy(alpha = 0.98f) else colors.surface1,
+        targetValue = if (isExpanded) colors.surface1.copy(alpha = 0.88f) else colors.surface1,
         animationSpec = tween(durationMillis = RAIL_LABEL_ANIM_MS, easing = FastOutSlowInEasing),
         label = "launcher_rail_surface",
     )

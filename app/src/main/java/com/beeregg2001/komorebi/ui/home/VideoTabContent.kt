@@ -414,7 +414,7 @@ fun VideoTabContent(
             modifier = Modifier.padding(
                 start = TvContentPaddingStart,
                 end = TvContentPaddingEnd,
-                top = 68.dp,
+                top = 18.dp,
                 bottom = 8.dp,
             ),
         )

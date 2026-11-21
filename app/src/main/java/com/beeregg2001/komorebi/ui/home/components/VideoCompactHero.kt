@@ -47,13 +47,15 @@ fun VideoCompactHero(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(82.dp),
+            .height(108.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         if (state.metaLine.isNotBlank() || state.isRecording || state.progress != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 280.dp),
             ) {
                 if (state.isRecording) {
                     Box(
@@ -125,13 +127,14 @@ fun VideoCompactHero(
             color = colors.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(end = 280.dp),
         )
 
         if (state.description.isNotBlank()) {
-            Spacer(Modifier.height(1.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = state.description,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
