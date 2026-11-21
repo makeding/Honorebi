@@ -1,0 +1,333 @@
+package com.beeregg2001.komorebi.ui.home
+
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = android.app.Application::class, sdk = [28])
+@OptIn(ExperimentalCoroutinesApi::class)
+class LauncherTabControllerTest {
+    private val effects = TestCoroutineScheduler()
+    @get:Rule val compose = createComposeRule(effectContext = UnconfinedTestDispatcher(effects))
+
+    private val owner = object : LifecycleOwner {
+        val registry = LifecycleRegistry(this)
+        override val lifecycle: Lifecycle get() = registry
+    }
+
+    @Test
+    fun fullLifecycleSequenceCoversEnterReadyCoalesceExitSuspendResumeAndDispose() {
+        val events = mutableListOf<Pair<LauncherTab, LauncherTabLifecycleEvent>>()
+        val controller = LauncherTabController(
+            initialTab = LauncherTab.HOME,
+            onLifecycleEvent = { tab, event -> events += tab to event },
+        )
+
+        assertEquals(LauncherTabPhase.MOUNTING, controller.phase)
+        assertEquals(listOf(LauncherTab.HOME to LauncherTabLifecycleEvent.ENTER), events)
+
+        // First readiness callback for generation 0 transitions MOUNTING -> ACTIVE.
+        assertTrue(controller.markContentReady(0L))
+        assertFalse(controller.markContentReady(0L)) // Idempotent
+        assertEquals(LauncherTabPhase.ACTIVE, controller.phase)
+        assertTrue(controller.isActiveContentReady)
+
+        // Selecting another tab enters COALESCING immediately without tearing down HOME yet.
+        controller.selectTab(LauncherTab.VIDEO)
+        assertEquals(LauncherTab.VIDEO, controller.selectedTab)
+        assertEquals(LauncherTab.HOME, controller.activeTab)
+        assertEquals(LauncherTabPhase.COALESCING, controller.phase)
+        assertEquals(TabTransitionDirection.FORWARD, controller.transitionDirection)
+        assertFalse(controller.isActiveContentReady)
+
+        // Committing exits HOME, advances generation, and enters VIDEO in MOUNTING phase.
+        controller.commitPendingSelection()
+        assertEquals(LauncherTab.VIDEO, controller.activeTab)
+        assertEquals(1L, controller.generation)
+        assertEquals(LauncherTabPhase.MOUNTING, controller.phase)
+
+        // Stale readiness callback from old generation 0 is ignored.
+        assertFalse(controller.markContentReady(0L))
+        assertFalse(controller.isContentReadyFor(LauncherTab.VIDEO))
+
+        // Readiness for generation 1 unlocks VIDEO.
+        assertTrue(controller.markContentReady(1L))
+        assertEquals(LauncherTabPhase.ACTIVE, controller.phase)
+        assertTrue(controller.isContentReadyFor(LauncherTab.VIDEO))
+
+        // Suspend & resume preserve active readiness cleanly.
+        controller.updateSuspended(true)
+        assertEquals(LauncherTabPhase.SUSPENDED, controller.phase)
+        assertTrue(controller.isSuspended)
+        controller.updateSuspended(false)
+        assertEquals(LauncherTabPhase.ACTIVE, controller.phase)
+        assertFalse(controller.isSuspended)
+
+        controller.dispose()
+        controller.dispose() // Idempotent
+
+        assertEquals(
+            listOf(
+                LauncherTab.HOME to LauncherTabLifecycleEvent.ENTER,
+                LauncherTab.HOME to LauncherTabLifecycleEvent.READY,
+                LauncherTab.HOME to LauncherTabLifecycleEvent.EXIT,
+                LauncherTab.VIDEO to LauncherTabLifecycleEvent.ENTER,
+                LauncherTab.VIDEO to LauncherTabLifecycleEvent.READY,
+                LauncherTab.VIDEO to LauncherTabLifecycleEvent.SUSPEND,
+                LauncherTab.VIDEO to LauncherTabLifecycleEvent.RESUME,
+                LauncherTab.VIDEO to LauncherTabLifecycleEvent.EXIT,
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun scrubbingBackToActiveTabCancelsCoalescingWithoutRemount() {
+        val events = mutableListOf<Pair<LauncherTab, LauncherTabLifecycleEvent>>()
+        val controller = LauncherTabController(
+            initialTab = LauncherTab.LIVE,
+            onLifecycleEvent = { tab, event -> events += tab to event },
+        )
+        assertTrue(controller.markContentReady(controller.generation))
+
+        controller.selectTab(LauncherTab.VIDEO)
+        assertEquals(LauncherTabPhase.COALESCING, controller.phase)
+        assertEquals(TabTransitionDirection.FORWARD, controller.transitionDirection)
+
+        // User moves back to LIVE before the 60ms window elapses.
+        controller.selectTab(LauncherTab.LIVE)
+        assertEquals(LauncherTabPhase.ACTIVE, controller.phase)
+        assertEquals(0L, controller.generation)
+        assertTrue(controller.isActiveContentReady)
+        assertEquals(
+            listOf(
+                LauncherTab.LIVE to LauncherTabLifecycleEvent.ENTER,
+                LauncherTab.LIVE to LauncherTabLifecycleEvent.READY,
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun hidingAppsTabPreservesFocusRequesterIdentityAndFallsBackWhenAppsSelected() {
+        val controller = LauncherTabController(initialTab = LauncherTab.APPS)
+        val videoTabRequesterBefore = controller.tabRequester(LauncherTab.VIDEO)
+        val videoContentRequesterBefore = controller.contentRequester(LauncherTab.VIDEO)
+        val appsTabRequesterBefore = controller.tabRequester(LauncherTab.APPS)
+        assertNotSame(videoTabRequesterBefore, appsTabRequesterBefore)
+
+        val fallback = controller.syncVisibleTabs(LauncherTab.visibleTabs(hideAppsTab = true))
+        assertEquals(LauncherTab.HOME, fallback)
+        assertEquals(LauncherTab.HOME, controller.selectedTab)
+        assertEquals(LauncherTab.HOME, controller.activeTab)
+
+        // VIDEO moved from index 3 to index 2, yet keeps its exact FocusRequester instances.
+        assertEquals(2, controller.visibleTabs.indexOf(LauncherTab.VIDEO))
+        assertSame(videoTabRequesterBefore, controller.tabRequesterAt(2))
+        assertSame(videoContentRequesterBefore, controller.contentRequesterAt(2))
+
+        // Syncing again when current tab is still visible returns null.
+        assertNull(controller.syncVisibleTabs(LauncherTab.visibleTabs(hideAppsTab = false)))
+    }
+
+    @Test
+    fun lifecycleHostManagesCoalescingPollingSuspensionAndOfflineEpgPreload() {
+        val controller = LauncherTabController(initialTab = LauncherTab.HOME)
+        val fullScreen = mutableStateOf(false)
+        val networkAvailable = mutableStateOf(true)
+        val pollingHistory = mutableListOf<Boolean>()
+        var epgLoads = 0
+        var homeRefreshes = 0
+
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        compose.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                LauncherTabLifecycleHost(
+                    controller = controller,
+                    isFullScreenMode = fullScreen.value,
+                    networkAvailable = networkAvailable.value,
+                    onEnsureEpgLoaded = { epgLoads++ },
+                    onPollingChanged = { pollingHistory += it },
+                    onRefreshHomeData = { homeRefreshes++ },
+                )
+            }
+        }
+
+        compose.runOnIdle {
+            assertEquals(true, pollingHistory.last())
+            assertEquals(1, homeRefreshes)
+            assertEquals(0, epgLoads)
+        }
+
+        // Entering fullscreen suspends tab and stops polling.
+        compose.runOnIdle { fullScreen.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(LauncherTabPhase.SUSPENDED, controller.phase)
+            assertEquals(false, pollingHistory.last())
+        }
+
+        // Leaving fullscreen resumes polling.
+        compose.runOnIdle { fullScreen.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(true, pollingHistory.last()) }
+
+        // Activity ON_PAUSE suspends polling, ON_RESUME restores it.
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE) }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(controller.isSuspended)
+            assertEquals(false, pollingHistory.last())
+        }
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertFalse(controller.isSuspended)
+            assertEquals(true, pollingHistory.last())
+        }
+
+        // Going offline and scrubbing to EPG still preloads cached EPG after coalesce window.
+        compose.runOnIdle {
+            networkAvailable.value = false
+            controller.selectTab(LauncherTab.LIVE)
+            controller.selectTab(LauncherTab.EPG)
+        }
+        compose.runOnIdle {
+            effects.advanceTimeBy(TAB_RENDER_COALESCE_MS - 1)
+            effects.runCurrent()
+            assertEquals(LauncherTab.HOME, controller.activeTab)
+            assertEquals(0, epgLoads)
+        }
+        compose.runOnIdle {
+            effects.advanceTimeBy(1)
+            effects.runCurrent()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(LauncherTab.EPG, controller.activeTab)
+            assertEquals(1, epgLoads)
+            assertEquals(false, pollingHistory.last())
+        }
+    }
+
+    @Test
+    fun returnFocusPolicyCoversEveryTriggerAndTabOwnershipContract() {
+        assertEquals(
+            TabFocusAction.FocusItem(LauncherTab.HOME, 0, "history", "42"),
+            resolveTabReturnFocus(FocusReturnTrigger.AI_RETURN, LauncherTab.HOME, 0, "history", "42"),
+        )
+        assertEquals(
+            TabFocusAction.FocusContentTop(LauncherTab.HOME, 0),
+            resolveTabReturnFocus(FocusReturnTrigger.AI_RETURN, LauncherTab.HOME, 0, null, null),
+        )
+        assertEquals(
+            TabFocusAction.DelegateToTabContent(),
+            resolveTabReturnFocus(FocusReturnTrigger.AI_RETURN, LauncherTab.LIVE, 1, null, null),
+        )
+        assertEquals(
+            TabFocusAction.DelegateToTabContent(),
+            resolveTabReturnFocus(FocusReturnTrigger.PLAYER_RETURN, LauncherTab.VIDEO, 3, null, null),
+        )
+        assertEquals(
+            TabFocusAction.DelegateToTabContent(consumeImmediately = true),
+            resolveTabReturnFocus(FocusReturnTrigger.PLAYER_RETURN, LauncherTab.EPG, 4, null, null),
+        )
+        assertEquals(
+            TabFocusAction.FocusItem(LauncherTab.APPS, 2, "apps", "com.example"),
+            resolveTabReturnFocus(FocusReturnTrigger.ACTIVITY_RESUME, LauncherTab.APPS, 2, "apps", "com.example"),
+        )
+        assertEquals(
+            TabFocusAction.NoOp,
+            resolveTabReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS, LauncherTab.RESERVE, 5, null, null),
+        )
+    }
+
+    @Test
+    fun tabBarHandlesDpadSelectionDirectionalTransitionsUpActionAndReadyGatedDown() {
+        val controller = LauncherTabController(initialTab = LauncherTab.HOME)
+        var upCount = 0
+
+        compose.setContent {
+            Column {
+                LauncherTabBar(
+                    controller = controller,
+                    isEpgJumping = false,
+                    leftEdgeFocusRequester = FocusRequester.Cancel,
+                    onTabFocused = { controller.selectTab(it) },
+                    onUpKey = {
+                        upCount++
+                        true
+                    },
+                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("home-content")
+                        .focusRequester(controller.contentRequester(LauncherTab.HOME))
+                        .focusable(),
+                )
+            }
+        }
+
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+
+        // Pressing UP fires onUpKey cleanly.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.runOnIdle { assertEquals(1, upCount) }
+
+        // Pressing RIGHT immediately selects LIVE with FORWARD direction.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("launcher-tab-live").assertIsFocused()
+        compose.runOnIdle {
+            assertEquals(LauncherTab.LIVE, controller.selectedTab)
+            assertEquals(TabTransitionDirection.FORWARD, controller.transitionDirection)
+        }
+
+        // Pressing LEFT returns to HOME immediately.
+        compose.onNodeWithTag("launcher-tab-live").performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.onNodeWithTag("launcher-tab-home").assertIsFocused()
+        compose.runOnIdle {
+            assertEquals(LauncherTab.HOME, controller.selectedTab)
+        }
+
+        // Once HOME content marks ready, DOWN moves focus cleanly into content.
+        compose.runOnIdle { assertTrue(controller.markContentReady(controller.generation)) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("home-content").assertIsFocused()
+    }
+}

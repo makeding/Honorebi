@@ -13,16 +13,16 @@ import com.beeregg2001.komorebi.viewmodel.*
 
 /**
  * ランチャー上部のタブ定義。タブ数とフォーカス要求リストのサイズを
- * 一致させるため、画面側と StateHolder 側でこの 1 箇所を共有する。
+ * 一致させるため、[LauncherTab] から導出する単一ソースを共有する。
  */
-internal val HOME_TAB_TITLES = listOf("ホーム", "ライブ", "アプリ", "ビデオ", "番組表", "録画予約")
+internal val HOME_TAB_TITLES = LauncherTab.entries.map { it.title }
 
 /**
  * 設定でアプリタブを無効化したときに、ランチャーとルート画面で同じタブ構成を
  * 使うためのフィルタ。索引のズレを防ぐため必ずこの関数を経由する。
  */
 internal fun visibleHomeTabs(hideAppsTab: Boolean): List<String> =
-    if (hideAppsTab) HOME_TAB_TITLES.filterNot { it == "アプリ" } else HOME_TAB_TITLES
+    LauncherTab.visibleTabs(hideAppsTab).map { it.title }
 
 /** Rapid D-pad tab changes share one render; only the latest quiet target is committed. */
 internal const val TAB_RENDER_COALESCE_MS = 60L
