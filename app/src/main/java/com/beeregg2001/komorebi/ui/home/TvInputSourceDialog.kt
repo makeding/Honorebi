@@ -166,6 +166,7 @@ fun TvInputSourceDialog(
 
     val hasAnySelectableItem = ports.isNotEmpty() ||
         (hasAirPlay && airPlayLaunchIntent != null) ||
+        (!granted && tunerInputs.isNotEmpty()) ||
         visibleTunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() }
 
     LaunchedEffect(loading, hasAnySelectableItem) {
@@ -284,7 +285,11 @@ fun TvInputSourceDialog(
                                 }
                             }
 
-                            if (!granted && tunerInputs.isNotEmpty() && !hideEmptyInputs) {
+                            var firstAssigned = false
+
+                            if (!granted && tunerInputs.isNotEmpty()) {
+                                val isFirst = !firstAssigned && ports.isEmpty() && !(hasAirPlay && airPlayLaunchIntent != null)
+                                if (isFirst) firstAssigned = true
                                 item(key = "permission") {
                                     Column(
                                         modifier = Modifier
@@ -302,13 +307,13 @@ fun TvInputSourceDialog(
                                         DialogActionButton(
                                             role = DialogActionRole.Primary,
                                             onClick = { permission.launch(TifInput.READ_LISTINGS_PERMISSION) },
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .then(if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier),
                                         ) { Text("TV番組一覧を許可") }
                                     }
                                 }
                             }
-
-                            var firstAssigned = false
 
                             if (ports.isNotEmpty()) {
                                 item(key = "ports_header") {

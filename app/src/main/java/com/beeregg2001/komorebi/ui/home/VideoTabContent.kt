@@ -597,6 +597,8 @@ fun VideoTabContent(
                                     konomiPort = konomiPort,
                                     focusRequester = focusRequester,
                                     timeFormat = timeFormat,
+                                    getLogoUrl = getLogoUrl,
+                                    shouldCropLogo = shouldCropLogo,
                                     onClick = {
                                         homeViewModel.lastVideoCardFocus = focusTarget
                                         onProgramClick(program)
@@ -677,6 +679,8 @@ fun VideoTabContent(
                                     konomiPort = konomiPort,
                                     focusRequester = focusRequester,
                                     timeFormat = timeFormat,
+                                    getLogoUrl = getLogoUrl,
+                                    shouldCropLogo = shouldCropLogo,
                                     onClick = {
                                         homeViewModel.lastVideoCardFocus = focusTarget
                                         val programToPlay =

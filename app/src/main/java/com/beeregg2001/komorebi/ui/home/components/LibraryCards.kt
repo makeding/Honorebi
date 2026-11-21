@@ -127,8 +127,12 @@ private fun BelowCardMetadata(
     title: String,
     subtitle: String,
     isFocused: Boolean,
+    logoUrl: String = "",
+    shouldCropLogo: Boolean = false,
+    allowNetworkImages: Boolean = true,
 ) {
     val colors = KomorebiTheme.colors
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -145,13 +149,39 @@ private fun BelowCardMetadata(
         )
         if (subtitle.isNotBlank()) {
             Spacer(Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelMedium.tnum,
-                color = if (isFocused) colors.textSecondary else colors.textMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (logoUrl.isNotBlank()) {
+                    val logoRequest = remember(logoUrl, allowNetworkImages) {
+                        ImageRequest.Builder(context)
+                            .data(logoUrl)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .networkCachePolicy(if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = logoRequest,
+                        contentDescription = null,
+                        contentScale = if (shouldCropLogo) ContentScale.Crop else ContentScale.Fit,
+                        modifier = Modifier
+                            .width(24.dp)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                    )
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelMedium.tnum,
+                    color = if (isFocused) colors.textSecondary else colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -170,11 +200,17 @@ fun VideoRecentRecordCard(
     isCurrentlyRecording: Boolean = false,
     focusRequester: FocusRequester,
     timeFormat: String,
-    allowNetworkImages: Boolean = true
+    allowNetworkImages: Boolean = true,
+    getLogoUrl: suspend (String) -> String = { "" },
+    shouldCropLogo: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val focusSpec = tvCardFocus(TvCardFamily.GRID)
     var isFocused by remember { mutableStateOf(false) }
+    val channelId = program.channel?.id.orEmpty()
+    val logoUrl = if (channelId.isNotBlank()) {
+        com.beeregg2001.komorebi.ui.components.rememberChannelLogoUrl(channelId, getLogoUrl)
+    } else ""
 
     val fallbackUrl = program.apiThumbnailUrl ?: UrlBuilder.getThumbnailUrl(
         backendType,
@@ -316,6 +352,9 @@ fun VideoRecentRecordCard(
                 title = program.title,
                 subtitle = metaLine,
                 isFocused = isFocused,
+                logoUrl = logoUrl,
+                shouldCropLogo = shouldCropLogo,
+                allowNetworkImages = allowNetworkImages,
             )
         }
     }
@@ -334,11 +373,17 @@ fun VideoWatchHistoryCard(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester,
     timeFormat: String,
-    allowNetworkImages: Boolean = true
+    allowNetworkImages: Boolean = true,
+    getLogoUrl: suspend (String) -> String = { "" },
+    shouldCropLogo: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val focusSpec = tvCardFocus(TvCardFamily.GRID)
     var isFocused by remember { mutableStateOf(false) }
+    val channelId = matchedProgram?.channel?.id.orEmpty()
+    val logoUrl = if (channelId.isNotBlank()) {
+        com.beeregg2001.komorebi.ui.components.rememberChannelLogoUrl(channelId, getLogoUrl)
+    } else ""
     val videoId = matchedProgram?.id ?: try {
         historyItem.program.id.toString().toInt()
     } catch (e: Exception) {
@@ -460,6 +505,9 @@ fun VideoWatchHistoryCard(
                 title = historyItem.program.title,
                 subtitle = metaLine,
                 isFocused = isFocused,
+                logoUrl = logoUrl,
+                shouldCropLogo = shouldCropLogo,
+                allowNetworkImages = allowNetworkImages,
             )
         }
     }

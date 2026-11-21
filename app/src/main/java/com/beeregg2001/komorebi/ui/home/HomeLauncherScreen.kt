@@ -544,6 +544,8 @@ fun HomeLauncherScreen(
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 konomiIp = konomiIp,
                                 konomiPort = konomiPort,
+                                getLogoUrl = { channelId -> channelViewModel.getChannelLogoUrl(channelId) },
+                                shouldCropLogo = shouldCropLogo,
                                 timeFormat = timeFormat,
                                 watchHistory = ui.watchHistory,
                                 isNetworkAvailable = networkConnectionStatus.isAvailable,
