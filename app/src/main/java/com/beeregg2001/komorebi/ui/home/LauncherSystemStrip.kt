@@ -237,8 +237,7 @@ internal fun LauncherSystemStrip(
 
     Row(
         modifier = modifier
-            .background(colors.overlay, stripShape)
-            .border(1.dp, colors.borderSubtle, stripShape)
+            .background(colors.background.copy(alpha = 0.60f), stripShape)
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .onFocusChanged { onHasFocusChanged(it.hasFocus) }
             .onPreviewKeyEvent { event ->
