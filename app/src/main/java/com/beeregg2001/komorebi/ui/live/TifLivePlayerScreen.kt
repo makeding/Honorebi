@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Refresh
@@ -52,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -66,6 +68,10 @@ import com.beeregg2001.komorebi.ui.home.DigitalClock
 import com.beeregg2001.komorebi.ui.screensaver.PlayerIdleSession
 import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
+import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
+import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
+import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -134,6 +140,8 @@ fun TifLivePlayerScreen(
     screensaverIntervalSeconds: Int = 30,
     screensaverTransition: String = "FADE",
     suppressNoSignalVisual: Boolean = false,
+    settingsViewModel: SettingsViewModel = hiltViewModel(),
+    jikkyoViewModel: TifJikkyoViewModel = hiltViewModel(),
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
@@ -225,6 +233,26 @@ fun TifLivePlayerScreen(
     var selectedAudioId by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<String?>(null) }
     var activeView by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<TvView?>(null) }
     var captions by rememberSaveable(channel.id, initialCaptions) { mutableStateOf(initialCaptions) }
+    val commentDefault by settingsViewModel.commentDefaultDisplay.collectAsState()
+    val commentSpeed by settingsViewModel.commentSpeed.collectAsState()
+    val commentSize by settingsViewModel.commentFontSize.collectAsState()
+    val commentOpacity by settingsViewModel.commentOpacity.collectAsState()
+    val commentLines by settingsViewModel.commentMaxLines.collectAsState()
+    val commentEngine by settingsViewModel.commentEngine.collectAsState()
+    var commentsEnabled by rememberSaveable(commentDefault) { mutableStateOf(commentDefault == "ON") }
+    var commentToken by remember { mutableStateOf<LiveChannelSessionToken?>(null) }
+    val danmakuView = remember { mutableStateOf<DanmakuViewHandle?>(null) }
+    val hasTunerChannel = channel.id.startsWith("tif:channel:")
+    DisposableEffect(channel.id, isStarted, hasTunerChannel) {
+        if (isStarted && hasTunerChannel) commentToken = jikkyoViewModel.start(channel)
+        onDispose {
+            jikkyoViewModel.stop()
+            commentToken = null
+        }
+    }
+    val runComments = isStarted && videoStatus is TifVideoStatus.Playing && commentsEnabled && !suppressNoSignalVisual
+    LiveDanmakuEffect(jikkyoViewModel.comments, commentToken, runComments,
+        commentSize.toFloatOrNull() ?: 1f, danmakuView)
 
     val rootFocus = remember { FocusRequester() }
     val listFocus = remember { FocusRequester() }
@@ -540,6 +568,20 @@ fun TifLivePlayerScreen(
                 )
             }
 
+            if (hasTunerChannel && commentsEnabled && !suppressNoSignalVisual) {
+                DanmakuOverlay(
+                    modifier = Modifier.fillMaxSize(),
+                    engineMode = DanmakuEngineMode.fromId(commentEngine),
+                    speed = commentSpeed.toFloatOrNull() ?: 1f,
+                    opacity = commentOpacity.toFloatOrNull() ?: 1f,
+                    maxLines = commentLines.toIntOrNull() ?: 0,
+                    sessionKey = commentToken,
+                    running = runComments,
+                    onViewCreated = { danmakuView.value = it },
+                    onViewReleased = { if (danmakuView.value?.view === it.view) danmakuView.value = null },
+                )
+            }
+
             if (videoStatus !is TifVideoStatus.Playing && !suppressNoSignalVisual) {
                 TifNoSignalLayer(
                     mode = noSignalRenderMode,
@@ -627,6 +669,15 @@ fun TifLivePlayerScreen(
                         active = captions,
                         onClick = { captions = !captions },
                         modifier = Modifier.focusRequester(captionControlFocus),
+                    )
+                }
+
+                if (hasTunerChannel) {
+                    TifOsdActionChip(
+                        label = if (commentsEnabled) "コメント ON" else "コメント OFF",
+                        icon = Icons.Default.Comment,
+                        active = commentsEnabled,
+                        onClick = { commentsEnabled = !commentsEnabled },
                     )
                 }
 

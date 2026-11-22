@@ -846,6 +846,7 @@ fun HomeLauncherScreen(
                     { showTvInputs = false; homeViewModel.launchInputSourcePicker(app) }
                 },
                 hideEmptyInputs = tifHideEmptyInputs,
+                showTunerChannels = false,
                 onDismiss = {
                     showTvInputs = false
                     scope.launch {

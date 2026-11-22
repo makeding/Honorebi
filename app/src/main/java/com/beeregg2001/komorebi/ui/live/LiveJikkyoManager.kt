@@ -101,7 +101,7 @@ class LiveJikkyoManager @Inject constructor(
 
     fun startJikkyo(
         channel: Channel,
-        source: StreamSource,
+        source: StreamSource?,
         token: LiveChannelSessionToken,
         isCurrent: (LiveChannelSessionToken) -> Boolean
     ) {
@@ -148,7 +148,7 @@ class LiveJikkyoManager @Inject constructor(
         }
     }
 
-    private suspend fun getJikkyoWatchSessionUrl(channel: Channel, source: StreamSource): String? {
+    private suspend fun getJikkyoWatchSessionUrl(channel: Channel, source: StreamSource?): String? {
         if (source == StreamSource.KONOMITV) {
             val config = settingsRepository.getBackendConfig(source) as? BackendConfig.KonomiTv
             if (config == null) return null

@@ -103,6 +103,7 @@ fun TvInputSourceDialog(
     onDismiss: () -> Unit,
     hideEmptyInputs: Boolean = true,
     onReturnToHonorebi: (() -> Unit)? = null,
+    showTunerChannels: Boolean = true,
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
@@ -142,7 +143,7 @@ fun TvInputSourceDialog(
     var autoPromptedPermission by remember { mutableStateOf(false) }
 
     LaunchedEffect(granted, tunerInputs.isNotEmpty()) {
-        if (!granted && tunerInputs.isNotEmpty() && !autoPromptedPermission) {
+        if (showTunerChannels && !granted && tunerInputs.isNotEmpty() && !autoPromptedPermission) {
             autoPromptedPermission = true
             permission.launch(TifInput.READ_LISTINGS_PERMISSION)
         }
@@ -167,7 +168,7 @@ fun TvInputSourceDialog(
         loading = true
         error = null
         try {
-            if (granted) tunerChannels = repository.tunerInputChoices(inputs)
+            if (showTunerChannels && granted) tunerChannels = repository.tunerInputChoices(inputs)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -180,8 +181,8 @@ fun TvInputSourceDialog(
     val hasAnySelectableItem = (onReturnToHonorebi != null) ||
         ports.isNotEmpty() ||
         (hasAirPlay && airPlayLaunchIntent != null) ||
-        (!granted && tunerInputs.isNotEmpty()) ||
-        visibleTunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() }
+        (showTunerChannels && !granted && tunerInputs.isNotEmpty()) ||
+        (showTunerChannels && visibleTunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() })
 
     LaunchedEffect(loading, hasAnySelectableItem) {
         if (!loading && !hasRequestedInitialFocus) {
@@ -284,7 +285,8 @@ fun TvInputSourceDialog(
                                 }
                             }
 
-                            if (!loading && ports.isEmpty() && !hasAirPlay && visibleTunerInputs.isEmpty()) {
+                            if (!loading && ports.isEmpty() && !hasAirPlay &&
+                                (!showTunerChannels || visibleTunerInputs.isEmpty())) {
                                 item(key = "empty") {
                                     Text(
                                         text = "利用可能なTV入力がありません。",
@@ -345,7 +347,7 @@ fun TvInputSourceDialog(
                                 }
                             }
 
-                            if (!granted && tunerInputs.isNotEmpty()) {
+                            if (showTunerChannels && !granted && tunerInputs.isNotEmpty()) {
                                 item(key = "permission") {
                                     val isFirst = !firstAssigned
                                     if (isFirst) firstAssigned = true
@@ -359,7 +361,7 @@ fun TvInputSourceDialog(
                                 }
                             }
 
-                            for (input in visibleTunerInputs) {
+                            for (input in if (showTunerChannels) visibleTunerInputs else emptyList()) {
                                 val matches = tunerChannels[input.id].orEmpty()
                                 item(key = "tuner_header_${input.id}") {
                                     Column {
