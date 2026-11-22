@@ -608,6 +608,7 @@ fun HomeLauncherScreen(
                                 topBarFocusRequester = topBarEntryRequester,
                                 groupedChannels = groupedChannels,
                                 isReserveOverlayOpen = isReserveOverlayOpen,
+                                isTopNavFocused = ui.topNavHasFocus,
                                 isReturningFromPlayer = isReturningFromPlayer && isCurrentSnapshot,
                                 onReturnFocusConsumed = onReturnFocusConsumed,
                                 timeFormat = timeFormat,

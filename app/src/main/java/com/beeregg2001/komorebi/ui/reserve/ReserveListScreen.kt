@@ -101,6 +101,7 @@ fun ReserveListScreen(
     topNavFocusRequester: FocusRequester? = null,
     topBarFocusRequester: FocusRequester? = null,
     isReserveOverlayOpen: Boolean = false,
+    isTopNavFocused: Boolean = false,
     isReturningFromPlayer: Boolean = false,
     onReturnFocusConsumed: () -> Unit = {},
     viewModel: ReserveViewModel = hiltViewModel(),
@@ -233,7 +234,7 @@ fun ReserveListScreen(
                     ticketManager.issueForReserve(restoreReserveId!!)
                     restoreReserveId = null
                 }
-            } else if (wasLoading && ticketManager.currentTicket == ReserveFocusTicket.NONE) {
+            } else if (wasLoading && !isTopNavFocused && ticketManager.currentTicket == ReserveFocusTicket.NONE) {
                 Log.i(
                     "KomorebiFocus",
                     "[ReserveList] リロード完了。復元すべきIDがないためCONTENT_TOPチケットを発行します。"
@@ -312,6 +313,10 @@ fun ReserveListScreen(
             }
 
             ReserveFocusTicket.CONTENT_TOP -> {
+                if (isTopNavFocused) {
+                    ticketManager.consume(ReserveFocusTicket.CONTENT_TOP)
+                    return@LaunchedEffect
+                }
                 Log.i(
                     "KomorebiFocus",
                     "[ReserveList] CONTENT_TOP へのスクロールとフォーカスを実行します。"
