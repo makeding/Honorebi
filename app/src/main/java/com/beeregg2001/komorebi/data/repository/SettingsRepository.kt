@@ -13,7 +13,10 @@ import com.beeregg2001.komorebi.data.model.NHKExclusionState
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.core.DataMigration
 import androidx.datastore.preferences.core.Preferences
+import com.beeregg2001.komorebi.data.account.AccountRecoverySummary
 import com.beeregg2001.komorebi.data.account.KomorebiAccount
+import com.beeregg2001.komorebi.data.account.shouldPromptAccountRecovery
+import com.beeregg2001.komorebi.data.account.summarizeRecoverableAccount
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
@@ -35,16 +38,22 @@ import javax.inject.Singleton
 
 private val ACCOUNT_MIGRATED = booleanPreferencesKey("system_account_migrated")
 private val ACCOUNT_CREATED = booleanPreferencesKey("system_account_created")
+private val PENDING_ACCOUNT_RECOVERY = booleanPreferencesKey("pending_account_recovery")
 private val accountKeys = listOf("backend_type", "edcb_ip", "edcb_port", "edcb_http_port", "edcb_record_play_method", "epgstation_ip", "epgstation_port", "konomi_ip", "konomi_port", "mirakurun_ip", "mirakurun_port", "preferred_stream_source", "cf_access_client_id", "cf_access_client_secret", "smb_server_list")
 
 private fun Preferences.accountSettings(): Map<String, String> = accountKeys.mapNotNull { key ->
     this[stringPreferencesKey(key)]?.let { key to it }
 }.toMap()
 
+private fun Preferences.hasConfiguredSettings(): Boolean =
+    configuredConnectionSources().isNotEmpty() ||
+        this[SettingsRepository.BACKEND_TYPE] == "TIF" ||
+        !this[SettingsRepository.EPGSTATION_IP].isNullOrBlank()
+
 private fun androidx.datastore.preferences.core.MutablePreferences.syncAccount(account: KomorebiAccount) {
     val values = accountSettings()
     val existing = account.read()
-    val configured = configuredConnectionSources().isNotEmpty() || this[SettingsRepository.BACKEND_TYPE] == "TIF" || !this[SettingsRepository.EPGSTATION_IP].isNullOrBlank()
+    val configured = hasConfiguredSettings()
     if (existing != null || (this[ACCOUNT_CREATED] != true && configured)) {
         account.update(create = existing == null) { it.copy(settings = values) }
         this[ACCOUNT_CREATED] = true
@@ -57,10 +66,10 @@ private class AccountSettingsMigration(context: Context) : DataMigration<Prefere
     override suspend fun migrate(currentData: Preferences): Preferences {
         val result = currentData.toMutablePreferences()
         val record = account.read()
-        if (record != null && record.settings.isNotEmpty()) {
-            record.settings.forEach { (key, value) -> result[stringPreferencesKey(key)] = value }
-            result[ACCOUNT_CREATED] = true
+        if (shouldPromptAccountRecovery(currentData.hasConfiguredSettings(), record)) {
+            result[PENDING_ACCOUNT_RECOVERY] = true
         } else {
+            result[PENDING_ACCOUNT_RECOVERY] = false
             result.syncAccount(account)
         }
         result[ACCOUNT_MIGRATED] = true
@@ -205,6 +214,34 @@ class SettingsRepository @Inject constructor(
             else if (backend == "EPGSTATION") !preferences[EPGSTATION_IP].isNullOrBlank()
             else preferences.configuredConnectionSources().any { it.backend == backend }
         }
+
+    val isPendingAccountRecovery: Flow<Boolean> = context.dataStore.data
+        .map { it[PENDING_ACCOUNT_RECOVERY] == true }
+
+    fun readRecoverableAccountSummary(): AccountRecoverySummary =
+        summarizeRecoverableAccount(KomorebiAccount(context).read())
+
+    suspend fun restoreFromSystemAccount() = networkSettingsMutex.withLock {
+        val record = KomorebiAccount(context).read()
+        val saved = context.dataStore.edit { settings ->
+            if (record != null && record.settings.isNotEmpty()) {
+                record.settings.forEach { (key, value) ->
+                    settings[stringPreferencesKey(key)] = value
+                }
+                settings[ACCOUNT_CREATED] = true
+            }
+            settings[PENDING_ACCOUNT_RECOVERY] = false
+        }.toCloudflareAccessConfiguration()
+        cloudflareAccessConfiguration.first { it == saved }
+    }
+
+    suspend fun discardSystemAccountAndStartFresh() = networkSettingsMutex.withLock {
+        KomorebiAccount(context).update { KomorebiAccount.Record() }
+        context.dataStore.edit { settings ->
+            settings[ACCOUNT_CREATED] = false
+            settings[PENDING_ACCOUNT_RECOVERY] = false
+        }
+    }
 
     val backendType: Flow<String> = context.dataStore.data.map { it.resolvedBackendType() }
     val lastSeenVersionCode: Flow<Int?> = context.dataStore.data.map { it[LAST_SEEN_VERSION_CODE] }

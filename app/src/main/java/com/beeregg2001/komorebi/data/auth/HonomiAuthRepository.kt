@@ -77,6 +77,10 @@ class HonomiAuthRepository @Inject constructor(
         }
     }
 
+    fun reloadFromStore() {
+        _session.value = sessionStore.current()
+    }
+
     fun logout() {
         sessionStore.clear()
         _session.value = null

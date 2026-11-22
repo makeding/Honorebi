@@ -381,6 +381,62 @@ class SettingsViewModel @Inject constructor(
         true
     )
 
+    data class AccountRecoveryState(
+        val isPending: Boolean = false,
+        val userName: String? = null,
+        val connectionLabels: List<String> = emptyList(),
+        val isApplying: Boolean = false,
+    )
+
+    private val isApplyingAccountRecovery = MutableStateFlow(false)
+
+    val accountRecoveryState: StateFlow<AccountRecoveryState> = combine(
+        settingsRepository.isPendingAccountRecovery,
+        isApplyingAccountRecovery,
+    ) { isPending, isApplying ->
+        if (!isPending) {
+            AccountRecoveryState(isPending = false)
+        } else {
+            val summary = settingsRepository.readRecoverableAccountSummary()
+            AccountRecoveryState(
+                isPending = true,
+                userName = summary.userName,
+                connectionLabels = summary.connectionLabels,
+                isApplying = isApplying,
+            )
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        AccountRecoveryState(isPending = false),
+    )
+
+    fun importSavedAccountAndSettings() {
+        if (isApplyingAccountRecovery.value) return
+        viewModelScope.launch {
+            isApplyingAccountRecovery.value = true
+            try {
+                settingsRepository.restoreFromSystemAccount()
+                honomiAuthRepository.get().reloadFromStore()
+            } finally {
+                isApplyingAccountRecovery.value = false
+            }
+        }
+    }
+
+    fun startFreshFromAccountRecovery() {
+        if (isApplyingAccountRecovery.value) return
+        viewModelScope.launch {
+            isApplyingAccountRecovery.value = true
+            try {
+                honomiAuthRepository.get().logout()
+                settingsRepository.discardSystemAccountAndStartFresh()
+            } finally {
+                isApplyingAccountRecovery.value = false
+            }
+        }
+    }
+
     sealed interface UpgradeCheckState {
         data object Loading : UpgradeCheckState
         data class Ready(

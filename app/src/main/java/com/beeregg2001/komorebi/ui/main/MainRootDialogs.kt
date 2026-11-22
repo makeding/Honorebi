@@ -453,12 +453,21 @@ fun MainRootDialogs(
         )
     }
 
+    val setupViewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val accountRecoveryState by setupViewModel.accountRecoveryState.collectAsState()
     var initialQrOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(isSettingsInitialized, state.isSettingsOpen, state.isSplashFinished) {
-        if (!isSettingsInitialized && !state.isSettingsOpen && state.isSplashFinished) initialQrOpen = true
+    LaunchedEffect(isSettingsInitialized, accountRecoveryState.isPending, state.isSettingsOpen, state.isSplashFinished) {
+        if (!isSettingsInitialized && !accountRecoveryState.isPending && !state.isSettingsOpen && state.isSplashFinished) {
+            initialQrOpen = true
+        }
     }
-    if ((!isSettingsInitialized || initialQrOpen) && !state.isSettingsOpen && state.isSplashFinished) {
-        val setupViewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    if (accountRecoveryState.isPending && !state.isSettingsOpen && state.isSplashFinished) {
+        com.beeregg2001.komorebi.ui.setting.AccountRecoveryLandingDialog(
+            state = accountRecoveryState,
+            onImportPrevious = { setupViewModel.importSavedAccountAndSettings() },
+            onStartFresh = { setupViewModel.startFreshFromAccountRecovery() },
+        )
+    } else if ((!isSettingsInitialized || initialQrOpen) && !state.isSettingsOpen && state.isSplashFinished) {
         val setupState by setupViewModel.connectionSetupState.collectAsState()
         val setupIp by setupViewModel.localIpAddress.collectAsState()
         com.beeregg2001.komorebi.ui.setting.ConnectionSetupDialog(
