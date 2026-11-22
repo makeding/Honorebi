@@ -9,6 +9,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.ui.home.components.VideoCompactHero
+import com.beeregg2001.komorebi.ui.home.components.VideoHeroPreview
 import com.beeregg2001.komorebi.ui.home.components.VideoRecentRecordCard
 import com.beeregg2001.komorebi.ui.home.components.VideoWatchHistoryCard
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -65,16 +67,12 @@ class RecordedCardConsistencyTest {
     @Test fun singleLineAndMultiLineTitlesAlignThirdLineMetadataVertically() {
         val shortTitle = "短い番組タイトル"
         val longTitle = "とても長い番組タイトルで二行目まで確実に折り返して三行目以降が省略されるはずのテスト番組タイトル"
-        val channelA = Channel(
+        val channelA = RecordedChannel(
             id = "gr01",
             displayChannelId = "gr01",
+            type = "GR",
             name = "放送局A",
             channelNumber = "011",
-            type = "GR",
-            isWatchable = true,
-            isDisplay = true,
-            programPresent = null,
-            programFollowing = null,
         )
         val channelB = channelA.copy(id = "gr02", displayChannelId = "gr02", name = "放送局B")
         val shortProgram = RecordedProgram(
@@ -154,5 +152,41 @@ class RecordedCardConsistencyTest {
         assert(shortMetaBounds.bottom <= shortCardBounds.bottom) {
             "Expected metadata bottom (${shortMetaBounds.bottom}) <= card bottom (${shortCardBounds.bottom})"
         }
+    }
+
+    @Test fun videoCompactHeroKeepsTitleFullWidthBelowStatusSlot() {
+        compose.setContent {
+            KomorebiTheme {
+                Column(Modifier.width(900.dp)) {
+                    VideoCompactHero(
+                        state = VideoHeroPreview(
+                            title = "ヒーロータイトル（メタあり）",
+                            metaLine = "ABCテレビ1 · 2026/11/22(日) 08:30 · 30:00",
+                            description = "説明テキスト",
+                        ),
+                        modifier = Modifier.testTag("hero_with_meta"),
+                    )
+                    VideoCompactHero(
+                        state = VideoHeroPreview(title = "ヒーロータイトル（メタなし）"),
+                        modifier = Modifier.testTag("hero_no_meta"),
+                    )
+                }
+            }
+        }
+
+        val heroWithMetaBounds = compose.onNodeWithTag("hero_with_meta").getUnclippedBoundsInRoot()
+        val heroNoMetaBounds = compose.onNodeWithTag("hero_no_meta").getUnclippedBoundsInRoot()
+        val metaBounds = compose.onNodeWithText("ABCテレビ1", substring = true, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val titleWithMetaBounds = compose.onNodeWithText("ヒーロータイトル（メタあり）").getUnclippedBoundsInRoot()
+        val titleNoMetaBounds = compose.onNodeWithText("ヒーロータイトル（メタなし）").getUnclippedBoundsInRoot()
+
+        assertEquals(heroWithMetaBounds.right, titleWithMetaBounds.right)
+        assert(titleWithMetaBounds.top > metaBounds.bottom) {
+            "Expected title top (${titleWithMetaBounds.top}) > meta bottom (${metaBounds.bottom})"
+        }
+        assertEquals(
+            titleWithMetaBounds.top - heroWithMetaBounds.top,
+            titleNoMetaBounds.top - heroNoMetaBounds.top,
+        )
     }
 }
