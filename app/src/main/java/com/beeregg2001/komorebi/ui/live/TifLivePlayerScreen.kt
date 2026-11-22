@@ -359,6 +359,8 @@ fun TifLivePlayerScreen(
         if (target == null) {
             TifStatusBanner(
                 text = when {
+                    context.getSystemService(TvInputManager::class.java) == null ->
+                        "この端末はテレビ入力（TIF）に対応していません。"
                     !isStarted -> "バックグラウンドのためTV入力を停止しています"
                     !resolutionComplete -> "TV入力を確認しています…"
                     resolveError != null -> resolveError.orEmpty()

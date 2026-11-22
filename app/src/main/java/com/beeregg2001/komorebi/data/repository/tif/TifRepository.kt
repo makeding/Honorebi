@@ -56,6 +56,12 @@ object TifInput {
             ?: info.loadLabel(context)?.toString()
             ?: info.id
 
+    fun isSupported(context: Context): Boolean {
+        if (context.getSystemService(TvInputManager::class.java) == null) return false
+        return context.packageManager.hasSystemFeature(PackageManager.FEATURE_LIVE_TV) ||
+            inputs(context).isNotEmpty()
+    }
+
     fun inputs(context: Context): List<TvInputInfo> {
         val manager = context.getSystemService(TvInputManager::class.java) ?: return emptyList()
         return manager.tvInputList.filterNot { it.isHidden(context) }

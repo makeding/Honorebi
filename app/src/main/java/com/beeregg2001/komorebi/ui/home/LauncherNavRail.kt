@@ -116,6 +116,7 @@ internal fun LauncherNavRail(
     onTabActivated: (LauncherTab) -> Unit = onTabFocused,
     onOpenSettings: () -> Unit,
     onSettingsFocused: () -> Unit = {},
+    onPrepareEnterContent: () -> Unit = {},
     onHasFocusChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     startCollapsed: Boolean = false,
@@ -211,6 +212,8 @@ internal fun LauncherNavRail(
                 false
             }
             .focusProperties {
+                down = FocusRequester.Cancel
+                left = FocusRequester.Cancel
                 enter = {
                     val target = if (controller.selectedTab == LauncherTab.EPG && isEpgJumping) {
                         focusableTabs.firstOrNull() ?: controller.selectedTab
@@ -305,6 +308,7 @@ internal fun LauncherNavRail(
                             canFocusTab
                         ) {
                             if (isSelected && controller.isContentReadyFor(tab)) {
+                                onPrepareEnterContent()
                                 if (!controller.contentRequester(tab).safeRequestFocus("RailRight_${tab.name}")) {
                                     focusManager.moveFocus(FocusDirection.Right)
                                 }
@@ -371,6 +375,7 @@ internal fun LauncherNavRail(
                         controller.isActiveContentReady
                     ) {
                         val activeTab = controller.selectedTab
+                        onPrepareEnterContent()
                         if (!controller.contentRequester(activeTab).safeRequestFocus("RailSettingsRight")) {
                             focusManager.moveFocus(FocusDirection.Right)
                         }

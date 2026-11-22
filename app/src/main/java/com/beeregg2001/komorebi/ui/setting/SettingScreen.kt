@@ -433,9 +433,7 @@ private fun SettingsMenuScreen(
                             icon = row.icon,
                             isSelected = uiState.selectedCategoryIndex == row.contentIndex,
                             onFocused = {
-                                if (uiState.isSidebarFocused) {
-                                    uiState.selectedCategoryIndex = row.contentIndex
-                                }
+                                uiState.selectedCategoryIndex = row.contentIndex
                             },
                             onClick = { targetR.safeRequestFocus("CategoryItem_Click") },
                             enabled = !uiState.isRestoringFocus,
@@ -445,8 +443,8 @@ private fun SettingsMenuScreen(
                                 .focusProperties {
                                     left = FocusRequester.Cancel // ★ 修正: 左キーでフォーカスが迷子になるのを防ぐ
                                     right = targetR
-                                    if (index == 0) up = FocusRequester.Cancel
-                                    if (index == sidebarRows.lastIndex) down = homeBackRequester
+                                    up = if (index == 0) FocusRequester.Cancel else sidebarRowRequesters[index - 1]
+                                    down = if (index == sidebarRows.lastIndex) homeBackRequester else sidebarRowRequesters[index + 1]
                                 }
                         )
                     }

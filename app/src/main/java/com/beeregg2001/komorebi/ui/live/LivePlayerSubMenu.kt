@@ -2,6 +2,8 @@
 
 package com.beeregg2001.komorebi.ui.live
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -103,6 +105,17 @@ fun LiveTopSubMenuUI(
     availableQualities: List<StreamQuality> = StreamQuality.DEFAULT_QUALITIES
 ) {
     val colors = KomorebiTheme.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val displaySettingsIntent = remember(context) {
+        Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
+            context.packageManager.resolveActivity(it, 0) != null
+        }
+    }
+    val soundSettingsIntent = remember(context) {
+        Intent(Settings.ACTION_SOUND_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
+            context.packageManager.resolveActivity(it, 0) != null
+        }
+    }
     var selectedCategory by remember { mutableStateOf<LiveSubMenuCategory?>(null) }
     val listFocusRequester = remember { FocusRequester() }
     val quickChannelButtonRequester = remember { FocusRequester() }
@@ -225,10 +238,10 @@ fun LiveTopSubMenuUI(
 
             // --- メインタイルメニュー行 ---
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
                 modifier = Modifier
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 48.dp, vertical = 8.dp)
+                    .padding(horizontal = 36.dp, vertical = 8.dp)
             ) {
                 LiveMenuTileItem(
                     title = "クイック選局", icon = Icons.Default.Tv,
@@ -451,6 +464,27 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
                 }
+
+                if (displaySettingsIntent != null) {
+                    LiveMenuTileItem(
+                        title = "画質設定",
+                        icon = Icons.Default.Tune,
+                        subtitle = "端末設定",
+                        onClick = { runCatching { context.startActivity(displaySettingsIntent) } },
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = colors.textPrimary
+                    )
+                }
+                if (soundSettingsIntent != null) {
+                    LiveMenuTileItem(
+                        title = "音声設定",
+                        icon = Icons.Default.VolumeUp,
+                        subtitle = "端末設定",
+                        onClick = { runCatching { context.startActivity(soundSettingsIntent) } },
+                        modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                        contentColor = colors.textPrimary
+                    )
+                }
             }
 
             Box(
@@ -639,8 +673,8 @@ fun LiveMenuTileItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    width: Dp = 136.dp,
-    height: Dp = 86.dp,
+    width: Dp = 152.dp,
+    height: Dp = 94.dp,
     contentColor: Color = Color.White
 ) {
     PlayerMenuTile(

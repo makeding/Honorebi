@@ -175,7 +175,12 @@ fun ConnectionSettingsContent(
                     "EDCB" -> "EDCB (ダイレクトストリーミング)"
                     else -> "メインシステムに従う（トランスコード）"
                 }, Icons.Default.PriorityHigh,
-                    if (prefs.backendType == ConnectionSource.TIF.backend) tifLast else itemRs[4], itemRs[6],
+                    when {
+                        prefs.backendType == ConnectionSource.TIF.backend -> tifLast
+                        !canSelectMain -> itemRs[3]
+                        else -> itemRs[4]
+                    },
+                    itemRs[6],
                     action = onSelectSrc)
             }
             SettingsSection("Cloudflare Access") {

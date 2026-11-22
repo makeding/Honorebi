@@ -128,7 +128,7 @@ fun HomeLauncherScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val supportsTvInput = remember(context) {
-        context.getSystemService(android.media.tv.TvInputManager::class.java) != null
+        com.beeregg2001.komorebi.data.repository.tif.TifInput.isSupported(context)
     }
     var showTvInputs by remember { mutableStateOf(false) }
 
@@ -193,6 +193,7 @@ fun HomeLauncherScreen(
 
     var pendingEnterContentTab by remember { mutableStateOf<LauncherTab?>(null) }
     var railHasFocus by remember { mutableStateOf(false) }
+    var isEnteringContentFromRail by remember { mutableStateOf(false) }
     var stripHasFocus by remember { mutableStateOf(false) }
     var suppressInitialRailExpand by remember {
         mutableStateOf(startupFocusTarget == StartupFocusTarget.SIDEBAR)
@@ -431,7 +432,12 @@ fun HomeLauncherScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .focusProperties { canFocus = isCurrentSnapshot && !isFullScreenMode && !showTvInputs },
+                            .focusProperties {
+                                canFocus = isCurrentSnapshot &&
+                                    !isFullScreenMode &&
+                                    !showTvInputs &&
+                                    (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null)
+                            },
                     ) {
                         when (snapshot.tab) {
                             LauncherTab.HOME -> HomeContents(
@@ -672,6 +678,7 @@ fun HomeLauncherScreen(
                 settingsCanFocus = !isEpgJumpingActive,
                 onTabFocused = { tab ->
                     focusMemory.clear()
+                    isEnteringContentFromRail = false
                     if (pendingEnterContentTab != null && pendingEnterContentTab != tab) {
                         pendingEnterContentTab = null
                     }
@@ -683,6 +690,7 @@ fun HomeLauncherScreen(
                 },
                 onTabActivated = { tab ->
                     focusMemory.clear()
+                    isEnteringContentFromRail = true
                     tabController.selectTab(tab, immediate = true)
                     val targetIndex = tabController.selectedIndex
                     ui.selectedTabIndex = targetIndex
@@ -695,9 +703,14 @@ fun HomeLauncherScreen(
                     }
                 },
                 onOpenSettings = { onSettingsToggle(true) },
-                onSettingsFocused = { pendingEnterContentTab = null },
+                onSettingsFocused = {
+                    pendingEnterContentTab = null
+                    isEnteringContentFromRail = false
+                },
+                onPrepareEnterContent = { isEnteringContentFromRail = true },
                 onHasFocusChanged = { hasFocus ->
                     railHasFocus = hasFocus
+                    if (!hasFocus) isEnteringContentFromRail = false
                     ui.topNavHasFocus = hasFocus || stripHasFocus
                 },
                 onBack = { scope.launch { handleLauncherBack() } },
