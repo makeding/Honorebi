@@ -850,8 +850,26 @@ fun MainRootScreen(
         }
     }
 
+    var wasSettingsInitialized by remember { mutableStateOf(isSettingsInitialized) }
+    LaunchedEffect(isSettingsInitialized) {
+        if (!wasSettingsInitialized && isSettingsInitialized) {
+            state.showConnectionErrorDialog = false
+            state.isConnectionRetryPending = false
+            state.isOfflineMode = false
+            state.isDataReady = false
+            state.isUiReady = false
+            channelViewModel.fetchChannels()
+            epgViewModel.preloadAllEpgData()
+            homeViewModel.refreshHomeData()
+            recordViewModel.fetchRecentRecordings(forceRefresh = false)
+            reserveViewModel.fetchReserves()
+        }
+        wasSettingsInitialized = isSettingsInitialized
+    }
+
     LaunchedEffect(
         tif,
+        isSettingsInitialized,
         isChannelLoading,
         isHomeLoading,
         isChannelError,
@@ -859,6 +877,11 @@ fun MainRootScreen(
         appWakeState.isAwake,
         state.hasAppliedStartupTab,
     ) {
+        if (!isSettingsInitialized) {
+            state.showConnectionErrorDialog = false
+            state.isConnectionRetryPending = false
+            return@LaunchedEffect
+        }
         if (appWakeState.isAwake && state.hasAppliedStartupTab && !isChannelLoading && (state.isDataReady || !isHomeLoading)) {
             if (tif) {
                 state.isOfflineMode = false

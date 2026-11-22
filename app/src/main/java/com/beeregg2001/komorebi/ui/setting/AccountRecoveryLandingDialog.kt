@@ -224,7 +224,7 @@ internal fun AccountRecoveryLandingContent(
                         }
 
                         DialogActionButton(
-                            role = DialogActionRole.Primary,
+                            role = DialogActionRole.Secondary,
                             onClick = onImportPrevious,
                             enabled = !state.isApplying,
                             modifier = Modifier

@@ -475,9 +475,9 @@ fun EpgHeaderSection(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(72.dp)
             .background(colors.surface.copy(alpha = 0.95f))
-            .padding(top = 12.dp, bottom = 6.dp, start = 12.dp, end = 248.dp)
+            .padding(top = 16.dp, bottom = 8.dp, start = 12.dp, end = 248.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),

@@ -267,7 +267,7 @@ internal fun NotificationBellButton(
             focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
         ),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (hasNotifications) colors.accentSoft else Color.Transparent,
+            containerColor = Color.Transparent,
             focusedContainerColor = colors.surface2,
             contentColor = if (hasNotifications) colors.accent else colors.textSecondary,
             focusedContentColor = if (hasNotifications) colors.accent else colors.textPrimary,

@@ -241,7 +241,7 @@ fun LiveContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(top = if (showGenreChips) 14.dp else 68.dp, bottom = 48.dp),
+                    contentPadding = PaddingValues(top = if (showGenreChips) 17.dp else 68.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                 if (showGenreChips) {
@@ -261,7 +261,7 @@ fun LiveContent(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(end = 260.dp)
+                                .padding(end = 316.dp)
                         )
                     }
                 }
