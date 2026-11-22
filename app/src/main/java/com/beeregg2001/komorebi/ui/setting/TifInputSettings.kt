@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -51,6 +52,7 @@ fun TifInputSettings(
     }
     val latestRefresh by rememberUpdatedState(onRefresh)
     var error by remember { mutableStateOf<String?>(null) }
+    var showDebug by remember { mutableStateOf(false) }
     fun refresh() { generation++; latestRefresh() }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh() }
     val setupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh() }
@@ -62,7 +64,7 @@ fun TifInputSettings(
     val needsPermission = !granted && inputs.any { !it.isPassthroughInput }
     val setupInputs = inputs.mapNotNull { input -> input.createSetupIntent()?.let { input to it } }
     val requesters = remember(needsPermission, setupInputs.map { it.first.id }) {
-        List((if (needsPermission) 1 else 0) + setupInputs.size) { FocusRequester() }
+        List((if (needsPermission) 1 else 0) + setupInputs.size + 1) { FocusRequester() }
     }
     val actionCount = requesters.size + 1
     fun actionModifier(index: Int): Modifier {
@@ -107,6 +109,13 @@ fun TifInputSettings(
             )
         }
         SettingItem(
+            title = "チャンネル診断",
+            value = "表示",
+            icon = Icons.Default.Info,
+            modifier = actionModifier(index++),
+            onClick = { showDebug = true },
+        )
+        SettingItem(
             title = "TV入力を再読み込み",
             value = if (inputs.isEmpty()) "未検出" else "${inputs.size}件検出",
             icon = Icons.Default.Refresh,
@@ -130,4 +139,5 @@ fun TifInputSettings(
             )
         }
     }
+    if (showDebug) TifChannelDebugDialog(onDismiss = { showDebug = false })
 }
