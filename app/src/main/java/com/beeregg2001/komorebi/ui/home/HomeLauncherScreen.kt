@@ -198,9 +198,16 @@ fun HomeLauncherScreen(
         }
     }
 
+    var syncedActiveTab by remember { mutableStateOf(tabController.activeTab) }
     LaunchedEffect(tabController.activeTab) {
         if (tabController.activeTab != LauncherTab.EPG) {
             ui.isEpgJumping = false
+        }
+        if (tabController.activeTab != syncedActiveTab) {
+            syncedActiveTab = tabController.activeTab
+            val committedIndex = tabController.activeIndex
+            ui.selectedTabIndex = committedIndex
+            ui.onTabSelected(committedIndex, onTabChange, homeViewModel)
         }
     }
 
@@ -712,9 +719,7 @@ fun HomeLauncherScreen(
                         pendingEnterContentTab = null
                     }
                     tabController.selectTab(tab)
-                    val targetIndex = tabController.selectedIndex
-                    ui.selectedTabIndex = targetIndex
-                    ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
+                    ui.selectedTabIndex = tabController.selectedIndex
                     ui.topNavHasFocus = true
                 },
                 onTabActivated = { tab ->
@@ -723,6 +728,7 @@ fun HomeLauncherScreen(
                     tabController.selectTab(tab, immediate = true)
                     val targetIndex = tabController.selectedIndex
                     ui.selectedTabIndex = targetIndex
+                    syncedActiveTab = tabController.activeTab
                     ui.onTabSelected(targetIndex, onTabChange, homeViewModel)
                     if (tabController.isContentReadyFor(tab)) {
                         pendingEnterContentTab = null
@@ -736,6 +742,8 @@ fun HomeLauncherScreen(
                 onSettingsFocused = {
                     pendingEnterContentTab = null
                     isEnteringContentFromRail = false
+                    tabController.cancelPendingSelection()
+                    ui.selectedTabIndex = tabController.selectedIndex
                 },
                 onPrepareEnterContent = { isEnteringContentFromRail = true },
                 onHasFocusChanged = { hasFocus ->

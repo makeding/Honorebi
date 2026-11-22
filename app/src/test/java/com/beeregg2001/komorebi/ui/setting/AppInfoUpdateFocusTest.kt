@@ -35,7 +35,7 @@ class AppInfoUpdateFocusTest {
         compose.setContent {
             KomorebiTheme {
                 var state: UpdateState by remember { mutableStateOf(UpdateState.Idle) }
-                val rows = remember { List(7) { FocusRequester() } }
+                val rows = remember { List(8) { FocusRequester() } }
                 back = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
                 Box {
                     AppInfoContent(
@@ -45,6 +45,7 @@ class AppInfoUpdateFocusTest {
                         onScrollToTop = {}, onShowProject = {}, onShowLicenses = {}, onCapabilities = {},
                         versionR = rows[0], betaR = rows[1], checkR = rows[2],
                         capabilityR = rows[3], projectR = rows[4], licR = rows[5], sidebarR = rows[6],
+                        whatsNewR = rows[7],
                         onClick = {},
                     )
                     if (state is UpdateState.UpdateAvailable) {

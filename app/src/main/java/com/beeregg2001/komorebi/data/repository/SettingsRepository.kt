@@ -183,6 +183,14 @@ class SettingsRepository @Inject constructor(
         val TIF_HIDE_EMPTY_INPUTS = booleanPreferencesKey("tif_hide_empty_inputs")
         val TIF_NO_SIGNAL_STYLE = stringPreferencesKey("tif_no_signal_style")
 
+        val WATCH_NEXT_ENABLED = booleanPreferencesKey("watch_next_enabled")
+        val WATCH_NEXT_NEXT_EPISODE_ENABLED = booleanPreferencesKey("watch_next_next_episode_enabled")
+        val PREVIEW_CHANNEL_LIVE_ENABLED = booleanPreferencesKey("preview_channel_live_enabled")
+        val PREVIEW_CHANNEL_RECORDINGS_ENABLED = booleanPreferencesKey("preview_channel_recordings_enabled")
+        val REMOTE_SHORTCUT_KEYS_ENABLED = booleanPreferencesKey("remote_shortcut_keys_enabled")
+        val REMOTE_NUMBER_TUNING_ENABLED = booleanPreferencesKey("remote_number_tuning_enabled")
+        val OS_PIP_AUTO_ENTER_ENABLED = booleanPreferencesKey("os_pip_auto_enter_enabled")
+
         val SCREENSAVER_ENABLED = booleanPreferencesKey("screensaver_enabled")
         val SCREENSAVER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_timeout_minutes")
         val SCREENSAVER_PLAYER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_player_timeout_minutes")
@@ -368,6 +376,39 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[TIF_HIDE_EMPTY_INPUTS] ?: true }
     val tifNoSignalStyle: Flow<TifNoSignalStyle> =
         context.dataStore.data.map { TifNoSignalStyle.fromPreference(it[TIF_NO_SIGNAL_STYLE]) }
+
+    private val defaultDeepTvFeatureSettings = DeepTvFeatureSettings()
+
+    val deepTvFeatureSettings: Flow<DeepTvFeatureSettings> = context.dataStore.data.map { prefs ->
+        DeepTvFeatureSettings(
+            watchNextEnabled = prefs[WATCH_NEXT_ENABLED] ?: defaultDeepTvFeatureSettings.watchNextEnabled,
+            watchNextNextEpisodeEnabled = prefs[WATCH_NEXT_NEXT_EPISODE_ENABLED] ?: defaultDeepTvFeatureSettings.watchNextNextEpisodeEnabled,
+            previewLiveEnabled = prefs[PREVIEW_CHANNEL_LIVE_ENABLED] ?: defaultDeepTvFeatureSettings.previewLiveEnabled,
+            previewRecordingsEnabled = prefs[PREVIEW_CHANNEL_RECORDINGS_ENABLED] ?: defaultDeepTvFeatureSettings.previewRecordingsEnabled,
+            remoteShortcutKeysEnabled = prefs[REMOTE_SHORTCUT_KEYS_ENABLED] ?: defaultDeepTvFeatureSettings.remoteShortcutKeysEnabled,
+            remoteNumberTuningEnabled = prefs[REMOTE_NUMBER_TUNING_ENABLED] ?: defaultDeepTvFeatureSettings.remoteNumberTuningEnabled,
+            osPipAutoEnterEnabled = prefs[OS_PIP_AUTO_ENTER_ENABLED] ?: defaultDeepTvFeatureSettings.osPipAutoEnterEnabled,
+        )
+    }
+
+    private fun keyFor(feature: DeepTvFeature): Preferences.Key<Boolean> = when (feature) {
+        DeepTvFeature.WATCH_NEXT -> WATCH_NEXT_ENABLED
+        DeepTvFeature.WATCH_NEXT_NEXT_EPISODE -> WATCH_NEXT_NEXT_EPISODE_ENABLED
+        DeepTvFeature.PREVIEW_LIVE -> PREVIEW_CHANNEL_LIVE_ENABLED
+        DeepTvFeature.PREVIEW_RECORDINGS -> PREVIEW_CHANNEL_RECORDINGS_ENABLED
+        DeepTvFeature.REMOTE_SHORTCUT_KEYS -> REMOTE_SHORTCUT_KEYS_ENABLED
+        DeepTvFeature.REMOTE_NUMBER_TUNING -> REMOTE_NUMBER_TUNING_ENABLED
+        DeepTvFeature.OS_PIP_AUTO_ENTER -> OS_PIP_AUTO_ENTER_ENABLED
+    }
+
+    suspend fun toggleDeepTvFeature(feature: DeepTvFeature) {
+        val key = keyFor(feature)
+        val defaultValue = defaultDeepTvFeatureSettings.isEnabled(feature)
+        context.dataStore.edit { settings ->
+            val current = settings[key] ?: defaultValue
+            settings[key] = !current
+        }
+    }
     val screensaverEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[SCREENSAVER_ENABLED] ?: false }
     val screensaverTimeoutMinutes: Flow<Int> =

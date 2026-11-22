@@ -1,6 +1,8 @@
 package com.beeregg2001.komorebi.viewmodel
 
 import com.beeregg2001.komorebi.BuildConfig
+import com.beeregg2001.komorebi.data.DeepTvFeature
+import com.beeregg2001.komorebi.data.DeepTvFeatureSettings
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
 import com.beeregg2001.komorebi.data.TifIntegrationPolicy
@@ -374,6 +376,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         TifNoSignalStyle.BANNER
+    )
+    val deepTvFeatureSettings: StateFlow<DeepTvFeatureSettings> = settingsRepository.deepTvFeatureSettings.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        DeepTvFeatureSettings(),
     )
     val isSettingsInitialized: StateFlow<Boolean> = settingsRepository.isInitialized.stateIn(
         viewModelScope,
@@ -911,6 +918,10 @@ class SettingsViewModel @Inject constructor(
             SettingsRepository.TIF_NO_SIGNAL_STYLE,
             TifNoSignalStyle.fromPreference(value).name
         )
+    }
+
+    fun toggleDeepTvFeature(feature: DeepTvFeature) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.toggleDeepTvFeature(feature)
     }
 
     fun toggleHideAppsTab() {

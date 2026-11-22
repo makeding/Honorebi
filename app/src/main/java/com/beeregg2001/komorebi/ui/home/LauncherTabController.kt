@@ -158,6 +158,17 @@ class LauncherTabController(
     }
 
     /**
+     * Cancels an uncommitted D-pad scrub selection (e.g. when focus moves into the
+     * bottom utility/settings footer) so the stage and highlight stay on [activeTab].
+     */
+    fun cancelPendingSelection() {
+        if (selectedTab == activeTab) return
+        selectedTab = activeTab
+        transitionDirection = TabTransitionDirection.NONE
+        phase = currentSteadyPhase()
+    }
+
+    /**
      * Commits [selectedTab] into the content stage, exiting the previous tab and advancing
      * [generation] so late callbacks from the departing tab cannot unlock focus.
      */
