@@ -240,9 +240,26 @@ fun TifLivePlayerScreen(
         mutableStateOf<List<TvTrackInfo>>(emptyList())
     }
     var selectedAudioId by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<String?>(null) }
+    var subtitleTracks by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+        mutableStateOf<List<TvTrackInfo>>(emptyList())
+    }
+    var selectedSubtitleId by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+        mutableStateOf<String?>(null)
+    }
     var activeView by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<TvView?>(null) }
     var captions by rememberSaveable(channel.id, initialCaptions) { mutableStateOf(initialCaptions) }
     LaunchedEffect(initialCaptions, videoOnly) { if (videoOnly) captions = initialCaptions }
+    LaunchedEffect(activeView, captions, subtitleTracks) {
+        val tv = activeView ?: return@LaunchedEffect
+        try {
+            tv.setCaptionEnabled(captions)
+            val track = subtitleTracks.firstOrNull { it.id == selectedSubtitleId }
+                ?: subtitleTracks.firstOrNull()
+            tv.selectTrack(TvTrackInfo.TYPE_SUBTITLE, if (captions) track?.id else null)
+        } catch (error: Exception) {
+            videoStatus = TifVideoStatus.Notice("字幕設定に失敗しました: ${error.message}。字幕を切り替えるか再選局してください。")
+        }
+    }
     val commentDefault by settingsViewModel.commentDefaultDisplay.collectAsState()
     val commentSpeed by settingsViewModel.commentSpeed.collectAsState()
     val commentSize by settingsViewModel.commentFontSize.collectAsState()
@@ -581,11 +598,18 @@ fun TifLivePlayerScreen(
 
                                 override fun onTracksChanged(inputId: String, tracks: MutableList<TvTrackInfo>) {
                                     audioTracks = tracks.filter { it.type == TvTrackInfo.TYPE_AUDIO }
+                                    subtitleTracks = tracks.filter { it.type == TvTrackInfo.TYPE_SUBTITLE }
+                                    android.util.Log.d("TifCaptions", "input=$inputId subtitleTracks=" +
+                                        subtitleTracks.joinToString { "${it.id}:${it.language}" })
                                     if (audioTracks.none { it.id == selectedAudioId }) selectedAudioId = null
                                 }
 
                                 override fun onTrackSelected(inputId: String, type: Int, trackId: String?) {
                                     if (type == TvTrackInfo.TYPE_AUDIO) selectedAudioId = trackId
+                                    if (type == TvTrackInfo.TYPE_SUBTITLE) {
+                                        selectedSubtitleId = trackId
+                                        android.util.Log.d("TifCaptions", "input=$inputId selectedSubtitle=$trackId")
+                                    }
                                 }
                             })
                             try {
@@ -601,7 +625,6 @@ fun TifLivePlayerScreen(
                     },
                     update = { view ->
                         view.keepScreenOn = isStarted && !systemSleepAllowed
-                        runCatching { view.setCaptionEnabled(captions) }
                     },
                     onRelease = { view ->
                         view.keepScreenOn = false
