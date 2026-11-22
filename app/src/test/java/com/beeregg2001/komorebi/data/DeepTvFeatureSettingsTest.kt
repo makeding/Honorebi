@@ -4,9 +4,11 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,6 +17,25 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class DeepTvFeatureSettingsTest {
+
+    private fun resetToDefaults(repository: SettingsRepository) = runBlocking {
+        val current = repository.deepTvFeatureSettings.first()
+        DeepTvFeature.entries.forEach { feature ->
+            if (!current.isEnabled(feature)) {
+                repository.toggleDeepTvFeature(feature)
+            }
+        }
+    }
+
+    @Before
+    fun setUp() {
+        resetToDefaults(SettingsRepository(ApplicationProvider.getApplicationContext<Application>()))
+    }
+
+    @After
+    fun tearDown() {
+        resetToDefaults(SettingsRepository(ApplicationProvider.getApplicationContext<Application>()))
+    }
 
     @Test
     fun defaultsAreAllEnabledOnEmptyStore() = runBlocking {

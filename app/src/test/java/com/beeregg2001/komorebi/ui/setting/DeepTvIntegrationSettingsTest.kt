@@ -37,9 +37,11 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,6 +54,29 @@ class DeepTvIntegrationSettingsTest {
 
     @get:Rule
     val compose = createComposeRule()
+
+    private fun resetSettings() = runBlocking {
+        val repository = SettingsRepository(ApplicationProvider.getApplicationContext<Application>())
+        repository.saveBoolean(SettingsRepository.TIF_INTEGRATION_ENABLED, true)
+        repository.saveBoolean(SettingsRepository.TIF_HIDE_EMPTY_INPUTS, true)
+        repository.saveString(SettingsRepository.TIF_NO_SIGNAL_STYLE, TifNoSignalStyle.BANNER.name)
+        val current = repository.deepTvFeatureSettings.first()
+        DeepTvFeature.entries.forEach { feature ->
+            if (!current.isEnabled(feature)) {
+                repository.toggleDeepTvFeature(feature)
+            }
+        }
+    }
+
+    @Before
+    fun setUp() {
+        resetSettings()
+    }
+
+    @After
+    fun tearDown() {
+        resetSettings()
+    }
 
     @Test
     fun defaultEnabledTogglePersistsAndCollapsesDetailRows() {
@@ -232,8 +257,11 @@ class DeepTvIntegrationSettingsTest {
 
         watchNext.requestFocus().assertIsFocused().assertTextContains("ON")
         watchNext.performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.waitForIdle()
         compose.waitUntil(3000) { runBlocking { !repository.deepTvFeatureSettings.first().watchNextEnabled } }
+        compose.waitUntil(3000) {
+            watchNext.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)
+                ?.any { it.text == "OFF" } == true
+        }
         assertFalse(runBlocking { repository.deepTvFeatureSettings.first().watchNextEnabled })
 
         watchNext.assertIsFocused().assertTextContains("OFF")
@@ -368,9 +396,12 @@ class DeepTvIntegrationSettingsTest {
         val previewLive = compose.onNode(hasText("「放送中の番組（ライブ）」チャンネルを公開") and hasClickAction())
         previewLive.requestFocus().assertIsFocused().assertTextContains("ON")
         previewLive.performKeyInput { pressKey(Key.DirectionCenter) }
-        compose.waitForIdle()
         compose.waitUntil(3000) {
             runBlocking { !repository.deepTvFeatureSettings.first().isEnabled(DeepTvFeature.PREVIEW_LIVE) }
+        }
+        compose.waitUntil(3000) {
+            previewLive.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)
+                ?.any { it.text == "OFF" } == true
         }
         previewLive.assertTextContains("OFF")
         assertFalse(runBlocking { repository.deepTvFeatureSettings.first().previewLiveEnabled })
