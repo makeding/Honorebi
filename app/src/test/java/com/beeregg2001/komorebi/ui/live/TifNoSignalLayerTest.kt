@@ -13,10 +13,13 @@ import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -25,6 +28,14 @@ class TifNoSignalLayerTest {
 
     @get:Rule
     val compose = createComposeRule()
+
+    @Before
+    fun grantManifestReceiverPermission() {
+        val context = RuntimeEnvironment.getApplication()
+        Shadows.shadowOf(context).grantPermissions(
+            "${context.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        )
+    }
 
     @Test
     fun bounceMovesLayerWithoutRecomposingLogoContentAndIsNotFocusable() {
@@ -53,7 +64,8 @@ class TifNoSignalLayerTest {
             }
         }
 
-        // Let initial layout and physics reset settle.
+        // Let initial layout, physics reset, and first frame timestamp settle.
+        compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeByFrame()
         compose.waitForIdle()

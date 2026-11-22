@@ -150,7 +150,7 @@ class TifNoSignalStyleSettingsTest {
                         SelectionDialog(
                             title = "TV入力の信号なし表示",
                             options = TifNoSignalStyle.entries.map { it.label to it.name },
-                            currentValue = preferences.tifNoSignalStyle.name,
+                            current = preferences.tifNoSignalStyle.name,
                             onDismiss = { dialog = false },
                             onSelect = { value ->
                                 scope.launch {

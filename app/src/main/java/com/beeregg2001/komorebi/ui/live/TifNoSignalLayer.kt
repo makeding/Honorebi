@@ -283,7 +283,6 @@ private fun TifNoSignalBounceSurface(
         Box(
             modifier = Modifier
                 .size(logoWidthDp, logoHeightDp)
-                .testTag(TIF_NO_SIGNAL_BOUNCE_LOGO_TAG)
                 .graphicsLayer {
                     translationX = posX.floatValue
                     translationY = posY.floatValue
@@ -295,22 +294,28 @@ private fun TifNoSignalBounceSurface(
                     }
                 },
         ) {
-            if (isHonorebi) {
-                HonorebiBounceLockup(
-                    statusText = statusText,
-                    inputLabel = inputLabel,
-                    accentColorProvider = { palette[colorIndex.intValue % palette.size] },
-                    glowAlphaProvider = { bounceGlow.value },
-                    onLogoComposed = onLogoComposed,
-                )
-            } else {
-                DvdBounceLockup(
-                    isPassthroughInput = isPassthroughInput,
-                    statusText = statusText,
-                    inputLabel = inputLabel,
-                    tintProvider = { palette[colorIndex.intValue % palette.size] },
-                    onLogoComposed = onLogoComposed,
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(TIF_NO_SIGNAL_BOUNCE_LOGO_TAG),
+            ) {
+                if (isHonorebi) {
+                    HonorebiBounceLockup(
+                        statusText = statusText,
+                        inputLabel = inputLabel,
+                        accentColorProvider = { palette[colorIndex.intValue % palette.size] },
+                        glowAlphaProvider = { bounceGlow.value },
+                        onLogoComposed = onLogoComposed,
+                    )
+                } else {
+                    DvdBounceLockup(
+                        isPassthroughInput = isPassthroughInput,
+                        statusText = statusText,
+                        inputLabel = inputLabel,
+                        tintProvider = { palette[colorIndex.intValue % palette.size] },
+                        onLogoComposed = onLogoComposed,
+                    )
+                }
             }
         }
     }
