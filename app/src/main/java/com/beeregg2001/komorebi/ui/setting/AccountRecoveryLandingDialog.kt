@@ -2,6 +2,7 @@
 
 package com.beeregg2001.komorebi.ui.setting
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
@@ -32,6 +33,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -41,6 +44,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
@@ -89,7 +93,7 @@ internal fun AccountRecoveryLandingContent(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
-            .padding(horizontal = 56.dp, vertical = 40.dp)
+            .padding(horizontal = 48.dp, vertical = 20.dp)
             .testTag("account_recovery_landing"),
         contentAlignment = Alignment.Center,
     ) {
@@ -97,48 +101,72 @@ internal fun AccountRecoveryLandingContent(
             modifier = Modifier
                 .widthIn(max = 920.dp)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .background(colors.accent.copy(alpha = 0.16f), RoundedCornerShape(999.dp))
-                        .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Text(
-                        text = "アプリデータ消去後のセットアップ",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.accent,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.honorebi_mark),
+                            contentDescription = stringResource(id = R.string.app_name),
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("account_recovery_logo"),
+                        )
+                        Text(
+                            text = stringResource(id = R.string.app_name),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary,
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .background(colors.accent.copy(alpha = 0.16f), RoundedCornerShape(999.dp))
+                            .border(1.dp, colors.accent.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = colors.accent,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Text(
+                            text = "アプリデータ消去後のセットアップ",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.accent,
+                        )
+                    }
                 }
 
                 Text(
                     text = "アプリがピカピカになりました",
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                 )
 
                 Text(
                     text = "アプリのデータが消去されたため、設定やキャッシュは初期状態に戻っています。始める前に、端末に残っていた設定を引き継ぐかお選びください。",
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                 )
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Surface(
@@ -153,13 +181,13 @@ internal fun AccountRecoveryLandingContent(
                 ) {
                     Column(
                         modifier = Modifier
-                            .padding(24.dp)
+                            .padding(horizontal = 18.dp, vertical = 14.dp)
                             .focusGroup(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
                             text = "以前の接続設定・アカウントを引き継ぎますか？",
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = colors.textPrimary,
                         )
@@ -169,8 +197,8 @@ internal fun AccountRecoveryLandingContent(
                                 .fillMaxWidth()
                                 .background(colors.surface2, RoundedCornerShape(12.dp))
                                 .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             if (!state.userName.isNullOrBlank()) {
                                 RecoveryItemRow(
@@ -194,8 +222,6 @@ internal fun AccountRecoveryLandingContent(
                                 )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(2.dp))
 
                         DialogActionButton(
                             role = DialogActionRole.Primary,
@@ -236,8 +262,8 @@ internal fun AccountRecoveryLandingContent(
                     ),
                 ) {
                     Column(
-                        modifier = Modifier.padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -245,7 +271,7 @@ internal fun AccountRecoveryLandingContent(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(30.dp)
                                     .background(colors.accent.copy(alpha = 0.16f), CircleShape),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -253,7 +279,7 @@ internal fun AccountRecoveryLandingContent(
                                     imageVector = Icons.Default.CleaningServices,
                                     contentDescription = null,
                                     tint = colors.accent,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(16.dp),
                                 )
                             }
                             Text(
@@ -266,7 +292,7 @@ internal fun AccountRecoveryLandingContent(
 
                         Text(
                             text = "表示の乱れや動作が重いときは、端末の「アプリデータを消去」を行わなくても、アプリ内の「設定 > キャッシュ管理」から各種キャッシュだけを直接削除できます。",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             color = colors.textSecondary,
                         )
 
@@ -274,8 +300,8 @@ internal fun AccountRecoveryLandingContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(colors.surface2, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             CacheHintBullet("すべてのキャッシュを一括削除")
                             CacheHintBullet("局ロゴ・サムネイルキャッシュ")

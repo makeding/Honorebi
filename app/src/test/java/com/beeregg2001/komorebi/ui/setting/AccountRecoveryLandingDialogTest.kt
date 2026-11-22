@@ -2,6 +2,7 @@ package com.beeregg2001.komorebi.ui.setting
 
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -44,15 +45,27 @@ class AccountRecoveryLandingDialogTest {
         }
 
         compose.onNodeWithTag("account_recovery_landing").assertIsDisplayed()
+        compose.onNodeWithTag("account_recovery_logo", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("アプリがピカピカになりました").assertIsDisplayed()
         compose.onNodeWithText("komorebi_user").assertIsDisplayed()
         compose.onNodeWithText("KonomiTV (192.168.1.10:7000)").assertIsDisplayed()
         compose.onNodeWithText("次回お困りのときは").assertIsDisplayed()
+        compose.onNodeWithText("※ キャッシュ削除では接続設定やアカウント情報は消えません。").assertIsDisplayed()
+
+        val rootBounds = compose.onNodeWithTag("account_recovery_landing").getUnclippedBoundsInRoot()
+        val freshBounds = compose.onNodeWithTag("account_recovery_fresh_button").getUnclippedBoundsInRoot()
+        val noteBounds = compose.onNodeWithText("※ キャッシュ削除では接続設定やアカウント情報は消えません。").getUnclippedBoundsInRoot()
+        assert(freshBounds.bottom <= rootBounds.bottom) {
+            "Expected fresh button bottom (${freshBounds.bottom}) <= root bottom (${rootBounds.bottom})"
+        }
+        assert(noteBounds.bottom <= rootBounds.bottom) {
+            "Expected cache note bottom (${noteBounds.bottom}) <= root bottom (${rootBounds.bottom})"
+        }
 
         compose.onNodeWithTag("account_recovery_import_button").performClick()
         assertEquals(1, imports)
 
-        compose.onNodeWithTag("account_recovery_fresh_button").performClick()
+        compose.onNodeWithTag("account_recovery_fresh_button").assertIsDisplayed().performClick()
         assertEquals(1, freshStarts)
     }
 }
