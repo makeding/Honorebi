@@ -551,7 +551,8 @@ fun TifLivePlayerScreen(
                     screensaverIntervalSeconds = screensaverIntervalSeconds,
                     screensaverTransition = screensaverTransition,
                     showOverlay = showOverlay,
-                    paused = showOverlay || isMiniListOpen || !isStarted,
+                    paused = !isStarted,
+                    dimmed = showOverlay || isMiniListOpen,
                     onDegraded = { noSignalDegraded = true },
                     modifier = Modifier.fillMaxSize(),
                 )

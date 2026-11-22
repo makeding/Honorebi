@@ -1247,7 +1247,7 @@ fun AppInfoContent(
     onOpenWhatsNew: () -> Unit = {},
     capabilityR: FocusRequester,
     versionR: FocusRequester,
-    whatsNewR: FocusRequester,
+    whatsNewR: FocusRequester = remember { FocusRequester() },
     betaR: FocusRequester,
     checkR: FocusRequester,
     projectR: FocusRequester,

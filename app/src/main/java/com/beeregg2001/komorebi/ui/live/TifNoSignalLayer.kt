@@ -108,9 +108,11 @@ internal fun TifNoSignalLayer(
     paused: Boolean,
     onDegraded: () -> Unit,
     modifier: Modifier = Modifier,
-    physicsSeed: Long = System.nanoTime(),
+    dimmed: Boolean = false,
+    physicsSeed: Long? = null,
     onLogoComposed: (() -> Unit)? = null,
 ) {
+    val resolvedSeed = remember(physicsSeed) { physicsSeed ?: System.nanoTime() }
     Crossfade(
         targetState = mode,
         animationSpec = tween(durationMillis = 200),
@@ -128,8 +130,9 @@ internal fun TifNoSignalLayer(
                     inputLabel = inputLabel,
                     isPassthroughInput = isPassthroughInput,
                     paused = paused,
+                    dimmed = dimmed,
                     onDegraded = onDegraded,
-                    physicsSeed = physicsSeed,
+                    physicsSeed = resolvedSeed,
                     onLogoComposed = onLogoComposed,
                 )
             }
@@ -165,6 +168,7 @@ private fun TifNoSignalBounceSurface(
     inputLabel: String,
     isPassthroughInput: Boolean,
     paused: Boolean,
+    dimmed: Boolean,
     onDegraded: () -> Unit,
     physicsSeed: Long,
     onLogoComposed: (() -> Unit)?,
@@ -195,7 +199,7 @@ private fun TifNoSignalBounceSurface(
     val bounceScale = remember(style, physicsSeed) { Animatable(1f) }
     val bounceGlow = remember(style, physicsSeed) { Animatable(0f) }
 
-    LaunchedEffect(containerSize, style, logoWidthPx, logoHeightPx, insetPx, vxPxPerSec, vyPxPerSec) {
+    LaunchedEffect(containerSize, style, physicsSeed, logoWidthPx, logoHeightPx, insetPx, vxPxPerSec, vyPxPerSec) {
         if (containerSize.width <= 0 || containerSize.height <= 0) return@LaunchedEffect
         if (!initialized) {
             physics.reset(
@@ -286,7 +290,7 @@ private fun TifNoSignalBounceSurface(
                 .graphicsLayer {
                     translationX = posX.floatValue
                     translationY = posY.floatValue
-                    alpha = if (paused) 0.35f else 1f
+                    alpha = if (dimmed || paused) 0.4f else 1f
                     if (isHonorebi) {
                         val scale = bounceScale.value
                         scaleX = scale

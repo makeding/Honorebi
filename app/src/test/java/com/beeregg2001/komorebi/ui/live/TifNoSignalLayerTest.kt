@@ -116,4 +116,50 @@ class TifNoSignalLayerTest {
         compose.onNodeWithTag(TIF_NO_SIGNAL_SCREENSAVER_PILL_TAG, useUnmergedTree = true).assertExists()
         compose.onAllNodes(isFocusable(), useUnmergedTree = true).assertCountEquals(0)
     }
+
+    @Test
+    fun togglingOverlayDoesNotResetBouncePositionToOrigin() {
+        val showOverlay = androidx.compose.runtime.mutableStateOf(false)
+        compose.mainClock.autoAdvance = false
+
+        compose.setContent {
+            KomorebiTheme {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    TifNoSignalLayer(
+                        mode = NoSignalRenderMode.BOUNCE,
+                        style = TifNoSignalStyle.DVD_BOUNCE,
+                        statusText = "信号がありません",
+                        inputLabel = "HDMI 1",
+                        isPassthroughInput = true,
+                        screensaverImageUris = emptyList(),
+                        screensaverIntervalSeconds = 30,
+                        screensaverTransition = "FADE",
+                        showOverlay = showOverlay.value,
+                        paused = false,
+                        dimmed = showOverlay.value,
+                        onDegraded = {},
+                    )
+                }
+            }
+        }
+
+        repeat(10) { compose.mainClock.advanceTimeByFrame() }
+        compose.waitForIdle()
+        val beforeOverlay = compose.onNodeWithTag(TIF_NO_SIGNAL_BOUNCE_LOGO_TAG, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+
+        showOverlay.value = true
+        compose.waitForIdle()
+        repeat(5) { compose.mainClock.advanceTimeByFrame() }
+        compose.waitForIdle()
+        val withOverlay = compose.onNodeWithTag(TIF_NO_SIGNAL_BOUNCE_LOGO_TAG, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+
+        assertNotEquals("logo must continue moving when overlay opens", beforeOverlay, withOverlay)
+        assertNotEquals(
+            "logo must not snap back to (0,0) top-left",
+            0f,
+            withOverlay.left.value,
+        )
+    }
 }
