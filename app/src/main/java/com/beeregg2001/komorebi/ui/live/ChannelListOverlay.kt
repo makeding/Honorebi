@@ -89,9 +89,27 @@ fun ChannelListOverlay(
 ) {
     val colors = KomorebiTheme.colors
     val channelTypeOrder = listOf("GR", "BS", "CS", "BS4K", "IPTV", "SKY", "TV")
-    val channelSections = remember(groupedChannels) {
+    val channelSections = remember(groupedChannels, backendType, currentChannelId) {
         channelTypeOrder.mapNotNull { type ->
-            groupedChannels[type]?.takeIf { it.isNotEmpty() }?.let { type to it }
+            groupedChannels[type]?.let { channels ->
+                val visible = if (backendType == "TIF") {
+                    val duplicates = channels.filter {
+                        it.networkId != null && it.transportStreamId != null &&
+                            !it.programPresent?.title.isNullOrBlank()
+                    }.groupBy {
+                        listOf(it.id.substringAfterLast(':'), it.networkId, it.transportStreamId,
+                            it.programPresent!!.title, it.programPresent.startTime, it.programPresent.endTime)
+                    }
+                    val hidden = duplicates.values.flatMap { group ->
+                        if (group.size < 2) emptyList() else {
+                            val keep = group.firstOrNull { it.id == currentChannelId } ?: group.first()
+                            group.filter { it.id != keep.id }.map { it.id }
+                        }
+                    }.toSet()
+                    channels.filterNot { it.id in hidden }
+                } else channels
+                visible.takeIf { it.isNotEmpty() }?.let { type to it }
+            }
         }
     }
     val sectionKeys = remember(recentChannels, recentRecordings, channelSections) {
