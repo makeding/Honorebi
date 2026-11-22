@@ -37,3 +37,4 @@ local.properties
 !/setup-web/.env.example
 /setup-web/*.log
 /setup-web/*.tsbuildinfo
+/docs

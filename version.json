@@ -1,20 +1,20 @@
 {
-  "versionCode": 35,
-  "versionName": "1.2.0-huggy",
-  "releaseNotes": "Honorebi 1.2.0。左サイドバー・右上システムバー・各タブ・設定画面・プレイヤーOSDを含むUIを全面刷新しました。起動時フォーカス位置設定、OpenGL ES 3.0 弾幕エンジン（Beta）、チャプター解析強化、プレイヤー下キー操作の高速化、フォーカス制御と表示崩れの修正、および libaribcaption のセキュリティ修正（CVE-2026-112284）を含みます。",
-  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.0-huggy/app-universal-release.apk",
+  "versionCode": 36,
+  "versionName": "1.2.1-huggy",
+  "releaseNotes": "Honorebi 1.2.1。左サイドバー・右上システムバー・各画面・設定・プレイヤーOSDを含むUIデザインを一新しました。起動時のフォーカス位置設定、TV統合（Watch Next・ホームチャンネル・PiP・数字選局・TIF外部入力）、コメント描画エンジンの強化（ハードウェア描画・独自実装 OpenGL ES 3.0 Beta）、新機能ガイド（What's New）、チャプター解析強化、プレイヤー下キー操作の高速化、フォーカス制御と表示崩れの修正、および libaribcaption のセキュリティ修正（CVE-2026-112284）を含みます。",
+  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.1-huggy/app-universal-release.apk",
   "apkUrls": {
-    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.0-huggy/app-arm64-v8a-release.apk",
-    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.0-huggy/app-armeabi-v7a-release.apk"
+    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.1-huggy/app-arm64-v8a-release.apk",
+    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.1-huggy/app-armeabi-v7a-release.apk"
   },
   "beta": {
-    "versionCode": 35,
-    "versionName": "1.2.0-huggy",
-    "releaseNotes": "Honorebi 1.2.0。左サイドバー・右上システムバー・各タブ・設定画面・プレイヤーOSDを含むUIを全面刷新しました。起動時フォーカス位置設定、OpenGL ES 3.0 弾幕エンジン（Beta）、チャプター解析強化、プレイヤー下キー操作の高速化、フォーカス制御と表示崩れの修正、および libaribcaption のセキュリティ修正（CVE-2026-112284）を含みます。",
-    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.0-huggy/app-universal-release.apk",
+    "versionCode": 36,
+    "versionName": "1.2.1-huggy",
+    "releaseNotes": "Honorebi 1.2.1。左サイドバー・右上システムバー・各画面・設定・プレイヤーOSDを含むUIデザインを一新しました。起動時のフォーカス位置設定、TV統合（Watch Next・ホームチャンネル・PiP・数字選局・TIF外部入力）、コメント描画エンジンの強化（ハードウェア描画・独自実装 OpenGL ES 3.0 Beta）、新機能ガイド（What's New）、チャプター解析強化、プレイヤー下キー操作の高速化、フォーカス制御と表示崩れの修正、および libaribcaption のセキュリティ修正（CVE-2026-112284）を含みます。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.1-huggy/app-universal-release.apk",
     "apkUrls": {
-      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.0-huggy/app-arm64-v8a-release.apk",
-      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.0-huggy/app-armeabi-v7a-release.apk"
+      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.1-huggy/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.1-huggy/app-armeabi-v7a-release.apk"
     }
   }
 }
