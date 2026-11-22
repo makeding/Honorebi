@@ -127,8 +127,8 @@ fun DeepTvIntegrationSettingsContent(
     val statusNote = when {
         lockedByMainSystem -> "メインシステムがTV入力のため無効にできません。接続設定でメインシステムを変更してください。"
         !supported -> "この端末では Android TV Input Framework 対応の外部入力・チューナーが検出されなかったため利用できません。"
-        enabled -> "ホーム右上の「入力切替」やメインシステム選択から、HDMI外部入力・TVチャンネルをアプリ内で開きます。"
-        else -> "アプリ内のTV入力統合はオフです。ホームの「入力切替」はテレビ標準の入力切替アプリを起動します。"
+        enabled -> "ホーム右上の「TV入力」やメインシステム選択から、HDMI外部入力・TVチャンネルをアプリ内で開きます。"
+        else -> "アプリ内のTV入力統合はオフです。ホーム右上の「TV入力」はテレビ標準の入力切替アプリを起動します。"
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
