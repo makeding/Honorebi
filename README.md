@@ -118,12 +118,17 @@ Access を使うバックエンドは、端末が信頼する証明書を提示�
 ### 🗂️ 録画リスト画面
 数千〜数万件に及ぶ録画ライブラリを管理・検索する総合画面です。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/320c8e2f-2230-4ef9-8102-06f29efcde63" />
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/32198e8b-676b-42a1-9aeb-aa6fa1698ee3" />
+<img width="960" height="540" alt="録画リスト画面" src="assets/screenshots/10_record_list.png" />
+
 
 * **多角的なカテゴリ・フィルター**: 「未視聴」「シリーズ別」「ジャンル別」「曜日別」など、多様な切り口で瞬時に絞り込みが可能。
 * **スマートキーワード自動予約**: 録画リストの単発番組のサブメニューから、直接「キーワード自動予約」の条件を手軽に作成できるようになりました。
 * **フォーカス迷子の徹底排除**: 独自の `FocusTicketManager` と半透明オーバーレイ機構により、TV特有の「非同期描画と十字キー操作のズレ」を解決し、確実に元の位置へフォーカスが復帰します。
+
+### 📺 放送中（On Air）
+現在放送中のクール別番組（アニメ・ドラマなど）を曜日ごとのカレンダー形式で一覧表示し、未録画話数や放送局・放送時刻をひと目で把握できる Honorebi 独自機能です。
+
+<img width="960" height="540" alt="放送中（On Air）" src="assets/screenshots/08_onair.png" />
 
 ### 📁 ファイルライブラリ (SMB) 【NEW】
 NASや共有フォルダ上のメディアファイルを直接再生できる新機能です。
