@@ -344,9 +344,9 @@ object AppStrings {
     const val SETTINGS_INPUT_COMMENT_MAX_LINES = "実況最大同時表示行数"
     const val SETTINGS_ITEM_COMMENT_ENGINE = "描画エンジン"
     const val DIALOG_COMMENT_ENGINE_TITLE = "コメント描画エンジン"
-    const val DIALOG_COMMENT_ENGINE_DFM_HARDWARE = "DanmakuFlameMaster (ハードウェア描画・標準)"
+    const val DIALOG_COMMENT_ENGINE_DFM_HARDWARE = "DanmakuFlameMaster (ハードウェア描画)"
     const val DIALOG_COMMENT_ENGINE_DFM = "DanmakuFlameMaster (従来の描画)"
-    const val DIALOG_COMMENT_ENGINE_GLES = "Komorebi (OpenGL ES 3.0・Beta)"
+    const val DIALOG_COMMENT_ENGINE_GLES = "Honorebi (OpenGL ES 3.0・Beta)"
 
     // アドオン・ラボ
     const val SETTINGS_SECTION_EXTERNAL_INTEGRATION = "外部サービス連携 (実験的)"

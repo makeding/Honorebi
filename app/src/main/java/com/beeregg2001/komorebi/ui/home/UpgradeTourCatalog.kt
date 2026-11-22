@@ -76,9 +76,9 @@ object UpgradeTourCatalog {
             UpgradeTourStep(
                 targetId = UpgradeTourTargetId.COMMENT_ENGINE_SETTING,
                 shape = UpgradeSpotlightShape.ROUNDED_RECT,
-                badge = "Honorebi 1.2.0 • 弾幕 & プレイヤー",
-                title = "OpenGL ES 3.0 弾幕エンジン（Beta）",
-                description = "コメント描画エンジンをここから切り替えられます。さらにチャプター解析強化、プレイヤー下キー操作の高速化、libaribcaption のセキュリティ修正（CVE-2026-112284）も実装しました。",
+                badge = "Honorebi 1.2.0 • コメント & プレイヤー",
+                title = "コメント描画エンジンを強化",
+                description = "ハードウェア加速による標準描画と、独自実装の OpenGL ES 3.0（Beta）をここから切り替えられます。さらにチャプター解析強化、プレイヤー下キー操作の高速化、libaribcaption のセキュリティ修正（CVE-2026-112284）も実装しました。",
                 placement = UpgradeCalloutPlacement.BELOW_RIGHT,
             ),
         )
