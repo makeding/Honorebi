@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.ui.home.LoadingScreen
+import com.beeregg2001.komorebi.ui.home.UpgradeTourAction
 import com.beeregg2001.komorebi.ui.home.UpgradeTourCatalog
 import com.beeregg2001.komorebi.ui.home.shouldShowUpgradeLandingTour
 import com.beeregg2001.komorebi.viewmodel.*
@@ -1293,6 +1294,23 @@ fun MainRootScreen(
                                 )
                             } == true)),
                         upgradeTourSteps = upgradeTourSteps,
+                        onUpgradeTourAction = { action ->
+                            isManualUpgradeTourOpen = false
+                            isUpgradeTourDismissed = true
+                            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+                            when (action) {
+                                UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS -> {
+                                    state.settingsInitialCategoryIndex = 5
+                                    state.settingsInitialFocusItemIndex = 6
+                                    state.isSettingsOpen = true
+                                }
+                                UpgradeTourAction.OPEN_DEEP_TV_SETTINGS -> {
+                                    state.settingsInitialCategoryIndex = 9
+                                    state.settingsInitialFocusItemIndex = null
+                                    state.isSettingsOpen = true
+                                }
+                            }
+                        },
                         onDismissUpgradeTour = {
                             isManualUpgradeTourOpen = false
                             isUpgradeTourDismissed = true

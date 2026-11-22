@@ -83,7 +83,7 @@ class UpgradeTourCatalogTest {
     @Test
     fun spotlightOverlayStepsThroughAll120HighlightsAndCallsOnFinish() {
         val steps = UpgradeTourCatalog.tourForVersion(UpgradeTourCatalog.VERSION_CODE_1_2_0)
-        assertEquals(4, steps.size)
+        assertEquals(5, steps.size)
 
         var finishedCount = 0
         val targets = UpgradeSpotlightTargets().apply {
@@ -104,20 +104,24 @@ class UpgradeTourCatalogTest {
         }
 
         compose.onNodeWithTag("upgrade-spotlight-overlay").assertExists()
-        compose.onNodeWithText("1 / 4").assertExists()
+        compose.onNodeWithText("1 / 5").assertExists()
         compose.onNodeWithText(steps[0].title).assertExists()
 
         compose.onNodeWithText("次へ").performClick()
-        compose.onNodeWithText("2 / 4").assertExists()
+        compose.onNodeWithText("2 / 5").assertExists()
         compose.onNodeWithText(steps[1].title).assertExists()
 
         compose.onNodeWithText("次へ").performClick()
-        compose.onNodeWithText("3 / 4").assertExists()
+        compose.onNodeWithText("3 / 5").assertExists()
         compose.onNodeWithText(steps[2].title).assertExists()
 
         compose.onNodeWithText("次へ").performClick()
-        compose.onNodeWithText("4 / 4").assertExists()
+        compose.onNodeWithText("4 / 5").assertExists()
         compose.onNodeWithText(steps[3].title).assertExists()
+
+        compose.onNodeWithText("次へ").performClick()
+        compose.onNodeWithText("5 / 5").assertExists()
+        compose.onNodeWithText(steps[4].title).assertExists()
 
         compose.onNodeWithText("はじめる").performClick()
         assertEquals(1, finishedCount)

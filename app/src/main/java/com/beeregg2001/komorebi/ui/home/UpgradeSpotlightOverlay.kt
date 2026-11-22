@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -107,6 +108,7 @@ internal fun rememberUpgradeSpotlightTargets(): UpgradeSpotlightTargets =
 internal fun UpgradeSpotlightOverlay(
     steps: List<UpgradeTourStep>,
     targets: UpgradeSpotlightTargets,
+    onStepAction: (UpgradeTourAction) -> Unit = {},
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -120,8 +122,10 @@ internal fun UpgradeSpotlightOverlay(
     val isLastStep = stepIndex == steps.lastIndex
 
     val primaryButtonFocusRequester = remember { FocusRequester() }
+    val stepActionButtonFocusRequester = remember { FocusRequester() }
     val backButtonFocusRequester = remember { FocusRequester() }
     val skipButtonFocusRequester = remember { FocusRequester() }
+    val hasStepAction = currentStep.actionLabel != null && currentStep.actionTarget != null
 
     BackHandler(enabled = true) {
         onFinish()
@@ -428,6 +432,25 @@ internal fun UpgradeSpotlightOverlay(
                                         up = FocusRequester.Cancel
                                         down = FocusRequester.Cancel
                                         left = skipButtonFocusRequester
+                                        right = if (hasStepAction) stepActionButtonFocusRequester else primaryButtonFocusRequester
+                                    },
+                            )
+                        }
+
+                        val actionLabel = currentStep.actionLabel
+                        val actionTarget = currentStep.actionTarget
+                        if (actionLabel != null && actionTarget != null) {
+                            SpotlightActionButton(
+                                label = actionLabel,
+                                icon = Icons.Default.Tune,
+                                isPrimary = false,
+                                onClick = { onStepAction(actionTarget) },
+                                modifier = Modifier
+                                    .focusRequester(stepActionButtonFocusRequester)
+                                    .focusProperties {
+                                        up = FocusRequester.Cancel
+                                        down = FocusRequester.Cancel
+                                        left = if (!isFirstStep) backButtonFocusRequester else skipButtonFocusRequester
                                         right = primaryButtonFocusRequester
                                     },
                             )
@@ -449,7 +472,11 @@ internal fun UpgradeSpotlightOverlay(
                                 .focusProperties {
                                     up = FocusRequester.Cancel
                                     down = FocusRequester.Cancel
-                                    left = if (!isFirstStep) backButtonFocusRequester else skipButtonFocusRequester
+                                    left = when {
+                                        hasStepAction -> stepActionButtonFocusRequester
+                                        !isFirstStep -> backButtonFocusRequester
+                                        else -> skipButtonFocusRequester
+                                    }
                                     right = FocusRequester.Cancel
                                 },
                         )

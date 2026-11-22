@@ -119,6 +119,7 @@ fun HomeLauncherScreen(
     onAiReturnConsumed: () -> Unit = {},
     showUpgradeTour: Boolean = false,
     upgradeTourSteps: List<UpgradeTourStep> = emptyList(),
+    onUpgradeTourAction: (UpgradeTourAction) -> Unit = {},
     onDismissUpgradeTour: () -> Unit = {},
 ) {
     val ui = rememberHomeLauncherState(
@@ -785,6 +786,7 @@ fun HomeLauncherScreen(
             UpgradeSpotlightOverlay(
                 steps = upgradeTourSteps,
                 targets = spotlightTargets,
+                onStepAction = onUpgradeTourAction,
                 onFinish = {
                     onDismissUpgradeTour()
                     scope.launch {

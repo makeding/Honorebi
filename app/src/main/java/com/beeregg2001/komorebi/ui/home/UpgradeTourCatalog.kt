@@ -19,6 +19,11 @@ enum class UpgradeCalloutPlacement {
     BOTTOM_LEFT_BESIDE_RAIL,
 }
 
+enum class UpgradeTourAction {
+    OPEN_COMMENT_ENGINE_SETTINGS,
+    OPEN_DEEP_TV_SETTINGS,
+}
+
 data class UpgradeTourStep(
     val targetId: UpgradeTourTargetId,
     val shape: UpgradeSpotlightShape,
@@ -26,6 +31,8 @@ data class UpgradeTourStep(
     val title: String,
     val description: String,
     val placement: UpgradeCalloutPlacement,
+    val actionLabel: String? = null,
+    val actionTarget: UpgradeTourAction? = null,
 )
 
 object UpgradeTourCatalog {
@@ -58,12 +65,24 @@ object UpgradeTourCatalog {
                 placement = UpgradeCalloutPlacement.BOTTOM_CENTER,
             ),
             UpgradeTourStep(
+                targetId = UpgradeTourTargetId.SYSTEM_STRIP,
+                shape = UpgradeSpotlightShape.ROUNDED_RECT,
+                badge = "Honorebi 1.2.0 • 注目新機能",
+                title = "ディープTV統合（HDMI / TIF入力）",
+                description = "Android TV の外部入力（HDMI・地上波チューナー等）を Honorebi 内に統合しました。右上バーからの入力切替、弱信号時の自動再接続、無信号時の演出、空入力の非表示まで細かく設定できます。",
+                placement = UpgradeCalloutPlacement.BELOW_RIGHT,
+                actionLabel = "ディープTV統合設定へ",
+                actionTarget = UpgradeTourAction.OPEN_DEEP_TV_SETTINGS,
+            ),
+            UpgradeTourStep(
                 targetId = UpgradeTourTargetId.SETTINGS_BUTTON,
                 shape = UpgradeSpotlightShape.CIRCLE,
                 badge = "Honorebi 1.2.0 • 設定 & プレイヤー",
                 title = "設定画面・弾幕エンジン・プレイヤーも進化",
                 description = "設定画面を新デザインへ刷新し、OpenGL ES 3.0 弾幕エンジン（Beta）、チャプター解析強化、プレイヤー下キー操作の高速化、libaribcaption のセキュリティ修正（CVE-2026-112284）を実装しました。",
                 placement = UpgradeCalloutPlacement.BOTTOM_LEFT_BESIDE_RAIL,
+                actionLabel = "弾幕エンジン設定へ",
+                actionTarget = UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS,
             ),
         )
         else -> emptyList()

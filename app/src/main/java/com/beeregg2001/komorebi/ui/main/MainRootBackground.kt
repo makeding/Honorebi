@@ -22,6 +22,7 @@ import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.home.HomeLauncherScreen
+import com.beeregg2001.komorebi.ui.home.UpgradeTourAction
 import com.beeregg2001.komorebi.ui.home.UpgradeTourStep
 import com.beeregg2001.komorebi.ui.reserve.ConditionEditDialog
 import com.beeregg2001.komorebi.ui.video.RecordListScreen
@@ -60,6 +61,7 @@ fun MainRootBackground(
     onTriggerScreensaver: () -> Unit = {},
     showUpgradeTour: Boolean = false,
     upgradeTourSteps: List<UpgradeTourStep> = emptyList(),
+    onUpgradeTourAction: (UpgradeTourAction) -> Unit = {},
     onDismissUpgradeTour: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -301,6 +303,7 @@ fun MainRootBackground(
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
                         showUpgradeTour = showUpgradeTour,
                         upgradeTourSteps = upgradeTourSteps,
+                        onUpgradeTourAction = onUpgradeTourAction,
                         onDismissUpgradeTour = onDismissUpgradeTour,
                     )
                 }
