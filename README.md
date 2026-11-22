@@ -75,7 +75,7 @@ Access を使うバックエンドは、端末が信頼する証明書を提示�
 ### 🏠 ホームタブ
 アプリ起動時に最初に表示される、Komorebiのポータル画面です。テレビの大画面に最適化されたリッチなUIで、今すぐ見たいコンテンツへ直感的にアクセスできます。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/73a372f0-40dc-45a1-bead-eed42006ac8c" />
+<img width="960" height="540" alt="ホームタブ" src="assets/screenshots/01_home.png" />
 
 * **ダイナミック・ヒーローダッシュボード**: リモコンのフォーカス移動に合わせて、バックグラウンドで高速にAPIと通信し、高画質な背景画像や番組のあらすじ、視聴プログレスバーがシームレスなアニメーションとともに切り替わります。
 * **AIコンシェルジュ機能 (Gemini連携)**: 上流に含まれる番組探し支援機能ですが、この fork では日常視聴時の軽さとプレイヤー安定性を優先するため無効化しています。
@@ -86,16 +86,13 @@ Access を使うバックエンドは、端末が信頼する証明書を提示�
 ### 📡 ライブタブ & ライブ視聴画面 (Live Player)
 現在放送中のテレビ番組を、直感的な操作で快適に探して視聴するための機能群です。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/3eb77f47-1847-4ac9-8a36-0000c88b0169" />
+<img width="960" height="540" alt="ライブタブ" src="assets/screenshots/02_live.png" />
 
 * **アプリ内PiP（ピクチャー・イン・ピクチャー）**: ライブ視聴中や録画再生中にリモコンの「戻るキー」を長押しすると小窓表示になり、番組を見ながら録画の検索や番組表の確認などのマルチタスクが可能です。
 * **L字クロップ機能**: ニュース番組等のL字画面（情報テロップ）に合わせて、映像だけをクロップして画面いっぱいに拡大表示できます。
 * **多様なバックエンド対応**: KonomiTV、Mirakurunに加え、EDCB（EMWUI経由のトランスコード再生・二画面同時視聴）にも完全対応しています。
 * **サブチャンネル表示切替**: 設定からサブチャンネルの表示・非表示を簡単に切り替え可能です。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/dce9c7be-019d-485f-91be-dae8223b7cce" />
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/94818de5-1f46-4134-84d8-947d66405dc4" />
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/9d65ef86-da41-4b62-bb5d-f052f71db976" />
 
 * **直感的なザッピングUI**: 視聴を止めずに「下キー」でチャンネルのミニリストを展開し、「左右キー」でシームレスにチャンネル切り替えが可能です。「上キー」からは主/副音声、字幕、ストリーミング画質の変更が行えるサブメニューへアクセスできます。
 * **実況コメントのリアルタイム同期**: KonomiTV等のAPIと連携し、専用エンジンでテレビ画面上にコメントを滑らかに描画します。
@@ -104,7 +101,7 @@ Access を使うバックエンドは、端末が信頼する証明書を提示�
 ### 🎬 ビデオタブ & 録画視聴画面 (Video Player)
 録画した膨大な番組ライブラリから見たい番組を素早く見つけて再生するためのポータル画面です。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/b339b4af-1d9c-41ed-8f39-95f76c8d9ecf" />
+<img width="960" height="540" alt="ビデオタブ" src="assets/screenshots/04_video.png" />
 
 * **自動CMチャプタースキップ**: TvtPlayのチャプターファイルやKonomiTVのメタデータに含まれる「CM区間」を自動判定し、本編のみを連続再生します。
 * **EDCB 直接アクセス & トランスコード視聴**: EDCB環境において、`api/xcode` を利用した柔軟な画質でのトランスコード再生や、シークが高速になる公開フォルダへの「直接アクセス」をサポートします。
@@ -138,21 +135,20 @@ NASや共有フォルダ上のメディアファイルを直接再生できる�
 ### 📅 番組表タブ
 テレビの大画面で一覧性が高く、サクサク動作する電子番組表（EPG）です。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/207c969a-5fbf-4cad-9cc2-74cbf2291a9a" />
+<img width="960" height="540" alt="番組表タブ" src="assets/screenshots/05_epg.png" />
 
 * **高速・なめらかな描画エンジン**: Canvasを用いた独自の描画エンジンを採用し、数日分・数十チャンネルの巨大なグリッドでもカクつくことなくシームレスにスクロール可能です。
 * **UIブラッシュアップ**: 左側の時間軸（時間バー）の背景色がテーマのベースカラーに馴染む合成色で描画され、ライトモードや時間連動テーマ適用時でもUIが美しく調和します。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/1e77cc0b-1715-4051-814b-facef6fdb9cf" />
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/01981537-a84c-4fd4-a785-e3273f3b3066" />
+
 
 ### ⏰ 録画予約タブ
 市販のハイエンドレコーダーを凌駕する高度な予約管理システムです。
 
 * EPGからのワンボタン予約に加え、除外キーワード、あいまい検索、重複回避（しない/同一/全チャンネル）、優先度設定、イベントリレー追従、録画後実行バッチの指定など、マニアックな条件をテレビ画面から直接設定できます。
 
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/c6c434e6-d692-4a65-9703-90b235b77304" />
-<img width="960" height="540" alt="Image" src="https://github.com/user-attachments/assets/abb75b5a-3a77-4938-8bce-73fdd9f7a14a" />
+<img width="960" height="540" alt="録画予約タブ" src="assets/screenshots/07_reserve.png" />
+
 
 ---
 
