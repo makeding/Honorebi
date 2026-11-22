@@ -45,6 +45,19 @@ class WatchProgressPolicyTest {
     }
 
     @Test
+    fun isCompleted_checksNinetyFivePercentThresholdAndValidInputs() {
+        assertFalse(WatchProgressPolicy.isCompleted(949.99, 1000.0))
+        assertTrue(WatchProgressPolicy.isCompleted(950.0, 1000.0))
+        assertTrue(WatchProgressPolicy.isCompleted(1000.0, 1000.0))
+        assertFalse(WatchProgressPolicy.isCompleted(950.0, null))
+        assertFalse(WatchProgressPolicy.isCompleted(950.0, 0.0))
+        assertFalse(WatchProgressPolicy.isCompleted(950.0, -10.0))
+        assertFalse(WatchProgressPolicy.isCompleted(950.0, Double.NaN))
+        assertFalse(WatchProgressPolicy.isCompleted(Double.NaN, 1000.0))
+        assertFalse(WatchProgressPolicy.isCompleted(Double.POSITIVE_INFINITY, 1000.0))
+    }
+
+    @Test
     fun resumePositionSeconds_returnsPositionWhenInProgressElseZero() {
         assertEquals(0.0, WatchProgressPolicy.resumePositionSeconds(null, 1800.0), 0.0)
         assertEquals(0.0, WatchProgressPolicy.resumePositionSeconds(5.0, 1800.0), 0.0)

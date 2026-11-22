@@ -58,6 +58,7 @@ fun MainRootPlaybackHost(
     onSaveLastChannel: (Channel) -> Unit,
     onPlaybackEnded: () -> Unit,
     suppressChrome: Boolean = false,
+    isInOsPip: Boolean = false,
     onLaunchSystemSettings: () -> Unit = {},
     onTriggerScreensaver: () -> Unit = {},
 ) {
@@ -97,7 +98,7 @@ fun MainRootPlaybackHost(
     }
 
     MiniPlayerTransformLayout(
-        isMiniPlayerMode = state.playbackState.isMiniPlayerMode,
+        isMiniPlayerMode = state.playbackState.isMiniPlayerMode && !isInOsPip,
         modifier = Modifier
             .fillMaxSize()
             .focusRequester(playbackFocusRequester)
@@ -217,7 +218,7 @@ fun MainRootPlaybackHost(
                         onShowControlsChange = { state.playbackState.showPlayerControls = it },
                         isSubMenuOpen = state.playbackState.isPlayerSubMenuOpen && !suppressChrome,
                         onSubMenuToggle = { state.playbackState.isPlayerSubMenuOpen = it },
-                        isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen,
+                        isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen && !suppressChrome,
                         onSceneSearchToggle = { state.playbackState.isPlayerSceneSearchOpen = it },
                         recentRecordings = data.recentRecordings,
                         animeChannels = animeChannels,
@@ -285,7 +286,7 @@ fun MainRootPlaybackHost(
                         onShowControlsChange = { state.playbackState.showPlayerControls = it },
                         isSubMenuOpen = state.playbackState.isPlayerSubMenuOpen && !suppressChrome,
                         onSubMenuToggle = { state.playbackState.isPlayerSubMenuOpen = it },
-                        isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen,
+                        isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen && !suppressChrome,
                         onSceneSearchToggle = { state.playbackState.isPlayerSceneSearchOpen = it },
                         onBackPressed = { state.playbackState.leavePlayback() },
                         onShowToast = { state.toastMessage = it },

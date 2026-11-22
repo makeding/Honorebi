@@ -123,4 +123,42 @@ class WatchNextOpsTest {
 
         assertTrue(ops.isEmpty())
     }
+
+    @Test
+    fun `preserveNextRows keeps stale NEXT rows while still deleting stale CONTINUE and NEW rows`() {
+        val existing = listOf(
+            ExistingWatchNextRow(1L, "rec:1", browsable = true, engagementMillis = 10_000L, kind = WatchNextKind.CONTINUE),
+            ExistingWatchNextRow(2L, "rec:2", browsable = true, engagementMillis = 9_000L, kind = WatchNextKind.NEW),
+            ExistingWatchNextRow(3L, "rec:3", browsable = true, engagementMillis = 8_000L, kind = WatchNextKind.NEXT),
+        )
+
+        val ops = WatchNextOps.planOps(
+            existing = existing,
+            desired = emptyList(),
+            preserveNewRows = false,
+            preserveNextRows = true,
+        )
+
+        assertEquals(listOf(WatchNextOp.Delete(1L), WatchNextOp.Delete(2L)), ops)
+    }
+
+    @Test
+    fun `dismissed NEXT row is skipped and never re-added as NEXT, but re-added when promoted to CONTINUE`() {
+        val existing = listOf(
+            ExistingWatchNextRow(10L, "rec:5", browsable = false, engagementMillis = 5_000L, kind = WatchNextKind.NEXT),
+            ExistingWatchNextRow(11L, "rec:6", browsable = false, engagementMillis = 5_000L, kind = WatchNextKind.NEXT),
+        )
+        val c5Next = candidate(5, WatchNextKind.NEXT, 9_000L)
+        val c6Continue = candidate(6, WatchNextKind.CONTINUE, 9_000L)
+
+        val ops = WatchNextOps.planOps(existing, listOf(c5Next, c6Continue), preserveNewRows = false)
+
+        assertEquals(
+            listOf(
+                WatchNextOp.Delete(11L),
+                WatchNextOp.Insert(c6Continue),
+            ),
+            ops,
+        )
+    }
 }

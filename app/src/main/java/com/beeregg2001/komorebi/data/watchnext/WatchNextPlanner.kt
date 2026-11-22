@@ -10,7 +10,13 @@ import java.util.Locale
 enum class WatchNextKind {
     CONTINUE,
     NEW,
+    NEXT,
 }
+
+data class WatchNextNextInput(
+    val sourceWatchedAtMillis: Long,
+    val program: RecordedProgram,
+)
 
 data class WatchNextHistoryInput(
     val id: Int,
@@ -37,6 +43,7 @@ data class WatchNextCandidate(
 object WatchNextPlanner {
     const val INTERNAL_ID_PREFIX = "rec:"
     const val MAX_CONTINUE_ITEMS = 6
+    const val MAX_NEXT_ITEMS = 3
     const val MAX_NEW_ITEMS = 4
     const val MAX_TOTAL_ITEMS = 10
     const val NEW_WINDOW_MILLIS = 14L * 24L * 60L * 60L * 1000L
@@ -53,6 +60,7 @@ object WatchNextPlanner {
         exclusionActive: Boolean,
         isExcluded: (RecordedProgram) -> Boolean,
         nowMillis: Long,
+        nextEpisodes: List<WatchNextNextInput> = emptyList(),
     ): List<WatchNextCandidate> {
         val sortedHistory = history
             .sortedWith(
@@ -101,46 +109,67 @@ object WatchNextPlanner {
         }
 
         val continueIds = continueCandidates.mapTo(HashSet()) { it.recordedProgramId }
-        val minContinueEngagement = continueCandidates.minOfOrNull { it.engagementMillis }
+        val maxNextAllowed = minOf(MAX_NEXT_ITEMS, MAX_TOTAL_ITEMS - continueCandidates.size).coerceAtLeast(0)
+        val nextCandidates = nextEpisodes
+            .sortedWith(
+                compareByDescending<WatchNextNextInput> { it.sourceWatchedAtMillis }
+                    .thenByDescending { it.program.id }
+            )
+            .filter { input ->
+                val program = input.program
+                isEligibleUnwatchedCandidate(
+                    program = program,
+                    occupiedIds = continueIds,
+                    historyById = historyById,
+                    exclusionActive = exclusionActive,
+                    isExcluded = isExcluded,
+                )
+            }
+            .distinctBy { it.program.id }
+            .take(maxNextAllowed)
+            .mapIndexed { index, input ->
+                val program = input.program
+                val durationMillis = WatchProgressPolicy.effectiveDurationSeconds(program)
+                    ?.let { (it * 1000.0).toLong() }
+                    ?.takeIf { it > 0L }
+                WatchNextCandidate(
+                    recordedProgramId = program.id,
+                    kind = WatchNextKind.NEXT,
+                    title = program.title,
+                    description = buildDescription(program),
+                    durationMillis = durationMillis,
+                    positionMillis = null,
+                    engagementMillis = input.sourceWatchedAtMillis.coerceAtMost(nowMillis) - index,
+                    thumbnailUrls = extractThumbnailUrls(program),
+                )
+            }
+
+        val occupiedIds = HashSet<Int>(continueIds.size + nextCandidates.size).apply {
+            addAll(continueIds)
+            nextCandidates.mapTo(this) { it.recordedProgramId }
+        }
+        val minPriorEngagement = (continueCandidates + nextCandidates).minOfOrNull { it.engagementMillis }
         val cutoffMillis = nowMillis - NEW_WINDOW_MILLIS
-        val maxNewAllowed = minOf(MAX_NEW_ITEMS, MAX_TOTAL_ITEMS - continueCandidates.size).coerceAtLeast(0)
+        val maxNewAllowed = minOf(
+            MAX_NEW_ITEMS,
+            MAX_TOTAL_ITEMS - continueCandidates.size - nextCandidates.size,
+        ).coerceAtLeast(0)
 
         val eligibleNew = recordings
             .mapNotNull { program ->
-                if (program.id <= 0 || program.id in continueIds) return@mapNotNull null
-                if (program.isRecording || program.recordedVideo.status.equals("Recording", ignoreCase = true)) {
-                    return@mapNotNull null
-                }
-                if (exclusionActive && program.channel == null) return@mapNotNull null
-                if (isExcluded(program)) return@mapNotNull null
-
-                val programDuration = WatchProgressPolicy.effectiveDurationSeconds(program)
-                val programCompleted = programDuration != null &&
-                    program.playbackPosition >= programDuration * WatchProgressPolicy.COMPLETION_RATIO
-                if (!program.playbackPosition.isFinite() ||
-                    program.playbackPosition > WatchProgressPolicy.MIN_PROGRESS_SECONDS ||
-                    programCompleted
+                if (!isEligibleUnwatchedCandidate(
+                        program = program,
+                        occupiedIds = occupiedIds,
+                        historyById = historyById,
+                        exclusionActive = exclusionActive,
+                        isExcluded = isExcluded,
+                    )
                 ) {
                     return@mapNotNull null
                 }
 
-                val historyEntry = historyById[program.id]
-                if (historyEntry != null) {
-                    val historyDuration = historyEntry.durationSeconds.takeIf { it.isFinite() && it > 0.0 }
-                        ?: programDuration
-                    val historyCompleted = historyDuration != null &&
-                        historyEntry.positionSeconds >= historyDuration * WatchProgressPolicy.COMPLETION_RATIO
-                    if (!historyEntry.positionSeconds.isFinite() ||
-                        historyEntry.positionSeconds > WatchProgressPolicy.MIN_PROGRESS_SECONDS ||
-                        historyCompleted
-                    ) {
-                        return@mapNotNull null
-                    }
-                }
-
                 val endMillis = parseTimestampMillis(program.endTime) ?: return@mapNotNull null
                 if (endMillis < cutoffMillis) return@mapNotNull null
-                if (program.title.isBlank()) return@mapNotNull null
 
                 program to endMillis
             }
@@ -153,8 +182,8 @@ object WatchNextPlanner {
 
         val newCandidates = eligibleNew.mapIndexed { index, (program, endMillis) ->
             val clampedEnd = endMillis.coerceAtMost(nowMillis)
-            val baseEngagement = if (minContinueEngagement != null) {
-                minOf(clampedEnd, minContinueEngagement - CONTINUE_NEW_GAP_MILLIS)
+            val baseEngagement = if (minPriorEngagement != null) {
+                minOf(clampedEnd, minPriorEngagement - CONTINUE_NEW_GAP_MILLIS)
             } else {
                 clampedEnd
             }
@@ -174,7 +203,46 @@ object WatchNextPlanner {
             )
         }
 
-        return (continueCandidates + newCandidates).take(MAX_TOTAL_ITEMS)
+        return (continueCandidates + nextCandidates + newCandidates).take(MAX_TOTAL_ITEMS)
+    }
+
+    private fun isEligibleUnwatchedCandidate(
+        program: RecordedProgram,
+        occupiedIds: Set<Int>,
+        historyById: Map<Int, WatchNextHistoryInput>,
+        exclusionActive: Boolean,
+        isExcluded: (RecordedProgram) -> Boolean,
+    ): Boolean {
+        if (program.id <= 0 || program.id in occupiedIds) return false
+        if (program.isRecording || program.recordedVideo.status.equals("Recording", ignoreCase = true)) {
+            return false
+        }
+        if (exclusionActive && program.channel == null) return false
+        if (isExcluded(program)) return false
+        if (program.title.isBlank()) return false
+
+        val programDuration = WatchProgressPolicy.effectiveDurationSeconds(program)
+        val programCompleted = WatchProgressPolicy.isCompleted(program.playbackPosition, programDuration)
+        if (!program.playbackPosition.isFinite() ||
+            program.playbackPosition > WatchProgressPolicy.MIN_PROGRESS_SECONDS ||
+            programCompleted
+        ) {
+            return false
+        }
+
+        val historyEntry = historyById[program.id]
+        if (historyEntry != null) {
+            val historyDuration = historyEntry.durationSeconds.takeIf { it.isFinite() && it > 0.0 }
+                ?: programDuration
+            val historyCompleted = WatchProgressPolicy.isCompleted(historyEntry.positionSeconds, historyDuration)
+            if (!historyEntry.positionSeconds.isFinite() ||
+                historyEntry.positionSeconds > WatchProgressPolicy.MIN_PROGRESS_SECONDS ||
+                historyCompleted
+            ) {
+                return false
+            }
+        }
+        return true
     }
 
     internal fun parseTimestampMillis(raw: String?): Long? {

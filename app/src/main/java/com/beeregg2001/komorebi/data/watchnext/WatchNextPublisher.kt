@@ -68,6 +68,7 @@ class WatchNextPublisher @Inject constructor(
                             when (cursor.getInt(typeIdx)) {
                                 TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE -> WatchNextKind.CONTINUE
                                 TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEW -> WatchNextKind.NEW
+                                TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT -> WatchNextKind.NEXT
                                 else -> null
                             }
                         }
@@ -155,6 +156,7 @@ class WatchNextPublisher @Inject constructor(
                 when (candidate.kind) {
                     WatchNextKind.CONTINUE -> TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE
                     WatchNextKind.NEW -> TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEW
+                    WatchNextKind.NEXT -> TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT
                 },
             )
             put(TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS, candidate.engagementMillis)

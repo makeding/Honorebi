@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
@@ -67,6 +68,10 @@ fun MainRootScreen(
     launchedFromDeepLink: Boolean = false,
     deepLinkRequests: Flow<PlaybackOpenRequest> = emptyFlow(),
     onRemotePlaybackOpened: () -> Unit = {},
+    isInOsPip: Boolean = false,
+    osPipDismissVersion: Int = 0,
+    onOsPipEligibilityChanged: (Boolean) -> Unit = {},
+    onInternalActivityLaunch: () -> Unit = {},
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
@@ -290,6 +295,7 @@ fun MainRootScreen(
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
     val geminiApiKey by settingsViewModel.geminiApiKey.collectAsState(initial = "")
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState(initial = false)
+    val deepTv by settingsViewModel.deepTvFeatureSettings.collectAsState()
 
     val closeAiConcierge = { restoreFocus: Boolean ->
         state.isAiConciergeOpen = false
@@ -580,6 +586,28 @@ fun MainRootScreen(
         wakeState = appWakeState,
         playerTimeoutMinutes = playerTimeout,
     )
+    val isOsPipEligible = deepTv.osPipAutoEnterEnabled &&
+        state.playbackState.isPlaybackActive &&
+        (state.playbackState.renderPlaybackTarget is PlaybackTarget.Live ||
+            state.playbackState.renderPlaybackTarget is PlaybackTarget.Recorded) &&
+        !state.isSettingsOpen &&
+        !screensaverState.isVisible
+    LaunchedEffect(isOsPipEligible) {
+        onOsPipEligibilityChanged(isOsPipEligible)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onOsPipEligibilityChanged(false) }
+    }
+    LaunchedEffect(osPipDismissVersion) {
+        if (osPipDismissVersion > 0) {
+            state.playbackState.leavePlayback(returningFromPlayer = false)
+        }
+    }
+    LaunchedEffect(isInOsPip, state.toastMessage) {
+        if (isInOsPip && state.toastMessage != null) {
+            state.toastMessage = null
+        }
+    }
     val defaultSystemChannel = remember(groupedChannels) {
         val channels = groupedChannels.values.flatten()
         channels.firstOrNull { it.type == "GR" } ?: channels.firstOrNull()
@@ -682,13 +710,7 @@ fun MainRootScreen(
         state.settingsOpenDeviceCapabilities = false
     }
 
-    val returnToLauncherHome = { startupTab: String ->
-        if (state.isSettingsOpen) {
-            closeSettingsAndRefresh()
-        }
-
-        state.resetForLauncherHome(startupTab, hideAppsTab)
-        if (tabs.getOrNull(state.currentTabIndex) == "番組表") epgViewModel.ensureInitialDataLoaded()
+    val clearRootOverlays = {
         state.epgSelectedProgram = null
         state.selectedReserve = null
         state.editingReserveItem = null
@@ -706,6 +728,23 @@ fun MainRootScreen(
         state.showDeleteConfirmDialog = false
         state.isAiConciergeOpen = false
         state.showAiKeyboardInput = false
+    }
+
+    val dismissRootOverlays = {
+        if (state.isSettingsOpen) {
+            closeSettingsAndRefresh()
+        }
+        clearRootOverlays()
+    }
+
+    val returnToLauncherHome = { startupTab: String ->
+        if (state.isSettingsOpen) {
+            closeSettingsAndRefresh()
+        }
+
+        state.resetForLauncherHome(startupTab, hideAppsTab)
+        if (tabs.getOrNull(state.currentTabIndex) == "番組表") epgViewModel.ensureInitialDataLoaded()
+        clearRootOverlays()
     }
 
     LaunchedEffect(homeIntentVersion) {
@@ -901,6 +940,161 @@ fun MainRootScreen(
 
     KomorebiTheme(theme = currentTheme) {
         var showExitDialog by remember { mutableStateOf(false) }
+        var channelNumberBuffer by remember { mutableStateOf("") }
+        var channelNumberInputTick by remember { mutableIntStateOf(0) }
+        var channelNumberNotFound by remember { mutableStateOf<String?>(null) }
+        var channelNumberNotFoundTick by remember { mutableIntStateOf(0) }
+        var consumedShortcutKeyCode by remember { mutableStateOf<Int?>(null) }
+        var consumedOsdActionKeyCode by remember { mutableStateOf<Int?>(null) }
+
+        val tunableChannels = remember(groupedChannels, nhkExclusionState) {
+            groupedChannels.values.flatten().filterNot(nhkExclusionRepository::isExcluded)
+        }
+        val liveChannel = state.playbackState.livePlayback?.channel
+        val currentLiveType = liveChannel?.type
+        val matchedChannelPreview = remember(channelNumberBuffer, tunableChannels, currentLiveType) {
+            if (channelNumberBuffer.isEmpty()) null
+            else ChannelNumberResolver.resolve(channelNumberBuffer, tunableChannels, currentLiveType)
+        }
+        val isLiveFullscreen = liveChannel != null && !state.playbackState.isMiniPlayerMode
+        val isVideoFullscreen =
+            (state.playbackState.recordedPlayback != null || state.playbackState.smbPlayback != null) &&
+                !state.playbackState.isMiniPlayerMode
+        val isTifPassthrough = liveChannel != null &&
+            liveChannel.id.startsWith("tif:") &&
+            (state.backendType != "TIF" || liveChannel.id.startsWith("tif:input:"))
+        val hasRootOverlay = !startupRenderPlan.showMainContent ||
+            state.showConnectionErrorDialog ||
+            state.isRecordListOpen ||
+            state.isSeriesListOpen ||
+            state.isSmbLibraryOpen ||
+            state.isOnAirOpen ||
+            state.isEpgJumpMenuOpen ||
+            state.showDeleteConfirmDialog ||
+            state.epgSelectedProgram != null ||
+            state.selectedReserve != null ||
+            state.editingReserveItem != null ||
+            state.editingNewProgram != null ||
+            state.reserveToDelete != null ||
+            state.selectedProgramForAutoReserve != null ||
+            state.editingCondition != null ||
+            state.selectedConditionReserveItem != null ||
+            showExitDialog ||
+            screensaverState.isVisible
+        val remoteKeyContext = RemoteKeyContext(
+            isInOsPip = isInOsPip,
+            isSettingsOpen = state.isSettingsOpen,
+            isAiOverlayOpen = state.isAiConciergeOpen || state.showAiKeyboardInput,
+            hasRootOverlay = hasRootOverlay,
+            isLivePlaybackFullscreen = isLiveFullscreen,
+            isTifPassthrough = isTifPassthrough,
+            isRecordedPlaybackFullscreen = isVideoFullscreen,
+        )
+
+        val commitChannelNumber = {
+            val input = channelNumberBuffer
+            channelNumberBuffer = ""
+            if (input.isNotEmpty()) {
+                val resolved = ChannelNumberResolver.resolve(input, tunableChannels, currentLiveType)
+                if (resolved != null) {
+                    channelNumberNotFound = null
+                    state.playbackState.dismissPlayerOverlaysForRemoteControl()
+                    state.playbackState.enterLive(
+                        channel = resolved,
+                        exitMiniPlayer = state.playbackState.livePlayback == null,
+                    )
+                    homeViewModel.saveLastChannel(resolved)
+                } else {
+                    channelNumberNotFound = input
+                    channelNumberNotFoundTick++
+                }
+            }
+        }
+
+        val handleRemoteShortcut = { shortcut: RemoteShortcut ->
+            when (shortcut) {
+                RemoteShortcut.GUIDE -> {
+                    dismissRootOverlays()
+                    val tabIndex = tabs.indexOf("番組表")
+                    if (tabIndex != -1) {
+                        if (state.playbackState.isPlaybackActive) {
+                            state.playbackState.enterMiniPlayer()
+                        }
+                        state.currentTabIndex = tabIndex
+                        epgViewModel.ensureInitialDataLoaded()
+                    } else {
+                        state.toastMessage =
+                            "番組表を開けません：現在の接続先は番組表に対応していません。接続設定でメインシステムを確認してください。"
+                    }
+                }
+                RemoteShortcut.DVR -> {
+                    dismissRootOverlays()
+                    val tabIndex = tabs.indexOf("ビデオ")
+                    if (tabIndex != -1) {
+                        if (state.playbackState.isPlaybackActive) {
+                            state.playbackState.enterMiniPlayer()
+                        }
+                        state.currentTabIndex = tabIndex
+                        state.isRecordListOpen = true
+                    } else {
+                        state.toastMessage =
+                            "録画リストを開けません：現在の接続先は録画リストに対応していません。接続設定でメインシステムを確認してください。"
+                    }
+                }
+                RemoteShortcut.TV -> {
+                    if (state.playbackState.livePlayback != null &&
+                        !state.playbackState.isMiniPlayerMode &&
+                        !hasRootOverlay &&
+                        !state.isSettingsOpen
+                    ) {
+                        state.playbackState.playerShowOverlay = true
+                    } else if (state.playbackState.livePlayback != null) {
+                        dismissRootOverlays()
+                        state.playbackState.exitMiniPlayer()
+                    } else {
+                        dismissRootOverlays()
+                        val lastCandidate = lastChannels.firstOrNull { ch ->
+                            !nhkExclusionRepository.isExcluded(ch) &&
+                                (tifActive || !ch.id.startsWith("tif:"))
+                        }?.let { last ->
+                            tunableChannels.firstOrNull {
+                                it.id == last.id || it.displayChannelId == last.displayChannelId
+                            } ?: last
+                        }
+                        val targetChannel = lastCandidate
+                            ?: defaultSystemChannel?.takeIf { !nhkExclusionRepository.isExcluded(it) }
+                        if (targetChannel != null) {
+                            state.playbackState.dismissPlayerOverlaysForRemoteControl()
+                            state.playbackState.enterLive(targetChannel)
+                            homeViewModel.saveLastChannel(targetChannel)
+                        } else {
+                            val liveIndex = tabs.indexOf("ライブ")
+                            if (liveIndex != -1) state.currentTabIndex = liveIndex
+                        }
+                    }
+                }
+            }
+        }
+
+        LaunchedEffect(channelNumberBuffer, channelNumberInputTick) {
+            if (channelNumberBuffer.isEmpty()) return@LaunchedEffect
+            delay(RemoteKeyShortcuts.commitDelayMs(channelNumberBuffer))
+            commitChannelNumber()
+        }
+        LaunchedEffect(channelNumberNotFound, channelNumberNotFoundTick) {
+            if (channelNumberNotFound == null) return@LaunchedEffect
+            delay(RemoteKeyShortcuts.NOT_FOUND_DISPLAY_MS)
+            channelNumberNotFound = null
+        }
+        LaunchedEffect(isInOsPip) {
+            if (isInOsPip) {
+                channelNumberBuffer = ""
+                channelNumberNotFound = null
+                consumedShortcutKeyCode = null
+                consumedOsdActionKeyCode = null
+            }
+        }
+
         RootSystemMediaSessionHost(
             playbackSessionEpoch = state.playbackState.playbackSessionEpoch,
             remoteContentType = when {
@@ -919,6 +1113,34 @@ fun MainRootScreen(
                 .fillMaxSize()
                 // ★ 修正: onPreviewKeyEvent（トップダウン）に戻し、グローバルショートカットの確実性を復活
                 .onPreviewKeyEvent { event ->
+                    val nativeKeyCode = event.nativeKeyEvent.keyCode
+                    if (event.type == KeyEventType.KeyUp && consumedOsdActionKeyCode == nativeKeyCode) {
+                        consumedOsdActionKeyCode = null
+                        return@onPreviewKeyEvent true
+                    }
+                    if (channelNumberBuffer.isNotEmpty()) {
+                        val isBackKey = nativeKeyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                            nativeKeyCode == android.view.KeyEvent.KEYCODE_ESCAPE
+                        val isConfirmKey = nativeKeyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                            nativeKeyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                            nativeKeyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                        if (isBackKey) {
+                            if (event.type == KeyEventType.KeyDown) {
+                                channelNumberBuffer = ""
+                                channelNumberNotFound = null
+                                consumedOsdActionKeyCode = nativeKeyCode
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                        if (isConfirmKey) {
+                            if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+                                consumedOsdActionKeyCode = nativeKeyCode
+                                commitChannelNumber()
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+
                     val isCenterKey =
                         event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
 
@@ -949,6 +1171,44 @@ fun MainRootScreen(
                     }
                     false
                 }
+                .onKeyEvent { event ->
+                    val nativeKeyCode = event.nativeKeyEvent.keyCode
+                    if (event.type == KeyEventType.KeyUp && consumedShortcutKeyCode == nativeKeyCode) {
+                        consumedShortcutKeyCode = null
+                        return@onKeyEvent true
+                    }
+                    val shortcut = RemoteKeyShortcuts.shortcutFor(nativeKeyCode)
+                    if (shortcut != null &&
+                        deepTv.remoteShortcutKeysEnabled &&
+                        RemoteKeyShortcuts.shortcutsAllowed(remoteKeyContext)
+                    ) {
+                        if (event.type == KeyEventType.KeyDown) {
+                            if (event.nativeKeyEvent.repeatCount == 0) {
+                                consumedShortcutKeyCode = nativeKeyCode
+                                channelNumberBuffer = ""
+                                channelNumberNotFound = null
+                                handleRemoteShortcut(shortcut)
+                            }
+                            return@onKeyEvent true
+                        }
+                    }
+                    val digit = RemoteKeyShortcuts.digitFor(nativeKeyCode)
+                    if (digit != null &&
+                        deepTv.remoteNumberTuningEnabled &&
+                        RemoteKeyShortcuts.numberTuningAllowed(remoteKeyContext)
+                    ) {
+                        if (event.type == KeyEventType.KeyDown) {
+                            if (event.nativeKeyEvent.repeatCount == 0) {
+                                consumedShortcutKeyCode = nativeKeyCode
+                                channelNumberNotFound = null
+                                channelNumberBuffer = RemoteKeyShortcuts.append(channelNumberBuffer, digit)
+                                channelNumberInputTick++
+                            }
+                            return@onKeyEvent true
+                        }
+                    }
+                    false
+                }
                 .background(colors.background)
                 .background(backgroundBrush)
         ) {
@@ -973,6 +1233,7 @@ fun MainRootScreen(
                             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         try {
+                            onInternalActivityLaunch()
                             context.startActivity(intent)
                         } catch (_: Exception) {
                             if (screensaverImages.isNotEmpty() || pausedPlayback != null) {
@@ -1042,7 +1303,8 @@ fun MainRootScreen(
                     if (state.playbackState.isPlaybackActive) {
                         MainRootPlaybackHost(
                             state = state,
-                            suppressChrome = screensaverState.isVisible && usePlayerSaver,
+                            suppressChrome = (screensaverState.isVisible && usePlayerSaver) || isInOsPip,
+                            isInOsPip = isInOsPip,
                             data = MainRootPlaybackHostData(
                                 groupedChannels = groupedChannels,
                                 watchHistory = watchHistory,
@@ -1057,7 +1319,10 @@ fun MainRootScreen(
                                 recordViewModel.fetchRecentRecordings(forceRefresh = true)
                                 channelViewModel.fetchChannels()
                             },
-                            onLaunchSystemSettings = homeViewModel::launchSystemSettings,
+                            onLaunchSystemSettings = {
+                                onInternalActivityLaunch()
+                                homeViewModel.launchSystemSettings()
+                            },
                             onTriggerScreensaver = triggerScreensaver,
                         )
                     }
@@ -1149,7 +1414,19 @@ fun MainRootScreen(
             if (showExitDialog) {
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
             }
-            if (appWakeState.isAwake && screensaverState.isVisible && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
+            ChannelNumberOsd(
+                state = ChannelNumberOsdState(
+                    inputBuffer = channelNumberBuffer,
+                    matchedChannelName = matchedChannelPreview?.name,
+                    notFoundInput = channelNumberNotFound,
+                ),
+                isInOsPip = isInOsPip,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 28.dp, end = 36.dp)
+                    .zIndex(5f),
+            )
+            if (!isInOsPip && appWakeState.isAwake && screensaverState.isVisible && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
                 val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
                     enabled = screensaverShowUpcoming && !usePlayerSaver,
                     visible = true,

@@ -27,6 +27,7 @@ object WatchNextOps {
         existing: List<ExistingWatchNextRow>,
         desired: List<WatchNextCandidate>,
         preserveNewRows: Boolean,
+        preserveNextRows: Boolean = false,
     ): List<WatchNextOp> {
         val ops = mutableListOf<WatchNextOp>()
         val managedExisting = existing.filter {
@@ -47,7 +48,9 @@ object WatchNextOps {
 
         for ((internalId, row) in canonicalById) {
             if (internalId !in desiredById) {
-                if (preserveNewRows && row.kind == WatchNextKind.NEW) {
+                if ((preserveNewRows && row.kind == WatchNextKind.NEW) ||
+                    (preserveNextRows && row.kind == WatchNextKind.NEXT)
+                ) {
                     continue
                 }
                 ops += WatchNextOp.Delete(row.rowId)

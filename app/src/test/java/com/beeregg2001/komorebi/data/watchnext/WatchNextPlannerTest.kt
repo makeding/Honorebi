@@ -332,4 +332,113 @@ class WatchNextPlannerTest {
         assertEquals(listOf("https://example.test/api/videos/50/thumbnail"), result.first().thumbnailUrls)
         assertEquals("テレビ東京 · 6/15(月) 21:30", result.first().description)
     }
+
+    @Test
+    fun `NEXT items are emitted with clamped engagement, null position, and never duplicate CONTINUE or NEW`() {
+        val continueProgram = sampleProgram(
+            id = 10,
+            title = "Watching Show",
+            endTime = Instant.ofEpochMilli(nowMillis - 1_000L).toString(),
+        )
+        val nextProgram = sampleProgram(
+            id = 20,
+            title = "Series Next Ep",
+            // Older than 14 days — NEXT is not restricted by NEW_WINDOW_MILLIS
+            endTime = Instant.ofEpochMilli(nowMillis - WatchNextPlanner.NEW_WINDOW_MILLIS - 86_400_000L).toString(),
+        )
+        val recentNextProgram = sampleProgram(
+            id = 21,
+            title = "Recent Series Next Ep",
+            endTime = Instant.ofEpochMilli(nowMillis - 2_000L).toString(),
+        )
+        val freshNewProgram = sampleProgram(
+            id = 30,
+            title = "Fresh New Recording",
+            endTime = Instant.ofEpochMilli(nowMillis - 3_000L).toString(),
+        )
+
+        val history = listOf(
+            WatchNextHistoryInput(10, "Watching Show", 1800.0, 400.0, nowMillis - 5_000L),
+        )
+        val nextInputs = listOf(
+            // Duplicate of CONTINUE -> must be skipped
+            WatchNextNextInput(sourceWatchedAtMillis = nowMillis + 60_000L, program = continueProgram),
+            WatchNextNextInput(sourceWatchedAtMillis = nowMillis + 30_000L, program = nextProgram),
+            WatchNextNextInput(sourceWatchedAtMillis = nowMillis - 10_000L, program = recentNextProgram),
+            // Duplicate of existing NEXT -> deduplicated
+            WatchNextNextInput(sourceWatchedAtMillis = nowMillis - 20_000L, program = nextProgram),
+        )
+
+        val result = WatchNextPlanner.plan(
+            history = history,
+            recordings = listOf(continueProgram, recentNextProgram, freshNewProgram),
+            lookup = mapOf(10 to continueProgram),
+            exclusionActive = false,
+            isExcluded = { false },
+            nowMillis = nowMillis,
+            nextEpisodes = nextInputs,
+        )
+
+        val continueItems = result.filter { it.kind == WatchNextKind.CONTINUE }
+        val nextItems = result.filter { it.kind == WatchNextKind.NEXT }
+        val newItems = result.filter { it.kind == WatchNextKind.NEW }
+
+        assertEquals(listOf(10), continueItems.map { it.recordedProgramId })
+        assertEquals(listOf(20, 21), nextItems.map { it.recordedProgramId })
+        assertEquals(listOf(30), newItems.map { it.recordedProgramId })
+
+        assertTrue(nextItems.all { it.positionMillis == null })
+        assertTrue(nextItems.all { it.durationMillis == 1_800_000L })
+        assertEquals(nowMillis, nextItems[0].engagementMillis)
+        assertEquals(nowMillis - 10_000L - 1L, nextItems[1].engagementMillis)
+
+        // NEW engagement stays strictly below min of CONTINUE + NEXT
+        val minPriorEngagement = (continueItems + nextItems).minOf { it.engagementMillis }
+        assertTrue(newItems.all { it.engagementMillis < minPriorEngagement })
+        assertEquals(result.size, result.map { it.recordedProgramId }.distinct().size)
+    }
+
+    @Test
+    fun `caps CONTINUE at 6, NEXT at 3, and remaining NEW so total never exceeds 10`() {
+        val continueHistory = (1..7).map { id ->
+            WatchNextHistoryInput(
+                id = id,
+                title = "Continue $id",
+                durationSeconds = 1800.0,
+                positionSeconds = 300.0,
+                watchedAtMillis = nowMillis - id * 60_000L,
+            )
+        }
+        val nextInputs = (20..24).map { id ->
+            WatchNextNextInput(
+                sourceWatchedAtMillis = nowMillis - (id - 19) * 30_000L,
+                program = sampleProgram(
+                    id = id,
+                    endTime = Instant.ofEpochMilli(nowMillis - (id - 19) * 1_000L).toString(),
+                ),
+            )
+        }
+        val newRecordings = (40..45).map { id ->
+            sampleProgram(
+                id = id,
+                endTime = Instant.ofEpochMilli(nowMillis - (id - 40) * 1_000L).toString(),
+            )
+        }
+
+        val result = WatchNextPlanner.plan(
+            history = continueHistory,
+            recordings = newRecordings,
+            lookup = newRecordings.associateBy { it.id },
+            exclusionActive = false,
+            isExcluded = { false },
+            nowMillis = nowMillis,
+            nextEpisodes = nextInputs,
+        )
+
+        assertEquals(WatchNextPlanner.MAX_TOTAL_ITEMS, result.size)
+        assertEquals(6, result.count { it.kind == WatchNextKind.CONTINUE })
+        assertEquals(3, result.count { it.kind == WatchNextKind.NEXT })
+        assertEquals(1, result.count { it.kind == WatchNextKind.NEW })
+        assertEquals(listOf(20, 21, 22), result.filter { it.kind == WatchNextKind.NEXT }.map { it.recordedProgramId })
+    }
 }

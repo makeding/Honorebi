@@ -9,6 +9,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import okhttp3.OkHttpClient
+import com.beeregg2001.komorebi.data.previewchannels.PreviewChannelSyncCoordinator
 import com.beeregg2001.komorebi.data.watchnext.WatchNextSyncCoordinator
 import com.beeregg2001.komorebi.data.worker.RecordSyncWorker
 import dagger.hilt.android.HiltAndroidApp
@@ -35,6 +36,9 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
 
     @Inject
     lateinit var watchNextSync: dagger.Lazy<WatchNextSyncCoordinator>
+
+    @Inject
+    lateinit var previewChannelSync: dagger.Lazy<PreviewChannelSyncCoordinator>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -98,6 +102,7 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
             runCatching { RecordSyncWorker.schedule(this@MainApplication) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 runCatching { watchNextSync.get().start(appScope) }
+                runCatching { previewChannelSync.get().start(appScope) }
             }
         }
     }

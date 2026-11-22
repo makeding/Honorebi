@@ -16,6 +16,11 @@ import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 
+enum class PreviewArtworkKind(val segment: String) {
+    RECORDING("rec"),
+    LIVE("live"),
+}
+
 @Singleton
 class WatchNextArtworkCache @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -23,19 +28,48 @@ class WatchNextArtworkCache @Inject constructor(
 ) {
     suspend fun ensure(id: Int, urls: List<String>): Boolean = withContext(Dispatchers.IO) {
         if (id <= 0) return@withContext false
+        val dir = directory(context)
         val target = file(context, id)
+        val tmp = File(dir, "$id.tmp")
+        download(dir = dir, target = target, tmp = tmp, urls = urls, logLabel = "WatchNext artwork id=$id")
+    }
+
+    suspend fun ensurePreview(
+        kind: PreviewArtworkKind,
+        key: String,
+        urls: List<String>,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!PREVIEW_KEY_REGEX.matches(key)) return@withContext false
+        val dir = previewDirectory(context, kind)
+        val target = previewFile(context, kind, key)
+        val tmp = File(dir, "$key.tmp")
+        download(
+            dir = dir,
+            target = target,
+            tmp = tmp,
+            urls = urls,
+            logLabel = "Preview artwork kind=${kind.segment} key=$key",
+        )
+    }
+
+    private fun download(
+        dir: File,
+        target: File,
+        tmp: File,
+        urls: List<String>,
+        logLabel: String,
+    ): Boolean {
         val now = System.currentTimeMillis()
         if (target.isFile && target.length() > 0L) {
             val ageMillis = now - target.lastModified()
             if (ageMillis in 0L until CACHE_TTL_MILLIS) {
-                return@withContext true
+                return true
             }
         }
         if (urls.isEmpty()) {
-            return@withContext target.isFile && target.length() > 0L
+            return target.isFile && target.length() > 0L
         }
 
-        val dir = directory(context)
         if (!dir.exists()) {
             dir.mkdirs()
         }
@@ -50,7 +84,6 @@ class WatchNextArtworkCache @Inject constructor(
                 Request.Builder().url(url).get().build()
             }.getOrNull() ?: continue
 
-            val tmp = File(dir, "$id.tmp")
             try {
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@use
@@ -93,7 +126,7 @@ class WatchNextArtworkCache @Inject constructor(
                     val renamed = tmp.renameTo(target) || (target.delete() && tmp.renameTo(target))
                     if (renamed) {
                         target.setLastModified(System.currentTimeMillis())
-                        return@withContext true
+                        return true
                     } else {
                         tmp.delete()
                     }
@@ -103,11 +136,11 @@ class WatchNextArtworkCache @Inject constructor(
                 throw e
             } catch (t: Throwable) {
                 tmp.delete()
-                Log.w(TAG, "Failed to fetch WatchNext artwork id=$id: ${t.message}")
+                Log.w(TAG, "Failed to fetch $logLabel: ${t.message}")
             }
         }
 
-        target.isFile && target.length() > 0L
+        return target.isFile && target.length() > 0L
     }
 
     fun prune(keep: Set<Int>) {
@@ -126,9 +159,27 @@ class WatchNextArtworkCache @Inject constructor(
         }
     }
 
+    fun prunePreview(kind: PreviewArtworkKind, keep: Set<String>) {
+        val dir = previewDirectory(context, kind)
+        val files = dir.listFiles() ?: return
+        for (entry in files) {
+            val name = entry.name
+            val keptKey = if (name.endsWith(IMAGE_EXTENSION)) {
+                name.removeSuffix(IMAGE_EXTENSION)
+            } else {
+                null
+            }
+            if (keptKey == null || keptKey !in keep) {
+                entry.delete()
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "WatchNext"
         internal const val ART_DIR_NAME = "watch_next_art"
+        internal const val PREVIEW_ART_DIR_NAME = "preview_channel_art"
+        internal val PREVIEW_KEY_REGEX = Regex("[0-9a-z]{1,40}")
         private const val IMAGE_EXTENSION = ".img"
         private const val CACHE_TTL_MILLIS = 7L * 24L * 60L * 60L * 1000L
         private const val FETCH_TIMEOUT_SECONDS = 10L
@@ -140,5 +191,14 @@ class WatchNextArtworkCache @Inject constructor(
 
         fun posterUri(context: Context, id: Int): Uri =
             Uri.parse("content://${context.packageName}.watchnext.art/rec/$id")
+
+        internal fun previewDirectory(context: Context, kind: PreviewArtworkKind): File =
+            File(File(context.filesDir, PREVIEW_ART_DIR_NAME), kind.segment)
+
+        fun previewFile(context: Context, kind: PreviewArtworkKind, key: String): File =
+            File(previewDirectory(context, kind), "$key$IMAGE_EXTENSION")
+
+        fun previewPosterUri(context: Context, kind: PreviewArtworkKind, key: String): Uri =
+            Uri.parse("content://${context.packageName}.watchnext.art/preview/${kind.segment}/$key")
     }
 }

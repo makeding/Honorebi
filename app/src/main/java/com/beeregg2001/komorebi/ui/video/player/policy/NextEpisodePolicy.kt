@@ -77,7 +77,7 @@ fun selectPreferredEpisodeRecording(
     ),
 )
 
-private fun parsePrimaryEpisodeNumber(value: String?): Double? =
+internal fun parsePrimaryEpisodeNumber(value: String?): Double? =
     value
         ?.substringBefore('・')
         ?.substringBefore('-')

@@ -64,6 +64,14 @@ class WatchNextSyncCoordinator @Inject constructor(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Long>?): Boolean =
             size > PROGRAM_LOOKUP_CACHE_SIZE
     }
+    private val seriesCandidateCache = object : LinkedHashMap<String, CachedSeries>(
+        SERIES_CANDIDATE_CACHE_SIZE,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedSeries>?): Boolean =
+            size > SERIES_CANDIDATE_CACHE_SIZE
+    }
 
     @OptIn(FlowPreview::class)
     fun start(scope: CoroutineScope) {
@@ -79,12 +87,17 @@ class WatchNextSyncCoordinator @Inject constructor(
                     .map { it.isActive to it.channelRevision }
                     .distinctUntilChanged(),
                 settingsRepository.backendType.distinctUntilChanged(),
-            ) { history, recentRecordings, (exclusionActive, _), backendType ->
+                settingsRepository.deepTvFeatureSettings
+                    .map { it.watchNextEnabled to it.nextEpisodeActive }
+                    .distinctUntilChanged(),
+            ) { history, recentRecordings, (exclusionActive, _), backendType, (watchNextEnabled, nextEpisodeActive) ->
                 SyncSnapshot(
                     history = history,
                     recentRecordings = recentRecordings,
                     exclusionActive = exclusionActive,
                     backendType = backendType,
+                    watchNextEnabled = watchNextEnabled,
+                    nextEpisodeActive = nextEpisodeActive,
                 )
             }
                 .debounce(SYNC_DEBOUNCE_MILLIS)
@@ -108,12 +121,19 @@ class WatchNextSyncCoordinator @Inject constructor(
             lastBackendType = snapshot.backendType
             programLookupCache.clear()
             missingProgramLookupCache.clear()
+            seriesCandidateCache.clear()
             cachedFallbackRecordings = null
             cachedFallbackFetchedAtMillis = 0L
             cachedFallbackFetchFailed = false
         }
 
         if (snapshot.backendType.isBlank() || snapshot.backendType == "TIF") {
+            publisher.clearAll()
+            artworkCache.prune(emptySet())
+            return
+        }
+
+        if (!snapshot.watchNextEnabled) {
             publisher.clearAll()
             artworkCache.prune(emptySet())
             return
@@ -189,7 +209,9 @@ class WatchNextSyncCoordinator @Inject constructor(
             .take(MAX_MISSING_PROGRAM_LOOKUPS)
             .map { it.id }
 
+        var remainingProgramLookups = MAX_MISSING_PROGRAM_LOOKUPS
         for (id in missingInProgressIds) {
+            remainingProgramLookups--
             try {
                 val program = recordProvider.getRecordedProgram(id).getOrNull()
                 if (program != null) {
@@ -207,6 +229,19 @@ class WatchNextSyncCoordinator @Inject constructor(
             }
         }
 
+        val nextResolution = if (snapshot.nextEpisodeActive) {
+            resolveNextEpisodes(
+                historyInputs = historyInputs,
+                lookup = lookup,
+                recordings = recordings,
+                exclusionActive = snapshot.exclusionActive,
+                nowMillis = nowMillis,
+                remainingProgramLookups = remainingProgramLookups,
+            )
+        } else {
+            NextEpisodeResolution(inputs = emptyList(), fetchFailed = false)
+        }
+
         val candidates = WatchNextPlanner.plan(
             history = historyInputs,
             recordings = recordings,
@@ -214,6 +249,7 @@ class WatchNextSyncCoordinator @Inject constructor(
             exclusionActive = snapshot.exclusionActive,
             isExcluded = nhkExclusionRepository::isExcluded,
             nowMillis = System.currentTimeMillis(),
+            nextEpisodes = nextResolution.inputs,
         )
 
         val posterUris = HashMap<Int, Uri?>(candidates.size)
@@ -231,6 +267,7 @@ class WatchNextSyncCoordinator @Inject constructor(
             existing = existing,
             desired = candidates,
             preserveNewRows = fetchFailed && !snapshot.exclusionActive && !backendChanged,
+            preserveNextRows = nextResolution.fetchFailed && !snapshot.exclusionActive && !backendChanged,
         )
         publisher.apply(ops, posterUris)
 
@@ -252,17 +289,217 @@ class WatchNextSyncCoordinator @Inject constructor(
         artworkCache.prune(keepArtworkIds)
     }
 
+    private suspend fun resolveNextEpisodes(
+        historyInputs: List<WatchNextHistoryInput>,
+        lookup: MutableMap<Int, RecordedProgram>,
+        recordings: List<RecordedProgram>,
+        exclusionActive: Boolean,
+        nowMillis: Long,
+        remainingProgramLookups: Int,
+    ): NextEpisodeResolution {
+        val sortedHistory = historyInputs
+            .sortedWith(
+                compareByDescending<WatchNextHistoryInput> { it.watchedAtMillis }
+                    .thenByDescending { it.id }
+            )
+            .distinctBy { it.id }
+        val historyById = sortedHistory.associateBy { it.id }
+        val cutoffMillis = nowMillis - COMPLETED_SOURCE_WINDOW_MILLIS
+
+        val completedSources = sortedHistory
+            .filter { entry ->
+                if (entry.id <= 0 || entry.watchedAtMillis < cutoffMillis) return@filter false
+                val effectiveDuration = entry.durationSeconds.takeIf { it.isFinite() && it > 0.0 }
+                    ?: lookup[entry.id]?.let { WatchProgressPolicy.effectiveDurationSeconds(it) }
+                WatchProgressPolicy.isCompleted(entry.positionSeconds, effectiveDuration)
+            }
+            .take(MAX_COMPLETED_SOURCE_LOOKUPS)
+
+        var nextFetchFailed = false
+        var lookupsLeft = remainingProgramLookups
+        for (entry in completedSources) {
+            if (lookupsLeft <= 0) break
+            if (entry.id in lookup) continue
+            val negativeCachedAt = missingProgramLookupCache[entry.id]
+            val isNegativeCached = negativeCachedAt != null &&
+                (nowMillis - negativeCachedAt) in 0L until FALLBACK_CACHE_TTL_MILLIS
+            if (isNegativeCached) continue
+
+            lookupsLeft--
+            try {
+                val result = recordProvider.getRecordedProgram(entry.id)
+                val program = result.getOrNull()
+                if (program != null) {
+                    lookup[entry.id] = program
+                    programLookupCache[entry.id] = program
+                    missingProgramLookupCache.remove(entry.id)
+                } else {
+                    missingProgramLookupCache[entry.id] = nowMillis
+                    if (result.isFailure) {
+                        nextFetchFailed = true
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                missingProgramLookupCache[entry.id] = nowMillis
+                nextFetchFailed = true
+                Log.w(TAG, "Failed to lookup completed program ${entry.id} for WatchNext NEXT: ${t.message}")
+            }
+        }
+
+        val seriesSources = completedSources
+            .mapNotNull { entry ->
+                val program = lookup[entry.id] ?: return@mapNotNull null
+                if (!NextEpisodeResolver.isSeriesEpisode(program)) return@mapNotNull null
+                if (exclusionActive && program.channel == null) return@mapNotNull null
+                if (nhkExclusionRepository.isExcluded(program)) return@mapNotNull null
+                val key = NextEpisodeResolver.seriesKey(program)
+                if (key.isBlank()) return@mapNotNull null
+                Triple(entry, program, key)
+            }
+            .distinctBy { it.third }
+            .take(WatchNextPlanner.MAX_NEXT_ITEMS)
+
+        val nextInputs = mutableListOf<WatchNextNextInput>()
+        for ((entry, program, seriesKey) in seriesSources) {
+            val (seriesPrograms, seriesFailed) = fetchSeriesCandidates(program, seriesKey, nowMillis)
+            if (seriesFailed) {
+                nextFetchFailed = true
+            }
+            val mergedCandidates = recordings + seriesPrograms
+            val nextProgram = NextEpisodeResolver.resolveNext(
+                source = program,
+                candidates = mergedCandidates,
+                history = historyById,
+                exclusionActive = exclusionActive,
+                isExcluded = nhkExclusionRepository::isExcluded,
+            )
+            if (nextProgram != null) {
+                nextInputs += WatchNextNextInput(
+                    sourceWatchedAtMillis = entry.watchedAtMillis,
+                    program = nextProgram,
+                )
+            }
+        }
+
+        return NextEpisodeResolution(
+            inputs = nextInputs,
+            fetchFailed = nextFetchFailed,
+        )
+    }
+
+    private suspend fun fetchSeriesCandidates(
+        source: RecordedProgram,
+        seriesKey: String,
+        nowMillis: Long,
+    ): Pair<List<RecordedProgram>, Boolean> {
+        val cached = seriesCandidateCache[seriesKey]
+        if (cached != null) {
+            val ttl = if (cached.failed) SERIES_CACHE_FAILURE_TTL_MILLIS else SERIES_CACHE_TTL_MILLIS
+            if ((nowMillis - cached.fetchedAtMillis) in 0L until ttl) {
+                return cached.programs to cached.failed
+            }
+        }
+
+        val seriesId = source.seriesId
+        if (seriesId != null) {
+            val collected = mutableListOf<RecordedProgram>()
+            return try {
+                for (page in 1..MAX_SERIES_PAGES) {
+                    val response = recordProvider.getRecordedProgramsBySeries(
+                        seriesId = seriesId,
+                        page = page,
+                        order = "asc",
+                    )
+                    if (response.recordedPrograms.isEmpty()) break
+                    collected += response.recordedPrograms
+                    if (response.total > 0 && collected.size >= response.total) break
+                }
+                seriesCandidateCache[seriesKey] = CachedSeries(
+                    programs = collected,
+                    fetchedAtMillis = nowMillis,
+                    failed = false,
+                )
+                collected to false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed to fetch series $seriesId candidates for WatchNext NEXT: ${t.message}")
+                seriesCandidateCache[seriesKey] = CachedSeries(
+                    programs = collected,
+                    fetchedAtMillis = nowMillis,
+                    failed = true,
+                )
+                collected to true
+            }
+        }
+
+        val query = NextEpisodeResolver.seriesDisplayTitle(source)
+        if (query.isBlank()) {
+            seriesCandidateCache[seriesKey] = CachedSeries(
+                programs = emptyList(),
+                fetchedAtMillis = nowMillis,
+                failed = false,
+            )
+            return emptyList<RecordedProgram>() to false
+        }
+
+        return try {
+            val fetched = recordProvider.searchRecordedPrograms(
+                keyword = query,
+                page = 1,
+                order = "desc",
+            ).recordedPrograms
+            seriesCandidateCache[seriesKey] = CachedSeries(
+                programs = fetched,
+                fetchedAtMillis = nowMillis,
+                failed = false,
+            )
+            fetched to false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to search '$query' candidates for WatchNext NEXT: ${t.message}")
+            seriesCandidateCache[seriesKey] = CachedSeries(
+                programs = emptyList(),
+                fetchedAtMillis = nowMillis,
+                failed = true,
+            )
+            emptyList<RecordedProgram>() to true
+        }
+    }
+
+    private data class CachedSeries(
+        val programs: List<RecordedProgram>,
+        val fetchedAtMillis: Long,
+        val failed: Boolean,
+    )
+
+    private data class NextEpisodeResolution(
+        val inputs: List<WatchNextNextInput>,
+        val fetchFailed: Boolean,
+    )
+
     private data class SyncSnapshot(
         val history: List<WatchHistoryEntity>,
         val recentRecordings: List<RecordedProgram>,
         val exclusionActive: Boolean,
         val backendType: String,
+        val watchNextEnabled: Boolean,
+        val nextEpisodeActive: Boolean,
     )
 
     private companion object {
         const val TAG = "WatchNext"
         const val SYNC_DEBOUNCE_MILLIS = 3_000L
         const val FALLBACK_CACHE_TTL_MILLIS = 15L * 60L * 1000L
+        const val COMPLETED_SOURCE_WINDOW_MILLIS = 30L * 24L * 60L * 60L * 1000L
+        const val MAX_COMPLETED_SOURCE_LOOKUPS = 6
+        const val SERIES_CACHE_TTL_MILLIS = 15L * 60L * 1000L
+        const val SERIES_CACHE_FAILURE_TTL_MILLIS = 5L * 60L * 1000L
+        const val MAX_SERIES_PAGES = 3
+        const val SERIES_CANDIDATE_CACHE_SIZE = 32
         const val MAX_MISSING_PROGRAM_LOOKUPS = 10
         const val PROGRAM_LOOKUP_CACHE_SIZE = 64
     }

@@ -1,8 +1,14 @@
 package com.beeregg2001.komorebi
 
 import android.app.ActivityManager
+import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Rational
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.annotation.SuppressLint
@@ -17,6 +23,7 @@ import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.navigation.DeepLinkDispatcher
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.main.MainRootScreen
+import com.beeregg2001.komorebi.ui.main.OsPipPolicy
 import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
 import com.beeregg2001.komorebi.viewmodel.EpgViewModel
@@ -35,6 +42,17 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deepLinkDispatcher: DeepLinkDispatcher
 
     private var homeIntentVersion by mutableIntStateOf(0)
+    private var isInOsPip by mutableStateOf(false)
+    private var osPipDismissVersion by mutableIntStateOf(0)
+    private var osPipEligible = false
+    private var lastInternalLaunchUptime = 0L
+    private var stoppedWhileInPip = false
+    private var exitingOsPipAwaitingResume = false
+
+    private val hasPipFeature: Boolean by lazy {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && !event.isScreensaverMediaKey()) {
@@ -99,9 +117,88 @@ class MainActivity : ComponentActivity() {
                     launchedFromDeepLink = launchedFromDeepLink,
                     deepLinkRequests = deepLinkDispatcher.requests,
                     onRemotePlaybackOpened = ::showRemotePlayback,
+                    isInOsPip = isInOsPip,
+                    osPipDismissVersion = osPipDismissVersion,
+                    onOsPipEligibilityChanged = { osPipEligible = it },
+                    onInternalActivityLaunch = { lastInternalLaunchUptime = SystemClock.uptimeMillis() },
                     onExitApp = ::finish
                 )
             }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        lastInternalLaunchUptime = SystemClock.uptimeMillis()
+        super.startActivityForResult(intent, requestCode, options)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val msSinceInternalLaunch = if (lastInternalLaunchUptime > 0L) {
+            SystemClock.uptimeMillis() - lastInternalLaunchUptime
+        } else {
+            null
+        }
+        val alreadyInPip = isInOsPip ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            OsPipPolicy.shouldEnter(
+                sdkInt = Build.VERSION.SDK_INT,
+                hasPipFeature = hasPipFeature,
+                eligible = osPipEligible,
+                alreadyInPip = alreadyInPip,
+                msSinceInternalLaunch = msSinceInternalLaunch,
+            )
+        ) {
+            runCatching {
+                val params = PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+                enterPictureInPictureMode(params)
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        val wasInPip = isInOsPip
+        isInOsPip = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            stoppedWhileInPip = false
+            exitingOsPipAwaitingResume = false
+        } else {
+            if (OsPipPolicy.isDismissal(
+                    stillInPip = false,
+                    atLeastStarted = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+                    stoppedWhileInPip = stoppedWhileInPip,
+                )
+            ) {
+                osPipDismissVersion++
+                exitingOsPipAwaitingResume = false
+            } else if (wasInPip) {
+                exitingOsPipAwaitingResume = true
+            }
+            stoppedWhileInPip = false
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        exitingOsPipAwaitingResume = false
+        stoppedWhileInPip = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isInOsPip) {
+            stoppedWhileInPip = true
+        } else if (exitingOsPipAwaitingResume) {
+            exitingOsPipAwaitingResume = false
+            osPipDismissVersion++
         }
     }
 

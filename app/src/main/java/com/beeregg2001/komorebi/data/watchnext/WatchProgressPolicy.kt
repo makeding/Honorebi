@@ -16,6 +16,12 @@ object WatchProgressPolicy {
         return positionSeconds < durationSeconds * COMPLETION_RATIO
     }
 
+    fun isCompleted(positionSeconds: Double, durationSeconds: Double?): Boolean {
+        if (!positionSeconds.isFinite()) return false
+        if (durationSeconds == null || !durationSeconds.isFinite() || durationSeconds <= 0.0) return false
+        return positionSeconds >= durationSeconds * COMPLETION_RATIO
+    }
+
     fun resumePositionSeconds(positionSeconds: Double?, durationSeconds: Double?): Double {
         if (positionSeconds == null) return 0.0
         return if (isInProgress(positionSeconds, durationSeconds)) positionSeconds else 0.0
