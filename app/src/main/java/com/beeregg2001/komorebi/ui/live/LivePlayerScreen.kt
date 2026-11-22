@@ -126,6 +126,8 @@ fun LivePlayerScreen(
     val displayFlatChannels = channelNavigation.flatChannels
     val displayLastWatchedChannels = channelNavigation.recentChannels
     val currentChannelItem = channelNavigation.currentChannel
+    val hasTifSource = usesLiveOsd(currentChannelItem.id, currentChannelItem.type)
+    var isTifChannel by remember(currentChannelItem.id) { mutableStateOf(hasTifSource) }
 
     val playerClockMode by settingsViewModel.playerClockMode.collectAsState()
     val mirakurunIp by settingsViewModel.mirakurunIp.collectAsState()
@@ -530,8 +532,13 @@ fun LivePlayerScreen(
         ps.retryKey,
         streamRestartQualityKey,
         isSourceInitialized,
-        isQualitiesLoaded
+        isQualitiesLoaded,
+        isTifChannel,
     ) {
+        if (isTifChannel) {
+            livePlayerViewModel.releasePlayers("tif_source_selected")
+            return@LaunchedEffect
+        }
         if (!isSourceInitialized || !isQualitiesLoaded) return@LaunchedEffect
         if (currentChannelItem.displayChannelId.isBlank() || currentChannelItem.displayChannelId == "null") return@LaunchedEffect
 
@@ -914,7 +921,19 @@ fun LivePlayerScreen(
             } else {
                 AspectRatioFrameLayout.RESIZE_MODE_FIT
             }
-            PlayerSurface(
+            if (isTifChannel) {
+                Box(Modifier.fillMaxSize().focusRequester(mainFocusRequester)
+                    .focusable(!isPiPMode && !isMiniListOpen && !isSubMenuOpen)) {
+                    TifLivePlayerScreen(
+                        channel = currentChannelItem, groupedChannels = groupedChannels,
+                        isMiniListOpen = false, onMiniListToggle = onMiniListToggle,
+                        onChannelSelect = onChannelSelect, onChannelPlaybackCommitted = onChannelPlaybackCommitted,
+                        showOverlay = false, onShowOverlayChange = onShowOverlayChange,
+                        initialCaptions = isSubtitleEnabled, videoOnly = true,
+                        externalCommentsEnabled = isCommentEnabled, onExit = onBackPressed,
+                    )
+                }
+            } else PlayerSurface(
                 player = mainPlayer,
                 resizeMode = mainResizeMode,
                 modifier = mainPlayerModifier
@@ -940,13 +959,13 @@ fun LivePlayerScreen(
 
             val isVideoVisible =
                 ps.currentStreamSource == StreamSource.MIRAKURUN || ps.currentStreamSource == StreamSource.EDCB || ps.sseStatus == "ONAir"
-            if (!isVideoVisible) Box(
+            if (!isTifChannel && !isVideoVisible) Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black)
             )
 
-            if (!isPiPMode) {
+            if (!isPiPMode && !isTifChannel) {
                 // DanmakuOverlay は SurfaceView なので、自分の領域に先に描かれたウィンドウ内容を
                 // 消去する (hole punch)。字幕の Canvas より先に置き、字幕が常に上に描かれるようにする。
                 if (isHeavyUiReady && isCommentEnabled) {
@@ -1035,7 +1054,7 @@ fun LivePlayerScreen(
         }
 
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
+            visible = !isTifChannel && !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
                 (mainLoadingPresentation.isVisible || isChannelSwitchDebouncing),
             enter = fadeIn(),
             exit = fadeOut(),
@@ -1313,7 +1332,10 @@ fun LivePlayerScreen(
                 focusRequester = subMenuFocusRequester,
                 logoUrls = channelLogoUrls,
                 shouldCropLogo = shouldCropLogo,
+                onTifSourceSelect = if (hasTifSource) ({ isTifChannel = true; onSubMenuToggle(false) }) else null,
+                isTifSource = isTifChannel,
                 onSourceSelect = { source, isDirect ->
+                    isTifChannel = false
                     ps.currentStreamSource = source
                     ps.isEdcbDirect = isDirect
                     onSubMenuToggle(false)

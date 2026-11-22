@@ -71,10 +71,14 @@ import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
 import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
+import com.beeregg2001.komorebi.ui.player.LivePlayerMenuTileStyle
+import com.beeregg2001.komorebi.ui.player.PlayerMenuTile
+import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** TvTrackInfoの説明を優先し、主副音声の意味をtrack IDから推測しない。 */
@@ -84,6 +88,9 @@ private fun audioLabel(track: TvTrackInfo, index: Int): String =
         ?: "音声トラック ${index + 1}"
 
 internal const val TIF_NO_SIGNAL_THEMED_DELAY_MS = 800L
+
+internal fun usesLiveOsd(channelId: String, channelType: String): Boolean =
+    channelId.startsWith("tif:channel:") && channelType in setOf("GR", "BS", "CS")
 
 internal sealed interface TifVideoStatus {
     val text: String
@@ -130,6 +137,8 @@ fun TifLivePlayerScreen(
     showOverlay: Boolean,
     onShowOverlayChange: (Boolean) -> Unit,
     initialCaptions: Boolean,
+    videoOnly: Boolean = false,
+    externalCommentsEnabled: Boolean = true,
     standaloneInput: Boolean = false,
     timeFormat: String = "24H",
     onLaunchSystemSettings: () -> Unit = {},
@@ -233,6 +242,7 @@ fun TifLivePlayerScreen(
     var selectedAudioId by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<String?>(null) }
     var activeView by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<TvView?>(null) }
     var captions by rememberSaveable(channel.id, initialCaptions) { mutableStateOf(initialCaptions) }
+    LaunchedEffect(initialCaptions, videoOnly) { if (videoOnly) captions = initialCaptions }
     val commentDefault by settingsViewModel.commentDefaultDisplay.collectAsState()
     val commentSpeed by settingsViewModel.commentSpeed.collectAsState()
     val commentSize by settingsViewModel.commentFontSize.collectAsState()
@@ -250,7 +260,7 @@ fun TifLivePlayerScreen(
             commentToken = null
         }
     }
-    val runComments = isStarted && videoStatus is TifVideoStatus.Playing && commentsEnabled && !suppressNoSignalVisual
+    val runComments = isStarted && videoStatus is TifVideoStatus.Playing && commentsEnabled && externalCommentsEnabled && !suppressNoSignalVisual
     LiveDanmakuEffect(jikkyoViewModel.comments, commentToken, runComments,
         commentSize.toFloatOrNull() ?: 1f, danmakuView)
 
@@ -276,6 +286,16 @@ fun TifLivePlayerScreen(
     }
 
     val isPassthroughInput = standaloneInput || channel.id.startsWith("tif:input:")
+    val useLiveOsd = usesLiveOsd(channel.id, channel.type)
+    var showProgramDetails by remember(channel.id) { mutableStateOf(false) }
+    val programScroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(showProgramDetails, showOverlay) {
+        if (useLiveOsd && showOverlay && !isMiniListOpen) {
+            delay(60)
+            if (showProgramDetails) rootFocus.requestFocus() else firstControlFocus.requestFocus()
+        }
+    }
     val allChannels = remember(groupedChannels) {
         groupedChannels.values.flatten().filter { it.isWatchable && it.id.startsWith("tif:") }
     }
@@ -368,7 +388,14 @@ fun TifLivePlayerScreen(
         containerWidthDp = containerWidthDp,
     )
 
-    BackHandler(enabled = isMiniListOpen) { onMiniListToggle(false) }
+    BackHandler(enabled = isMiniListOpen || (useLiveOsd && showOverlay)) {
+        when {
+            isMiniListOpen -> onMiniListToggle(false)
+            showProgramDetails -> showProgramDetails = false
+            else -> onShowOverlayChange(false)
+        }
+    }
+    LaunchedEffect(showOverlay) { if (!showOverlay) showProgramDetails = false }
     LaunchedEffect(isMiniListOpen, allChannels.isEmpty()) {
         if (!standaloneInput && isMiniListOpen && allChannels.isEmpty()) onMiniListToggle(false)
     }
@@ -384,6 +411,7 @@ fun TifLivePlayerScreen(
     // 操作帯を隠した場合は必ず画面本体へフォーカスを戻し、決定キーで再表示できる。
     // ボタン操作中や入力切替ドロワー表示中はフォーカスを奪わない。
     LaunchedEffect(isMiniListOpen, showOverlay, allChannels.isEmpty(), isPassthroughInput) {
+        if (videoOnly) return@LaunchedEffect
         if (!showOverlay || isMiniListOpen) controlHasFocus = false
         delay(60)
         runCatching {
@@ -410,6 +438,23 @@ fun TifLivePlayerScreen(
                 containerWidthDp = with(density) { size.width.toDp().value }
             }
             .onPreviewKeyEvent { event ->
+                if (useLiveOsd && showOverlay && !isMiniListOpen && event.type == KeyEventType.KeyDown) {
+                    if (event.key == Key.DirectionDown && !showProgramDetails) {
+                        showProgramDetails = true
+                        overlayInteractionTick++
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.key == Key.DirectionDown && showProgramDetails) {
+                        scope.launch { programScroll.animateScrollTo(programScroll.value + 120) }
+                        overlayInteractionTick++
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.key == Key.DirectionUp && showProgramDetails) {
+                        showProgramDetails = false
+                        overlayInteractionTick++
+                        return@onPreviewKeyEvent true
+                    }
+                }
                 val isOkKey = event.key == Key.DirectionCenter ||
                     event.key == Key.Enter ||
                     event.key == Key.NumPadEnter
@@ -420,6 +465,7 @@ fun TifLivePlayerScreen(
                 false
             }
             .onKeyEvent { event ->
+                if (videoOnly) return@onKeyEvent false
                 if (event.type != KeyEventType.KeyDown || isMiniListOpen || controlHasFocus) {
                     return@onKeyEvent false
                 }
@@ -458,7 +504,7 @@ fun TifLivePlayerScreen(
                 left = FocusRequester.Cancel
                 right = FocusRequester.Cancel
             }
-            .focusable()
+            .focusable(!videoOnly)
     ) {
         if (target == null) {
             TifStatusBanner(
@@ -568,7 +614,7 @@ fun TifLivePlayerScreen(
                 )
             }
 
-            if (hasTunerChannel && commentsEnabled && !suppressNoSignalVisual) {
+            if (hasTunerChannel && commentsEnabled && externalCommentsEnabled && !suppressNoSignalVisual) {
                 DanmakuOverlay(
                     modifier = Modifier.fillMaxSize(),
                     engineMode = DanmakuEngineMode.fromId(commentEngine),
@@ -601,7 +647,59 @@ fun TifLivePlayerScreen(
             }
         }
 
-        if (showOverlay && (!isMiniListOpen || standaloneInput)) {
+        if (showOverlay && !isMiniListOpen && useLiveOsd) {
+            LiveOverlayUI(
+                channel = channel,
+                programTitle = channel.programPresent?.title ?: "番組情報なし",
+                logoUrl = "",
+                shouldCropLogo = false,
+                showDesc = showProgramDetails,
+                isRecording = false,
+                scrollState = programScroll,
+                timeFormatSetting = timeFormat,
+            )
+            if (!showProgramDetails) PlayerSubMenuContainer {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown) overlayInteractionTick++
+                            false
+                        }
+                        .onFocusChanged { controlHasFocus = it.hasFocus }
+                        .padding(horizontal = 36.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                ) {
+                    PlayerMenuTile("チャンネル一覧", Icons.Default.List, "選局", { onMiniListToggle(true) },
+                        LivePlayerMenuTileStyle, Modifier.focusRequester(firstControlFocus), enabled = allChannels.isNotEmpty())
+                    PlayerMenuTile("字幕", Icons.Default.ClosedCaption, if (captions) "表示" else "非表示",
+                        { captions = !captions }, LivePlayerMenuTileStyle, Modifier.focusRequester(captionControlFocus))
+                    PlayerMenuTile("コメント", Icons.Default.Comment, if (commentsEnabled) "表示" else "非表示",
+                        { commentsEnabled = !commentsEnabled }, LivePlayerMenuTileStyle)
+                    if (audioTracks.size > 1) {
+                        val selectedIndex = audioTracks.indexOfFirst { it.id == selectedAudioId }
+                        PlayerMenuTile("音声切替", Icons.Default.VolumeUp,
+                            if (selectedIndex >= 0) audioLabel(audioTracks[selectedIndex], selectedIndex) else "選択未通知",
+                            {
+                                val wanted = audioTracks[(selectedIndex + 1) % audioTracks.size].id
+                                try {
+                                    activeView?.selectTrack(TvTrackInfo.TYPE_AUDIO, wanted)
+                                } catch (error: Exception) {
+                                    videoStatus = TifVideoStatus.Notice("音声切替に失敗しました: " + error.message)
+                                }
+                            }, LivePlayerMenuTileStyle)
+                    }
+                    if (displaySettingsIntent != null) PlayerMenuTile("画質設定", Icons.Default.Tune, "設定を開く",
+                        { context.startActivity(displaySettingsIntent) }, LivePlayerMenuTileStyle)
+                    if (soundSettingsIntent != null) PlayerMenuTile("音声設定", Icons.Default.VolumeUp, "設定を開く",
+                        { context.startActivity(soundSettingsIntent) }, LivePlayerMenuTileStyle)
+                    PlayerMenuTile("再選局", Icons.Default.Refresh, "", { retuneGeneration++ }, LivePlayerMenuTileStyle)
+                    PlayerMenuTile("終了", Icons.Default.Close, "", onExit, LivePlayerMenuTileStyle,
+                        Modifier.focusRequester(exitControlFocus))
+                }
+            }
+        }
+
+        if (showOverlay && (!isMiniListOpen || standaloneInput) && !useLiveOsd) {
             val barShape = RoundedCornerShape(14.dp)
             Row(
                 modifier = Modifier

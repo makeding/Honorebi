@@ -102,7 +102,9 @@ fun LiveTopSubMenuUI(
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
     onCloseMenu: () -> Unit,
-    availableQualities: List<StreamQuality> = StreamQuality.DEFAULT_QUALITIES
+    availableQualities: List<StreamQuality> = StreamQuality.DEFAULT_QUALITIES,
+    onTifSourceSelect: (() -> Unit)? = null,
+    isTifSource: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -204,6 +206,7 @@ fun LiveTopSubMenuUI(
             modifier = Modifier.fillMaxWidth()
         ) {
             val sourceSubtitle = when {
+                isTifSource -> "TIF"
                 currentStreamSource == StreamSource.EDCB && isEdcbDirect -> "EDCB (TCP)"
                 currentStreamSource == StreamSource.EDCB && !isEdcbDirect -> "EDCB (トランスコード)"
                 currentStreamSource == StreamSource.MIRAKURUN -> "Mirakurun"
@@ -211,6 +214,7 @@ fun LiveTopSubMenuUI(
             }
 
             val activeSourceLabel = when {
+                isTifSource -> "TIF"
                 currentStreamSource == StreamSource.EDCB && isEdcbDirect -> "EDCB (TCPダイレクト)"
                 currentStreamSource == StreamSource.EDCB && !isEdcbDirect -> "EDCB (トランスコード)"
                 currentStreamSource == StreamSource.MIRAKURUN -> "Mirakurun"
@@ -608,6 +612,7 @@ fun LiveTopSubMenuUI(
                             .padding(horizontal = 32.dp, vertical = 8.dp)
                     ) {
                         val sourceOptions = mutableListOf<Pair<String, () -> Unit>>()
+                        onTifSourceSelect?.let { sourceOptions.add("TIF" to it) }
                         if (availableSources.contains(StreamSource.KONOMITV)) {
                             sourceOptions.add("KonomiTV" to {
                                 onSourceSelect(StreamSource.KONOMITV, false)

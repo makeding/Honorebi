@@ -108,7 +108,8 @@ fun MainRootPlaybackHost(
         // Switching retains the committed target for the session/Cast lease,
         // while the host materializes the incoming recording until READY.
         when (val target = state.playbackState.renderPlaybackTarget) {
-            is PlaybackTarget.Live -> if (target.channel.id.startsWith("tif:")) {
+            is PlaybackTarget.Live -> if (target.channel.id.startsWith("tif:") &&
+                !com.beeregg2001.komorebi.ui.live.usesLiveOsd(target.channel.id, target.channel.type)) {
                 val subtitle by settingsViewModel.liveSubtitleDefault.collectAsState()
                 val tifNoSignalStyle by settingsViewModel.tifNoSignalStyle.collectAsState()
                 val screensaverImageUris by settingsViewModel.screensaverImageUris.collectAsState()
