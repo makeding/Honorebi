@@ -754,11 +754,11 @@ fun HomeLauncherScreen(
                 onBack = { scope.launch { handleLauncherBack() } },
                 startCollapsed = suppressInitialRailExpand,
                 onStartCollapsedConsumed = { suppressInitialRailExpand = false },
+                onSelectedTabBoundsChanged = { spotlightTargets.navRailBounds = it },
                 onSettingsButtonBoundsChanged = { spotlightTargets.settingsButtonBounds = it },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
-                    .onGloballyPositioned { spotlightTargets.navRailBounds = it.boundsInRoot() }
                     .zIndex(30f),
             )
         }

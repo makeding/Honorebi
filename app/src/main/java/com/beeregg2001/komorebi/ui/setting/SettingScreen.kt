@@ -245,7 +245,7 @@ private fun SettingsMenuScreen(
     // [6] ホーム設定: genre, time
     // [7] ランチャー設定
     // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
-    // [9] ディープTV統合: Watch Next (0..1), プレビューチャンネル (2..3), リモコン (4..5), OS PiP (6), TIF (7..9)
+    // [9] TV統合: Watch Next (0..1), プレビューチャンネル (2..3), リモコン (4..5), OS PiP (6), TIF (7..9)
     // [10] データ管理: cache(all/logo/thumb/epg/recording) + history(channel/watch)
     // [11] アプリ情報
     val itemFocusRequesters = remember {

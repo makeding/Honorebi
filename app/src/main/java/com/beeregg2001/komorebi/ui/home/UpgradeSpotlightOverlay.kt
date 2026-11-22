@@ -157,20 +157,24 @@ internal fun UpgradeSpotlightOverlay(
         val rawTargetRect = targets.boundsFor(currentStep.targetId).let { measured ->
             when {
                 measured != Rect.Zero && currentStep.targetId == UpgradeTourTargetId.CONTENT_STAGE -> {
-                    // Highlight the upper content region so the lower area remains clean blank space for the callout.
+                    // Focus on a single card-sized region directly to the right of the sidebar.
+                    val cardLeft = measured.left + with(density) { 28.dp.toPx() }
+                    val cardTop = measured.top + with(density) { 64.dp.toPx() }
+                    val cardWidth = with(density) { 296.dp.toPx() }.coerceAtMost((measured.width - with(density) { 56.dp.toPx() }).coerceAtLeast(160f))
+                    val cardHeight = with(density) { 168.dp.toPx() }.coerceAtMost((measured.height * 0.36f).coerceAtLeast(120f))
                     Rect(
-                        left = measured.left + with(density) { 12.dp.toPx() },
-                        top = measured.top + with(density) { 56.dp.toPx() },
-                        right = (measured.right - with(density) { 24.dp.toPx() }).coerceAtLeast(measured.left + 120f),
-                        bottom = (measured.top + measured.height * 0.56f).coerceAtLeast(measured.top + 180f),
+                        left = cardLeft,
+                        top = cardTop,
+                        right = cardLeft + cardWidth,
+                        bottom = cardTop + cardHeight,
                     )
                 }
                 measured != Rect.Zero -> measured
                 else -> Rect(
                     left = screenWidthPx * 0.15f,
                     top = screenHeightPx * 0.15f,
-                    right = screenWidthPx * 0.85f,
-                    bottom = screenHeightPx * 0.50f,
+                    right = screenWidthPx * 0.45f,
+                    bottom = screenHeightPx * 0.45f,
                 )
             }
         }

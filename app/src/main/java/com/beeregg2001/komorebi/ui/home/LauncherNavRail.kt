@@ -126,6 +126,7 @@ internal fun LauncherNavRail(
     onBack: () -> Unit,
     startCollapsed: Boolean = false,
     onStartCollapsedConsumed: () -> Unit = {},
+    onSelectedTabBoundsChanged: (Rect) -> Unit = {},
     onSettingsButtonBoundsChanged: (Rect) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -293,6 +294,9 @@ internal fun LauncherNavRail(
                 labelAlpha = labelAlpha,
                 modifier = Modifier
                     .testTag("launcher-tab-${tab.name.lowercase()}")
+                    .onGloballyPositioned { coords ->
+                        if (isSelected) onSelectedTabBoundsChanged(coords.boundsInRoot())
+                    }
                     .focusRequester(controller.tabRequester(tab))
                     .focusProperties {
                         up = prevTab?.let { controller.tabRequester(it) } ?: upEdgeFocusRequester

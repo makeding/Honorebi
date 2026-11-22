@@ -35,10 +35,10 @@ object UpgradeTourCatalog {
         VERSION_CODE_1_2_0 -> listOf(
             UpgradeTourStep(
                 targetId = UpgradeTourTargetId.NAV_RAIL,
-                shape = UpgradeSpotlightShape.ROUNDED_RECT,
+                shape = UpgradeSpotlightShape.CIRCLE,
                 badge = "Honorebi 1.2.0 • 新ナビゲーション",
                 title = "左サイドバーに全面刷新",
-                description = "タブの切り替えや設定へのアクセスが左側に集約されました。コンテンツ操作中は自動で折りたたまれ、左キーでいつでも展開できます。",
+                description = "タブの切り替えや設定へのアクセスが左側の格子メニューに集約されました。コンテンツ操作中は自動で折りたたまれ、左キーでいつでも展開できます。",
                 placement = UpgradeCalloutPlacement.RIGHT_OF_TARGET,
             ),
             UpgradeTourStep(
@@ -52,9 +52,9 @@ object UpgradeTourCatalog {
             UpgradeTourStep(
                 targetId = UpgradeTourTargetId.CONTENT_STAGE,
                 shape = UpgradeSpotlightShape.ROUNDED_RECT,
-                badge = "Honorebi 1.2.0 • UI & フォーカス",
-                title = "各タブ刷新と起動時フォーカス設定",
-                description = "ホーム・ビデオ・番組表・予約の各画面とフォーカス表示を全面刷新しました。「設定 ＞ 画面」から起動時のフォーカス位置（サイドバー／コンテンツ）も選べます。",
+                badge = "Honorebi 1.2.0 • 起動時フォーカス & UI刷新",
+                title = "起動時フォーカスと各タブを刷新",
+                description = "「設定 ＞ 画面」から、起動時に左サイドバーと右側のコンテンツカードのどちらへ最初にフォーカスを当てるか選べるようになりました。ホーム・ビデオ・番組表・予約の各画面も全面刷新しています。",
                 placement = UpgradeCalloutPlacement.BOTTOM_CENTER,
             ),
             UpgradeTourStep(
