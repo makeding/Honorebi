@@ -7,6 +7,7 @@ import com.beeregg2001.komorebi.data.StartupFocusTarget
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.data.repository.tif.TifInput
 
+import android.content.pm.PackageManager
 import android.os.Build
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.activity.compose.BackHandler
@@ -223,6 +224,10 @@ private fun SettingsMenuScreen(
     val tifSupported by produceState(false, context) {
         value = withContext(Dispatchers.IO) { TifInput.isSupported(context) }
     }
+    val pipSupported by produceState(false, context) {
+        value = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
     val homeBackRequester = remember { FocusRequester() }
 
     val batchItemRs =
@@ -240,7 +245,7 @@ private fun SettingsMenuScreen(
     // [6] ホーム設定: genre, time
     // [7] ランチャー設定
     // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
-    // [9] ディープTV統合: toggle, hideEmptyInputs, noSignalStyle
+    // [9] ディープTV統合: Watch Next (0..1), プレビューチャンネル (2..3), リモコン (4..5), OS PiP (6), TIF (7..9)
     // [10] データ管理: cache(all/logo/thumb/epg/recording) + history(channel/watch)
     // [11] アプリ情報
     val itemFocusRequesters = remember {
@@ -254,7 +259,7 @@ private fun SettingsMenuScreen(
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(13) { FocusRequester() },
-            List(3) { FocusRequester() },
+            List(DeepTvItemIndex.COUNT) { FocusRequester() },
             List(7) { FocusRequester() },
             List(7) { FocusRequester() }
         )
@@ -436,12 +441,8 @@ private fun SettingsMenuScreen(
                                     modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)
                                 )
                             }
-                            val targetR = when {
-                                row.contentIndex == 9 && prefs.backendType == "TIF" && tifSupported ->
-                                    itemFocusRequesters[9][1]
-                                else -> itemFocusRequesters.getOrNull(row.contentIndex)?.firstOrNull()
-                                    ?: FocusRequester.Default
-                            }
+                            val targetR = itemFocusRequesters.getOrNull(row.contentIndex)?.firstOrNull()
+                                ?: FocusRequester.Default
                             CategoryItem(
                                 title = row.title,
                                 icon = row.icon,
@@ -662,8 +663,11 @@ private fun SettingsMenuScreen(
                             lockedByMainSystem = prefs.backendType == "TIF",
                             hideEmptyInputs = prefs.tifHideEmptyInputs,
                             noSignalStyle = prefs.tifNoSignalStyle,
+                            features = prefs.deepTvFeatures,
+                            pipSupported = pipSupported,
                             itemRs = itemFocusRequesters[9],
                             sidebarR = categoryFocusRequesters[9],
+                            onToggleFeature = { viewModel.toggleDeepTvFeature(it) },
                             onToggleEnabled = {
                                 if (!tifSupported) {
                                     toastMessage = "この端末はTV入力（TIF）に対応していません"

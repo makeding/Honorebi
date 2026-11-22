@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.ui.setting
 
+import com.beeregg2001.komorebi.data.DeepTvFeatureSettings
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
@@ -71,6 +72,7 @@ class SettingPreferences(
     val epgVisibleHours: String,
     val playerClockMode: PlayerClockMode = PlayerClockMode.ALWAYS_ON,
     val tifNoSignalStyle: TifNoSignalStyle = TifNoSignalStyle.BANNER,
+    val deepTvFeatures: DeepTvFeatureSettings = DeepTvFeatureSettings(),
 )
 
 @Composable
@@ -145,6 +147,7 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         tifHideEmptyInputs = repository.tifHideEmptyInputs.collectAsState(initial = true).value,
         tifIntegrationEnabled = repository.tifIntegrationEnabled.collectAsState(initial = true).value,
         tifNoSignalStyle = repository.tifNoSignalStyle.collectAsState(initial = TifNoSignalStyle.BANNER).value,
+        deepTvFeatures = repository.deepTvFeatureSettings.collectAsState(initial = DeepTvFeatureSettings()).value,
         hideLauncherAppLabels = repository.hideLauncherAppLabels.collectAsState(initial = false).value,
         hideAppsTab = repository.hideAppsTab.collectAsState(initial = false).value,
         launcherAppColumns = repository.launcherAppColumns.collectAsState(initial = "AUTO").value,

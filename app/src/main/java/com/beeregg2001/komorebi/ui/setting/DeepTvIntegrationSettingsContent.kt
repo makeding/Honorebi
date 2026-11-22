@@ -6,9 +6,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.SettingsInputHdmi
+import androidx.compose.material.icons.filled.SettingsRemote
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -22,8 +29,24 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.data.DeepTvFeature
+import com.beeregg2001.komorebi.data.DeepTvFeatureSettings
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+
+object DeepTvItemIndex {
+    const val WATCH_NEXT = 0
+    const val NEXT_EPISODE = 1
+    const val PREVIEW_LIVE = 2
+    const val PREVIEW_RECORDINGS = 3
+    const val REMOTE_KEYS = 4
+    const val NUMBER_TUNING = 5
+    const val OS_PIP = 6
+    const val TIF_TOGGLE = 7
+    const val TIF_HIDE_EMPTY = 8
+    const val TIF_NO_SIGNAL = 9
+    const val COUNT = 10
+}
 
 @Composable
 fun DeepTvIntegrationSettingsContent(
@@ -32,8 +55,11 @@ fun DeepTvIntegrationSettingsContent(
     lockedByMainSystem: Boolean,
     hideEmptyInputs: Boolean,
     noSignalStyle: TifNoSignalStyle,
+    features: DeepTvFeatureSettings = DeepTvFeatureSettings(),
+    pipSupported: Boolean = true,
     itemRs: List<FocusRequester>,
     sidebarR: FocusRequester,
+    onToggleFeature: (DeepTvFeature) -> Unit = {},
     onToggleEnabled: () -> Unit,
     onToggleHideEmpty: () -> Unit,
     onEditNoSignalStyle: () -> Unit,
@@ -44,6 +70,49 @@ fun DeepTvIntegrationSettingsContent(
     val expanded = supported && (enabled || lockedByMainSystem)
     val tifFirst = remember { FocusRequester() }
     val tifLast = remember { FocusRequester() }
+
+    val focusOrder = buildList {
+        add(DeepTvItemIndex.WATCH_NEXT)
+        if (features.watchNextEnabled) add(DeepTvItemIndex.NEXT_EPISODE)
+        add(DeepTvItemIndex.PREVIEW_LIVE)
+        add(DeepTvItemIndex.PREVIEW_RECORDINGS)
+        add(DeepTvItemIndex.REMOTE_KEYS)
+        add(DeepTvItemIndex.NUMBER_TUNING)
+        if (pipSupported) add(DeepTvItemIndex.OS_PIP)
+        if (!lockedByMainSystem) add(DeepTvItemIndex.TIF_TOGGLE)
+        if (expanded) {
+            add(DeepTvItemIndex.TIF_HIDE_EMPTY)
+            add(DeepTvItemIndex.TIF_NO_SIGNAL)
+        }
+    }
+
+    fun itemModifier(index: Int): Modifier {
+        val pos = focusOrder.indexOf(index)
+        val upTarget = if (pos > 0) itemRs[focusOrder[pos - 1]] else FocusRequester.Cancel
+        val downTarget = when {
+            pos in 0 until focusOrder.lastIndex -> itemRs[focusOrder[pos + 1]]
+            pos == focusOrder.lastIndex && expanded -> tifFirst
+            else -> FocusRequester.Cancel
+        }
+        return Modifier
+            .focusRequester(itemRs[index])
+            .focusProperties {
+                left = sidebarR
+                up = upTarget
+                down = downTarget
+            }
+    }
+
+    @Composable
+    fun SectionNote(text: String) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 13.sp,
+            color = colors.textSecondary,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+    }
 
     val toggleValue = when {
         lockedByMainSystem -> "ON（メインシステム）"
@@ -67,37 +136,117 @@ fun DeepTvIntegrationSettingsContent(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "テレビ本体のHDMI外部入力や内蔵チューナー（Android TV Input Framework）をアプリ内で直接操作・再生します。",
+                text = "OS標準の「次に観る」・ホーム画面チャンネル、TVリモコンの専用ボタン・数字選局、ピクチャー・イン・ピクチャー、外部入力（TIF）との連携を設定します。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary,
             )
         }
 
-        SettingsSection("統合機能") {
+        SettingsSection("Watch Next（次に観る）連携") {
             SettingItem(
-                title = "ディープTV統合を有効にする",
+                title = "Watch Next に番組を表示",
+                value = if (features.watchNextEnabled) "ON" else "OFF",
+                icon = Icons.Default.QueuePlayNext,
+                modifier = itemModifier(DeepTvItemIndex.WATCH_NEXT),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.WATCH_NEXT])
+                    onToggleFeature(DeepTvFeature.WATCH_NEXT)
+                },
+            )
+            SettingItem(
+                title = "シリーズ視聴完了時に次のエピソードを提案",
+                value = if (features.watchNextNextEpisodeEnabled) "ON" else "OFF",
+                icon = Icons.Default.SkipNext,
+                enabled = features.watchNextEnabled,
+                modifier = itemModifier(DeepTvItemIndex.NEXT_EPISODE),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.NEXT_EPISODE])
+                    onToggleFeature(DeepTvFeature.WATCH_NEXT_NEXT_EPISODE)
+                },
+            )
+            SectionNote("Android TV / Google TV ホームの「次に観る」に、視聴中の録画・新着録画・シリーズの次回エピソードを自動登録します。")
+        }
+
+        SettingsSection("ホーム画面チャンネル公開") {
+            SettingItem(
+                title = "「放送中の番組（ライブ）」チャンネルを公開",
+                value = if (features.previewLiveEnabled) "ON" else "OFF",
+                icon = Icons.Default.LiveTv,
+                modifier = itemModifier(DeepTvItemIndex.PREVIEW_LIVE),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.PREVIEW_LIVE])
+                    onToggleFeature(DeepTvFeature.PREVIEW_LIVE)
+                },
+            )
+            SettingItem(
+                title = "「新着録画」チャンネルを公開",
+                value = if (features.previewRecordingsEnabled) "ON" else "OFF",
+                icon = Icons.Default.VideoLibrary,
+                modifier = itemModifier(DeepTvItemIndex.PREVIEW_RECORDINGS),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.PREVIEW_RECORDINGS])
+                    onToggleFeature(DeepTvFeature.PREVIEW_RECORDINGS)
+                },
+            )
+            SectionNote("Android TV ホーム画面に専用チャンネル行を追加します。オフにするとホーム画面から該当チャンネルを削除します。")
+        }
+
+        SettingsSection("TVリモコン操作") {
+            SettingItem(
+                title = "専用キーショートカット（番組表・録画・テレビ）",
+                value = if (features.remoteShortcutKeysEnabled) "ON" else "OFF",
+                icon = Icons.Default.SettingsRemote,
+                modifier = itemModifier(DeepTvItemIndex.REMOTE_KEYS),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.REMOTE_KEYS])
+                    onToggleFeature(DeepTvFeature.REMOTE_SHORTCUT_KEYS)
+                },
+            )
+            SettingItem(
+                title = "数字キー（0〜9）で直接選局",
+                value = if (features.remoteNumberTuningEnabled) "ON" else "OFF",
+                icon = Icons.Default.Dialpad,
+                modifier = itemModifier(DeepTvItemIndex.NUMBER_TUNING),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.NUMBER_TUNING])
+                    onToggleFeature(DeepTvFeature.REMOTE_NUMBER_TUNING)
+                },
+            )
+            SectionNote("リモコンの「番組表」「録画」「テレビ」ボタンでの直接移動や、数字ボタン（リモコン番号 1〜12 / 3桁チャンネル番号）でのダイレクト選局を有効にします。")
+        }
+
+        SettingsSection("ピクチャー・イン・ピクチャー") {
+            SettingItem(
+                title = "ホーム移動時にピクチャー・イン・ピクチャーへ自動移行",
+                value = when {
+                    !pipSupported -> "非対応"
+                    features.osPipAutoEnterEnabled -> "ON"
+                    else -> "OFF"
+                },
+                icon = Icons.Default.PictureInPictureAlt,
+                enabled = pipSupported,
+                modifier = itemModifier(DeepTvItemIndex.OS_PIP),
+                onClick = {
+                    onClick(itemRs[DeepTvItemIndex.OS_PIP])
+                    onToggleFeature(DeepTvFeature.OS_PIP_AUTO_ENTER)
+                },
+            )
+            SectionNote("ライブや録画の再生中にリモコンのホームボタンを押した際、OS標準の小窓（PiP）で再生を継続します。")
+        }
+
+        SettingsSection("外部入力・内蔵チューナー（TIF）") {
+            SettingItem(
+                title = "TV入力（TIF）統合を有効にする",
                 value = toggleValue,
                 icon = Icons.Default.SettingsInputHdmi,
                 enabled = !lockedByMainSystem,
-                modifier = Modifier
-                    .focusRequester(itemRs[0])
-                    .focusProperties {
-                        left = sidebarR
-                        up = FocusRequester.Cancel
-                        down = if (expanded) itemRs[1] else FocusRequester.Cancel
-                    },
+                modifier = itemModifier(DeepTvItemIndex.TIF_TOGGLE),
                 onClick = {
-                    onClick(itemRs[0])
+                    onClick(itemRs[DeepTvItemIndex.TIF_TOGGLE])
                     onToggleEnabled()
                 },
             )
-            Text(
-                text = statusNote,
-                style = MaterialTheme.typography.bodySmall,
-                fontSize = 13.sp,
-                color = colors.textSecondary,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+            SectionNote(statusNote)
         }
 
         if (expanded) {
@@ -106,15 +255,9 @@ fun DeepTvIntegrationSettingsContent(
                     title = "チャンネル未登録のTV入力を非表示",
                     value = if (hideEmptyInputs) "ON" else "OFF",
                     icon = Icons.Default.FilterList,
-                    modifier = Modifier
-                        .focusRequester(itemRs[1])
-                        .focusProperties {
-                            left = sidebarR
-                            up = if (lockedByMainSystem) FocusRequester.Cancel else itemRs[0]
-                            down = itemRs[2]
-                        },
+                    modifier = itemModifier(DeepTvItemIndex.TIF_HIDE_EMPTY),
                     onClick = {
-                        onClick(itemRs[1])
+                        onClick(itemRs[DeepTvItemIndex.TIF_HIDE_EMPTY])
                         onToggleHideEmpty()
                     },
                 )
@@ -122,15 +265,9 @@ fun DeepTvIntegrationSettingsContent(
                     title = "TV入力の信号なし表示",
                     value = noSignalStyle.label,
                     icon = Icons.Default.Tv,
-                    modifier = Modifier
-                        .focusRequester(itemRs[2])
-                        .focusProperties {
-                            left = sidebarR
-                            up = itemRs[1]
-                            down = tifFirst
-                        },
+                    modifier = itemModifier(DeepTvItemIndex.TIF_NO_SIGNAL),
                     onClick = {
-                        onClick(itemRs[2])
+                        onClick(itemRs[DeepTvItemIndex.TIF_NO_SIGNAL])
                         onEditNoSignalStyle()
                     },
                 )
@@ -141,7 +278,7 @@ fun DeepTvIntegrationSettingsContent(
                     onRefresh = onRefreshTif,
                     first = tifFirst,
                     last = tifLast,
-                    before = itemRs[2],
+                    before = itemRs[DeepTvItemIndex.TIF_NO_SIGNAL],
                     after = FocusRequester.Cancel,
                     sidebar = sidebarR,
                 )

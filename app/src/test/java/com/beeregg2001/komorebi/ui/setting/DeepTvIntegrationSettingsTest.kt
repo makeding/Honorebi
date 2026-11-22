@@ -29,6 +29,8 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.test.core.app.ApplicationProvider
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
+import com.beeregg2001.komorebi.data.DeepTvFeature
+import com.beeregg2001.komorebi.data.DeepTvFeatureSettings
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -61,7 +63,7 @@ class DeepTvIntegrationSettingsTest {
         compose.setContent {
             KomorebiTheme {
                 val prefs = rememberSettingPreferences(repository)
-                val itemRs = remember { List(3) { FocusRequester() } }
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
                 val sidebarR = remember { FocusRequester() }
                 val scope = rememberCoroutineScope()
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -71,8 +73,13 @@ class DeepTvIntegrationSettingsTest {
                         lockedByMainSystem = false,
                         hideEmptyInputs = prefs.tifHideEmptyInputs,
                         noSignalStyle = prefs.tifNoSignalStyle,
+                        features = prefs.deepTvFeatures,
+                        pipSupported = true,
                         itemRs = itemRs,
                         sidebarR = sidebarR,
+                        onToggleFeature = { feature ->
+                            scope.launch { repository.toggleDeepTvFeature(feature) }
+                        },
                         onToggleEnabled = {
                             scope.launch {
                                 repository.saveBoolean(
@@ -91,12 +98,12 @@ class DeepTvIntegrationSettingsTest {
         }
 
         fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
-        val toggle = row("ディープTV統合を有効にする")
+        val toggle = row("TV入力（TIF）統合を有効にする")
         val hideEmpty = row("チャンネル未登録のTV入力を非表示")
         val noSignal = row("TV入力の信号なし表示")
         val refreshTif = row("TV入力を再読み込み")
 
-        // Expanded focus chain: row0 -> row1 -> row2 -> TV入力を再読み込み
+        // Expanded focus chain: row7 -> row8 -> row9 -> TV入力を再読み込み
         toggle.requestFocus().assertIsFocused().assertTextContains("ON")
         toggle.performKeyInput { pressKey(Key.DirectionDown) }
         hideEmpty.assertIsFocused()
@@ -111,7 +118,7 @@ class DeepTvIntegrationSettingsTest {
         hideEmpty.performKeyInput { pressKey(Key.DirectionUp) }
         toggle.assertIsFocused()
 
-        // Toggle OFF -> persists, collapses rows 1-2 & TifInputSettings, keeps focus on row0, down = Cancel
+        // Toggle OFF -> persists, collapses rows 8-9 & TifInputSettings, keeps focus on row7, down = Cancel
         toggle.performKeyInput { pressKey(Key.DirectionCenter) }
         compose.waitForIdle()
         compose.waitUntil(3000) { runBlocking { !repository.tifIntegrationEnabled.first() } }
@@ -127,11 +134,11 @@ class DeepTvIntegrationSettingsTest {
     }
 
     @Test
-    fun unsupportedShowsNotSupportedAndRowRemainsFocusable() {
-        var clicked = false
+    fun unsupportedTifStillShowsAndFocusesAllNewFeatureSections() {
+        var tifClicked = false
         compose.setContent {
             KomorebiTheme {
-                val itemRs = remember { List(3) { FocusRequester() } }
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
                 val sidebarR = remember { FocusRequester() }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     DeepTvIntegrationSettingsContent(
@@ -140,9 +147,12 @@ class DeepTvIntegrationSettingsTest {
                         lockedByMainSystem = false,
                         hideEmptyInputs = true,
                         noSignalStyle = TifNoSignalStyle.BANNER,
+                        features = DeepTvFeatureSettings(),
+                        pipSupported = true,
                         itemRs = itemRs,
                         sidebarR = sidebarR,
-                        onToggleEnabled = { clicked = true },
+                        onToggleFeature = {},
+                        onToggleEnabled = { tifClicked = true },
                         onToggleHideEmpty = {},
                         onEditNoSignalStyle = {},
                         onRefreshTif = {},
@@ -152,28 +162,60 @@ class DeepTvIntegrationSettingsTest {
             }
         }
 
-        val toggle = compose.onNode(hasText("ディープTV統合を有効にする") and hasClickAction())
-        toggle.requestFocus().assertIsFocused().assertTextContains("非対応")
+        fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
+        val watchNext = row("Watch Next に番組を表示")
+        val nextEpisode = row("シリーズ視聴完了時に次のエピソードを提案")
+        val previewLive = row("「放送中の番組（ライブ）」チャンネルを公開")
+        val previewRec = row("「新着録画」チャンネルを公開")
+        val remoteKeys = row("専用キーショートカット（番組表・録画・テレビ）")
+        val numberTuning = row("数字キー（0〜9）で直接選局")
+        val osPip = row("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行")
+        val tifToggle = row("TV入力（TIF）統合を有効にする")
+
+        watchNext.requestFocus().assertIsFocused().assertTextContains("ON")
+        watchNext.performKeyInput { pressKey(Key.DirectionDown) }
+        nextEpisode.assertIsFocused().assertTextContains("ON")
+        nextEpisode.performKeyInput { pressKey(Key.DirectionDown) }
+        previewLive.assertIsFocused().assertTextContains("ON")
+        previewLive.performKeyInput { pressKey(Key.DirectionDown) }
+        previewRec.assertIsFocused().assertTextContains("ON")
+        previewRec.performKeyInput { pressKey(Key.DirectionDown) }
+        remoteKeys.assertIsFocused().assertTextContains("ON")
+        remoteKeys.performKeyInput { pressKey(Key.DirectionDown) }
+        numberTuning.assertIsFocused().assertTextContains("ON")
+        numberTuning.performKeyInput { pressKey(Key.DirectionDown) }
+        osPip.assertIsFocused().assertTextContains("ON")
+        osPip.performKeyInput { pressKey(Key.DirectionDown) }
+        tifToggle.assertIsFocused().assertTextContains("非対応")
+
         compose.onNode(hasText("チャンネル未登録のTV入力を非表示")).assertDoesNotExist()
-        toggle.performKeyInput { pressKey(Key.DirectionCenter) }
-        assertTrue(clicked)
+        tifToggle.performKeyInput { pressKey(Key.DirectionCenter) }
+        assertTrue(tifClicked)
     }
 
     @Test
-    fun lockedByMainSystemDisablesToggleAndShowsMainSystemValue() {
+    fun watchNextOffDisablesNextEpisodeAndSkipsItInFocusChain() {
+        val repository = SettingsRepository(ApplicationProvider.getApplicationContext<Application>())
         compose.setContent {
             KomorebiTheme {
-                val itemRs = remember { List(3) { FocusRequester() } }
+                val prefs = rememberSettingPreferences(repository)
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
                 val sidebarR = remember { FocusRequester() }
+                val scope = rememberCoroutineScope()
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     DeepTvIntegrationSettingsContent(
-                        supported = true,
+                        supported = false,
                         enabled = true,
-                        lockedByMainSystem = true,
+                        lockedByMainSystem = false,
                         hideEmptyInputs = true,
                         noSignalStyle = TifNoSignalStyle.BANNER,
+                        features = prefs.deepTvFeatures,
+                        pipSupported = true,
                         itemRs = itemRs,
                         sidebarR = sidebarR,
+                        onToggleFeature = { feature ->
+                            scope.launch { repository.toggleDeepTvFeature(feature) }
+                        },
                         onToggleEnabled = {},
                         onToggleHideEmpty = {},
                         onEditNoSignalStyle = {},
@@ -184,15 +226,158 @@ class DeepTvIntegrationSettingsTest {
             }
         }
 
-        val toggle = compose.onNode(hasText("ディープTV統合を有効にする"))
-        toggle.assertIsNotEnabled().assertTextContains("ON（メインシステム）")
-        compose.onNode(hasText("チャンネル未登録のTV入力を非表示") and hasClickAction())
-            .requestFocus()
-            .assertIsFocused()
+        fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
+        val watchNext = row("Watch Next に番組を表示")
+        val previewLive = row("「放送中の番組（ライブ）」チャンネルを公開")
+
+        watchNext.requestFocus().assertIsFocused().assertTextContains("ON")
+        watchNext.performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitForIdle()
+        compose.waitUntil(3000) { runBlocking { !repository.deepTvFeatureSettings.first().watchNextEnabled } }
+        assertFalse(runBlocking { repository.deepTvFeatureSettings.first().watchNextEnabled })
+
+        watchNext.assertIsFocused().assertTextContains("OFF")
+        compose.onNode(hasText("シリーズ視聴完了時に次のエピソードを提案")).assertIsNotEnabled()
+
+        // DPAD_DOWN from item 0 skips disabled item 1 and lands on item 2
+        watchNext.performKeyInput { pressKey(Key.DirectionDown) }
+        previewLive.assertIsFocused()
+        previewLive.performKeyInput { pressKey(Key.DirectionUp) }
+        watchNext.assertIsFocused()
     }
 
     @Test
-    fun noSignalDialogRestoresFocusToRow2() {
+    fun pipUnsupportedShowsNotSupportedAndSkipsItem6() {
+        compose.setContent {
+            KomorebiTheme {
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
+                val sidebarR = remember { FocusRequester() }
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    DeepTvIntegrationSettingsContent(
+                        supported = true,
+                        enabled = true,
+                        lockedByMainSystem = false,
+                        hideEmptyInputs = true,
+                        noSignalStyle = TifNoSignalStyle.BANNER,
+                        features = DeepTvFeatureSettings(),
+                        pipSupported = false,
+                        itemRs = itemRs,
+                        sidebarR = sidebarR,
+                        onToggleFeature = {},
+                        onToggleEnabled = {},
+                        onToggleHideEmpty = {},
+                        onEditNoSignalStyle = {},
+                        onRefreshTif = {},
+                        onClick = {},
+                    )
+                }
+            }
+        }
+
+        fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
+        val numberTuning = row("数字キー（0〜9）で直接選局")
+        val tifToggle = row("TV入力（TIF）統合を有効にする")
+
+        compose.onNode(hasText("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行"))
+            .assertIsNotEnabled()
+            .assertTextContains("非対応")
+
+        numberTuning.requestFocus().assertIsFocused()
+        numberTuning.performKeyInput { pressKey(Key.DirectionDown) }
+        tifToggle.assertIsFocused()
+        tifToggle.performKeyInput { pressKey(Key.DirectionUp) }
+        numberTuning.assertIsFocused()
+    }
+
+    @Test
+    fun lockedByMainSystemDisablesToggleAndSkipsRow7InFocusChain() {
+        compose.setContent {
+            KomorebiTheme {
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
+                val sidebarR = remember { FocusRequester() }
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    DeepTvIntegrationSettingsContent(
+                        supported = true,
+                        enabled = true,
+                        lockedByMainSystem = true,
+                        hideEmptyInputs = true,
+                        noSignalStyle = TifNoSignalStyle.BANNER,
+                        features = DeepTvFeatureSettings(),
+                        pipSupported = true,
+                        itemRs = itemRs,
+                        sidebarR = sidebarR,
+                        onToggleFeature = {},
+                        onToggleEnabled = {},
+                        onToggleHideEmpty = {},
+                        onEditNoSignalStyle = {},
+                        onRefreshTif = {},
+                        onClick = {},
+                    )
+                }
+            }
+        }
+
+        fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
+        val osPip = row("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行")
+        val hideEmpty = row("チャンネル未登録のTV入力を非表示")
+
+        compose.onNode(hasText("TV入力（TIF）統合を有効にする"))
+            .assertIsNotEnabled()
+            .assertTextContains("ON（メインシステム）")
+
+        osPip.requestFocus().assertIsFocused()
+        osPip.performKeyInput { pressKey(Key.DirectionDown) }
+        hideEmpty.assertIsFocused()
+        hideEmpty.performKeyInput { pressKey(Key.DirectionUp) }
+        osPip.assertIsFocused()
+    }
+
+    @Test
+    fun togglingFeaturePersistsThroughSettingsRepository() {
+        val repository = SettingsRepository(ApplicationProvider.getApplicationContext<Application>())
+        compose.setContent {
+            KomorebiTheme {
+                val prefs = rememberSettingPreferences(repository)
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
+                val sidebarR = remember { FocusRequester() }
+                val scope = rememberCoroutineScope()
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    DeepTvIntegrationSettingsContent(
+                        supported = false,
+                        enabled = false,
+                        lockedByMainSystem = false,
+                        hideEmptyInputs = true,
+                        noSignalStyle = TifNoSignalStyle.BANNER,
+                        features = prefs.deepTvFeatures,
+                        pipSupported = true,
+                        itemRs = itemRs,
+                        sidebarR = sidebarR,
+                        onToggleFeature = { feature ->
+                            scope.launch { repository.toggleDeepTvFeature(feature) }
+                        },
+                        onToggleEnabled = {},
+                        onToggleHideEmpty = {},
+                        onEditNoSignalStyle = {},
+                        onRefreshTif = {},
+                        onClick = {},
+                    )
+                }
+            }
+        }
+
+        val previewLive = compose.onNode(hasText("「放送中の番組（ライブ）」チャンネルを公開") and hasClickAction())
+        previewLive.requestFocus().assertIsFocused().assertTextContains("ON")
+        previewLive.performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.waitForIdle()
+        compose.waitUntil(3000) {
+            runBlocking { !repository.deepTvFeatureSettings.first().isEnabled(DeepTvFeature.PREVIEW_LIVE) }
+        }
+        previewLive.assertTextContains("OFF")
+        assertFalse(runBlocking { repository.deepTvFeatureSettings.first().previewLiveEnabled })
+    }
+
+    @Test
+    fun noSignalDialogRestoresFocusToRow9() {
         val repository = SettingsRepository(ApplicationProvider.getApplicationContext<Application>())
         runBlocking {
             repository.saveString(SettingsRepository.TIF_NO_SIGNAL_STYLE, TifNoSignalStyle.BANNER.name)
@@ -201,7 +386,7 @@ class DeepTvIntegrationSettingsTest {
         compose.setContent {
             KomorebiTheme {
                 val prefs = rememberSettingPreferences(repository)
-                val itemRs = remember { List(3) { FocusRequester() } }
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
                 val sidebarR = remember { FocusRequester() }
                 var restore by remember { mutableStateOf<FocusRequester?>(null) }
                 var dialog by remember { mutableStateOf(false) }
@@ -217,8 +402,11 @@ class DeepTvIntegrationSettingsTest {
                             lockedByMainSystem = false,
                             hideEmptyInputs = prefs.tifHideEmptyInputs,
                             noSignalStyle = prefs.tifNoSignalStyle,
+                            features = prefs.deepTvFeatures,
+                            pipSupported = true,
                             itemRs = itemRs,
                             sidebarR = sidebarR,
+                            onToggleFeature = {},
                             onToggleEnabled = {},
                             onToggleHideEmpty = {},
                             onEditNoSignalStyle = { dialog = true },

@@ -63,7 +63,7 @@ class TifNoSignalStyleSettingsTest {
     fun rowIsHiddenWhenTifNotSupported() {
         compose.setContent {
             KomorebiTheme {
-                val itemRs = remember { List(3) { FocusRequester() } }
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
                 val sidebarR = remember { FocusRequester() }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     DeepTvIntegrationSettingsContent(
@@ -85,7 +85,7 @@ class TifNoSignalStyleSettingsTest {
         }
 
         compose.onNode(hasText("TV入力の信号なし表示")).assertDoesNotExist()
-        compose.onNode(hasText("ディープTV統合を有効にする") and hasClickAction()).assertExists()
+        compose.onNode(hasText("TV入力（TIF）統合を有効にする") and hasClickAction()).assertExists()
     }
 
     @Test
@@ -98,7 +98,7 @@ class TifNoSignalStyleSettingsTest {
         compose.setContent {
             KomorebiTheme {
                 val preferences = rememberSettingPreferences(repository)
-                val itemRs = remember { List(3) { FocusRequester() } }
+                val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
                 val sidebarR = remember { FocusRequester() }
                 var restore by remember { mutableStateOf<FocusRequester?>(null) }
                 var dialog by remember { mutableStateOf(false) }
