@@ -145,6 +145,7 @@ fun HomeLauncherScreen(
     val shouldCropLogo = remember(backendType) { backendType == "KONOMITV" }
 
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
+    val currentStartupFocusTarget by settingsViewModel.startupFocusTarget.collectAsState()
     val tifHideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
     val visibleTabs = remember(hideAppsTab, backendType) {
         LauncherTab.visibleTabs(hideAppsTab, tif = backendType == "TIF")
@@ -287,7 +288,19 @@ fun HomeLauncherScreen(
 
     LaunchedEffect(launcherHomeFocusTick) {
         if (launcherHomeFocusTick > 0) {
-            applyReturnFocus(FocusReturnTrigger.LAUNCHER_HOME)
+            val targetTab = visibleTabs.getOrNull(initialTabIndex.coerceIn(0, (visibleTabs.size - 1).coerceAtLeast(0)))
+                ?: LauncherTab.HOME
+            if (targetTab != tabController.selectedTab) {
+                tabController.selectTab(targetTab, immediate = true)
+            }
+            val targetIndex = tabController.selectedIndex
+            if (currentStartupFocusTarget == StartupFocusTarget.CONTENT) {
+                suppressInitialRailExpand = false
+                focusMemory.requestContent(targetIndex)
+            } else {
+                suppressInitialRailExpand = true
+                focusMemory.remember(targetIndex)
+            }
         }
     }
 
