@@ -755,6 +755,12 @@ fun MainRootScreen(
 
     LaunchedEffect(homeIntentVersion) {
         if (homeIntentVersion > 0) {
+            if (isUpgradeTourControllingSettings) {
+                isUpgradeTourControllingSettings = false
+                isManualUpgradeTourOpen = false
+                isUpgradeTourDismissed = true
+                settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+            }
             returnToLauncherHome(settingsViewModel.getStartupTabOnce())
         }
     }
@@ -944,30 +950,29 @@ fun MainRootScreen(
         }
     }
 
-    val isUpgradeTourActive = startupRenderPlan.showMainContent &&
-        !state.playbackState.isPlaybackActive &&
-        (!state.isSettingsOpen || isUpgradeTourControllingSettings) &&
-        !state.showConnectionErrorDialog &&
-        !state.isRecordListOpen &&
-        !state.isSeriesListOpen &&
-        !state.isSmbLibraryOpen &&
-        !state.isOnAirOpen &&
-        state.epgSelectedProgram == null &&
-        state.selectedReserve == null &&
-        state.editingCondition == null &&
-        !showExitDialog &&
-        (isManualUpgradeTourOpen || (!isUpgradeTourDismissed &&
-        (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
-            shouldShowUpgradeLandingTour(
-                lastSeenVersionCode = ready.lastSeenVersionCode,
-                currentVersionCode = BuildConfig.VERSION_CODE,
-                isSettingsInitialized = ready.isSettingsInitialized,
-                hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
-            )
-        } == true))
-
     KomorebiTheme(theme = currentTheme) {
         var showExitDialog by remember { mutableStateOf(false) }
+        val isUpgradeTourActive = startupRenderPlan.showMainContent &&
+            !state.playbackState.isPlaybackActive &&
+            (!state.isSettingsOpen || isUpgradeTourControllingSettings) &&
+            !state.showConnectionErrorDialog &&
+            !state.isRecordListOpen &&
+            !state.isSeriesListOpen &&
+            !state.isSmbLibraryOpen &&
+            !state.isOnAirOpen &&
+            state.epgSelectedProgram == null &&
+            state.selectedReserve == null &&
+            state.editingCondition == null &&
+            !showExitDialog &&
+            (isManualUpgradeTourOpen || (!isUpgradeTourDismissed &&
+            (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
+                shouldShowUpgradeLandingTour(
+                    lastSeenVersionCode = ready.lastSeenVersionCode,
+                    currentVersionCode = BuildConfig.VERSION_CODE,
+                    isSettingsInitialized = ready.isSettingsInitialized,
+                    hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
+                )
+            } == true))
         var channelNumberBuffer by remember { mutableStateOf("") }
         var channelNumberInputTick by remember { mutableIntStateOf(0) }
         var channelNumberNotFound by remember { mutableStateOf<String?>(null) }

@@ -142,6 +142,15 @@ fun UpgradeSpotlightOverlay(
         primaryButtonFocusRequester.safeRequestFocusWithRetry("UpgradeSpotlight_Primary_$stepIndex")
     }
 
+    LaunchedEffect(calloutHasFocus, stepIndex) {
+        if (!calloutHasFocus) {
+            androidx.compose.runtime.withFrameNanos { }
+            if (!calloutHasFocus) {
+                primaryButtonFocusRequester.safeRequestFocusWithRetry("UpgradeSpotlight_Reclaim_$stepIndex")
+            }
+        }
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
