@@ -47,7 +47,7 @@ class PreviewChannelSyncCoordinator @Inject constructor(
     private val syncMutex = Mutex()
     private var lastBackendType: String? = null
     private var lastExclusionActive: Boolean? = null
-    private var lastExclusionRevision: Int? = null
+    private var lastExclusionRevision: Long? = null
 
     @OptIn(FlowPreview::class)
     fun start(scope: CoroutineScope) {
@@ -290,7 +290,7 @@ class PreviewChannelSyncCoordinator @Inject constructor(
         val groupedChannels: Map<String, List<Channel>>,
         val recentRecordings: List<RecordedProgram>,
         val exclusionActive: Boolean,
-        val exclusionRevision: Int,
+        val exclusionRevision: Long,
         val backendType: String,
         val liveEnabled: Boolean,
         val recordingsEnabled: Boolean,
