@@ -22,8 +22,8 @@ import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.home.HomeLauncherScreen
-import com.beeregg2001.komorebi.ui.home.UpgradeTourAction
-import com.beeregg2001.komorebi.ui.home.UpgradeTourStep
+import com.beeregg2001.komorebi.ui.home.UpgradeSpotlightTargets
+import com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets
 import com.beeregg2001.komorebi.ui.reserve.ConditionEditDialog
 import com.beeregg2001.komorebi.ui.video.RecordListScreen
 import com.beeregg2001.komorebi.viewmodel.*
@@ -60,9 +60,7 @@ fun MainRootBackground(
     onExitApp: () -> Unit,
     onTriggerScreensaver: () -> Unit = {},
     showUpgradeTour: Boolean = false,
-    upgradeTourSteps: List<UpgradeTourStep> = emptyList(),
-    onUpgradeTourAction: (UpgradeTourAction) -> Unit = {},
-    onDismissUpgradeTour: () -> Unit = {},
+    spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
 ) {
     val scope = rememberCoroutineScope()
     val onAirInitialFocusRequester = remember { FocusRequester() }
@@ -302,9 +300,7 @@ fun MainRootBackground(
                         aiFocusReturnTick = state.aiFocusReturnTick,
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
                         showUpgradeTour = showUpgradeTour,
-                        upgradeTourSteps = upgradeTourSteps,
-                        onUpgradeTourAction = onUpgradeTourAction,
-                        onDismissUpgradeTour = onDismissUpgradeTour,
+                        spotlightTargets = spotlightTargets,
                     )
                 }
             }

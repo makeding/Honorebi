@@ -28,6 +28,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -985,6 +987,7 @@ fun CommentSettingsContent(
     layerR: FocusRequester,
     engineR: FocusRequester,
     sidebarR: FocusRequester,
+    onEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -1096,7 +1099,11 @@ fun CommentSettingsContent(
                     else -> AppStrings.DIALOG_COMMENT_ENGINE_DFM_HARDWARE
                 },
                 Icons.Default.Memory,
-                modifier = Modifier.focusRequester(engineR).focusProperties {
+                modifier = Modifier
+                    .onGloballyPositioned { coords ->
+                        onEngineBoundsChanged(coords.boundsInRoot())
+                    }
+                    .focusRequester(engineR).focusProperties {
                     left = sidebarR
                     up = layerR
                     down = FocusRequester.Cancel

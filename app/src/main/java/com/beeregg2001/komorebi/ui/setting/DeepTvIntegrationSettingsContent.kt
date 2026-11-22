@@ -23,6 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +68,7 @@ fun DeepTvIntegrationSettingsContent(
     onEditNoSignalStyle: () -> Unit,
     onRefreshTif: () -> Unit,
     onClick: (FocusRequester) -> Unit,
+    onFirstItemBoundsChanged: (Rect) -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val expanded = supported && (enabled || lockedByMainSystem)
@@ -147,7 +151,8 @@ fun DeepTvIntegrationSettingsContent(
                 title = "Watch Next に番組を表示",
                 value = if (features.watchNextEnabled) "ON" else "OFF",
                 icon = Icons.Default.QueuePlayNext,
-                modifier = itemModifier(DeepTvItemIndex.WATCH_NEXT),
+                modifier = itemModifier(DeepTvItemIndex.WATCH_NEXT)
+                    .onGloballyPositioned { onFirstItemBoundsChanged(it.boundsInRoot()) },
                 onClick = {
                     onClick(itemRs[DeepTvItemIndex.WATCH_NEXT])
                     onToggleFeature(DeepTvFeature.WATCH_NEXT)

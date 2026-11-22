@@ -118,9 +118,7 @@ fun HomeLauncherScreen(
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
     showUpgradeTour: Boolean = false,
-    upgradeTourSteps: List<UpgradeTourStep> = emptyList(),
-    onUpgradeTourAction: (UpgradeTourAction) -> Unit = {},
-    onDismissUpgradeTour: () -> Unit = {},
+    spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
 ) {
     val ui = rememberHomeLauncherState(
         initialTabIndex,
@@ -132,7 +130,6 @@ fun HomeLauncherScreen(
     )
 
     val focusMemory = rememberFocusMemory()
-    val spotlightTargets = rememberUpgradeSpotlightTargets()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val supportsTvInput = remember(context) {
@@ -756,7 +753,6 @@ fun HomeLauncherScreen(
                 startCollapsed = suppressInitialRailExpand,
                 onStartCollapsedConsumed = { suppressInitialRailExpand = false },
                 onSelectedTabBoundsChanged = { spotlightTargets.navRailBounds = it },
-                onSettingsButtonBoundsChanged = { spotlightTargets.settingsButtonBounds = it },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
@@ -780,25 +776,6 @@ fun HomeLauncherScreen(
                         inputSourceFocusRequester.safeRequestFocus("TvInputDismiss")
                     }
                 },
-            )
-        }
-        if (showUpgradeTour && upgradeTourSteps.isNotEmpty() && !isFullScreenMode && !showTvInputs) {
-            UpgradeSpotlightOverlay(
-                steps = upgradeTourSteps,
-                targets = spotlightTargets,
-                onStepAction = onUpgradeTourAction,
-                onFinish = {
-                    onDismissUpgradeTour()
-                    scope.launch {
-                        androidx.compose.runtime.withFrameNanos { }
-                        if (currentStartupFocusTarget == StartupFocusTarget.SIDEBAR) {
-                            tabController.tabRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourFinish_Rail")
-                        } else {
-                            tabController.contentRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourFinish_Content")
-                        }
-                    }
-                },
-                modifier = Modifier.zIndex(40f),
             )
         }
     }

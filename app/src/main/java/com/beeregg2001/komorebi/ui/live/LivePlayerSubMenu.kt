@@ -157,7 +157,8 @@ fun LiveTopSubMenuUI(
 
     LaunchedEffect(isDualDisplayMode) {
         delay(50)
-        quickChannelButtonRequester.safeRequestFocusWithRetry(TAG)
+        val target = if (isDualDisplayMode) quickChannelButtonRequester else audioButtonRequester
+        target.safeRequestFocusWithRetry(TAG)
     }
 
     LaunchedEffect(selectedCategory) {
@@ -252,7 +253,7 @@ fun LiveTopSubMenuUI(
                     },
                     modifier = Modifier
                         .focusRequester(quickChannelButtonRequester)
-                        .focusRequester(focusRequester)
+                        .then(if (isDualDisplayMode) Modifier.focusRequester(focusRequester) else Modifier)
                         .focusProperties {
                             if (selectedCategory != LiveSubMenuCategory.QUICK_CHANNELS) down =
                                 FocusRequester.Cancel
@@ -358,15 +359,16 @@ fun LiveTopSubMenuUI(
                         contentColor = colors.textPrimary
                     )
 
-                LiveMenuTileItem(
-                    title = "音声切替", icon = Icons.Default.Audiotrack,
-                    subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
-                    onClick = onAudioToggle,
-                    modifier = Modifier
-                        .focusRequester(audioButtonRequester)
-                        .focusProperties { down = FocusRequester.Cancel },
-                    contentColor = colors.textPrimary
-                )
+                    LiveMenuTileItem(
+                        title = "音声切替", icon = Icons.Default.Audiotrack,
+                        subtitle = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
+                        onClick = onAudioToggle,
+                        modifier = Modifier
+                            .focusRequester(audioButtonRequester)
+                            .focusRequester(focusRequester)
+                            .focusProperties { down = FocusRequester.Cancel },
+                        contentColor = colors.textPrimary
+                    )
 
                     LiveMenuTileItem(
                         title = "信号情報", icon = Icons.Default.Info,

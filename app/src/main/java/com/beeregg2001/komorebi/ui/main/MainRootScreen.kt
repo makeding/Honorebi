@@ -24,8 +24,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.ui.home.LoadingScreen
+import com.beeregg2001.komorebi.ui.home.UpgradeSpotlightOverlay
 import com.beeregg2001.komorebi.ui.home.UpgradeTourAction
 import com.beeregg2001.komorebi.ui.home.UpgradeTourCatalog
+import com.beeregg2001.komorebi.ui.home.UpgradeTourTargetId
+import com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets
 import com.beeregg2001.komorebi.ui.home.shouldShowUpgradeLandingTour
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.ui.theme.AppTheme
@@ -534,8 +537,10 @@ fun MainRootScreen(
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
     val upgradeCheckState by settingsViewModel.upgradeCheckState.collectAsState()
     val upgradeTourSteps = remember { UpgradeTourCatalog.tourForVersion(BuildConfig.VERSION_CODE) }
+    val spotlightTargets = rememberUpgradeSpotlightTargets()
     var isUpgradeTourDismissed by remember { mutableStateOf(false) }
     var isManualUpgradeTourOpen by remember { mutableStateOf(false) }
+    var isUpgradeTourControllingSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(upgradeCheckState) {
         val ready = upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready ?: return@LaunchedEffect
@@ -939,6 +944,28 @@ fun MainRootScreen(
         }
     }
 
+    val isUpgradeTourActive = startupRenderPlan.showMainContent &&
+        !state.playbackState.isPlaybackActive &&
+        (!state.isSettingsOpen || isUpgradeTourControllingSettings) &&
+        !state.showConnectionErrorDialog &&
+        !state.isRecordListOpen &&
+        !state.isSeriesListOpen &&
+        !state.isSmbLibraryOpen &&
+        !state.isOnAirOpen &&
+        state.epgSelectedProgram == null &&
+        state.selectedReserve == null &&
+        state.editingCondition == null &&
+        !showExitDialog &&
+        (isManualUpgradeTourOpen || (!isUpgradeTourDismissed &&
+        (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
+            shouldShowUpgradeLandingTour(
+                lastSeenVersionCode = ready.lastSeenVersionCode,
+                currentVersionCode = BuildConfig.VERSION_CODE,
+                isSettingsInitialized = ready.isSettingsInitialized,
+                hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
+            )
+        } == true))
+
     KomorebiTheme(theme = currentTheme) {
         var showExitDialog by remember { mutableStateOf(false) }
         var channelNumberBuffer by remember { mutableStateOf("") }
@@ -1272,50 +1299,8 @@ fun MainRootScreen(
                                 (isChannelRecovering || state.isConnectionRetryPending),
                         onExitApp = { showExitDialog = true },
                         onTriggerScreensaver = triggerScreensaver,
-                        showUpgradeTour = startupRenderPlan.showMainContent &&
-                            !state.playbackState.isPlaybackActive &&
-                            !state.isSettingsOpen &&
-                            !state.showConnectionErrorDialog &&
-                            !state.isRecordListOpen &&
-                            !state.isSeriesListOpen &&
-                            !state.isSmbLibraryOpen &&
-                            !state.isOnAirOpen &&
-                            state.epgSelectedProgram == null &&
-                            state.selectedReserve == null &&
-                            state.editingCondition == null &&
-                            !showExitDialog &&
-                            (isManualUpgradeTourOpen || (!isUpgradeTourDismissed &&
-                            (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
-                                shouldShowUpgradeLandingTour(
-                                    lastSeenVersionCode = ready.lastSeenVersionCode,
-                                    currentVersionCode = BuildConfig.VERSION_CODE,
-                                    isSettingsInitialized = ready.isSettingsInitialized,
-                                    hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
-                                )
-                            } == true)),
-                        upgradeTourSteps = upgradeTourSteps,
-                        onUpgradeTourAction = { action ->
-                            isManualUpgradeTourOpen = false
-                            isUpgradeTourDismissed = true
-                            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
-                            when (action) {
-                                UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS -> {
-                                    state.settingsInitialCategoryIndex = 5
-                                    state.settingsInitialFocusItemIndex = 6
-                                    state.isSettingsOpen = true
-                                }
-                                UpgradeTourAction.OPEN_DEEP_TV_SETTINGS -> {
-                                    state.settingsInitialCategoryIndex = 9
-                                    state.settingsInitialFocusItemIndex = null
-                                    state.isSettingsOpen = true
-                                }
-                            }
-                        },
-                        onDismissUpgradeTour = {
-                            isManualUpgradeTourOpen = false
-                            isUpgradeTourDismissed = true
-                            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
-                        },
+                        showUpgradeTour = isUpgradeTourActive,
+                        spotlightTargets = spotlightTargets,
                     )
 
                     if (state.playbackState.isPlaybackActive) {
@@ -1428,7 +1413,67 @@ fun MainRootScreen(
                     closeSettingsAndRefresh()
                     isManualUpgradeTourOpen = true
                 },
+                isUpgradeTourOverlayActive = isUpgradeTourActive,
+                spotlightTargets = spotlightTargets,
             )
+            if (isUpgradeTourActive && upgradeTourSteps.isNotEmpty()) {
+                UpgradeSpotlightOverlay(
+                    steps = upgradeTourSteps,
+                    targets = spotlightTargets,
+                    onStepChanged = { idx ->
+                        val step = upgradeTourSteps.getOrNull(idx)
+                        when (step?.targetId) {
+                            UpgradeTourTargetId.DEEP_TV_SETTING -> {
+                                isUpgradeTourControllingSettings = true
+                                state.settingsInitialCategoryIndex = 9
+                                state.settingsInitialFocusItemIndex = null
+                                state.isSettingsOpen = true
+                            }
+                            UpgradeTourTargetId.COMMENT_ENGINE_SETTING -> {
+                                isUpgradeTourControllingSettings = true
+                                state.settingsInitialCategoryIndex = 5
+                                state.settingsInitialFocusItemIndex = 6
+                                state.isSettingsOpen = true
+                            }
+                            else -> {
+                                if (isUpgradeTourControllingSettings) {
+                                    isUpgradeTourControllingSettings = false
+                                    state.isSettingsOpen = false
+                                }
+                            }
+                        }
+                    },
+                    onStepAction = { action ->
+                        isUpgradeTourControllingSettings = false
+                        isManualUpgradeTourOpen = false
+                        isUpgradeTourDismissed = true
+                        settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+                        when (action) {
+                            UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS -> {
+                                state.settingsInitialCategoryIndex = 5
+                                state.settingsInitialFocusItemIndex = 6
+                                state.isSettingsOpen = true
+                            }
+                            UpgradeTourAction.OPEN_DEEP_TV_SETTINGS -> {
+                                state.settingsInitialCategoryIndex = 9
+                                state.settingsInitialFocusItemIndex = null
+                                state.isSettingsOpen = true
+                            }
+                        }
+                    },
+                    onFinish = {
+                        val wasControllingSettings = isUpgradeTourControllingSettings
+                        isUpgradeTourControllingSettings = false
+                        isManualUpgradeTourOpen = false
+                        isUpgradeTourDismissed = true
+                        settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+                        if (wasControllingSettings) {
+                            state.isSettingsOpen = false
+                        }
+                    },
+                    modifier = Modifier.zIndex(50f),
+                )
+            }
             if (showExitDialog) {
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })
             }

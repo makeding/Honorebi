@@ -80,34 +80,38 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
 import kotlin.math.roundToInt
 
-internal class UpgradeSpotlightTargets {
+class UpgradeSpotlightTargets {
     var navRailBounds by mutableStateOf(Rect.Zero)
     var systemStripBounds by mutableStateOf(Rect.Zero)
     var contentStageBounds by mutableStateOf(Rect.Zero)
-    var settingsButtonBounds by mutableStateOf(Rect.Zero)
+    var deepTvSettingBounds by mutableStateOf(Rect.Zero)
+    var commentEngineSettingBounds by mutableStateOf(Rect.Zero)
 
     fun boundsFor(targetId: UpgradeTourTargetId): Rect = when (targetId) {
         UpgradeTourTargetId.NAV_RAIL -> navRailBounds
         UpgradeTourTargetId.SYSTEM_STRIP -> systemStripBounds
         UpgradeTourTargetId.CONTENT_STAGE -> contentStageBounds
-        UpgradeTourTargetId.SETTINGS_BUTTON -> settingsButtonBounds
+        UpgradeTourTargetId.DEEP_TV_SETTING -> deepTvSettingBounds
+        UpgradeTourTargetId.COMMENT_ENGINE_SETTING -> commentEngineSettingBounds
     }
 }
 
 @Composable
-internal fun rememberUpgradeSpotlightTargets(): UpgradeSpotlightTargets =
+fun rememberUpgradeSpotlightTargets(): UpgradeSpotlightTargets =
     remember { UpgradeSpotlightTargets() }
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
-internal fun UpgradeSpotlightOverlay(
+fun UpgradeSpotlightOverlay(
     steps: List<UpgradeTourStep>,
     targets: UpgradeSpotlightTargets,
+    onStepChanged: (Int) -> Unit = {},
     onStepAction: (UpgradeTourAction) -> Unit = {},
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
@@ -125,6 +129,7 @@ internal fun UpgradeSpotlightOverlay(
     val stepActionButtonFocusRequester = remember { FocusRequester() }
     val backButtonFocusRequester = remember { FocusRequester() }
     val skipButtonFocusRequester = remember { FocusRequester() }
+    var calloutHasFocus by remember { mutableStateOf(false) }
     val hasStepAction = currentStep.actionLabel != null && currentStep.actionTarget != null
 
     BackHandler(enabled = true) {
@@ -132,7 +137,9 @@ internal fun UpgradeSpotlightOverlay(
     }
 
     LaunchedEffect(stepIndex) {
-        primaryButtonFocusRequester.safeRequestFocus("UpgradeSpotlight_Primary_$stepIndex")
+        onStepChanged(stepIndex)
+        androidx.compose.runtime.withFrameNanos { }
+        primaryButtonFocusRequester.safeRequestFocusWithRetry("UpgradeSpotlight_Primary_$stepIndex")
     }
 
     BoxWithConstraints(
@@ -149,10 +156,24 @@ internal fun UpgradeSpotlightOverlay(
                     (event.key == Key.Back || event.key == Key.Escape)
                 ) {
                     onFinish()
-                    true
-                } else {
-                    false
+                    return@onPreviewKeyEvent true
                 }
+                if (!calloutHasFocus) {
+                    val isNavOrConfirmKey = event.key == Key.DirectionCenter ||
+                        event.key == Key.Enter ||
+                        event.key == Key.NumPadEnter ||
+                        event.key == Key.DirectionUp ||
+                        event.key == Key.DirectionDown ||
+                        event.key == Key.DirectionLeft ||
+                        event.key == Key.DirectionRight
+                    if (isNavOrConfirmKey) {
+                        if (event.type == KeyEventType.KeyDown) {
+                            primaryButtonFocusRequester.safeRequestFocus("UpgradeSpotlight_RecoverFocus")
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
             },
     ) {
         val screenWidthPx = with(density) { maxWidth.toPx() }
@@ -281,13 +302,22 @@ internal fun UpgradeSpotlightOverlay(
                     .offset { IntOffset(x = startOffsetPx.coerceAtLeast(0), y = 0) }
             }
             UpgradeCalloutPlacement.BELOW_RIGHT -> {
-                val topOffsetPx = (animatedRect.bottom + with(density) { 28.dp.toPx() })
-                    .coerceAtMost(screenHeightPx * 0.55f)
-                    .roundToInt()
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 36.dp)
-                    .offset { IntOffset(x = 0, y = topOffsetPx.coerceAtLeast(0)) }
+                if (currentStep.targetId == UpgradeTourTargetId.COMMENT_ENGINE_SETTING &&
+                    animatedRect != Rect.Zero &&
+                    animatedRect.center.y > screenHeightPx * 0.52f
+                ) {
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 40.dp, end = 48.dp)
+                } else {
+                    val topOffsetPx = (animatedRect.bottom + with(density) { 28.dp.toPx() })
+                        .coerceAtMost(screenHeightPx * 0.55f)
+                        .roundToInt()
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 36.dp)
+                        .offset { IntOffset(x = 0, y = topOffsetPx.coerceAtLeast(0)) }
+                }
             }
             UpgradeCalloutPlacement.BOTTOM_CENTER -> {
                 Modifier
@@ -316,6 +346,7 @@ internal fun UpgradeSpotlightOverlay(
                     shape = RoundedCornerShape(TvCardRadiusGrid + 4.dp),
                 )
                 .padding(horizontal = 24.dp, vertical = 20.dp)
+                .onFocusChanged { calloutHasFocus = it.hasFocus }
                 .focusGroup(),
         ) {
             Column {
@@ -412,7 +443,11 @@ internal fun UpgradeSpotlightOverlay(
                                 up = FocusRequester.Cancel
                                 down = FocusRequester.Cancel
                                 left = FocusRequester.Cancel
-                                right = if (!isFirstStep) backButtonFocusRequester else primaryButtonFocusRequester
+                                right = when {
+                                    !isFirstStep -> backButtonFocusRequester
+                                    hasStepAction -> stepActionButtonFocusRequester
+                                    else -> primaryButtonFocusRequester
+                                }
                             },
                     )
 

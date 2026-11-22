@@ -97,6 +97,9 @@ fun SettingsScreen(
     initialFocusItemIndex: Int? = null,
     initialOpenDeviceCapabilities: Boolean = false,
     onOpenWhatsNew: () -> Unit = {},
+    isUpgradeTourOverlayActive: Boolean = false,
+    onDeepTvBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    onCommentEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
@@ -108,6 +111,9 @@ fun SettingsScreen(
         initialFocusItemIndex = initialFocusItemIndex,
         initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
         onOpenWhatsNew = onOpenWhatsNew,
+        isUpgradeTourOverlayActive = isUpgradeTourOverlayActive,
+        onDeepTvBoundsChanged = onDeepTvBoundsChanged,
+        onCommentEngineBoundsChanged = onCommentEngineBoundsChanged,
         viewModel = viewModel,
         channelViewModel = channelViewModel,
     )
@@ -124,6 +130,9 @@ private fun SettingsMenuScreen(
     initialFocusItemIndex: Int? = null,
     initialOpenDeviceCapabilities: Boolean = false,
     onOpenWhatsNew: () -> Unit = {},
+    isUpgradeTourOverlayActive: Boolean = false,
+    onDeepTvBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    onCommentEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     viewModel: SettingsViewModel,
     channelViewModel: ChannelViewModel,
 ) {
@@ -268,13 +277,21 @@ private fun SettingsMenuScreen(
     val mainScrollState = rememberScrollState()
     val sidebarScrollState = rememberScrollState()
 
-    LaunchedEffect(uiState.selectedCategoryIndex) {
-        if (initialFocusItemIndex == null || uiState.selectedCategoryIndex != initialCategoryIndex) {
+    LaunchedEffect(uiState.selectedCategoryIndex, isUpgradeTourOverlayActive) {
+        if (isUpgradeTourOverlayActive) {
+            if (uiState.selectedCategoryIndex == 5) {
+                androidx.compose.runtime.withFrameNanos { }
+                mainScrollState.scrollTo(mainScrollState.maxValue)
+            } else {
+                mainScrollState.scrollTo(0)
+            }
+        } else if (initialFocusItemIndex == null || uiState.selectedCategoryIndex != initialCategoryIndex) {
             mainScrollState.scrollTo(0)
         }
     }
 
     LaunchedEffect(Unit) {
+        if (isUpgradeTourOverlayActive) return@LaunchedEffect
         delay(400)
 
         if (initialFocusItemIndex != null) {
@@ -508,6 +525,7 @@ private fun SettingsMenuScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .focusProperties { canFocus = !isUpgradeTourOverlayActive }
                         .graphicsLayer { clip = false }
                         .verticalScroll(mainScrollState)
                         .padding(horizontal = 4.dp, vertical = 4.dp)
@@ -685,6 +703,7 @@ private fun SettingsMenuScreen(
                             },
                             onRefreshTif = { channelViewModel.fetchChannels() },
                             onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9 },
+                            onFirstItemBoundsChanged = onDeepTvBoundsChanged,
                         )
 
                         2 -> PlaybackSettingsContent(
@@ -1188,7 +1207,8 @@ private fun SettingsMenuScreen(
                             itemFocusRequesters[5][4],
                             itemFocusRequesters[5][5],
                             itemFocusRequesters[5][6],
-                            categoryFocusRequesters[5]
+                            categoryFocusRequesters[5],
+                            onEngineBoundsChanged = onCommentEngineBoundsChanged,
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
 
                         10 -> CacheManagementContent(

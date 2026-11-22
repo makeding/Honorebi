@@ -70,6 +70,8 @@ fun MainRootDialogs(
     closeAiConcierge: (Boolean) -> Unit,
     onGoToSettings: () -> Unit, // ★ 追加: 設定画面誘導コールバック
     onOpenWhatsNew: () -> Unit = {},
+    isUpgradeTourOverlayActive: Boolean = false,
+    spotlightTargets: com.beeregg2001.komorebi.ui.home.UpgradeSpotlightTargets = com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -499,6 +501,9 @@ fun MainRootDialogs(
             initialFocusItemIndex = state.settingsInitialFocusItemIndex,
             initialOpenDeviceCapabilities = state.settingsOpenDeviceCapabilities,
             onOpenWhatsNew = onOpenWhatsNew,
+            isUpgradeTourOverlayActive = isUpgradeTourOverlayActive,
+            onDeepTvBoundsChanged = { spotlightTargets.deepTvSettingBounds = it },
+            onCommentEngineBoundsChanged = { spotlightTargets.commentEngineSettingBounds = it },
             onClearLastChannel = {
                 homeViewModel.clearLastChannelHistory(); state.toastMessage =
                 AppStrings.TOAST_CHANNEL_HISTORY_DELETED

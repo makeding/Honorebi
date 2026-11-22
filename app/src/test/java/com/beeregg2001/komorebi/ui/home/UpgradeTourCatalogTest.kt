@@ -90,7 +90,8 @@ class UpgradeTourCatalogTest {
             navRailBounds = Rect(0f, 0f, 68f, 540f)
             systemStripBounds = Rect(640f, 12f, 936f, 68f)
             contentStageBounds = Rect(68f, 0f, 960f, 540f)
-            settingsButtonBounds = Rect(0f, 470f, 68f, 520f)
+            deepTvSettingBounds = Rect(320f, 120f, 760f, 200f)
+            commentEngineSettingBounds = Rect(320f, 360f, 760f, 440f)
         }
 
         compose.setContent {
