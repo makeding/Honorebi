@@ -194,6 +194,7 @@ private fun SettingsMenuScreen(
         listOf(
             SettingSidebarRow(0, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications),
             SettingSidebarRow(1, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link),
+            SettingSidebarRow(9, AppStrings.SETTINGS_CATEGORY_DEEP_TV, Icons.Default.SettingsInputHdmi),
             SettingSidebarRow(2, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
             SettingSidebarRow(5, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment),
             SettingSidebarRow(8, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard, isChild = true),
@@ -216,7 +217,6 @@ private fun SettingsMenuScreen(
         List(12) { byContent[it] ?: FocusRequester.Default }
     }
     val playerClockModeRequester = remember { FocusRequester() }
-    val tifNoSignalStyleRequester = remember { FocusRequester() }
     val tifSupported by produceState(false, context) {
         value = withContext(Dispatchers.IO) { TifInput.isSupported(context) }
     }
@@ -237,12 +237,12 @@ private fun SettingsMenuScreen(
     // [6] ホーム設定: genre, time
     // [7] ランチャー設定
     // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
-    // [9] 削除済み: アドオン・ラボの再生項目は [2] に統合
+    // [9] ディープTV統合: toggle, hideEmptyInputs, noSignalStyle
     // [10] データ管理: cache(all/logo/thumb/epg/recording) + history(channel/watch)
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(6) { FocusRequester() },
+            List(5) { FocusRequester() },
             List(8) { FocusRequester() },
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
@@ -251,7 +251,7 @@ private fun SettingsMenuScreen(
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(13) { FocusRequester() },
-            emptyList(),
+            List(3) { FocusRequester() },
             List(7) { FocusRequester() },
             List(6) { FocusRequester() }
         )
@@ -424,36 +424,41 @@ private fun SettingsMenuScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     sidebarRows.forEachIndexed { index, row ->
-                        if (row.isChild && (index == 0 || !sidebarRows[index - 1].isChild)) {
-                            Text(
-                                text = AppStrings.SETTINGS_CATEGORY_UI,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = colors.textSecondary,
-                                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)
+                        key(row.contentIndex) {
+                            if (row.isChild && (index == 0 || !sidebarRows[index - 1].isChild)) {
+                                Text(
+                                    text = AppStrings.SETTINGS_CATEGORY_UI,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = colors.textSecondary,
+                                    modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)
+                                )
+                            }
+                            val targetR = when {
+                                row.contentIndex == 9 && prefs.backendType == "TIF" && tifSupported ->
+                                    itemFocusRequesters[9][1]
+                                else -> itemFocusRequesters.getOrNull(row.contentIndex)?.firstOrNull()
+                                    ?: FocusRequester.Default
+                            }
+                            CategoryItem(
+                                title = row.title,
+                                icon = row.icon,
+                                isSelected = uiState.selectedCategoryIndex == row.contentIndex,
+                                onFocused = {
+                                    uiState.selectedCategoryIndex = row.contentIndex
+                                },
+                                onClick = { targetR.safeRequestFocus("CategoryItem_Click") },
+                                enabled = !uiState.isRestoringFocus,
+                                modifier = Modifier
+                                    .padding(start = if (row.isChild) 16.dp else 0.dp)
+                                    .focusRequester(sidebarRowRequesters[index])
+                                    .focusProperties {
+                                        left = FocusRequester.Cancel // ★ 修正: 左キーでフォーカスが迷子になるのを防ぐ
+                                        right = targetR
+                                        up = if (index == 0) FocusRequester.Cancel else sidebarRowRequesters[index - 1]
+                                        down = if (index == sidebarRows.lastIndex) homeBackRequester else sidebarRowRequesters[index + 1]
+                                    }
                             )
                         }
-                        val targetR =
-                            itemFocusRequesters.getOrNull(row.contentIndex)?.firstOrNull()
-                                ?: FocusRequester.Default
-                        CategoryItem(
-                            title = row.title,
-                            icon = row.icon,
-                            isSelected = uiState.selectedCategoryIndex == row.contentIndex,
-                            onFocused = {
-                                uiState.selectedCategoryIndex = row.contentIndex
-                            },
-                            onClick = { targetR.safeRequestFocus("CategoryItem_Click") },
-                            enabled = !uiState.isRestoringFocus,
-                            modifier = Modifier
-                                .padding(start = if (row.isChild) 16.dp else 0.dp)
-                                .focusRequester(sidebarRowRequesters[index])
-                                .focusProperties {
-                                    left = FocusRequester.Cancel // ★ 修正: 左キーでフォーカスが迷子になるのを防ぐ
-                                    right = targetR
-                                    up = if (index == 0) FocusRequester.Cancel else sidebarRowRequesters[index - 1]
-                                    down = if (index == sidebarRows.lastIndex) homeBackRequester else sidebarRowRequesters[index + 1]
-                                }
-                        )
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -573,22 +578,8 @@ private fun SettingsMenuScreen(
                                     viewModel.nhkExclusionState.value.mode.name,
                                 ) { viewModel.setNHKExclusionMode(com.beeregg2001.komorebi.data.model.NHKExclusionMode.fromPreference(it)) }
                             },
-                            prefs.tifHideEmptyInputs,
-                            itemFocusRequesters[0][5],
-                            { viewModel.toggleTifHideEmptyInputs() },
                             categoryFocusRequesters[0],
-                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 },
-                            showTifNoSignalStyle = tifSupported,
-                            tifNoSignalStyle = prefs.tifNoSignalStyle,
-                            tifNoSignalStyleR = tifNoSignalStyleRequester,
-                            onEditTifNoSignalStyle = {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    "TV入力の信号なし表示",
-                                    TifNoSignalStyle.entries.map { it.label to it.name },
-                                    prefs.tifNoSignalStyle.name,
-                                ) { viewModel.updateTifNoSignalStyle(it) }
-                            },
-                        )
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
 
                         1 -> ConnectionSettingsContent(
                             prefs = prefs,
@@ -659,6 +650,34 @@ private fun SettingsMenuScreen(
                             scrollState = mainScrollState,
                             isDialogOpen = isDialogOpen,
                             onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 1 },
+                            tifIntegrationEnabled = prefs.tifIntegrationEnabled,
+                        )
+
+                        9 -> DeepTvIntegrationSettingsContent(
+                            supported = tifSupported,
+                            enabled = prefs.tifIntegrationEnabled,
+                            lockedByMainSystem = prefs.backendType == "TIF",
+                            hideEmptyInputs = prefs.tifHideEmptyInputs,
+                            noSignalStyle = prefs.tifNoSignalStyle,
+                            itemRs = itemFocusRequesters[9],
+                            sidebarR = categoryFocusRequesters[9],
+                            onToggleEnabled = {
+                                if (!tifSupported) {
+                                    toastMessage = "この端末はTV入力（TIF）に対応していません"
+                                } else {
+                                    viewModel.toggleTifIntegration()
+                                }
+                            },
+                            onToggleHideEmpty = { viewModel.toggleTifHideEmptyInputs() },
+                            onEditNoSignalStyle = {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    "TV入力の信号なし表示",
+                                    TifNoSignalStyle.entries.map { it.label to it.name },
+                                    prefs.tifNoSignalStyle.name,
+                                ) { viewModel.updateTifNoSignalStyle(it) }
+                            },
+                            onRefreshTif = { channelViewModel.fetchChannels() },
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9 },
                         )
 
                         2 -> PlaybackSettingsContent(

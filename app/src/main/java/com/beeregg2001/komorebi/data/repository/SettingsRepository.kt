@@ -11,6 +11,9 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import com.beeregg2001.komorebi.data.model.NHKExclusionMode
 import com.beeregg2001.komorebi.data.model.NHKExclusionState
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.core.DataMigration
+import androidx.datastore.preferences.core.Preferences
+import com.beeregg2001.komorebi.data.account.KomorebiAccount
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessConfiguration
@@ -30,7 +33,43 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.dataStore by preferencesDataStore(name = "settings")
+private val ACCOUNT_MIGRATED = booleanPreferencesKey("system_account_migrated")
+private val ACCOUNT_CREATED = booleanPreferencesKey("system_account_created")
+private val accountKeys = listOf("backend_type", "edcb_ip", "edcb_port", "edcb_http_port", "edcb_record_play_method", "epgstation_ip", "epgstation_port", "konomi_ip", "konomi_port", "mirakurun_ip", "mirakurun_port", "preferred_stream_source", "cf_access_client_id", "cf_access_client_secret", "smb_server_list")
+
+private fun Preferences.accountSettings(): Map<String, String> = accountKeys.mapNotNull { key ->
+    this[stringPreferencesKey(key)]?.let { key to it }
+}.toMap()
+
+private fun androidx.datastore.preferences.core.MutablePreferences.syncAccount(account: KomorebiAccount) {
+    val values = accountSettings()
+    val existing = account.read()
+    val configured = configuredConnectionSources().isNotEmpty() || this[SettingsRepository.BACKEND_TYPE] == "TIF" || !this[SettingsRepository.EPGSTATION_IP].isNullOrBlank()
+    if (existing != null || (this[ACCOUNT_CREATED] != true && configured)) {
+        account.update(create = existing == null) { it.copy(settings = values) }
+        this[ACCOUNT_CREATED] = true
+    }
+}
+
+private class AccountSettingsMigration(context: Context) : DataMigration<Preferences> {
+    private val account = KomorebiAccount(context)
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean = currentData[ACCOUNT_MIGRATED] != true
+    override suspend fun migrate(currentData: Preferences): Preferences {
+        val result = currentData.toMutablePreferences()
+        val record = account.read()
+        if (record != null && record.settings.isNotEmpty()) {
+            record.settings.forEach { (key, value) -> result[stringPreferencesKey(key)] = value }
+            result[ACCOUNT_CREATED] = true
+        } else {
+            result.syncAccount(account)
+        }
+        result[ACCOUNT_MIGRATED] = true
+        return result
+    }
+    override suspend fun cleanUp() = Unit
+}
+
+private val Context.dataStore by preferencesDataStore(name = "settings", produceMigrations = { listOf(AccountSettingsMigration(it)) })
 private val LEGACY_FAVORITE_BASEBALL_TEAMS = stringPreferencesKey("favorite_baseball_teams")
 private val RECORD_CACHE_OWNER = stringPreferencesKey("record_cache_owner")
 private const val LEGACY_BASEBALL_STARTUP_TAB = "プロ野球"
@@ -131,6 +170,7 @@ class SettingsRepository @Inject constructor(
 
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
+        val TIF_INTEGRATION_ENABLED = booleanPreferencesKey("tif_integration_enabled")
         val TIF_HIDE_EMPTY_INPUTS = booleanPreferencesKey("tif_hide_empty_inputs")
         val TIF_NO_SIGNAL_STYLE = stringPreferencesKey("tif_no_signal_style")
 
@@ -285,6 +325,8 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[RECEIVE_BETA_UPDATES] ?: false }
     val hideSubChannels: Flow<Boolean> =
         context.dataStore.data.map { it[HIDE_SUB_CHANNELS] ?: false }
+    val tifIntegrationEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[TIF_INTEGRATION_ENABLED] ?: true }
     val tifHideEmptyInputs: Flow<Boolean> =
         context.dataStore.data.map { it[TIF_HIDE_EMPTY_INPUTS] ?: true }
     val tifNoSignalStyle: Flow<TifNoSignalStyle> =
@@ -329,6 +371,7 @@ class SettingsRepository @Inject constructor(
             if (key in setOf(BACKEND_TYPE, KONOMI_IP, KONOMI_PORT, EDCB_IP, EDCB_PORT, MIRAKURUN_IP, MIRAKURUN_PORT)) {
                 settings[BACKEND_TYPE] = settings.resolvedBackendType()
             }
+            if (key.name in accountKeys) settings.syncAccount(KomorebiAccount(context))
         }
             .toCloudflareAccessConfiguration()
         cloudflareAccessConfiguration.first { it == saved }
@@ -406,6 +449,7 @@ class SettingsRepository @Inject constructor(
             it[EDCB_RECORD_PLAY_METHOD] = snapshot.edcbRecordPlayMethod
             it[CF_ACCESS_CLIENT_ID] = id; it[CF_ACCESS_CLIENT_SECRET] = secret
             it[SMB_SERVER_LIST] = com.google.gson.Gson().toJson(smb)
+            it.syncAccount(KomorebiAccount(context))
         }
         cloudflareAccessConfiguration.first { it == saved.toCloudflareAccessConfiguration() }
         saved.connectionSettingsSnapshot()
@@ -429,6 +473,7 @@ class SettingsRepository @Inject constructor(
         val saved = context.dataStore.edit { settings ->
             settings[CF_ACCESS_CLIENT_ID] = id
             settings[CF_ACCESS_CLIENT_SECRET] = secret
+            settings.syncAccount(KomorebiAccount(context))
         }.toCloudflareAccessConfiguration()
         // Await the ordered DataStore collector before acknowledging the save.
         cloudflareAccessConfiguration.first { it == saved }

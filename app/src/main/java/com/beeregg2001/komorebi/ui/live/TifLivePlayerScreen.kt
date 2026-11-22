@@ -63,6 +63,8 @@ import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.repository.tif.TifInput
 import com.beeregg2001.komorebi.ui.home.DigitalClock
+import com.beeregg2001.komorebi.ui.screensaver.PlayerIdleSession
+import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -136,8 +138,19 @@ fun TifLivePlayerScreen(
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val systemSleepAllowed by ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
+    val playerIdleOwner = remember { Any() }
     var isStarted by remember(lifecycleOwner) {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(playerIdleOwner, isStarted) {
+        ScreensaverInteractionTracker.updatePlayer(
+            playerIdleOwner,
+            PlayerIdleSession(active = isStarted),
+        )
+        onDispose {
+            ScreensaverInteractionTracker.updatePlayer(playerIdleOwner, null)
+        }
     }
     // Composeが停止中に描画フレームを持たなくても、TvViewを直ちにresetする。
     // 世代はSTART毎に変え、停止直後に再開した場合も旧セッションを再使用しない。
@@ -439,6 +452,7 @@ fun TifLivePlayerScreen(
                         TvView(viewContext).apply {
                             isFocusable = false
                             isFocusableInTouchMode = false
+                            keepScreenOn = isStarted && !systemSleepAllowed
                             setCallback(object : TvView.TvInputCallback() {
                                 override fun onVideoAvailable(inputId: String) {
                                     onChannelPlaybackCommitted(channel)
@@ -512,9 +526,11 @@ fun TifLivePlayerScreen(
                         }
                     },
                     update = { view ->
+                        view.keepScreenOn = isStarted && !systemSleepAllowed
                         runCatching { view.setCaptionEnabled(captions) }
                     },
                     onRelease = { view ->
+                        view.keepScreenOn = false
                         view.setCallback(null)
                         view.reset()
                         if (activeView === view) activeView = null

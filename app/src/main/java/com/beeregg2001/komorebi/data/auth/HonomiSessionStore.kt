@@ -17,12 +17,14 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.beeregg2001.komorebi.data.account.KomorebiAccount
 
 data class HonomiSession(val origin: String, val token: String, val userId: Int, val userName: String)
 
 @Singleton
 class HonomiSessionStore @Inject constructor(@ApplicationContext context: Context) {
     private val preferences = context.getSharedPreferences("honomi_session", Context.MODE_PRIVATE)
+    private val account = KomorebiAccount(context)
 
     @Volatile
     private var cachedSession: HonomiSession? = null
@@ -40,20 +42,28 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
         if (isLoaded) return
         synchronized(this) {
             if (isLoaded) return
-            cachedSession = load()
+            val record = account.read()
+            val legacy = if (!preferences.getBoolean(KEY_SESSION_MIGRATED, false)) load() else null
+            if (record?.session != null) {
+                cachedSession = record.session
+            } else if (legacy != null) {
+                account.update(create = true) { it.copy(session = legacy) }
+                cachedSession = legacy
+            }
+            preferences.edit().putBoolean(KEY_SESSION_MIGRATED, true)
+                .remove(KEY_IV).remove(KEY_TOKEN).remove(KEY_ORIGIN).remove(KEY_USER_ID).remove(KEY_USER_NAME).commit()
             isLoaded = true
         }
     }
 
     fun current(): HonomiSession? {
         ensureLoaded()
-        return cachedSession
+        return account.read()?.session.also { cachedSession = it }
     }
 
     /** A background request is only valid for the exact authenticated session that queued it. */
     fun isCurrent(session: HonomiSession): Boolean {
-        ensureLoaded()
-        return cachedSession == session
+        return current() == session
     }
 
     /** HonomiTV 側で複数台のテレビを区別する、インストール単位の固定 ID。 */
@@ -74,21 +84,15 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
 
     @Synchronized
     fun save(session: HonomiSession) {
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
-        val encrypted = cipher.doFinal(session.token.toByteArray(Charsets.UTF_8))
-        preferences.edit()
-            .putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .putString(KEY_TOKEN, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .putString(KEY_ORIGIN, session.origin)
-            .putInt(KEY_USER_ID, session.userId)
-            .putString(KEY_USER_NAME, session.userName)
-            .apply()
+        account.update(create = true) { it.copy(session = session) }
+        preferences.edit().putBoolean(KEY_SESSION_MIGRATED, true).commit()
         cachedSession = session
         isLoaded = true
     }
 
     @Synchronized
     fun clear() {
+        account.update { it.copy(session = null) }
         preferences.edit()
             .remove(KEY_IV)
             .remove(KEY_TOKEN)
@@ -143,5 +147,6 @@ class HonomiSessionStore @Inject constructor(@ApplicationContext context: Contex
         const val KEY_USER_NAME = "user_name"
         const val KEY_HISTORY_OWNER = "history_owner"
         const val KEY_REMOTE_DEVICE_ID = "remote_device_id"
+        const val KEY_SESSION_MIGRATED = "system_account_session_migrated"
     }
 }

@@ -63,40 +63,29 @@ class TifNoSignalStyleSettingsTest {
     fun rowIsHiddenWhenTifNotSupported() {
         compose.setContent {
             KomorebiTheme {
-                val requesters = remember { List(8) { FocusRequester() } }
+                val itemRs = remember { List(3) { FocusRequester() } }
+                val sidebarR = remember { FocusRequester() }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                    GeneralSettingsContent(
-                        startupTab = "ホーム",
-                        startupFocusTargetLabel = "サイドバー",
-                        startupChannelName = "OFF",
-                        excludePaid = "ON",
-                        startupTabR = requesters[0],
-                        startupFocusTargetR = requesters[1],
-                        startupChannelR = requesters[2],
-                        onEditStartupTab = {},
-                        onEditStartupFocusTarget = {},
-                        onEditStartupChannel = {},
-                        exPaidR = requesters[3],
-                        onToggleExcludePaid = {},
-                        nhkExclusionLabel = "OFF",
-                        nhkExclusionR = requesters[4],
-                        onEditNHKExclusion = {},
-                        tifHideEmptyInputs = true,
-                        tifHideEmptyInputsR = requesters[5],
-                        onToggleTifHideEmptyInputs = {},
-                        sidebarR = requesters[6],
+                    DeepTvIntegrationSettingsContent(
+                        supported = false,
+                        enabled = true,
+                        lockedByMainSystem = false,
+                        hideEmptyInputs = true,
+                        noSignalStyle = TifNoSignalStyle.BANNER,
+                        itemRs = itemRs,
+                        sidebarR = sidebarR,
+                        onToggleEnabled = {},
+                        onToggleHideEmpty = {},
+                        onEditNoSignalStyle = {},
+                        onRefreshTif = {},
                         onClick = {},
-                        showTifNoSignalStyle = false,
-                        tifNoSignalStyle = TifNoSignalStyle.BANNER,
-                        tifNoSignalStyleR = requesters[7],
-                        onEditTifNoSignalStyle = {},
                     )
                 }
             }
         }
 
         compose.onNode(hasText("TV入力の信号なし表示")).assertDoesNotExist()
-        compose.onNode(hasText("チャンネル未登録のTV入力を非表示") and hasClickAction()).assertExists()
+        compose.onNode(hasText("ディープTV統合を有効にする") and hasClickAction()).assertExists()
     }
 
     @Test
@@ -109,8 +98,8 @@ class TifNoSignalStyleSettingsTest {
         compose.setContent {
             KomorebiTheme {
                 val preferences = rememberSettingPreferences(repository)
-                val requesters = remember { List(7) { FocusRequester() } }
-                val noSignalR = remember { FocusRequester() }
+                val itemRs = remember { List(3) { FocusRequester() } }
+                val sidebarR = remember { FocusRequester() }
                 var restore by remember { mutableStateOf<FocusRequester?>(null) }
                 var dialog by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
@@ -119,31 +108,19 @@ class TifNoSignalStyleSettingsTest {
                 }
                 Box(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        GeneralSettingsContent(
-                            startupTab = "ホーム",
-                            startupFocusTargetLabel = "サイドバー",
-                            startupChannelName = "OFF",
-                            excludePaid = "ON",
-                            startupTabR = requesters[0],
-                            startupFocusTargetR = requesters[1],
-                            startupChannelR = requesters[2],
-                            onEditStartupTab = {},
-                            onEditStartupFocusTarget = {},
-                            onEditStartupChannel = {},
-                            exPaidR = requesters[3],
-                            onToggleExcludePaid = {},
-                            nhkExclusionLabel = "OFF",
-                            nhkExclusionR = requesters[4],
-                            onEditNHKExclusion = {},
-                            tifHideEmptyInputs = true,
-                            tifHideEmptyInputsR = requesters[5],
-                            onToggleTifHideEmptyInputs = {},
-                            sidebarR = requesters[6],
+                        DeepTvIntegrationSettingsContent(
+                            supported = true,
+                            enabled = true,
+                            lockedByMainSystem = false,
+                            hideEmptyInputs = preferences.tifHideEmptyInputs,
+                            noSignalStyle = preferences.tifNoSignalStyle,
+                            itemRs = itemRs,
+                            sidebarR = sidebarR,
+                            onToggleEnabled = {},
+                            onToggleHideEmpty = {},
+                            onEditNoSignalStyle = { dialog = true },
+                            onRefreshTif = {},
                             onClick = { restore = it },
-                            showTifNoSignalStyle = true,
-                            tifNoSignalStyle = preferences.tifNoSignalStyle,
-                            tifNoSignalStyleR = noSignalR,
-                            onEditTifNoSignalStyle = { dialog = true },
                         )
                     }
                     if (dialog) {

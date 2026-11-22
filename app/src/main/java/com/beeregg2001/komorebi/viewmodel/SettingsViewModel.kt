@@ -3,7 +3,9 @@ package com.beeregg2001.komorebi.viewmodel
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
+import com.beeregg2001.komorebi.data.TifIntegrationPolicy
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
+import com.beeregg2001.komorebi.data.repository.tif.TifInput
 
 import android.content.Context
 import android.util.Log
@@ -346,6 +348,23 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         false
     )
+    private val tifSupported = MutableStateFlow(true)
+    val tifIntegrationEnabled: StateFlow<Boolean> = settingsRepository.tifIntegrationEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        true
+    )
+    val tifIntegrationActive: StateFlow<Boolean> = combine(
+        backendType,
+        tifIntegrationEnabled,
+        tifSupported,
+    ) { backend, enabled, supported ->
+        TifIntegrationPolicy.isActive(backend, enabled, supported)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        true
+    )
     val tifHideEmptyInputs: StateFlow<Boolean> = settingsRepository.tifHideEmptyInputs.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -515,6 +534,9 @@ class SettingsViewModel @Inject constructor(
 
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            tifSupported.value = runCatching { TifInput.isSupported(context) }.getOrDefault(false)
+        }
         // ★ 修正: 初期化時の重い同期処理をバックグラウンドに回し、UI描画後に遅らせる
         viewModelScope.launch {
             delay(1500)
@@ -804,6 +826,17 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.saveBoolean(
                 SettingsRepository.HIDE_SUB_CHANNELS,
                 !settingsRepository.hideSubChannels.first()
+            )
+        }
+    }
+
+    fun toggleTifIntegration() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val currentBackend = settingsRepository.backendType.first()
+            if (!TifIntegrationPolicy.canDisable(currentBackend)) return@launch
+            settingsRepository.saveBoolean(
+                SettingsRepository.TIF_INTEGRATION_ENABLED,
+                !settingsRepository.tifIntegrationEnabled.first()
             )
         }
     }

@@ -47,6 +47,7 @@ fun ConnectionSettingsContent(
     scrollState: ScrollState,
     isDialogOpen: Boolean,
     onClick: (FocusRequester) -> Unit,
+    tifIntegrationEnabled: Boolean = true,
 ) {
     var source by remember { mutableStateOf<ConnectionSource?>(null) }
     var origin by remember { mutableIntStateOf(0) }
@@ -55,7 +56,9 @@ fun ConnectionSettingsContent(
         prefs.konomiIp, prefs.konomiPort, prefs.edcbIp, prefs.edcbPort,
         prefs.mirakurunIp, prefs.mirakurunPort,
     )
-    val selectable = configured + ConnectionSource.TIF
+    val selectable = configured + listOfNotNull(
+        ConnectionSource.TIF.takeIf { tifIntegrationEnabled || prefs.backendType == ConnectionSource.TIF.backend }
+    )
     val canSelectMain = true
     val colors = KomorebiTheme.colors
     val tifFirst = remember { FocusRequester() }

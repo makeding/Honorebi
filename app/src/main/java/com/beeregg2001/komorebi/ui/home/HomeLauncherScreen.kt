@@ -153,6 +153,11 @@ fun HomeLauncherScreen(
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
     val currentStartupFocusTarget by settingsViewModel.startupFocusTarget.collectAsState()
     val tifHideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
+    val tifActive by settingsViewModel.tifIntegrationActive.collectAsState()
+    val useTifPicker = supportsTvInput && tifActive
+    LaunchedEffect(useTifPicker) {
+        if (!useTifPicker) showTvInputs = false
+    }
     val visibleTabs = remember(hideAppsTab, backendType) {
         LauncherTab.visibleTabs(hideAppsTab, tif = backendType == "TIF")
     }
@@ -657,7 +662,7 @@ fun HomeLauncherScreen(
                 LauncherSystemStrip(
                     timeFormat = timeFormat,
                     hasActivePlayer = hasActivePlayer,
-                    showInputSource = supportsTvInput || inputSourceApp != null,
+                    showInputSource = useTifPicker || inputSourceApp != null,
                     networkConnectionStatus = networkConnectionStatus,
                     canTakeFocus = !isEpgJumpingActive && !showUpgradeTour,
                     returnPlayerFocusRequester = returnPlayerFocusRequester,
@@ -668,7 +673,7 @@ fun HomeLauncherScreen(
                     downFocusRequester = stripDownRequester,
                     onReturnToPlayerClick = onReturnToPlayerClick,
                     onLaunchInputSourcePicker = {
-                        if (supportsTvInput) showTvInputs = true
+                        if (useTifPicker) showTvInputs = true
                         else inputSourceApp?.let(homeViewModel::launchInputSourcePicker)
                     },
                     onLaunchWifiSettings = { homeViewModel.launchWifiSettings() },

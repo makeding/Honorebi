@@ -111,6 +111,15 @@ fun MainRootScreen(
         return excluded
     }
 
+    val tifActive by settingsViewModel.tifIntegrationActive.collectAsState()
+    LaunchedEffect(tifActive) {
+        if (!tifActive) {
+            (state.playbackState.renderPlaybackTarget as? PlaybackTarget.Live)
+                ?.takeIf { it.channel.id.startsWith("tif:") }
+                ?.let { state.playbackState.leavePlayback(returningFromPlayer = false) }
+        }
+    }
+
     LaunchedEffect(nhkExclusionState, state.playbackState.renderPlaybackTarget) {
         val newlyActivated = wasNHKExclusionLoaded && !wasNHKExclusionActive && nhkExclusionState.isActive
         wasNHKExclusionLoaded = nhkExclusionState.isLoaded
@@ -642,8 +651,12 @@ fun MainRootScreen(
             if (state.hasAppliedStartupChannel) return@LaunchedEffect
             state.hasAppliedStartupChannel = true
             val savedId = if (desiredStartupChannel == "LAST_WATCHED") lastWatchedId else desiredStartupChannel
-            val targetChannel = flatChannels.find { it.id == savedId }
-                ?: if (tif || savedId?.startsWith("tif:") == true) return@LaunchedEffect else flatChannels.first()
+            val targetChannel = when {
+                !tifActive && savedId?.startsWith("tif:") == true ->
+                    flatChannels.firstOrNull { !it.id.startsWith("tif:") } ?: return@LaunchedEffect
+                else -> flatChannels.find { it.id == savedId }
+                    ?: if (tif || savedId?.startsWith("tif:") == true) return@LaunchedEffect else flatChannels.first()
+            }
 
             state.playbackState.enterLive(targetChannel)
             homeViewModel.saveLastChannel(targetChannel)

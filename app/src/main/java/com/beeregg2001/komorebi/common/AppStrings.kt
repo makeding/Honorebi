@@ -176,6 +176,7 @@ object AppStrings {
     // カテゴリ名
     const val SETTINGS_CATEGORY_GENERAL = "基本設定"
     const val SETTINGS_CATEGORY_CONNECTION = "接続設定"
+    const val SETTINGS_CATEGORY_DEEP_TV = "ディープTV統合"
     const val SETTINGS_CATEGORY_PLAYBACK = "再生設定"
     const val SETTINGS_CATEGORY_HOME = "ホーム設定"
     const val SETTINGS_CATEGORY_LAUNCHER = "ランチャー設定"
