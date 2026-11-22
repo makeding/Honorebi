@@ -823,15 +823,10 @@ private fun LiveNextProgramBar(
     val nextStartTime = remember(following?.startTime, timeFormat) {
         formatLiveTime(following?.startTime, timeFormat)
     }
-    val shape = RoundedCornerShape(10.dp)
-
     Row(
         modifier = modifier
-            .height(44.dp)
-            .clip(shape)
-            .background(colors.surface1)
-            .border(1.dp, colors.borderSubtle, shape)
-            .padding(horizontal = 14.dp),
+            .height(40.dp)
+            .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
