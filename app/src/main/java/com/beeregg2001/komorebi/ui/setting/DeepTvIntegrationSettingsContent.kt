@@ -151,8 +151,7 @@ fun DeepTvIntegrationSettingsContent(
                 title = "Watch Next に番組を表示",
                 value = if (features.watchNextEnabled) "ON" else "OFF",
                 icon = Icons.Default.QueuePlayNext,
-                modifier = itemModifier(DeepTvItemIndex.WATCH_NEXT)
-                    .onGloballyPositioned { onFirstItemBoundsChanged(it.boundsInRoot()) },
+                modifier = itemModifier(DeepTvItemIndex.WATCH_NEXT),
                 onClick = {
                     onClick(itemRs[DeepTvItemIndex.WATCH_NEXT])
                     onToggleFeature(DeepTvFeature.WATCH_NEXT)

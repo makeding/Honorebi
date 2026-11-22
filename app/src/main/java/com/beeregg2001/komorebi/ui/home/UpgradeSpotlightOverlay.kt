@@ -300,7 +300,11 @@ fun UpgradeSpotlightOverlay(
         }
 
         // Callout card placed in the remaining blank space (余白)
-        val calloutWidth = 460.dp
+        val calloutWidth = if (currentStep.placement == UpgradeCalloutPlacement.LEFT_SIDE_PANEL) {
+            340.dp
+        } else {
+            460.dp
+        }
         val calloutModifier = when (currentStep.placement) {
             UpgradeCalloutPlacement.RIGHT_OF_TARGET -> {
                 val startOffsetPx = (animatedRect.right + with(density) { 36.dp.toPx() })
@@ -341,6 +345,11 @@ fun UpgradeSpotlightOverlay(
                     .align(Alignment.BottomStart)
                     .padding(bottom = 28.dp)
                     .offset { IntOffset(x = startOffsetPx.coerceAtLeast(0), y = 0) }
+            }
+            UpgradeCalloutPlacement.LEFT_SIDE_PANEL -> {
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 24.dp)
             }
         }
 

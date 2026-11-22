@@ -32,6 +32,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -514,6 +516,11 @@ private fun SettingsMenuScreen(
                     .weight(1f)
                     .fillMaxHeight()
                     .padding(vertical = 48.dp, horizontal = 64.dp)
+                    .onGloballyPositioned { coords ->
+                        if (uiState.selectedCategoryIndex == 9) {
+                            onDeepTvBoundsChanged(coords.boundsInRoot())
+                        }
+                    }
             ) {
                 CompositionLocalProvider(
                     LocalBringIntoViewSpec provides if (uiState.selectedCategoryIndex == 11) {

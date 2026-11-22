@@ -18,6 +18,7 @@ enum class UpgradeCalloutPlacement {
     BELOW_RIGHT,
     BOTTOM_CENTER,
     BOTTOM_LEFT_BESIDE_RAIL,
+    LEFT_SIDE_PANEL,
 }
 
 enum class UpgradeTourAction {
@@ -50,14 +51,6 @@ object UpgradeTourCatalog {
                 placement = UpgradeCalloutPlacement.RIGHT_OF_TARGET,
             ),
             UpgradeTourStep(
-                targetId = UpgradeTourTargetId.SYSTEM_STRIP,
-                shape = UpgradeSpotlightShape.ROUNDED_RECT,
-                badge = "Honorebi 1.2.0 • システムバー",
-                title = "右上システムバーで素早く操作",
-                description = "時計（クリックでスクリーンセーバー）、外部入力切替（HDMI / TIF）、ネットワーク設定、システム設定へすぐアクセスできます。スクロール時は自動でスリム化します。",
-                placement = UpgradeCalloutPlacement.BELOW_RIGHT,
-            ),
-            UpgradeTourStep(
                 targetId = UpgradeTourTargetId.CONTENT_STAGE,
                 shape = UpgradeSpotlightShape.ROUNDED_RECT,
                 badge = "Honorebi 1.2.0 • 起動時フォーカス & UI刷新",
@@ -66,12 +59,20 @@ object UpgradeTourCatalog {
                 placement = UpgradeCalloutPlacement.BOTTOM_CENTER,
             ),
             UpgradeTourStep(
+                targetId = UpgradeTourTargetId.SYSTEM_STRIP,
+                shape = UpgradeSpotlightShape.ROUNDED_RECT,
+                badge = "Honorebi 1.2.0 • システムバー",
+                title = "右上システムバーで素早く操作",
+                description = "時計（クリックでスクリーンセーバー）、外部入力切替（HDMI / TIF）、ネットワーク設定、システム設定へすぐアクセスできます。スクロール時は自動でスリム化します。",
+                placement = UpgradeCalloutPlacement.BELOW_RIGHT,
+            ),
+            UpgradeTourStep(
                 targetId = UpgradeTourTargetId.DEEP_TV_SETTING,
                 shape = UpgradeSpotlightShape.ROUNDED_RECT,
                 badge = "Honorebi 1.2.0 • 注目新機能",
-                title = "ディープTV統合（HDMI / TIF入力）",
-                description = "Android TV の外部入力や Watch Next 連携を Honorebi に統合しました。右上バーからの入力切替、弱信号時の自動再接続、無信号時の演出、空入力の非表示まで設定できます。",
-                placement = UpgradeCalloutPlacement.BOTTOM_CENTER,
+                title = "Android TV との双方向「ディープTV統合」",
+                description = "システムランチャーの「次に観る（Watch Next）」やホーム画面チャンネルへの番組公開、OS ピクチャー・イン・ピクチャー、TVリモコンの数字選局に対応。さらに HDMI やチューナー等の外部入力（TIF）も Honorebi 内でそのまま再生・切替できます。",
+                placement = UpgradeCalloutPlacement.LEFT_SIDE_PANEL,
             ),
             UpgradeTourStep(
                 targetId = UpgradeTourTargetId.COMMENT_ENGINE_SETTING,
