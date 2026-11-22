@@ -528,6 +528,7 @@ fun MainRootScreen(
     val upgradeCheckState by settingsViewModel.upgradeCheckState.collectAsState()
     val upgradeTourSteps = remember { UpgradeTourCatalog.tourForVersion(BuildConfig.VERSION_CODE) }
     var isUpgradeTourDismissed by remember { mutableStateOf(false) }
+    var isManualUpgradeTourOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(upgradeCheckState) {
         val ready = upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready ?: return@LaunchedEffect
@@ -1009,8 +1010,7 @@ fun MainRootScreen(
                                 (isChannelRecovering || state.isConnectionRetryPending),
                         onExitApp = { showExitDialog = true },
                         onTriggerScreensaver = triggerScreensaver,
-                        showUpgradeTour = !isUpgradeTourDismissed &&
-                            startupRenderPlan.showMainContent &&
+                        showUpgradeTour = startupRenderPlan.showMainContent &&
                             !state.playbackState.isPlaybackActive &&
                             !state.isSettingsOpen &&
                             !state.showConnectionErrorDialog &&
@@ -1022,6 +1022,7 @@ fun MainRootScreen(
                             state.selectedReserve == null &&
                             state.editingCondition == null &&
                             !showExitDialog &&
+                            (isManualUpgradeTourOpen || (!isUpgradeTourDismissed &&
                             (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
                                 shouldShowUpgradeLandingTour(
                                     lastSeenVersionCode = ready.lastSeenVersionCode,
@@ -1029,9 +1030,10 @@ fun MainRootScreen(
                                     isSettingsInitialized = ready.isSettingsInitialized,
                                     hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
                                 )
-                            } == true,
+                            } == true)),
                         upgradeTourSteps = upgradeTourSteps,
                         onDismissUpgradeTour = {
+                            isManualUpgradeTourOpen = false
                             isUpgradeTourDismissed = true
                             settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
                         },
@@ -1138,7 +1140,11 @@ fun MainRootScreen(
                     state.settingsInitialCategoryIndex = 0
                     state.settingsInitialFocusItemIndex = null
                     state.isSettingsOpen = true
-                }
+                },
+                onOpenWhatsNew = {
+                    closeSettingsAndRefresh()
+                    isManualUpgradeTourOpen = true
+                },
             )
             if (showExitDialog) {
                 ExitDialog(onConfirm = onExitApp, onDismiss = { showExitDialog = false })

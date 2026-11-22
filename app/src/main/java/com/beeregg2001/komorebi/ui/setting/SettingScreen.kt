@@ -95,6 +95,7 @@ fun SettingsScreen(
     initialCategoryIndex: Int = 0,
     initialFocusItemIndex: Int? = null,
     initialOpenDeviceCapabilities: Boolean = false,
+    onOpenWhatsNew: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
@@ -105,6 +106,7 @@ fun SettingsScreen(
         initialCategoryIndex = initialCategoryIndex,
         initialFocusItemIndex = initialFocusItemIndex,
         initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
+        onOpenWhatsNew = onOpenWhatsNew,
         viewModel = viewModel,
         channelViewModel = channelViewModel,
     )
@@ -120,6 +122,7 @@ private fun SettingsMenuScreen(
     initialCategoryIndex: Int = 0,
     initialFocusItemIndex: Int? = null,
     initialOpenDeviceCapabilities: Boolean = false,
+    onOpenWhatsNew: () -> Unit = {},
     viewModel: SettingsViewModel,
     channelViewModel: ChannelViewModel,
 ) {
@@ -253,7 +256,7 @@ private fun SettingsMenuScreen(
             List(13) { FocusRequester() },
             List(3) { FocusRequester() },
             List(7) { FocusRequester() },
-            List(6) { FocusRequester() }
+            List(7) { FocusRequester() }
         )
     }
 
@@ -1271,8 +1274,10 @@ private fun SettingsMenuScreen(
                             },
                             onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
                             onCapabilities = { uiState.activeDialog = SettingDialogState.DeviceCapabilities },
+                            onOpenWhatsNew = onOpenWhatsNew,
                             capabilityR = itemFocusRequesters[11][5],
                             versionR = itemFocusRequesters[11][0],
+                            whatsNewR = itemFocusRequesters[11][6],
                             betaR = itemFocusRequesters[11][1],
                             checkR = itemFocusRequesters[11][2],
                             projectR = itemFocusRequesters[11][3],

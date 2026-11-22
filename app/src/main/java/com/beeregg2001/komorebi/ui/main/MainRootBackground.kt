@@ -267,7 +267,18 @@ fun MainRootBackground(
                         lastPlayerChannelId = state.playbackState.lastSelectedChannelId,
                         lastPlayerProgramId = state.playbackState.lastSelectedProgramId,
                         isSettingsOpen = state.isSettingsOpen,
-                        onSettingsToggle = { state.isSettingsOpen = it },
+                        onSettingsToggle = { open ->
+                            if (open) {
+                                state.settingsInitialCategoryIndex = 0
+                                state.settingsInitialFocusItemIndex = null
+                            }
+                            state.isSettingsOpen = open
+                        },
+                        onOpenAppInfo = {
+                            state.settingsInitialCategoryIndex = 11
+                            state.settingsInitialFocusItemIndex = 0
+                            state.isSettingsOpen = true
+                        },
                         isRecordListOpen = state.isRecordListOpen,
                         onShowAllRecordings = { state.isRecordListOpen = true },
                         onCloseRecordList = { state.isRecordListOpen = false },

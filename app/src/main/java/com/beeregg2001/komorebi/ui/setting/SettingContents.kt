@@ -1244,8 +1244,10 @@ fun AppInfoContent(
     onShowProject: () -> Unit,
     onShowLicenses: () -> Unit,
     onCapabilities: () -> Unit,
+    onOpenWhatsNew: () -> Unit = {},
     capabilityR: FocusRequester,
     versionR: FocusRequester,
+    whatsNewR: FocusRequester,
     betaR: FocusRequester,
     checkR: FocusRequester,
     projectR: FocusRequester,
@@ -1327,7 +1329,7 @@ fun AppInfoContent(
                 .focusProperties {
                     left = sidebarR
                     up = FocusRequester.Cancel
-                    down = betaR
+                    down = whatsNewR
                 },
             onClick = {
                 onClick(versionR)
@@ -1343,12 +1345,29 @@ fun AppInfoContent(
 
         Spacer(Modifier.height(12.dp))
         SettingItem(
+            title = "What's New",
+            value = "このバージョンの新機能",
+            icon = Icons.Default.AutoAwesome,
+            modifier = Modifier
+                .width(420.dp)
+                .focusRequester(whatsNewR)
+                .onFocusChanged { if (it.isFocused) lastFocusedRow = whatsNewR }
+                .focusProperties {
+                    left = sidebarR
+                    up = versionR
+                    down = betaR
+                },
+            onClick = { onClick(whatsNewR); onOpenWhatsNew() }
+        )
+
+        Spacer(Modifier.height(12.dp))
+        SettingItem(
             title = "ベータ版を受け取る",
             value = if (receiveBetaUpdates) "ON" else "OFF",
             icon = Icons.Default.SystemUpdate,
             modifier = Modifier.width(420.dp).focusRequester(betaR).onFocusChanged { if (it.isFocused) lastFocusedRow = betaR }.focusProperties {
                 left = sidebarR
-                up = versionR
+                up = whatsNewR
                 down = checkR
             },
             onClick = { onClick(betaR); onToggleBetaUpdates(!receiveBetaUpdates) }

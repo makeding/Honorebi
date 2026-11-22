@@ -98,6 +98,7 @@ fun HomeLauncherScreen(
     lastPlayerProgramId: String? = null,
     isSettingsOpen: Boolean = false,
     onSettingsToggle: (Boolean) -> Unit = {},
+    onOpenAppInfo: () -> Unit = { onSettingsToggle(true) },
     isRecordListOpen: Boolean = false,
     onShowAllRecordings: () -> Unit = {},
     onCloseRecordList: () -> Unit = {},
@@ -731,6 +732,7 @@ fun HomeLauncherScreen(
                     }
                 },
                 onOpenSettings = { onSettingsToggle(true) },
+                onOpenAppInfo = onOpenAppInfo,
                 onSettingsFocused = {
                     pendingEnterContentTab = null
                     isEnteringContentFromRail = false

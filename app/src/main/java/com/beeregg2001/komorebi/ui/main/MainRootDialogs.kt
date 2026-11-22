@@ -68,7 +68,8 @@ fun MainRootDialogs(
     onExitApp: () -> Unit,
     closeSettingsAndRefresh: () -> Unit,
     closeAiConcierge: (Boolean) -> Unit,
-    onGoToSettings: () -> Unit // ★ 追加: 設定画面誘導コールバック
+    onGoToSettings: () -> Unit, // ★ 追加: 設定画面誘導コールバック
+    onOpenWhatsNew: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -497,6 +498,7 @@ fun MainRootDialogs(
             initialCategoryIndex = state.settingsInitialCategoryIndex,
             initialFocusItemIndex = state.settingsInitialFocusItemIndex,
             initialOpenDeviceCapabilities = state.settingsOpenDeviceCapabilities,
+            onOpenWhatsNew = onOpenWhatsNew,
             onClearLastChannel = {
                 homeViewModel.clearLastChannelHistory(); state.toastMessage =
                 AppStrings.TOAST_CHANNEL_HISTORY_DELETED

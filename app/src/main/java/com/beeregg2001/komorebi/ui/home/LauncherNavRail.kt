@@ -73,6 +73,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -118,6 +119,7 @@ internal fun LauncherNavRail(
     onTabFocused: (LauncherTab) -> Unit,
     onTabActivated: (LauncherTab) -> Unit = onTabFocused,
     onOpenSettings: () -> Unit,
+    onOpenAppInfo: () -> Unit = onOpenSettings,
     onSettingsFocused: () -> Unit = {},
     onPrepareEnterContent: () -> Unit = {},
     onHasFocusChanged: (Boolean) -> Unit,
@@ -347,6 +349,9 @@ internal fun LauncherNavRail(
 
         var isSettingsFocused by remember { mutableStateOf(false) }
         val settingsInteractionSource = remember { MutableInteractionSource() }
+        val versionItemFocusRequester = remember { FocusRequester() }
+        var isVersionFocused by remember { mutableStateOf(false) }
+        val versionInteractionSource = remember { MutableInteractionSource() }
         val lastVisibleTab = focusableTabs.lastOrNull()
 
         RailItemSurface(
@@ -362,7 +367,7 @@ internal fun LauncherNavRail(
                 .focusRequester(settingsItemFocusRequester)
                 .focusProperties {
                     up = lastVisibleTab?.let { controller.tabRequester(it) } ?: upEdgeFocusRequester
-                    down = FocusRequester.Cancel
+                    down = versionItemFocusRequester
                     left = FocusRequester.Cancel
                     right = FocusRequester.Cancel
                     canFocus = settingsCanFocus
@@ -396,6 +401,127 @@ internal fun LauncherNavRail(
                     onClick = onOpenSettings,
                 ),
         )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        RailVersionFooter(
+            isFocused = isVersionFocused,
+            labelAlpha = labelAlpha,
+            compactVersion = BuildConfig.VERSION_NAME.substringBefore("-"),
+            fullVersion = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            contentColor = if (isVersionFocused) colors.textPrimary else colors.textSecondary.copy(alpha = 0.72f),
+            modifier = Modifier
+                .testTag("launcher-rail-version")
+                .focusRequester(versionItemFocusRequester)
+                .focusProperties {
+                    up = settingsItemFocusRequester
+                    down = FocusRequester.Cancel
+                    left = FocusRequester.Cancel
+                    right = FocusRequester.Cancel
+                    canFocus = settingsCanFocus
+                }
+                .onFocusChanged { focusState ->
+                    isVersionFocused = focusState.isFocused
+                    if (focusState.isFocused) {
+                        if (!suppressInitialExpand) interactionTick++
+                        onSettingsFocused()
+                    }
+                }
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionRight &&
+                        controller.isActiveContentReady
+                    ) {
+                        val activeTab = controller.selectedTab
+                        onPrepareEnterContent()
+                        if (!controller.contentRequester(activeTab).safeRequestFocus("RailVersionRight")) {
+                            focusManager.moveFocus(FocusDirection.Right)
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .clickable(
+                    enabled = settingsCanFocus,
+                    interactionSource = versionInteractionSource,
+                    indication = null,
+                    onClick = onOpenAppInfo,
+                ),
+        )
+    }
+}
+
+@Composable
+private fun RailVersionFooter(
+    isFocused: Boolean,
+    labelAlpha: Float,
+    compactVersion: String,
+    fullVersion: String,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .drawBehind {
+                val insetX = RAIL_ITEM_HORIZONTAL_INSET.toPx()
+                val insetY = 2.dp.toPx()
+                val cornerPx = TvCardRadiusListRow.toPx()
+                val bgTopLeft = Offset(insetX, insetY)
+                val bgSize = Size(
+                    width = (size.width - insetX * 2f).coerceAtLeast(0f),
+                    height = (size.height - insetY * 2f).coerceAtLeast(0f),
+                )
+                if (isFocused) {
+                    drawRoundRect(
+                        color = colors.surface2,
+                        topLeft = bgTopLeft,
+                        size = bgSize,
+                        cornerRadius = CornerRadius(cornerPx, cornerPx),
+                    )
+                    drawRoundRect(
+                        color = colors.accent,
+                        topLeft = bgTopLeft,
+                        size = bgSize,
+                        cornerRadius = CornerRadius(cornerPx, cornerPx),
+                        style = Stroke(width = TvCardFocusBorderWidth.toPx()),
+                    )
+                }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(TvRailCollapsedWidth)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = compactVersion,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.graphicsLayer { alpha = (1f - labelAlpha).coerceIn(0f, 1f) },
+            )
+        }
+
+        if (labelAlpha > 0f) {
+            Text(
+                text = fullVersion,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .padding(start = 18.dp, end = 12.dp)
+                    .graphicsLayer { alpha = labelAlpha },
+            )
+        }
     }
 }
 
