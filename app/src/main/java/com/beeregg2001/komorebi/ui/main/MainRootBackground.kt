@@ -146,7 +146,7 @@ fun MainRootBackground(
                                 )
                             }
                         },
-                        onBack = { state.isOnAirOpen = false },
+                        onBack = { state.closeOnAir() },
                         onSettings = {
                             state.settingsInitialCategoryIndex = 1
                             state.settingsInitialFocusItemIndex = null
@@ -335,6 +335,8 @@ fun MainRootBackground(
                         onClockClick = onTriggerScreensaver,
                         aiFocusReturnTick = state.aiFocusReturnTick,
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
+                        overlayReturnFocusTick = state.overlayReturnFocusTick,
+                        onOverlayReturnConsumed = { state.overlayReturnFocusTick = 0 },
                         showUpgradeTour = showUpgradeTour,
                         spotlightTargets = spotlightTargets,
                         notificationCenterViewModel = notificationCenterViewModel,

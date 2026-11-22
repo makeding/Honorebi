@@ -57,7 +57,7 @@ import java.time.OffsetDateTime
 
 private const val TAG = "VideoTabContent"
 
-private enum class VideoBannerFocus { RECORDINGS, ON_AIR, SMB }
+internal enum class VideoBannerFocus { RECORDINGS, ON_AIR, SMB }
 private enum class PlayerReturnRestoreResult { WAITING, RESTORED, FAILED }
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -167,6 +167,8 @@ fun VideoTabContent(
     isNetworkAvailable: Boolean = true,
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
+    overlayReturnFocusTick: Int = 0,
+    onOverlayReturnConsumed: () -> Unit = {},
     onContentReady: () -> Unit = {},
     onShowSmbLibrary: () -> Unit = {},
     onShowOnAir: () -> Unit = {},
@@ -190,7 +192,9 @@ fun VideoTabContent(
     val smbRequester = remember { FocusRequester() }
     val cardFocusRequesters = remember { mutableStateMapOf<VideoCardFocus, FocusRequester>() }
     var lastFocusedCard by remember { mutableStateOf(homeViewModel.lastVideoCardFocus) }
-    var lastFocusedBanner by remember { mutableStateOf(VideoBannerFocus.RECORDINGS) }
+    var lastFocusedBanner by remember {
+        mutableStateOf(homeViewModel.lastVideoBannerFocus ?: VideoBannerFocus.RECORDINGS)
+    }
 
     val recentRecordings by recordViewModel.recentRecordings.collectAsState()
     val recentRecordingsLoading by recordViewModel.isRecentRecordingsLoading.collectAsState()
@@ -375,6 +379,7 @@ fun VideoTabContent(
     // effect is allowed to race this restore.
     LaunchedEffect(
         aiFocusReturnTick,
+        overlayReturnFocusTick,
         isReturningFromPlayer,
         lastPlayedProgramId,
         recentProgramIds,
@@ -388,6 +393,11 @@ fun VideoTabContent(
                     PlayerReturnRestoreResult.WAITING -> Unit
                     PlayerReturnRestoreResult.RESTORED,
                     PlayerReturnRestoreResult.FAILED -> onReturnFocusConsumed()
+                }
+            }
+            overlayReturnFocusTick > 0 -> {
+                if (restoreVideoFocus(requestedProgramId = null, fallbackToLastBanner = true)) {
+                    onOverlayReturnConsumed()
                 }
             }
             aiFocusReturnTick > 0 -> {
@@ -492,11 +502,20 @@ fun VideoTabContent(
                                 up = upTarget
                                 if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
-                        onClick = { recordViewModel.clearSearch(); onShowAllRecordings() },
+                        onClick = {
+                            lastFocusedCard = null
+                            homeViewModel.lastVideoCardFocus = null
+                            lastFocusedBanner = VideoBannerFocus.RECORDINGS
+                            homeViewModel.lastVideoBannerFocus = VideoBannerFocus.RECORDINGS
+                            recordViewModel.clearSearch()
+                            onShowAllRecordings()
+                        },
                         onFocus = {
                             focusedProgramId = null
                             lastFocusedCard = null
+                            homeViewModel.lastVideoCardFocus = null
                             lastFocusedBanner = VideoBannerFocus.RECORDINGS
+                            homeViewModel.lastVideoBannerFocus = VideoBannerFocus.RECORDINGS
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "録画リスト",
                             )
@@ -515,11 +534,19 @@ fun VideoTabContent(
                                 up = upTarget
                                 if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
-                        onClick = onShowOnAir,
+                        onClick = {
+                            lastFocusedCard = null
+                            homeViewModel.lastVideoCardFocus = null
+                            lastFocusedBanner = VideoBannerFocus.ON_AIR
+                            homeViewModel.lastVideoBannerFocus = VideoBannerFocus.ON_AIR
+                            onShowOnAir()
+                        },
                         onFocus = {
                             focusedProgramId = null
                             lastFocusedCard = null
+                            homeViewModel.lastVideoCardFocus = null
                             lastFocusedBanner = VideoBannerFocus.ON_AIR
+                            homeViewModel.lastVideoBannerFocus = VideoBannerFocus.ON_AIR
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "放送中",
                             )
@@ -538,11 +565,19 @@ fun VideoTabContent(
                                 up = upTarget
                                 if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
-                        onClick = { onShowSmbLibrary() },
+                        onClick = {
+                            lastFocusedCard = null
+                            homeViewModel.lastVideoCardFocus = null
+                            lastFocusedBanner = VideoBannerFocus.SMB
+                            homeViewModel.lastVideoBannerFocus = VideoBannerFocus.SMB
+                            onShowSmbLibrary()
+                        },
                         onFocus = {
                             focusedProgramId = null
                             lastFocusedCard = null
+                            homeViewModel.lastVideoCardFocus = null
                             lastFocusedBanner = VideoBannerFocus.SMB
+                            homeViewModel.lastVideoBannerFocus = VideoBannerFocus.SMB
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "ファイル",
                             )

@@ -246,7 +246,7 @@ internal fun AccountRecoveryLandingContent(
                                 .fillMaxWidth()
                                 .testTag("account_recovery_fresh_button"),
                         ) {
-                            Text("新しく設定をやり直す")
+                            Text("引き継がずに新しく始める")
                         }
                     }
                 }

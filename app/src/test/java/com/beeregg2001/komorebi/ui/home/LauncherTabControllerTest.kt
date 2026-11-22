@@ -279,6 +279,14 @@ class LauncherTabControllerTest {
             TabFocusAction.NoOp,
             resolveTabReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS, LauncherTab.RESERVE, 5, null, null),
         )
+        assertEquals(
+            TabFocusAction.DelegateToTabContent(),
+            resolveTabReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS, LauncherTab.VIDEO, 3, null, null),
+        )
+        assertEquals(
+            TabFocusAction.FocusItem(LauncherTab.HOME, 0, "shortcuts", "onair"),
+            resolveTabReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS, LauncherTab.HOME, 0, "shortcuts", "onair"),
+        )
     }
 
     @Test

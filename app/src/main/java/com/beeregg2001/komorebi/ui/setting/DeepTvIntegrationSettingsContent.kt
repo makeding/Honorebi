@@ -132,19 +132,12 @@ fun DeepTvIntegrationSettingsContent(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = AppStrings.SETTINGS_CATEGORY_DEEP_TV,
-                style = MaterialTheme.typography.headlineMedium,
-                color = colors.textPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "OS標準の「次に観る」・ホーム画面チャンネル、TVリモコンの専用ボタン・数字選局、ピクチャー・イン・ピクチャー、外部入力（TIF）との連携を設定します。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary,
-            )
-        }
+        Text(
+            text = AppStrings.SETTINGS_CATEGORY_DEEP_TV,
+            style = MaterialTheme.typography.headlineMedium,
+            color = colors.textPrimary,
+            fontWeight = FontWeight.Bold,
+        )
 
         SettingsSection("Watch Next（次に観る）連携") {
             SettingItem(

@@ -63,6 +63,7 @@ class HomeViewModel @Inject constructor(
     var lastClickedSection: String? = null
     var lastClickedItemId: String? = null
     internal var lastVideoCardFocus: com.beeregg2001.komorebi.ui.home.VideoCardFocus? = null
+    internal var lastVideoBannerFocus: com.beeregg2001.komorebi.ui.home.VideoBannerFocus? = null
 
     private val _isFallbackTriggered = MutableStateFlow(false)
     val isFallbackTriggered: StateFlow<Boolean> = _isFallbackTriggered.asStateFlow()
@@ -114,6 +115,7 @@ class HomeViewModel @Inject constructor(
         lastClickedSection = null
         lastClickedItemId = null
         lastVideoCardFocus = null
+        lastVideoBannerFocus = null
     }
 
     fun refreshLauncherApps() {

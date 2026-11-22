@@ -801,7 +801,7 @@ fun MainRootScreen(
 
             state.isSmbLibraryOpen -> state.isSmbLibraryOpen = false
 
-            state.isOnAirOpen -> state.isOnAirOpen = false
+            state.isOnAirOpen -> state.closeOnAir()
 
             state.isRecordListOpen -> {
                 state.isRecordListOpen = false

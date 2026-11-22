@@ -127,6 +127,21 @@ fun HomeContents(
         val request = focusMemory.request ?: return@LaunchedEffect
         if (request.tab != tabIndex) return@LaunchedEffect
         val section = request.section ?: return@LaunchedEffect
+        if (section == "shortcuts") {
+            lazyListState.scrollToItem(0)
+            androidx.compose.runtime.withFrameNanos { }
+            val targetRequester = when (request.itemId) {
+                "live" -> tile0Requester
+                "onair" -> tile1Requester
+                "recordings" -> tile2Requester
+                "reserves" -> tile3Requester
+                else -> externalFocusRequester
+            }
+            if (targetRequester.safeRequestFocusWithRetry("HomeRestore_Shortcut_${request.itemId}")) {
+                focusMemory.consume(request.id)
+            }
+            return@LaunchedEffect
+        }
         val index = availableSections.indexOf(section)
         if (index < 0) {
             lazyListState.scrollToItem(0)
@@ -211,7 +226,8 @@ fun HomeContents(
                         onNavigateToTab(it)
                     },
                     onShowOnAir = {
-                        clearLastClickedSection()
+                        homeViewModel.lastClickedSection = "shortcuts"
+                        homeViewModel.lastClickedItemId = "onair"
                         onShowOnAir()
                     },
                     onShowAllRecordings = {

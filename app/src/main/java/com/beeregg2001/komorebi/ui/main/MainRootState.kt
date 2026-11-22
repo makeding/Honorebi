@@ -59,6 +59,7 @@ class MainRootState {
 
     var aiFocusReturnTick by mutableIntStateOf(0)
     var launcherHomeFocusTick by mutableIntStateOf(0)
+    var overlayReturnFocusTick by mutableIntStateOf(0)
 
     // 各種オーバーレイの開閉状態
     var isEpgJumpMenuOpen by mutableStateOf(false)
@@ -75,6 +76,13 @@ class MainRootState {
     var isSeriesListOpen by mutableStateOf(false)
     var isSmbLibraryOpen by mutableStateOf(false)
     var isOnAirOpen by mutableStateOf(false)
+
+    fun closeOnAir() {
+        if (isOnAirOpen) {
+            isOnAirOpen = false
+            overlayReturnFocusTick++
+        }
+    }
 
     var showDeleteConfirmDialog by mutableStateOf(false)
 

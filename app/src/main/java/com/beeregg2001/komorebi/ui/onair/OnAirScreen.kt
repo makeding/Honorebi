@@ -12,6 +12,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -425,9 +426,23 @@ fun OnAirScreen(
                 )
             } else {
                 Column(Modifier.fillMaxSize()) {
+                    val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
                     Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = WEEK_FOCUS_GUTTER),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        if (state.series.isNotEmpty()) {
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "${state.series.size} 番組",
+                                color = colors.textSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier
+                                    .background(colors.surface, RoundedCornerShape(6.dp))
+                                    .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
                         Spacer(Modifier.weight(1f))
                         if (state.listStatus == OnAirLoadState.Loading && state.series.isNotEmpty()) {
                             androidx.compose.material3.CircularProgressIndicator(
@@ -436,16 +451,22 @@ fun OnAirScreen(
                             )
                             Spacer(Modifier.width(12.dp))
                         }
-                        state.selectedSeason?.let { season ->
+                        val season = state.selectedSeason
+                        if (season != null) {
                             OnAirAction(
                                 "${season.seasonLabel}  ▾", { choosingSeason = true },
                                 Modifier.focusRequester(seasonFocus).testTag("onair-season-selector")
                                     .focusProperties { up = topFocusRequester; down = headerFocus.getValue(state.selectedWeekday) },
                             )
+                        } else if (isLoading) {
+                            Box(
+                                Modifier.width(136.dp).height(38.dp)
+                                    .background(colors.surface, RoundedCornerShape(8.dp))
+                                    .border(1.dp, colors.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                            )
                         }
                     }
 
-                    val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
                     when {
                         !state.backendSupported -> OnAirEmpty(
                             "このバックエンドは「放送中」に対応していません",
@@ -505,16 +526,23 @@ fun OnAirScreen(
                                     }
                                     Spacer(Modifier.height(8.dp))
                                     if (isLoading && state.series.isEmpty()) {
-                                        // 静的プレースホルダー: TV で全タイルのアニメーションを走らせない。
-                                        Row(Modifier.requiredWidth(weekContentWidth),
-                                            horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING)) {
-                                            repeat(7) {
-                                                Column(Modifier.width(WEEK_COLUMN_WIDTH),
-                                                    verticalArrangement = Arrangement.spacedBy(WEEK_CARD_SPACING)) {
-                                                    repeat(2) {
-                                                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f)
-                                                            .background(colors.surface, RoundedCornerShape(8.dp))
-                                                            .testTag("onair-loading-tile"))
+                                        // 静的スケルトン: カード構造を保ちつつ TV で全タイルのアニメーションを走らせない。
+                                        Column(Modifier.weight(1f)) {
+                                            Row(
+                                                Modifier.requiredWidth(weekContentWidth)
+                                                    .padding(vertical = WEEK_FOCUS_GUTTER),
+                                                horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
+                                            ) {
+                                                repeat(7) {
+                                                    Column(
+                                                        Modifier.width(WEEK_COLUMN_WIDTH),
+                                                        verticalArrangement = Arrangement.spacedBy(WEEK_CARD_SPACING),
+                                                    ) {
+                                                        repeat(3) {
+                                                            OnAirSkeletonCard(
+                                                                Modifier.fillMaxWidth().testTag("onair-loading-tile"),
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -532,10 +560,13 @@ fun OnAirScreen(
                                                     Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
                                                         if (daySeries.isEmpty()) {
                                                             Box(
-                                                                Modifier.fillMaxWidth().height(80.dp),
-                                                                contentAlignment = Alignment.TopCenter,
+                                                                Modifier.fillMaxWidth().height(84.dp)
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(colors.surface.copy(alpha = 0.35f))
+                                                                    .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(8.dp)),
+                                                                contentAlignment = Alignment.Center,
                                                             ) {
-                                                                Text("放送中なし", color = colors.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
+                                                                Text("放送中なし", color = colors.textSecondary, fontSize = 12.sp)
                                                             }
                                                         } else {
                                                             daySeries.forEachIndexed { index, series ->
@@ -618,7 +649,7 @@ private fun DayHeader(
                 down = targets.down
             },
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = color.copy(alpha = if (highlighted) 1f else 0.72f),
             contentColor = Color.White,
@@ -636,11 +667,22 @@ private fun DayHeader(
         ) {
             Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Spacer(Modifier.weight(1f))
-            Text(
-                if (count < 0) "取得中" else "${count}件",
-                color = Color.White.copy(alpha = 0.9f),
-                fontSize = 11.sp,
-            )
+            if (count < 0) {
+                Box(
+                    Modifier.width(28.dp).height(16.dp)
+                        .background(Color.White.copy(alpha = 0.24f), RoundedCornerShape(4.dp))
+                )
+            } else {
+                Text(
+                    "${count}件",
+                    color = Color.White.copy(alpha = 0.95f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.22f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
         }
     }
 }
@@ -708,7 +750,10 @@ private fun OnAirCard(
             focusedContainerColor = colors.surface,
             focusedContentColor = colors.textPrimary,
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.5.dp, colors.accent))),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.10f))),
+            focusedBorder = Border(BorderStroke(2.5.dp, colors.accent)),
+        ),
     ) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp))) {
             if (hasImage) {
@@ -718,8 +763,9 @@ private fun OnAirCard(
                 Box(
                     Modifier.matchParentSize().background(
                         Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.08f),
-                            1f to Color.Black.copy(alpha = 0.88f),
+                            0f to Color.Transparent,
+                            0.38f to Color.Black.copy(alpha = 0.12f),
+                            1f to Color.Black.copy(alpha = 0.90f),
                         )
                     )
                 )
@@ -794,6 +840,38 @@ private fun OnAirCard(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OnAirSkeletonCard(modifier: Modifier = Modifier) {
+    val colors = KomorebiTheme.colors
+    val bone = colors.textPrimary.copy(alpha = 0.08f)
+    Box(
+        modifier
+            .aspectRatio(16f / 10f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface)
+            .border(1.dp, colors.textPrimary.copy(alpha = 0.07f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 9.dp, vertical = 8.dp),
+    ) {
+        Box(
+            Modifier.align(Alignment.TopEnd)
+                .width(42.dp).height(18.dp)
+                .background(bone, RoundedCornerShape(4.dp))
+        )
+        Column(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Box(Modifier.fillMaxWidth(0.84f).height(12.dp).background(bone, RoundedCornerShape(3.dp)))
+            Box(Modifier.fillMaxWidth(0.56f).height(12.dp).background(bone, RoundedCornerShape(3.dp)))
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(56.dp).height(10.dp).background(bone, RoundedCornerShape(3.dp)))
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.width(28.dp).height(16.dp).background(bone, RoundedCornerShape(3.dp)))
             }
         }
     }

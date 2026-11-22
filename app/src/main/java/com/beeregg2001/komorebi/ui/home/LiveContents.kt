@@ -235,13 +235,12 @@ fun LiveContent(
                 }
             }
         } else {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentPadding = PaddingValues(top = if (showGenreChips) 17.dp else 68.dp, bottom = 48.dp),
+                        .fillMaxSize(),
+                    contentPadding = PaddingValues(top = if (showGenreChips) 17.dp else 68.dp, bottom = 64.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                 if (showGenreChips) {
@@ -437,6 +436,7 @@ fun LiveContent(
                     uiState = focusedChannel,
                     timeFormat = timeFormat,
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .padding(
                             start = TvContentPaddingStart,
@@ -826,7 +826,10 @@ private fun LiveNextProgramBar(
     Row(
         modifier = modifier
             .height(40.dp)
-            .padding(horizontal = 2.dp),
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.surface1)
+            .border(1.dp, colors.borderSubtle, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(

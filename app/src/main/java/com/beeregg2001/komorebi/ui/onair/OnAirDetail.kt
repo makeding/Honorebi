@@ -232,17 +232,18 @@ internal fun OnAirDetail(
         Column(Modifier.fillMaxSize()) {
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 // タイトル行は廃止（hero 内にのみ表示）。余った高さは録画マトリクスのカードに回す。
-                val heroHeight = (maxHeight * 0.28f).coerceIn(148.dp, 184.dp)
+                val heroHeight = (maxHeight * 0.30f).coerceIn(156.dp, 196.dp)
                 val heroExpandedMax = (maxHeight * 0.72f)
                 Column(Modifier.fillMaxSize()) {
                     DetailStatus(
-                        detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.height(24.dp),
+                        detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.padding(bottom = 6.dp),
                         chipFocusRequester = summaryRetryFocus,
                         chipDown = summaryFocus,
                     )
                     SeriesSummaryPanel(
                         series = series,
                         detail = detail,
+                        timeFormat = timeFormat,
                         expanded = state.summaryExpanded,
                         scope = scope,
                         focusRequester = summaryFocus,
@@ -257,17 +258,36 @@ internal fun OnAirDetail(
                             )
                             .animateContentSize(),
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                     Column(Modifier.weight(1f).fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "録画エピソード",
+                                color = colors.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (matrix.rows.isNotEmpty()) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "${matrix.rows.size}局 ・ ${matrix.slots.size}枠",
+                                    color = colors.textSecondary,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
                         DetailStatus(
-                            detail.programsStatus, "録画", viewModel::retryPrograms, Modifier.height(24.dp),
+                            detail.programsStatus, "録画", viewModel::retryPrograms, Modifier.padding(bottom = 6.dp),
                             chipFocusRequester = programsRetryFocus,
                             chipUp = if (detail.summaryStatus is OnAirLoadState.Error) summaryRetryFocus else summaryFocus,
                             chipDown = defaultCell ?: FocusRequester.Cancel,
                         )
                         if (matrix.rows.isEmpty()) {
                             when (detail.programsStatus) {
-                                OnAirLoadState.Loading, OnAirLoadState.Idle -> Spacer(Modifier.weight(1f).fillMaxWidth())
+                                OnAirLoadState.Loading, OnAirLoadState.Idle -> OnAirDetailMatrixSkeleton(Modifier.weight(1f).fillMaxWidth())
                                 is OnAirLoadState.Error -> OnAirEmpty("録画一覧を取得できませんでした", modifier = Modifier.weight(1f))
                                 else -> OnAirEmpty("録画番組がありません", modifier = Modifier.weight(1f))
                             }
@@ -408,9 +428,15 @@ private fun ChannelCell(
     val coveredEpisodes = matrix.slots.countIndexed { index, slot ->
         slot.key.startsWith("episode:") && row.programs.getOrNull(index) != null
     }
-    Column(modifier.padding(end = 8.dp, bottom = 8.dp)
-        .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.Center) {
+    Column(
+        modifier
+            .padding(end = 8.dp, bottom = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface.copy(alpha = 0.65f))
+            .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
         // ロゴ・カバー数・局名は独立したスロットに置き、長い局名とも重ねない。
         Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
             row.channelId?.let { channel ->
@@ -448,9 +474,9 @@ private fun EpisodePlaceholder(missing: Boolean, analyzing: Boolean, modifier: M
     val borderColor = if (missing) OnAirWarningColor.copy(alpha = 0.3f) else colors.textPrimary.copy(alpha = 0.18f)
     Box(
         modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(if (missing) OnAirWarningColor.copy(alpha = 0.07f) else colors.textPrimary.copy(alpha = 0.05f))
-            .border(1.dp, borderColor, RoundedCornerShape(6.dp)),
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -469,6 +495,7 @@ private fun EpisodePlaceholder(missing: Boolean, analyzing: Boolean, modifier: M
 private fun SeriesSummaryPanel(
     series: OnAirSeries,
     detail: OnAirExpandedSeries,
+    timeFormat: String,
     expanded: Boolean,
     scope: kotlinx.coroutines.CoroutineScope,
     focusRequester: FocusRequester,
@@ -481,11 +508,13 @@ private fun SeriesSummaryPanel(
     val scrollState = rememberScrollState()
     val summary = detail.summary
     val summaryReady = detail.summaryStatus == OnAirLoadState.Ready
+    val summaryLoading = detail.summaryStatus == OnAirLoadState.Loading || detail.summaryStatus == OnAirLoadState.Idle
     val jpTitle = summary?.bangumiSubjectName?.takeIf(String::isNotBlank) ?: series.title
     val cnTitle = summary?.bangumiSubjectNameCn?.takeIf(String::isNotBlank)
     val jpSummary = summary?.bangumiSubjectSummary?.takeIf(String::isNotBlank)
         ?: summary?.description?.takeIf(String::isNotBlank)
     val poster = summary?.bangumiSubjectImageUrl?.takeIf(String::isNotBlank)
+    val weekdayName = listOf("月", "火", "水", "木", "金", "土", "日").getOrElse(series.weekday) { "" }
 
     Surface(
         onClick = onToggleExpanded,
@@ -510,23 +539,28 @@ private fun SeriesSummaryPanel(
                     else -> false
                 }
             },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = colors.surface,
             contentColor = colors.textPrimary,
             focusedContainerColor = colors.surface,
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, colors.accent))),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, colors.textPrimary.copy(alpha = 0.08f))),
+            focusedBorder = Border(BorderStroke(2.dp, colors.accent)),
+        ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
-        Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 108.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                Modifier.fillMaxWidth().heightIn(min = 126.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
-                    Modifier.width(77.dp).height(108.dp).clip(RoundedCornerShape(5.dp))
-                        .background(colors.textPrimary.copy(alpha = .06f)),
+                    Modifier.width(90.dp).height(126.dp).clip(RoundedCornerShape(6.dp))
+                        .background(colors.textPrimary.copy(alpha = .06f))
+                        .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (summaryReady && poster == null) {
@@ -535,34 +569,130 @@ private fun SeriesSummaryPanel(
                     poster?.let { AsyncImage(it, "作品ポスター", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                    // HonomiTV と同じく収納時は 1 行で省略、展開時だけ 2 行まで見せる。
-                    Text(
-                        jpTitle, fontWeight = FontWeight.Bold, fontSize = 20.sp,
-                        maxLines = if (expanded) 2 else 1, overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        // HonomiTV と同じく収納時は 1 行で省略、展開時だけ 2 行まで見せる。
+                        Text(
+                            jpTitle, fontWeight = FontWeight.Bold, fontSize = 20.sp,
+                            maxLines = if (expanded) 2 else 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (jpSummary != null) {
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                if (expanded) "OK: 閉じる" else "OK: 全文表示",
+                                color = colors.textSecondary,
+                                fontSize = 11.sp,
+                                modifier = Modifier
+                                    .background(colors.textPrimary.copy(alpha = 0.07f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
                     if (cnTitle != null) {
                         Spacer(Modifier.height(2.dp))
                         Text(cnTitle, color = colors.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
-                        Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val scheduleLabel = buildString {
+                            if (weekdayName.isNotEmpty()) append("毎週${weekdayName}曜 ")
+                            append(displayBroadcastTime(series.broadcastTime, timeFormat))
+                        }
                         Text(
-                            summaryText,
-                            color = colors.textSecondary, fontSize = 13.sp, lineHeight = 18.sp,
-                            maxLines = if (expanded) Int.MAX_VALUE else 3,
-                            overflow = TextOverflow.Ellipsis,
+                            scheduleLabel,
+                            color = colors.textPrimary.copy(alpha = 0.88f),
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .background(colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
                         )
+                        Text(
+                            if (series.recordedEpisodesCount > 0) "${series.recordedEpisodesCount}話録画" else "録画情報なし",
+                            color = colors.textPrimary.copy(alpha = 0.88f),
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .background(colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                        if (series.missingEpisodesCount > 0) {
+                            Text(
+                                "${series.missingEpisodesCount}話未録画",
+                                color = OnAirWarningColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .background(OnAirWarningColor.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    if (summaryLoading) {
+                        val bone = colors.textPrimary.copy(alpha = 0.08f)
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(Modifier.fillMaxWidth(0.92f).height(11.dp).background(bone, RoundedCornerShape(3.dp)))
+                            Box(Modifier.fillMaxWidth(0.76f).height(11.dp).background(bone, RoundedCornerShape(3.dp)))
+                        }
+                    } else {
+                        (jpSummary ?: if (summaryReady) "作品紹介はありません" else null)?.let { summaryText ->
+                            Text(
+                                summaryText,
+                                color = colors.textSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+                                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     // 中文あらすじは展開時のみ（収納時は高さを確保して Down をマトリクスへ通す）。
                     if (expanded) {
                         cnSummary(summary, jpSummary)?.let { cnText ->
-                            Spacer(Modifier.height(3.dp))
+                            Spacer(Modifier.height(4.dp))
                             Text(
                                 cnText,
                                 color = colors.textSecondary.copy(alpha = 0.82f), fontSize = 12.sp, lineHeight = 16.sp,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OnAirDetailMatrixSkeleton(modifier: Modifier = Modifier) {
+    val colors = KomorebiTheme.colors
+    val bone = colors.textPrimary.copy(alpha = 0.08f)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().height(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(CHANNEL_COL_WIDTH - 8.dp).height(12.dp).background(bone, RoundedCornerShape(3.dp)))
+            Spacer(Modifier.width(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(4) {
+                    Box(Modifier.width(SLOT_WIDTH - 8.dp).height(12.dp).background(bone, RoundedCornerShape(3.dp)))
+                }
+            }
+        }
+        repeat(2) {
+            Row(Modifier.fillMaxWidth().height(ROW_HEIGHT)) {
+                Box(
+                    Modifier.width(CHANNEL_COL_WIDTH - 8.dp).fillMaxHeight()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.surface.copy(alpha = 0.65f))
+                        .border(1.dp, colors.textPrimary.copy(alpha = 0.07f), RoundedCornerShape(8.dp)),
+                )
+                Spacer(Modifier.width(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    repeat(4) {
+                        Box(
+                            Modifier.width(SLOT_WIDTH - 8.dp).fillMaxHeight()
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(colors.surface)
+                                .border(1.dp, colors.textPrimary.copy(alpha = 0.07f), RoundedCornerShape(8.dp)),
+                        )
                     }
                 }
             }
@@ -588,13 +718,8 @@ private fun DetailStatus(
     chipUp: FocusRequester = FocusRequester.Cancel,
     chipDown: FocusRequester = FocusRequester.Cancel,
 ) {
-    val error = status as? OnAirLoadState.Error
-    if (error == null) {
-        // Ready / Loading は静かに保ち、予約済みジオメトリだけを確保する。
-        Spacer(modifier)
-        return
-    }
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val error = status as? OnAirLoadState.Error ?: return
+    Row(modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("${label}: ${error.message} [${error.code}]",
             Modifier.weight(1f), color = KomorebiTheme.colors.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Surface(

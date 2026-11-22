@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -266,8 +267,10 @@ internal fun LauncherNavRail(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        val activeTab = controller.activeTab
         visibleTabs.forEach { tab ->
             val isSelected = selectedTab == tab
+            val isActiveTab = activeTab == tab
             val canFocusTab = !(tab == LauncherTab.EPG && isEpgJumping)
             var isItemFocused by remember(tab) { mutableStateOf(false) }
             val interactionSource = remember(tab) { MutableInteractionSource() }
@@ -281,13 +284,14 @@ internal fun LauncherNavRail(
 
             val contentColor = when {
                 isItemFocused -> colors.textPrimary
-                isSelected -> colors.accent
+                isActiveTab -> if (railHasFocus) colors.accent.copy(alpha = 0.55f) else colors.accent
                 else -> colors.textSecondary
             }
 
             RailItemSurface(
-                isSelected = isSelected,
+                isSelected = isActiveTab,
                 isFocused = isItemFocused,
+                dimSelection = railHasFocus && !isItemFocused,
                 icon = railIcon(tab),
                 label = tab.title,
                 contentColor = contentColor,
@@ -411,7 +415,6 @@ internal fun LauncherNavRail(
         RailVersionFooter(
             isFocused = isVersionFocused,
             labelAlpha = labelAlpha,
-            compactVersion = BuildConfig.VERSION_NAME.substringBefore("-"),
             fullVersion = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             contentColor = if (isVersionFocused) colors.textPrimary else colors.textSecondary.copy(alpha = 0.72f),
             modifier = Modifier
@@ -460,14 +463,13 @@ internal fun LauncherNavRail(
 private fun RailVersionFooter(
     isFocused: Boolean,
     labelAlpha: Float,
-    compactVersion: String,
     fullVersion: String,
     contentColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .height(34.dp)
@@ -496,7 +498,7 @@ private fun RailVersionFooter(
                     )
                 }
             },
-        contentAlignment = Alignment.CenterStart,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
@@ -504,13 +506,11 @@ private fun RailVersionFooter(
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = compactVersion,
-                style = MaterialTheme.typography.labelSmall,
-                color = contentColor,
-                maxLines = 1,
-                softWrap = false,
-                modifier = Modifier.graphicsLayer { alpha = (1f - labelAlpha).coerceIn(0f, 1f) },
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = fullVersion,
+                tint = contentColor,
+                modifier = Modifier.size(18.dp),
             )
         }
 
@@ -522,7 +522,7 @@ private fun RailVersionFooter(
                 maxLines = 1,
                 softWrap = false,
                 modifier = Modifier
-                    .padding(start = 18.dp, end = 12.dp)
+                    .padding(end = 12.dp)
                     .graphicsLayer { alpha = labelAlpha },
             )
         }
@@ -534,6 +534,7 @@ private fun RailVersionFooter(
 private fun RailItemSurface(
     isSelected: Boolean,
     isFocused: Boolean,
+    dimSelection: Boolean = false,
     icon: ImageVector,
     label: String,
     contentColor: Color,
@@ -572,7 +573,7 @@ private fun RailItemSurface(
                     )
                 } else if (isSelected) {
                     drawRoundRect(
-                        color = colors.accentSoft,
+                        color = if (dimSelection) colors.accentSoft.copy(alpha = colors.accentSoft.alpha * 0.45f) else colors.accentSoft,
                         topLeft = bgTopLeft,
                         size = bgSize,
                         cornerRadius = CornerRadius(cornerPx, cornerPx),
@@ -583,7 +584,7 @@ private fun RailItemSurface(
                     val pillW = TvRailSelectedIndicatorWidth.toPx()
                     val pillInsetY = TvRailSelectedIndicatorVerticalInset.toPx()
                     drawRoundRect(
-                        color = colors.accent,
+                        color = if (dimSelection) colors.accent.copy(alpha = 0.4f) else colors.accent,
                         topLeft = Offset(0f, pillInsetY),
                         size = Size(pillW, (size.height - pillInsetY * 2f).coerceAtLeast(0f)),
                         cornerRadius = CornerRadius(pillW / 2f, pillW / 2f),

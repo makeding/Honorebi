@@ -123,6 +123,8 @@ fun HomeLauncherScreen(
     onClockClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
+    overlayReturnFocusTick: Int = 0,
+    onOverlayReturnConsumed: () -> Unit = {},
     showUpgradeTour: Boolean = false,
     spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
     notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
@@ -366,6 +368,15 @@ fun HomeLauncherScreen(
         }
     }
 
+    LaunchedEffect(overlayReturnFocusTick, isFullScreenMode) {
+        if (overlayReturnFocusTick > 0 && !isFullScreenMode) {
+            val action = applyReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS)
+            if (action !is TabFocusAction.DelegateToTabContent) {
+                onOverlayReturnConsumed()
+            }
+        }
+    }
+
     LaunchedEffect(isReturningFromPlayer, isFullScreenMode) {
         if (isReturningFromPlayer && !isFullScreenMode) {
             val currentTab = tabController.selectedTab
@@ -386,7 +397,7 @@ fun HomeLauncherScreen(
 
     HomeOverlayReturnFocusEffect(
         isFullScreen = isFullScreenMode,
-        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0,
+        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0,
         onInitialEntry = {
             if (startupFocusTarget == StartupFocusTarget.CONTENT) {
                 focusMemory.requestContent(tabController.selectedIndex)
@@ -629,6 +640,8 @@ fun HomeLauncherScreen(
                                 isNetworkAvailable = networkConnectionStatus.isAvailable,
                                 aiFocusReturnTick = if (isCurrentSnapshot) aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed,
+                                overlayReturnFocusTick = if (isCurrentSnapshot) overlayReturnFocusTick else 0,
+                                onOverlayReturnConsumed = onOverlayReturnConsumed,
                                 onContentReady = snapshotReady,
                                 onScrolledChanged = { isContentScrolled = it },
                             )
