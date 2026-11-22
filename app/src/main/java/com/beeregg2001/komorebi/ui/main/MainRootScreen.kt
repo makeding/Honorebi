@@ -49,6 +49,7 @@ import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
 import com.beeregg2001.komorebi.navigation.PlaybackOpenRequest
 import com.beeregg2001.komorebi.navigation.PlaybackOpenSource
+import com.beeregg2001.komorebi.notification.NotificationCenterViewModel
 import com.beeregg2001.komorebi.ui.video.player.displayLabel
 import com.beeregg2001.komorebi.ui.components.ExitDialog
 import com.beeregg2001.komorebi.ui.screensaver.rememberInAppScreensaverState
@@ -68,6 +69,7 @@ fun MainRootScreen(
     reserveViewModel: ReserveViewModel = hiltViewModel(),
     aiConciergeViewModel: AiConciergeViewModel = hiltViewModel(),
     remoteControlViewModel: RemoteControlViewModel = hiltViewModel(),
+    notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
     homeIntentVersion: Int = 0,
     launchedFromDeepLink: Boolean = false,
     deepLinkRequests: Flow<PlaybackOpenRequest> = emptyFlow(),
@@ -1304,6 +1306,8 @@ fun MainRootScreen(
                                 (isChannelRecovering || state.isConnectionRetryPending),
                         onExitApp = { showExitDialog = true },
                         onTriggerScreensaver = triggerScreensaver,
+                        onInternalActivityLaunch = onInternalActivityLaunch,
+                        notificationCenterViewModel = notificationCenterViewModel,
                         showUpgradeTour = isUpgradeTourActive,
                         spotlightTargets = spotlightTargets,
                     )

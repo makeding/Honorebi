@@ -28,11 +28,15 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.beeregg2001.komorebi.data.StartupFocusTarget
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.notification.InternalNowPlayingState
+import com.beeregg2001.komorebi.notification.LauncherMediaPillState
+import com.beeregg2001.komorebi.notification.NotificationCenterViewModel
 import com.beeregg2001.komorebi.ui.epg.EpgNavigationContainer
 import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
 import com.beeregg2001.komorebi.ui.reserve.ReserveListScreen
@@ -113,12 +117,15 @@ fun HomeLauncherScreen(
     backendFailureReason: String? = null,
     isBackendRecoveryInProgress: Boolean = false,
     hasActivePlayer: Boolean = false,
+    internalNowPlaying: InternalNowPlayingState? = null,
     onReturnToPlayerClick: () -> Unit = {},
+    onInternalActivityLaunch: () -> Unit = {},
     onClockClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
     showUpgradeTour: Boolean = false,
     spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
+    notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
 ) {
     val ui = rememberHomeLauncherState(
         initialTabIndex,
@@ -136,9 +143,25 @@ fun HomeLauncherScreen(
         com.beeregg2001.komorebi.data.repository.tif.TifInput.isSupported(context)
     }
     var showTvInputs by remember { mutableStateOf(false) }
+    var showNotificationCenter by remember { mutableStateOf(false) }
+    var notificationDrawerOpenReason by remember { mutableStateOf(NotificationDrawerOpenReason.BELL) }
+    var isRestoringStripFocus by remember { mutableStateOf(false) }
+
+    val notificationUiState by notificationCenterViewModel.uiState.collectAsState()
+    val effectiveInternalNowPlaying = remember(hasActivePlayer, internalNowPlaying) {
+        when {
+            !hasActivePlayer -> null
+            internalNowPlaying != null -> internalNowPlaying
+            else -> InternalNowPlayingState(title = "再生中")
+        }
+    }
+    val mediaPillState = remember(notificationUiState.externalMediaSessions, effectiveInternalNowPlaying) {
+        notificationUiState.resolveMediaPillState(effectiveInternalNowPlaying)
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         homeViewModel.refreshLauncherApps()
+        notificationCenterViewModel.refreshAccessStatus()
     }
 
     val launcherApps by homeViewModel.launcherApps.collectAsState()
@@ -285,6 +308,7 @@ fun HomeLauncherScreen(
     val inputSourceFocusRequester = remember { FocusRequester() }
     val railSettingsFocusRequester = remember { FocusRequester() }
     val wifiSettingsFocusRequester = remember { FocusRequester() }
+    val bellFocusRequester = remember { FocusRequester() }
     val clockFocusRequester = remember { FocusRequester() }
     val displayFlatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
@@ -433,11 +457,11 @@ fun HomeLauncherScreen(
         )
 
         var isContentScrolled by remember(tabController.activeTab) { mutableStateOf(false) }
-        val isCompactStrip = isContentScrolled && !stripHasFocus
+        val isCompactStrip = isContentScrolled && !stripHasFocus && !showNotificationCenter && !isRestoringStripFocus
         val showStripActions = !isCompactStrip
         val isEpgJumpingActive = tabController.selectedTab == LauncherTab.EPG && ui.isEpgJumping
         val topBarEntryRequester = when {
-            hasActivePlayer -> returnPlayerFocusRequester
+            mediaPillState !is LauncherMediaPillState.None -> returnPlayerFocusRequester
             !showStripActions -> wifiSettingsFocusRequester
             supportsTvInput || inputSourceApp != null -> inputSourceFocusRequester
             else -> ui.settingsFocusRequester
@@ -482,6 +506,7 @@ fun HomeLauncherScreen(
                                 canFocus = isCurrentSnapshot &&
                                     !isFullScreenMode &&
                                     !showTvInputs &&
+                                    !showNotificationCenter &&
                                     !showUpgradeTour &&
                                     (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null)
                             },
@@ -682,29 +707,53 @@ fun HomeLauncherScreen(
             if (!isFullScreenMode) {
                 LauncherSystemStrip(
                     timeFormat = timeFormat,
-                    hasActivePlayer = hasActivePlayer,
+                    mediaPillState = mediaPillState,
                     showInputSource = useTifPicker || inputSourceApp != null,
                     networkConnectionStatus = networkConnectionStatus,
-                    canTakeFocus = !isEpgJumpingActive && !showUpgradeTour,
+                    canTakeFocus = !isEpgJumpingActive && !showUpgradeTour && !showNotificationCenter,
                     returnPlayerFocusRequester = returnPlayerFocusRequester,
                     inputSourceFocusRequester = inputSourceFocusRequester,
                     wifiSettingsFocusRequester = wifiSettingsFocusRequester,
                     systemSettingsFocusRequester = ui.settingsFocusRequester,
                     leftEdgeFocusRequester = tabController.tabRequester(tabController.selectedTab),
                     downFocusRequester = stripDownRequester,
-                    onReturnToPlayerClick = onReturnToPlayerClick,
+                    onMediaPillClick = {
+                        when (mediaPillState) {
+                            is LauncherMediaPillState.InternalMiniPlayer -> onReturnToPlayerClick()
+                            is LauncherMediaPillState.ExternalMedia -> {
+                                notificationDrawerOpenReason = NotificationDrawerOpenReason.MEDIA_PILL
+                                showNotificationCenter = true
+                            }
+                            LauncherMediaPillState.None -> Unit
+                        }
+                    },
                     onLaunchInputSourcePicker = {
                         if (useTifPicker) showTvInputs = true
-                        else inputSourceApp?.let(homeViewModel::launchInputSourcePicker)
+                        else inputSourceApp?.let {
+                            onInternalActivityLaunch()
+                            homeViewModel.launchInputSourcePicker(it)
+                        }
                     },
-                    onLaunchWifiSettings = { homeViewModel.launchWifiSettings() },
-                    onLaunchSystemSettings = { homeViewModel.launchSystemSettings() },
+                    onLaunchWifiSettings = {
+                        onInternalActivityLaunch()
+                        homeViewModel.launchWifiSettings()
+                    },
+                    onLaunchSystemSettings = {
+                        onInternalActivityLaunch()
+                        homeViewModel.launchSystemSettings()
+                    },
                     onHasFocusChanged = { hasFocus ->
                         stripHasFocus = hasFocus
                         if (hasFocus) pendingEnterContentTab = null
                         ui.topNavHasFocus = railHasFocus || hasFocus
                     },
                     onBack = { scope.launch { handleLauncherBack() } },
+                    notificationCount = notificationUiState.notificationCount,
+                    bellFocusRequester = bellFocusRequester,
+                    onBellClick = {
+                        notificationDrawerOpenReason = NotificationDrawerOpenReason.BELL
+                        showNotificationCenter = true
+                    },
                     clockFocusRequester = clockFocusRequester,
                     onClockClick = onClockClick,
                     isContentReady = tabController.isActiveContentReady,
@@ -789,6 +838,62 @@ fun HomeLauncherScreen(
                     scope.launch {
                         androidx.compose.runtime.withFrameNanos { }
                         inputSourceFocusRequester.safeRequestFocus("TvInputDismiss")
+                    }
+                },
+            )
+        }
+        if (showNotificationCenter) {
+            NotificationMediaDrawer(
+                uiState = notificationUiState,
+                internalNowPlaying = effectiveInternalNowPlaying,
+                openReason = notificationDrawerOpenReason,
+                timeFormat = timeFormat,
+                onReturnToInternalPlayer = {
+                    showNotificationCenter = false
+                    onReturnToPlayerClick()
+                },
+                onSendMediaAction = { session, action ->
+                    notificationCenterViewModel.sendMediaAction(session, action)
+                },
+                onOpenMediaApp = { session ->
+                    val launched = notificationCenterViewModel.openMediaApp(session, onInternalActivityLaunch)
+                    if (launched) showNotificationCenter = false
+                },
+                onOpenNotification = { item ->
+                    val launched = notificationCenterViewModel.openNotification(item, onInternalActivityLaunch)
+                    if (launched) showNotificationCenter = false
+                },
+                onDismissNotification = { key ->
+                    notificationCenterViewModel.dismissNotification(key)
+                },
+                onClearAllNotifications = {
+                    notificationCenterViewModel.clearAllClearable()
+                },
+                onOpenNotificationSettings = {
+                    notificationCenterViewModel.openNotificationListenerSettings(context, onInternalActivityLaunch)
+                },
+                onRefreshAccessStatus = {
+                    notificationCenterViewModel.refreshAccessStatus()
+                },
+                onDismiss = {
+                    val opener = if (notificationDrawerOpenReason == NotificationDrawerOpenReason.MEDIA_PILL) {
+                        returnPlayerFocusRequester
+                    } else {
+                        bellFocusRequester
+                    }
+                    isRestoringStripFocus = true
+                    showNotificationCenter = false
+                    scope.launch {
+                        withFrameNanos { }
+                        val restored = opener.safeRequestFocus("NotificationDrawerDismiss_Opener") ||
+                            bellFocusRequester.safeRequestFocus("NotificationDrawerDismiss_Bell") ||
+                            wifiSettingsFocusRequester.safeRequestFocus("NotificationDrawerDismiss_Wifi") ||
+                            clockFocusRequester.safeRequestFocus("NotificationDrawerDismiss_Clock")
+                        if (!restored) {
+                            tabController.tabRequester(tabController.selectedTab).safeRequestFocus("NotificationDrawerDismiss_Rail")
+                        }
+                        withFrameNanos { }
+                        isRestoringStripFocus = false
                     }
                 },
             )

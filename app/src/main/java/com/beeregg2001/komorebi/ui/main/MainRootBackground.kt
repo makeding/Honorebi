@@ -16,14 +16,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
+import com.beeregg2001.komorebi.notification.InternalNowPlayingState
+import com.beeregg2001.komorebi.notification.NotificationCenterViewModel
 import com.beeregg2001.komorebi.ui.home.HomeLauncherScreen
 import com.beeregg2001.komorebi.ui.home.UpgradeSpotlightTargets
 import com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets
+import com.beeregg2001.komorebi.ui.player.PlaybackTarget
 import com.beeregg2001.komorebi.ui.reserve.ConditionEditDialog
 import com.beeregg2001.komorebi.ui.video.RecordListScreen
 import com.beeregg2001.komorebi.viewmodel.*
@@ -59,6 +63,8 @@ fun MainRootBackground(
     isBackendRecoveryInProgress: Boolean,
     onExitApp: () -> Unit,
     onTriggerScreensaver: () -> Unit = {},
+    onInternalActivityLaunch: () -> Unit = {},
+    notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
     showUpgradeTour: Boolean = false,
     spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
 ) {
@@ -210,6 +216,34 @@ fun MainRootBackground(
                 }
 
                 else -> {
+                    val internalNowPlaying = if (state.playbackState.isMiniPlayerMode) {
+                        when (val target = state.playbackState.renderPlaybackTarget) {
+                            is PlaybackTarget.Live -> {
+                                val programTitle = target.channel.programPresent?.title.orEmpty()
+                                InternalNowPlayingState(
+                                    title = programTitle.ifBlank { target.channel.name },
+                                    subtitle = if (programTitle.isNotBlank()) target.channel.name else "",
+                                    badgeLabel = "再生中",
+                                    isPlaying = true,
+                                )
+                            }
+                            is PlaybackTarget.Recorded -> InternalNowPlayingState(
+                                title = target.program.title,
+                                subtitle = target.program.channel?.name.orEmpty(),
+                                badgeLabel = "再生中",
+                                isPlaying = true,
+                            )
+                            is PlaybackTarget.Smb -> InternalNowPlayingState(
+                                title = target.item.name,
+                                subtitle = "SMB",
+                                badgeLabel = "再生中",
+                                isPlaying = true,
+                            )
+                            PlaybackTarget.None -> null
+                        }
+                    } else {
+                        null
+                    }
                     HomeLauncherScreen(
                         channelViewModel = channelViewModel,
                         homeViewModel = homeViewModel,
@@ -295,12 +329,15 @@ fun MainRootBackground(
                         backendFailureReason = backendFailureReason,
                         isBackendRecoveryInProgress = isBackendRecoveryInProgress,
                         hasActivePlayer = state.playbackState.isMiniPlayerMode,
+                        internalNowPlaying = internalNowPlaying,
                         onReturnToPlayerClick = { state.playbackState.isMiniPlayerMode = false },
+                        onInternalActivityLaunch = onInternalActivityLaunch,
                         onClockClick = onTriggerScreensaver,
                         aiFocusReturnTick = state.aiFocusReturnTick,
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
                         showUpgradeTour = showUpgradeTour,
                         spotlightTargets = spotlightTargets,
+                        notificationCenterViewModel = notificationCenterViewModel,
                     )
                 }
             }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,8 +24,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsEthernet
@@ -54,7 +59,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -64,6 +71,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.data.model.LauncherApp
+import com.beeregg2001.komorebi.notification.LauncherMediaPillState
 import com.beeregg2001.komorebi.ui.main.NetworkConnectionStatus
 import com.beeregg2001.komorebi.ui.main.NetworkTransport
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -82,7 +90,15 @@ import java.util.Locale
 
 internal const val NETWORK_STATUS_BUTTON_SIZE_DP = 48
 internal const val NETWORK_STATUS_BUTTON_TEST_TAG = "network-status-button"
-private val RETURN_PLAYER_SLOT_WIDTH = 112.dp
+internal const val MEDIA_PILL_TEST_TAG = "launcher-media-pill"
+internal const val NOTIFICATION_BELL_BUTTON_TEST_TAG = "notification-bell-button"
+internal const val NOTIFICATION_BELL_BADGE_TEST_TAG = "notification-bell-badge"
+internal const val SYSTEM_SETTINGS_BUTTON_TEST_TAG = "system-settings-button"
+internal const val CLOCK_BUTTON_TEST_TAG = "launcher-clock-button"
+private val MEDIA_PILL_MAX_WIDTH = 188.dp
+
+internal fun formatNotificationBadgeCount(count: Int): String =
+    if (count > 9) "9+" else count.coerceAtLeast(0).toString()
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -213,17 +229,95 @@ internal fun NetworkStatusButton(
     }
 }
 
+@Composable
+internal fun NotificationBellButton(
+    notificationCount: Int,
+    focusRequester: FocusRequester,
+    leftFocusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester,
+    canTakeFocus: Boolean,
+    onClick: () -> Unit,
+    onFocusedChanged: (Boolean) -> Unit = {},
+    downFocusRequester: FocusRequester = FocusRequester.Cancel,
+) {
+    val colors = KomorebiTheme.colors
+    val focusSpec = tvCardFocus(TvCardFamily.SYSTEM_ICON)
+    val hasNotifications = notificationCount > 0
+    val icon = if (hasNotifications) Icons.Default.Notifications else Icons.Default.NotificationsNone
+    val description = if (hasNotifications) "通知・メディア（${notificationCount}件）" else "通知・メディア"
+
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .size(NETWORK_STATUS_BUTTON_SIZE_DP.dp)
+            .testTag(NOTIFICATION_BELL_BUTTON_TEST_TAG)
+            .focusRequester(focusRequester)
+            .onFocusChanged { onFocusedChanged(it.isFocused) }
+            .focusProperties {
+                left = leftFocusRequester
+                right = rightFocusRequester
+                down = downFocusRequester
+                up = FocusRequester.Cancel
+                canFocus = canTakeFocus
+            },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = focusSpec.focusedScale),
+        border = ClickableSurfaceDefaults.border(
+            border = Border.None,
+            focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
+        ),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (hasNotifications) colors.accentSoft else Color.Transparent,
+            focusedContainerColor = colors.surface2,
+            contentColor = if (hasNotifications) colors.accent else colors.textSecondary,
+            focusedContentColor = if (hasNotifications) colors.accent else colors.textPrimary,
+        ),
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                modifier = Modifier.size(24.dp),
+            )
+            if (hasNotifications) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 4.dp, end = 4.dp)
+                        .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                        .background(colors.accent, CircleShape)
+                        .padding(horizontal = 4.dp)
+                        .testTag(NOTIFICATION_BELL_BADGE_TEST_TAG),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = formatNotificationBadgeCount(notificationCount),
+                        color = colors.onAccent,
+                        style = MaterialTheme.typography.labelSmall.tnum.copy(
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        ),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * Top-right system utility strip for the launcher:
- * `[再生中 if active][入力切替 if present][本体設定][Network][Clock]`.
+ * `[UnifiedMediaPill?][InputSource?][Settings?][Network][Bell?][Clock]`.
  * When [isCompactStatusOnly] is true and the strip is unfocused, action buttons (HDMI & System Settings)
- * collapse horizontally, leaving only status indicators (再生中 / Network / Clock).
+ * collapse horizontally; Bell collapses only when [notificationCount] == 0.
  */
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 internal fun LauncherSystemStrip(
     timeFormat: String,
-    hasActivePlayer: Boolean,
+    mediaPillState: LauncherMediaPillState,
     showInputSource: Boolean,
     networkConnectionStatus: NetworkConnectionStatus,
     canTakeFocus: Boolean,
@@ -233,13 +327,16 @@ internal fun LauncherSystemStrip(
     systemSettingsFocusRequester: FocusRequester,
     leftEdgeFocusRequester: FocusRequester,
     downFocusRequester: FocusRequester,
-    onReturnToPlayerClick: () -> Unit,
+    onMediaPillClick: () -> Unit,
     onLaunchInputSourcePicker: () -> Unit,
     onLaunchWifiSettings: () -> Unit,
     onLaunchSystemSettings: () -> Unit,
     onHasFocusChanged: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    notificationCount: Int = 0,
+    bellFocusRequester: FocusRequester = remember { FocusRequester() },
+    onBellClick: () -> Unit = {},
     clockFocusRequester: FocusRequester = remember { FocusRequester() },
     onClockClick: () -> Unit = {},
     isContentReady: Boolean = true,
@@ -251,23 +348,29 @@ internal fun LauncherSystemStrip(
     val stripShape = RoundedCornerShape(14.dp)
 
     var stripFocused by remember { mutableStateOf(false) }
-    var returnPlayerFocused by remember { mutableStateOf(false) }
+    var mediaPillFocused by remember { mutableStateOf(false) }
     var inputSourceFocused by remember { mutableStateOf(false) }
+    var bellFocused by remember { mutableStateOf(false) }
+    val hasMediaPill = mediaPillState !is LauncherMediaPillState.None
     val showActionButtons = !isCompactStatusOnly || stripFocused
+    val showBellButton = showActionButtons || notificationCount > 0
 
-    LaunchedEffect(hasActivePlayer, showInputSource, showActionButtons) {
-        if (!hasActivePlayer && returnPlayerFocused) {
-            returnPlayerFocused = false
+    LaunchedEffect(hasMediaPill, showInputSource, showActionButtons, showBellButton) {
+        if (!hasMediaPill && mediaPillFocused) {
+            mediaPillFocused = false
             val target = when {
                 showActionButtons && showInputSource -> inputSourceFocusRequester
                 showActionButtons -> systemSettingsFocusRequester
                 else -> wifiSettingsFocusRequester
             }
-            target.safeRequestFocus("StripHandoff_Player")
+            target.safeRequestFocus("StripHandoff_MediaPill")
         } else if (!showInputSource && inputSourceFocused) {
             inputSourceFocused = false
             val target = if (showActionButtons) systemSettingsFocusRequester else wifiSettingsFocusRequester
             target.safeRequestFocus("StripHandoff_Input")
+        } else if (!showBellButton && bellFocused) {
+            bellFocused = false
+            wifiSettingsFocusRequester.safeRequestFocus("StripHandoff_Bell")
         }
     }
 
@@ -300,14 +403,21 @@ internal fun LauncherSystemStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (hasActivePlayer) {
+        if (hasMediaPill) {
+            val pillLabel = when (mediaPillState) {
+                is LauncherMediaPillState.InternalMiniPlayer -> mediaPillState.label
+                is LauncherMediaPillState.ExternalMedia -> mediaPillState.displayLabel
+                LauncherMediaPillState.None -> ""
+            }
             val pillShape = RoundedCornerShape(20.dp)
             Surface(
-                onClick = onReturnToPlayerClick,
+                onClick = onMediaPillClick,
                 modifier = Modifier
                     .height(40.dp)
+                    .widthIn(max = MEDIA_PILL_MAX_WIDTH)
+                    .testTag(MEDIA_PILL_TEST_TAG)
                     .focusRequester(returnPlayerFocusRequester)
-                    .onFocusChanged { returnPlayerFocused = it.isFocused }
+                    .onFocusChanged { mediaPillFocused = it.isFocused }
                     .focusProperties {
                         left = leftEdgeFocusRequester
                         right = when {
@@ -344,15 +454,16 @@ internal fun LauncherSystemStrip(
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "再生中",
+                        contentDescription = pillLabel,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "再生中",
+                        text = pillLabel,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         softWrap = false,
                     )
                 }
@@ -368,7 +479,7 @@ internal fun LauncherSystemStrip(
                 PinnedSystemAppButton(
                     label = "TV入力",
                     focusRequester = inputSourceFocusRequester,
-                    leftFocusRequester = if (hasActivePlayer) {
+                    leftFocusRequester = if (hasMediaPill) {
                         returnPlayerFocusRequester
                     } else {
                         leftEdgeFocusRequester
@@ -391,11 +502,12 @@ internal fun LauncherSystemStrip(
                 onClick = onLaunchSystemSettings,
                 modifier = Modifier
                     .size(48.dp)
+                    .testTag(SYSTEM_SETTINGS_BUTTON_TEST_TAG)
                     .focusRequester(systemSettingsFocusRequester)
                     .focusProperties {
                         left = when {
                             showInputSource -> inputSourceFocusRequester
-                            hasActivePlayer -> returnPlayerFocusRequester
+                            hasMediaPill -> returnPlayerFocusRequester
                             else -> leftEdgeFocusRequester
                         }
                         right = wifiSettingsFocusRequester
@@ -431,22 +543,40 @@ internal fun LauncherSystemStrip(
             focusRequester = wifiSettingsFocusRequester,
             leftFocusRequester = when {
                 showActionButtons -> systemSettingsFocusRequester
-                hasActivePlayer -> returnPlayerFocusRequester
+                hasMediaPill -> returnPlayerFocusRequester
                 else -> leftEdgeFocusRequester
             },
-            rightFocusRequester = clockFocusRequester,
+            rightFocusRequester = if (showBellButton) bellFocusRequester else clockFocusRequester,
             canTakeFocus = canTakeFocus,
             onClick = onLaunchWifiSettings,
             downFocusRequester = FocusRequester.Cancel,
         )
 
+        AnimatedVisibility(
+            visible = showBellButton,
+            enter = fadeIn() + expandHorizontally(),
+            exit = fadeOut() + shrinkHorizontally(),
+        ) {
+            NotificationBellButton(
+                notificationCount = notificationCount,
+                focusRequester = bellFocusRequester,
+                leftFocusRequester = wifiSettingsFocusRequester,
+                rightFocusRequester = clockFocusRequester,
+                canTakeFocus = canTakeFocus,
+                onClick = onBellClick,
+                onFocusedChanged = { bellFocused = it },
+                downFocusRequester = FocusRequester.Cancel,
+            )
+        }
+
         Surface(
             onClick = onClockClick,
             modifier = Modifier
                 .height(48.dp)
+                .testTag(CLOCK_BUTTON_TEST_TAG)
                 .focusRequester(clockFocusRequester)
                 .focusProperties {
-                    left = wifiSettingsFocusRequester
+                    left = if (showBellButton) bellFocusRequester else wifiSettingsFocusRequester
                     right = FocusRequester.Cancel
                     down = FocusRequester.Cancel
                     up = FocusRequester.Cancel
