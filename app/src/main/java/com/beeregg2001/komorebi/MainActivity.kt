@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.*
 import androidx.media3.common.util.UnstableApi
+import com.beeregg2001.komorebi.navigation.DeepLinkDispatcher
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.main.MainRootScreen
 import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
@@ -31,6 +32,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var appUpdater: AppUpdater
+    @Inject lateinit var deepLinkDispatcher: DeepLinkDispatcher
 
     private var homeIntentVersion by mutableIntStateOf(0)
 
@@ -73,6 +75,8 @@ class MainActivity : ComponentActivity() {
         setTheme(R.style.Theme_Komorebi)
         super.onCreate(savedInstanceState)
 
+        val launchedFromDeepLink = savedInstanceState == null && deepLinkDispatcher.dispatch(intent)
+
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 appUpdater.updateState.collect { update ->
@@ -92,6 +96,8 @@ class MainActivity : ComponentActivity() {
                     homeViewModel = homeViewModel,
                     recordViewModel = recordViewModel,
                     homeIntentVersion = homeIntentVersion,
+                    launchedFromDeepLink = launchedFromDeepLink,
+                    deepLinkRequests = deepLinkDispatcher.requests,
                     onRemotePlaybackOpened = ::showRemotePlayback,
                     onExitApp = ::finish
                 )
@@ -105,8 +111,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME)) {
             homeIntentVersion++
+        } else {
+            deepLinkDispatcher.dispatch(intent)
         }
     }
 }

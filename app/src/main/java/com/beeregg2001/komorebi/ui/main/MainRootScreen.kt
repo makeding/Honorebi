@@ -21,13 +21,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
+import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.ui.home.LoadingScreen
+import com.beeregg2001.komorebi.ui.home.UpgradeTourCatalog
+import com.beeregg2001.komorebi.ui.home.shouldShowUpgradeLandingTour
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.ui.theme.AppTheme
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -37,6 +42,8 @@ import androidx.compose.runtime.collectAsState
 import com.beeregg2001.komorebi.media.IdleSystemMediaSession
 import com.beeregg2001.komorebi.media.RootSystemMediaSessionHost
 import com.beeregg2001.komorebi.data.remote.HonomiRemoteCommand
+import com.beeregg2001.komorebi.navigation.PlaybackOpenRequest
+import com.beeregg2001.komorebi.navigation.PlaybackOpenSource
 import com.beeregg2001.komorebi.ui.video.player.displayLabel
 import com.beeregg2001.komorebi.ui.components.ExitDialog
 import com.beeregg2001.komorebi.ui.screensaver.rememberInAppScreensaverState
@@ -57,16 +64,23 @@ fun MainRootScreen(
     aiConciergeViewModel: AiConciergeViewModel = hiltViewModel(),
     remoteControlViewModel: RemoteControlViewModel = hiltViewModel(),
     homeIntentVersion: Int = 0,
+    launchedFromDeepLink: Boolean = false,
+    deepLinkRequests: Flow<PlaybackOpenRequest> = emptyFlow(),
     onRemotePlaybackOpened: () -> Unit = {},
     onExitApp: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = rememberMainRootState()
+    remember(launchedFromDeepLink) {
+        if (launchedFromDeepLink) state.hasAppliedStartupChannel = true
+    }
     val nhkExclusionRepository = settingsViewModel.nhkExclusionRepository
     val nhkExclusionState by nhkExclusionRepository.state.collectAsState()
+    var wasNHKExclusionLoaded by remember { mutableStateOf(nhkExclusionState.isLoaded) }
+    var wasNHKExclusionActive by remember { mutableStateOf(nhkExclusionState.isActive) }
 
-    fun excludeCurrentNHKContent(): Boolean {
+    fun excludeCurrentNHKContent(invalidatePendingOpens: Boolean = true): Boolean {
         fun isExcludedTarget(target: PlaybackTarget): Boolean = when (target) {
             is PlaybackTarget.Live -> nhkExclusionRepository.isExcluded(target.channel)
             is PlaybackTarget.Recorded -> nhkExclusionRepository.isExcluded(target.program)
@@ -79,7 +93,9 @@ fun MainRootScreen(
             remoteControlViewModel.client.sendState(contentType = "Idle")
         }
         if (nhkExclusionRepository.state.value.isActive) {
-            state.playbackState.invalidatePlaybackOpenIntents()
+            if (invalidatePendingOpens) {
+                state.playbackState.invalidatePlaybackOpenIntents()
+            }
             if (state.epgSelectedProgram?.channel_id?.let(nhkExclusionRepository::isExcludedChannelId) == true) {
                 state.epgSelectedProgram = null
             }
@@ -96,8 +112,103 @@ fun MainRootScreen(
     }
 
     LaunchedEffect(nhkExclusionState, state.playbackState.renderPlaybackTarget) {
-        excludeCurrentNHKContent()
+        val newlyActivated = wasNHKExclusionLoaded && !wasNHKExclusionActive && nhkExclusionState.isActive
+        wasNHKExclusionLoaded = nhkExclusionState.isLoaded
+        wasNHKExclusionActive = nhkExclusionState.isActive
+        excludeCurrentNHKContent(invalidatePendingOpens = newlyActivated)
         remoteControlViewModel.client.refreshNHKExclusionState()
+    }
+
+    fun playbackOpenFailureMessage(request: PlaybackOpenRequest): String = when (request) {
+        is PlaybackOpenRequest.Live -> when (request.source) {
+            PlaybackOpenSource.Remote -> "リモートで指定されたチャンネルを開けませんでした"
+            PlaybackOpenSource.DeepLink -> "指定されたチャンネルを開けませんでした"
+        }
+        is PlaybackOpenRequest.Recording -> when (request.source) {
+            PlaybackOpenSource.Remote -> "リモートで指定された録画を開けませんでした"
+            PlaybackOpenSource.DeepLink -> "指定された録画を開けませんでした"
+        }
+    }
+
+    fun openPlayback(request: PlaybackOpenRequest) {
+        val intent = state.playbackState.beginPlaybackOpenIntent()
+        scope.launch {
+            val exclusionLoaded = withTimeoutOrNull(10_000) {
+                nhkExclusionRepository.state.first { it.isLoaded }
+            }
+            if (exclusionLoaded == null) {
+                if (state.playbackState.failPlaybackOpenIntent(intent)) {
+                    state.toastMessage = playbackOpenFailureMessage(request)
+                }
+                return@launch
+            }
+            when (request) {
+                is PlaybackOpenRequest.Live -> {
+                    val findChannel = {
+                        channelViewModel.groupedChannels.value.values.flatten()
+                            .firstOrNull { it.displayChannelId == request.displayChannelId }
+                    }
+                    val channel = findChannel() ?: run {
+                        channelViewModel.fetchChannels()
+                        withTimeoutOrNull(10_000) {
+                            while (findChannel() == null) delay(100)
+                            findChannel()
+                        }
+                    }
+                    when {
+                        channel == null -> {
+                            if (state.playbackState.failPlaybackOpenIntent(intent)) {
+                                state.toastMessage = playbackOpenFailureMessage(request)
+                            }
+                        }
+                        nhkExclusionRepository.isExcluded(channel) -> {
+                            state.playbackState.failPlaybackOpenIntent(intent)
+                        }
+                        state.playbackState.completePlaybackOpenIntent(intent) -> {
+                            state.bringRemotePlaybackToFront()
+                            onRemotePlaybackOpened()
+                            state.playbackState.enterLive(channel)
+                            homeViewModel.saveLastChannel(channel)
+                        }
+                    }
+                }
+                is PlaybackOpenRequest.Recording -> {
+                    when (val lookup = recordViewModel.lookupProgramForOpen(request.recordedProgramId)) {
+                        is ProgramOpenLookup.Found -> {
+                            val program = lookup.program
+                            val positionSeconds = request.positionSeconds
+                                ?: recordViewModel.resumePositionSeconds(program)
+                            if (nhkExclusionRepository.isExcluded(program)) {
+                                state.playbackState.failPlaybackOpenIntent(intent)
+                            } else if (state.playbackState.completePlaybackOpenIntent(intent)) {
+                                state.bringRemotePlaybackToFront()
+                                onRemotePlaybackOpened()
+                                val positionMs = (positionSeconds * 1_000).toLong().coerceAtLeast(0L)
+                                if (!state.playbackState.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {
+                                    state.playbackState.enterRecorded(program, positionMs)
+                                }
+                            }
+                        }
+                        ProgramOpenLookup.Excluded -> {
+                            state.playbackState.failPlaybackOpenIntent(intent)
+                        }
+                        ProgramOpenLookup.NotFound -> {
+                            if (state.playbackState.failPlaybackOpenIntent(intent)) {
+                                state.toastMessage = playbackOpenFailureMessage(request)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(deepLinkRequests) {
+        deepLinkRequests.collect { request ->
+            state.hasAppliedStartupChannel = true
+            state.playbackState.dismissPlayerOverlaysForRemoteControl()
+            openPlayback(request)
+        }
     }
 
     // HonomiTV Web クライアントで選択されたライブ放送・録画番組を、既存の再生状態へ直接引き渡す。
@@ -112,44 +223,21 @@ fun MainRootScreen(
             }
             when (command) {
                 is HonomiRemoteCommand.OpenLive -> {
-                    val intent = state.playbackState.beginPlaybackOpenIntent()
-                    scope.launch {
-                        val findChannel = {
-                            channelViewModel.groupedChannels.value.values.flatten()
-                                .firstOrNull { it.displayChannelId == command.displayChannelId }
-                        }
-                        val channel = findChannel() ?: run {
-                            channelViewModel.fetchChannels()
-                            withTimeoutOrNull(10_000) {
-                                while (findChannel() == null) delay(100)
-                                findChannel()
-                            }
-                        }
-                        if (channel != null && !nhkExclusionRepository.isExcluded(channel) && state.playbackState.completePlaybackOpenIntent(intent)) {
-                            state.bringRemotePlaybackToFront()
-                            onRemotePlaybackOpened()
-                            state.playbackState.enterLive(channel)
-                            homeViewModel.saveLastChannel(channel)
-                        } else if (channel == null && state.playbackState.failPlaybackOpenIntent(intent)) {
-                            state.toastMessage = "リモートで指定されたチャンネルを開けませんでした"
-                        }
-                    }
+                    openPlayback(
+                        PlaybackOpenRequest.Live(
+                            displayChannelId = command.displayChannelId,
+                            source = PlaybackOpenSource.Remote,
+                        )
+                    )
                 }
                 is HonomiRemoteCommand.OpenRecording -> {
-                    val intent = state.playbackState.beginPlaybackOpenIntent()
-                    scope.launch {
-                        val program = recordViewModel.getRemoteProgram(command.recordedProgramId)
-                        if (program != null && !nhkExclusionRepository.isExcluded(program) && state.playbackState.completePlaybackOpenIntent(intent)) {
-                            state.bringRemotePlaybackToFront()
-                            onRemotePlaybackOpened()
-                            val positionMs = (command.positionSeconds * 1_000).toLong()
-                            if (!state.playbackState.beginRecordedSwitch(program, positionMs, PlaybackSwitchReason.RemoteOpen)) {
-                                state.playbackState.enterRecorded(program, positionMs)
-                            }
-                        } else if (program == null && state.playbackState.failPlaybackOpenIntent(intent)) {
-                            state.toastMessage = "リモートで指定された録画を開けませんでした"
-                        }
-                    }
+                    openPlayback(
+                        PlaybackOpenRequest.Recording(
+                            recordedProgramId = command.recordedProgramId,
+                            positionSeconds = command.positionSeconds,
+                            source = PlaybackOpenSource.Remote,
+                        )
+                    )
                 }
                 // CM スキップ設定は再生セッションではなくアプリ全体の設定なので、
                 // 再生画面が開いていなくても反映できるようここで受ける。
@@ -428,6 +516,22 @@ fun MainRootScreen(
     val isChannelError by channelViewModel.connectionError.collectAsState()
     val channelErrorReason by channelViewModel.channelError.collectAsState()
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
+    val upgradeCheckState by settingsViewModel.upgradeCheckState.collectAsState()
+    val upgradeTourSteps = remember { UpgradeTourCatalog.tourForVersion(BuildConfig.VERSION_CODE) }
+    var isUpgradeTourDismissed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(upgradeCheckState) {
+        val ready = upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready ?: return@LaunchedEffect
+        val shouldShow = shouldShowUpgradeLandingTour(
+            lastSeenVersionCode = ready.lastSeenVersionCode,
+            currentVersionCode = BuildConfig.VERSION_CODE,
+            isSettingsInitialized = ready.isSettingsInitialized,
+            hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
+        )
+        if (!shouldShow && ready.lastSeenVersionCode != BuildConfig.VERSION_CODE) {
+            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+        }
+    }
     val networkConnectionStatus by rememberNetworkConnectionStatus(
         awake = appWakeState.isAwake,
         wakeGeneration = appWakeState.generation,
@@ -892,6 +996,32 @@ fun MainRootScreen(
                                 (isChannelRecovering || state.isConnectionRetryPending),
                         onExitApp = { showExitDialog = true },
                         onTriggerScreensaver = triggerScreensaver,
+                        showUpgradeTour = !isUpgradeTourDismissed &&
+                            startupRenderPlan.showMainContent &&
+                            !state.playbackState.isPlaybackActive &&
+                            !state.isSettingsOpen &&
+                            !state.showConnectionErrorDialog &&
+                            !state.isRecordListOpen &&
+                            !state.isSeriesListOpen &&
+                            !state.isSmbLibraryOpen &&
+                            !state.isOnAirOpen &&
+                            state.epgSelectedProgram == null &&
+                            state.selectedReserve == null &&
+                            state.editingCondition == null &&
+                            !showExitDialog &&
+                            (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
+                                shouldShowUpgradeLandingTour(
+                                    lastSeenVersionCode = ready.lastSeenVersionCode,
+                                    currentVersionCode = BuildConfig.VERSION_CODE,
+                                    isSettingsInitialized = ready.isSettingsInitialized,
+                                    hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
+                                )
+                            } == true,
+                        upgradeTourSteps = upgradeTourSteps,
+                        onDismissUpgradeTour = {
+                            isUpgradeTourDismissed = true
+                            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+                        },
                     )
 
                     if (state.playbackState.isPlaybackActive) {

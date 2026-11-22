@@ -1,0 +1,84 @@
+package com.beeregg2001.komorebi.ui.home
+
+enum class UpgradeTourTargetId {
+    NAV_RAIL,
+    SYSTEM_STRIP,
+    CONTENT_STAGE,
+    SETTINGS_BUTTON,
+}
+
+enum class UpgradeSpotlightShape {
+    ROUNDED_RECT,
+    CIRCLE,
+}
+
+enum class UpgradeCalloutPlacement {
+    RIGHT_OF_TARGET,
+    BELOW_RIGHT,
+    BOTTOM_CENTER,
+    BOTTOM_LEFT_BESIDE_RAIL,
+}
+
+data class UpgradeTourStep(
+    val targetId: UpgradeTourTargetId,
+    val shape: UpgradeSpotlightShape,
+    val badge: String,
+    val title: String,
+    val description: String,
+    val placement: UpgradeCalloutPlacement,
+)
+
+object UpgradeTourCatalog {
+    const val VERSION_CODE_1_2_0 = 35
+
+    fun tourForVersion(versionCode: Int): List<UpgradeTourStep> = when (versionCode) {
+        VERSION_CODE_1_2_0 -> listOf(
+            UpgradeTourStep(
+                targetId = UpgradeTourTargetId.NAV_RAIL,
+                shape = UpgradeSpotlightShape.ROUNDED_RECT,
+                badge = "Honorebi 1.2.0 • 新ナビゲーション",
+                title = "左サイドバーに全面刷新",
+                description = "タブの切り替えや設定へのアクセスが左側に集約されました。コンテンツ操作中は自動で折りたたまれ、左キーでいつでも展開できます。",
+                placement = UpgradeCalloutPlacement.RIGHT_OF_TARGET,
+            ),
+            UpgradeTourStep(
+                targetId = UpgradeTourTargetId.SYSTEM_STRIP,
+                shape = UpgradeSpotlightShape.ROUNDED_RECT,
+                badge = "Honorebi 1.2.0 • システムバー",
+                title = "右上システムバーで素早く操作",
+                description = "時計（クリックでスクリーンセーバー）、外部入力切替（HDMI / TIF）、ネットワーク設定、システム設定へすぐアクセスできます。スクロール時は自動でスリム化します。",
+                placement = UpgradeCalloutPlacement.BELOW_RIGHT,
+            ),
+            UpgradeTourStep(
+                targetId = UpgradeTourTargetId.CONTENT_STAGE,
+                shape = UpgradeSpotlightShape.ROUNDED_RECT,
+                badge = "Honorebi 1.2.0 • UI & フォーカス",
+                title = "各タブ刷新と起動時フォーカス設定",
+                description = "ホーム・ビデオ・番組表・予約の各画面とフォーカス表示を全面刷新しました。「設定 ＞ 画面」から起動時のフォーカス位置（サイドバー／コンテンツ）も選べます。",
+                placement = UpgradeCalloutPlacement.BOTTOM_CENTER,
+            ),
+            UpgradeTourStep(
+                targetId = UpgradeTourTargetId.SETTINGS_BUTTON,
+                shape = UpgradeSpotlightShape.CIRCLE,
+                badge = "Honorebi 1.2.0 • 設定 & プレイヤー",
+                title = "設定画面・弾幕エンジン・プレイヤーも進化",
+                description = "設定画面を新デザインへ刷新し、OpenGL ES 3.0 弾幕エンジン（Beta）、チャプター解析強化、プレイヤー下キー操作の高速化、libaribcaption のセキュリティ修正（CVE-2026-112284）を実装しました。",
+                placement = UpgradeCalloutPlacement.BOTTOM_LEFT_BESIDE_RAIL,
+            ),
+        )
+        else -> emptyList()
+    }
+}
+
+fun shouldShowUpgradeLandingTour(
+    lastSeenVersionCode: Int?,
+    currentVersionCode: Int,
+    isSettingsInitialized: Boolean,
+    hasTourForCurrentVersion: Boolean,
+): Boolean {
+    if (!hasTourForCurrentVersion) return false
+    if (lastSeenVersionCode == null) {
+        return isSettingsInitialized
+    }
+    return lastSeenVersionCode < currentVersionCode
+}

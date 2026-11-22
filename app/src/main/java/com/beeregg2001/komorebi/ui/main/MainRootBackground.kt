@@ -22,6 +22,7 @@ import com.beeregg2001.komorebi.data.model.KonomiHistoryProgram
 import com.beeregg2001.komorebi.data.model.ReservationCondition
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.ui.home.HomeLauncherScreen
+import com.beeregg2001.komorebi.ui.home.UpgradeTourStep
 import com.beeregg2001.komorebi.ui.reserve.ConditionEditDialog
 import com.beeregg2001.komorebi.ui.video.RecordListScreen
 import com.beeregg2001.komorebi.viewmodel.*
@@ -57,6 +58,9 @@ fun MainRootBackground(
     isBackendRecoveryInProgress: Boolean,
     onExitApp: () -> Unit,
     onTriggerScreensaver: () -> Unit = {},
+    showUpgradeTour: Boolean = false,
+    upgradeTourSteps: List<UpgradeTourStep> = emptyList(),
+    onDismissUpgradeTour: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val onAirInitialFocusRequester = remember { FocusRequester() }
@@ -101,7 +105,7 @@ fun MainRootBackground(
                             state.selectedProgramForAutoReserve = program
                         },
                         aiFocusReturnTick = state.aiFocusReturnTick,
-                        onAiReturnConsumed = { state.aiFocusReturnTick = 0 }
+                        onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
                     )
                 }
 
@@ -283,7 +287,10 @@ fun MainRootBackground(
                         onReturnToPlayerClick = { state.playbackState.isMiniPlayerMode = false },
                         onClockClick = onTriggerScreensaver,
                         aiFocusReturnTick = state.aiFocusReturnTick,
-                        onAiReturnConsumed = { state.aiFocusReturnTick = 0 }
+                        onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
+                        showUpgradeTour = showUpgradeTour,
+                        upgradeTourSteps = upgradeTourSteps,
+                        onDismissUpgradeTour = onDismissUpgradeTour,
                     )
                 }
             }

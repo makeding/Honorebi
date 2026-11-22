@@ -26,7 +26,10 @@ data class ReserveItem(
     val estimatedRecordingFileSize: Long = 0L,
 
     @SerializedName("record_settings")
-    val recordSettings: ReserveRecordSettings = ReserveRecordSettings()
+    val recordSettings: ReserveRecordSettings = ReserveRecordSettings(),
+
+    @SerializedName("gguide_image") val gguideImage: GGuideAsset? = null,
+    val gguideImageUrl: String? = null
 )
 
 data class ReserveProgramDetail(

@@ -29,6 +29,7 @@ import com.beeregg2001.komorebi.data.repository.ReserveProvider
 import com.beeregg2001.komorebi.data.repository.WatchHistoryRepository
 import com.beeregg2001.komorebi.data.sync.RecordSyncEngine
 import com.beeregg2001.komorebi.data.sync.SyncProgress
+import com.beeregg2001.komorebi.data.watchnext.WatchProgressPolicy
 import com.beeregg2001.komorebi.ui.video.components.RecordCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -85,6 +86,12 @@ data class ExpandedSeriesState(
     val programs: List<RecordedProgram> = emptyList(),
     val errorMessage: String? = null,
 )
+
+sealed interface ProgramOpenLookup {
+    data class Found(val program: RecordedProgram) : ProgramOpenLookup
+    data object Excluded : ProgramOpenLookup
+    data object NotFound : ProgramOpenLookup
+}
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -214,10 +221,24 @@ class RecordViewModel @Inject constructor(
         detailRequestCoordinator.cancel { _programDetail.value = null }
     }
 
-    /** HonomiTV のリモート操作で指定された録画番組を、そのまま再生開始できる形で取得する。 */
-    suspend fun getRemoteProgram(videoId: Int): RecordedProgram? = withContext(Dispatchers.IO) {
-        if (!nhkExclusionRepository.state.value.isLoaded) return@withContext null
-        recordProvider.getRecordedProgram(videoId).getOrNull()?.takeUnless(nhkExclusionRepository::isExcluded)
+    /** リモート操作やディープリンクで指定された録画番組を、除外判定込みで解決する。 */
+    suspend fun lookupProgramForOpen(videoId: Int): ProgramOpenLookup = withContext(Dispatchers.IO) {
+        if (!nhkExclusionRepository.state.value.isLoaded) return@withContext ProgramOpenLookup.NotFound
+        val program = recordProvider.getRecordedProgram(videoId).getOrNull()
+            ?: return@withContext ProgramOpenLookup.NotFound
+        if (nhkExclusionRepository.isExcluded(program)) {
+            ProgramOpenLookup.Excluded
+        } else {
+            ProgramOpenLookup.Found(program)
+        }
+    }
+
+    /** ローカル視聴履歴と再生時間から、ディープリンク時の再開位置（秒）を解決する。 */
+    suspend fun resumePositionSeconds(program: RecordedProgram): Double = withContext(Dispatchers.IO) {
+        WatchProgressPolicy.resumePositionSeconds(
+            historyRepository.getHistoryEntityById(program.id)?.playbackPosition,
+            WatchProgressPolicy.effectiveDurationSeconds(program),
+        )
     }
 
     val recentRecordings: StateFlow<List<RecordedProgram>> = combine(

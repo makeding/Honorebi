@@ -2,6 +2,7 @@ package com.beeregg2001.komorebi.ui.setting
 
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
+import com.beeregg2001.komorebi.data.TifNoSignalStyle
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
@@ -68,6 +69,7 @@ class SettingPreferences(
     val epgFontSizeScale: String,
     val epgVisibleHours: String,
     val playerClockMode: PlayerClockMode = PlayerClockMode.ALWAYS_ON,
+    val tifNoSignalStyle: TifNoSignalStyle = TifNoSignalStyle.BANNER,
 )
 
 @Composable
@@ -140,6 +142,7 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         defaultRecordListView = repository.defaultRecordListView.collectAsState(initial = "LIST").value,
         hideSubChannels = repository.hideSubChannels.collectAsState(initial = false).value,
         tifHideEmptyInputs = repository.tifHideEmptyInputs.collectAsState(initial = true).value,
+        tifNoSignalStyle = repository.tifNoSignalStyle.collectAsState(initial = TifNoSignalStyle.BANNER).value,
         hideLauncherAppLabels = repository.hideLauncherAppLabels.collectAsState(initial = false).value,
         hideAppsTab = repository.hideAppsTab.collectAsState(initial = false).value,
         launcherAppColumns = repository.launcherAppColumns.collectAsState(initial = "AUTO").value,

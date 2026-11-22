@@ -38,6 +38,8 @@ data class EpgProgram(
     val detail: Map<String, String>?, val start_time: String, val end_time: String,
     val duration: Int, val is_free: Boolean, val genres: List<EpgGenre>?, val video_type: String?,
     val audio_type: String?, val audio_sampling_rate: String?, val source: String = "Broadcast",
-    val is_scrambled: Boolean? = null
+    val is_scrambled: Boolean? = null,
+    val gguide_image_id: String? = null,
+    val gguideImageUrl: String? = null
 )
 data class EpgGenre(val major: String, val middle: String)

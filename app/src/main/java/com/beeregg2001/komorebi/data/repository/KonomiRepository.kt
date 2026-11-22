@@ -234,7 +234,9 @@ class KonomiRepository @Inject constructor(
 
     override suspend fun getReserves(): Result<List<ReserveItem>> {
         return try {
-            Result.success(apiService.getReserves().reservations)
+            Result.success(apiService.getReserves().reservations.map { item ->
+                item.copy(gguideImageUrl = item.gguideImage?.id?.let { getGGuideImageUrl(it) })
+            })
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch reserves", e)
@@ -418,6 +420,14 @@ class KonomiRepository @Inject constructor(
 
     // ==========================================
     // ★ 追加: EpgProvider の実装
+    suspend fun getGGuide(): GGuideCollection = apiService.getGGuide()
+
+    suspend fun getGGuideImageUrl(assetId: String): String {
+        val ip = settingsRepository.konomiIp.first()
+        val port = settingsRepository.konomiPort.first()
+        return "${UrlBuilder.formatBaseUrl(ip, port, "https")}/api/programs/gguide/images/$assetId"
+    }
+
     // ※ 以前 EpgRepository 内にあった KonomiTvApiService の通信処理をここに移動
     // ==========================================
     override suspend fun getEpgPrograms(
@@ -426,7 +436,7 @@ class KonomiRepository @Inject constructor(
         channelType: String?
     ): List<EpgChannelWrapper> {
         return try {
-            apiService.getEpgPrograms(startTime, endTime, channelType).channels
+            apiService.getEpgPrograms(startTime, endTime, channelType).channels.withGGuideImageUrls()
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to fetch EPG from KonomiTV", e)
@@ -436,7 +446,14 @@ class KonomiRepository @Inject constructor(
     }
 
     override suspend fun getPinnedEpgPrograms(pinnedChannelIds: String): List<EpgChannelWrapper> {
-        return apiService.getEpgPrograms(pinnedChannelIds = pinnedChannelIds).channels
+        return apiService.getEpgPrograms(pinnedChannelIds = pinnedChannelIds).channels.withGGuideImageUrls()
+    }
+
+    private suspend fun List<EpgChannelWrapper>.withGGuideImageUrls(): List<EpgChannelWrapper> {
+        val base = UrlBuilder.formatBaseUrl(settingsRepository.konomiIp.first(), settingsRepository.konomiPort.first(), "https")
+        return map { channel -> channel.copy(programs = channel.programs.map { program ->
+            program.copy(gguideImageUrl = program.gguide_image_id?.let { "$base/api/programs/gguide/images/$it" })
+        }) }
     }
 
     private suspend fun RecordedApiResponse.withThumbnailUrls(): RecordedApiResponse {

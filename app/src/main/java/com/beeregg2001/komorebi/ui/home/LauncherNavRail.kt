@@ -51,7 +51,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -121,6 +124,7 @@ internal fun LauncherNavRail(
     onBack: () -> Unit,
     startCollapsed: Boolean = false,
     onStartCollapsedConsumed: () -> Unit = {},
+    onSettingsButtonBoundsChanged: (Rect) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
@@ -354,6 +358,7 @@ internal fun LauncherNavRail(
             labelAlpha = labelAlpha,
             modifier = Modifier
                 .testTag("launcher-rail-settings")
+                .onGloballyPositioned { onSettingsButtonBoundsChanged(it.boundsInRoot()) }
                 .focusRequester(settingsItemFocusRequester)
                 .focusProperties {
                     up = lastVisibleTab?.let { controller.tabRequester(it) } ?: upEdgeFocusRequester

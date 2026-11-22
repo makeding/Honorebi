@@ -31,7 +31,9 @@ object ReserveMapper {
             is_free = item.program.isFree,
             video_type = item.program.videoType,
             audio_type = item.program.audioType,
-            audio_sampling_rate = item.program.audioSamplingRate
+            audio_sampling_rate = item.program.audioSamplingRate,
+            gguide_image_id = item.gguideImage?.id,
+            gguideImageUrl = item.gguideImageUrl
         )
     }
 }

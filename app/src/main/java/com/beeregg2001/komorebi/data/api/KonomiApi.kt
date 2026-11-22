@@ -154,6 +154,9 @@ interface KonomiApi {
     ): Response<Unit>
 
     // EPG
+    @GET("api/programs/gguide")
+    suspend fun getGGuide(): GGuideCollection
+
     @GET("api/programs/timetable")
     suspend fun getEpgPrograms(
         @Query("start_time") startTime: String? = null,

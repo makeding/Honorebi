@@ -109,6 +109,10 @@ fun MainRootPlaybackHost(
         when (val target = state.playbackState.renderPlaybackTarget) {
             is PlaybackTarget.Live -> if (target.channel.id.startsWith("tif:")) {
                 val subtitle by settingsViewModel.liveSubtitleDefault.collectAsState()
+                val tifNoSignalStyle by settingsViewModel.tifNoSignalStyle.collectAsState()
+                val screensaverImageUris by settingsViewModel.screensaverImageUris.collectAsState()
+                val screensaverIntervalSeconds by settingsViewModel.screensaverIntervalSeconds.collectAsState()
+                val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
                 TifLivePlayerScreen(
                     standaloneInput = state.backendType != "TIF",
                     channel = target.channel,
@@ -123,6 +127,11 @@ fun MainRootPlaybackHost(
                     timeFormat = data.timeFormat,
                     onLaunchSystemSettings = onLaunchSystemSettings,
                     onClockClick = onTriggerScreensaver,
+                    noSignalStyle = tifNoSignalStyle,
+                    screensaverImageUris = screensaverImageUris,
+                    screensaverIntervalSeconds = screensaverIntervalSeconds,
+                    screensaverTransition = screensaverTransition,
+                    suppressNoSignalVisual = suppressChrome,
                     onExit = {
                         val isPassthrough = state.backendType != "TIF" || target.channel.id.startsWith("tif:input:")
                         state.playbackState.leavePlayback(returningFromPlayer = !isPassthrough)

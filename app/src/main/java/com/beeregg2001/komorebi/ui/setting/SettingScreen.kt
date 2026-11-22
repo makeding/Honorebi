@@ -4,6 +4,8 @@ package com.beeregg2001.komorebi.ui.setting
 
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
+import com.beeregg2001.komorebi.data.TifNoSignalStyle
+import com.beeregg2001.komorebi.data.repository.tif.TifInput
 
 import android.os.Build
 import android.view.KeyEvent as NativeKeyEvent
@@ -51,6 +53,7 @@ import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -213,6 +216,10 @@ private fun SettingsMenuScreen(
         List(12) { byContent[it] ?: FocusRequester.Default }
     }
     val playerClockModeRequester = remember { FocusRequester() }
+    val tifNoSignalStyleRequester = remember { FocusRequester() }
+    val tifSupported by produceState(false, context) {
+        value = withContext(Dispatchers.IO) { TifInput.isSupported(context) }
+    }
     val homeBackRequester = remember { FocusRequester() }
 
     val batchItemRs =
@@ -569,8 +576,19 @@ private fun SettingsMenuScreen(
                             prefs.tifHideEmptyInputs,
                             itemFocusRequesters[0][5],
                             { viewModel.toggleTifHideEmptyInputs() },
-                            categoryFocusRequesters[0]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
+                            categoryFocusRequesters[0],
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 },
+                            showTifNoSignalStyle = tifSupported,
+                            tifNoSignalStyle = prefs.tifNoSignalStyle,
+                            tifNoSignalStyleR = tifNoSignalStyleRequester,
+                            onEditTifNoSignalStyle = {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    "TV入力の信号なし表示",
+                                    TifNoSignalStyle.entries.map { it.label to it.name },
+                                    prefs.tifNoSignalStyle.name,
+                                ) { viewModel.updateTifNoSignalStyle(it) }
+                            },
+                        )
 
                         1 -> ConnectionSettingsContent(
                             prefs = prefs,

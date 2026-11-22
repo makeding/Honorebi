@@ -12,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,12 +118,13 @@ fun EpgSearchListItem(
     ) {
         Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             // ロゴバッジは共通の ChannelLogoBadge で描画 (未取得時は Tv アイコンにフォールバック)
-            ChannelLogoBadge(
-                logoUrl = logoUrl,
-                width = 100.dp,
-                height = 56.dp,
-                model = imageRequest
-            )
+            val guideImageUrl = program.gguideImageUrl ?: reserveItem?.gguideImageUrl
+            if (guideImageUrl != null) {
+                AsyncImage(model = guideImageUrl, contentDescription = null,
+                    contentScale = ContentScale.Fit, modifier = Modifier.width(100.dp).height(56.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            ChannelLogoBadge(logoUrl = logoUrl, width = 100.dp, height = 56.dp, model = imageRequest)
 
             Spacer(modifier = Modifier.width(12.dp))
 

@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
@@ -40,6 +42,7 @@
             <action android:name="com.android.tv.action.VIEW_INPUTS" />
             <category android:name="android.intent.category.DEFAULT" />
         </intent>
+        <provider android:authorities="android.media.tv" />
     </queries>
 
     <application
@@ -65,6 +68,12 @@
                 tools:node="remove" />
         </provider>
 
+        <provider
+            android:name=".data.watchnext.WatchNextArtworkProvider"
+            android:authorities="${applicationId}.watchnext.art"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider" />
+
         <receiver
             android:name=".util.UpdateInstallReceiver"
             android:exported="false" />
@@ -86,6 +95,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="komorebi" android:host="recording" />
+                <data android:scheme="komorebi" android:host="live" />
             </intent-filter>
         </activity>
 

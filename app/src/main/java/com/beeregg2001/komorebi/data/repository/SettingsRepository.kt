@@ -132,6 +132,7 @@ class SettingsRepository @Inject constructor(
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
         val TIF_HIDE_EMPTY_INPUTS = booleanPreferencesKey("tif_hide_empty_inputs")
+        val TIF_NO_SIGNAL_STYLE = stringPreferencesKey("tif_no_signal_style")
 
         val SCREENSAVER_ENABLED = booleanPreferencesKey("screensaver_enabled")
         val SCREENSAVER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_timeout_minutes")
@@ -154,6 +155,7 @@ class SettingsRepository @Inject constructor(
         val EPG_VISIBLE_HOURS = stringPreferencesKey("epg_visible_hours")
         val CF_ACCESS_CLIENT_ID = stringPreferencesKey("cf_access_client_id")
         val CF_ACCESS_CLIENT_SECRET = stringPreferencesKey("cf_access_client_secret")
+        val LAST_SEEN_VERSION_CODE = intPreferencesKey("last_seen_version_code")
     }
 
     val isInitialized: Flow<Boolean> = context.dataStore.data
@@ -165,6 +167,10 @@ class SettingsRepository @Inject constructor(
         }
 
     val backendType: Flow<String> = context.dataStore.data.map { it.resolvedBackendType() }
+    val lastSeenVersionCode: Flow<Int?> = context.dataStore.data.map { it[LAST_SEEN_VERSION_CODE] }
+    suspend fun updateLastSeenVersionCode(versionCode: Int) {
+        context.dataStore.edit { it[LAST_SEEN_VERSION_CODE] = versionCode }
+    }
     val recordCacheOwner: Flow<String?> = context.dataStore.data.map { it[RECORD_CACHE_OWNER] }
     val recordCacheEligible: Flow<Boolean> = context.dataStore.data.map {
         val current = it.connectionSettingsSnapshot().recordCacheIdentity()
@@ -281,6 +287,8 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[HIDE_SUB_CHANNELS] ?: false }
     val tifHideEmptyInputs: Flow<Boolean> =
         context.dataStore.data.map { it[TIF_HIDE_EMPTY_INPUTS] ?: true }
+    val tifNoSignalStyle: Flow<TifNoSignalStyle> =
+        context.dataStore.data.map { TifNoSignalStyle.fromPreference(it[TIF_NO_SIGNAL_STYLE]) }
     val screensaverEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[SCREENSAVER_ENABLED] ?: false }
     val screensaverTimeoutMinutes: Flow<Int> =

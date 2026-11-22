@@ -95,6 +95,7 @@ class EpgDrawer(
         state: EpgState,
         animValues: EpgAnimValues,
         logoPainters: List<Painter>,
+        guidePainters: Map<String, Painter>,
         isGridFocused: Boolean,
         reserveMap: Map<String, ReserveItem>,
         clockPainter: Painter,
@@ -218,20 +219,24 @@ class EpgDrawer(
                                         )
                                     }
                                     val titleH = titleLayout.size.height.toFloat()
+                                    val imagePainter = p.gguideImageUrl?.let { guidePainters[it] }
+                                    val imageSlot = if (imagePainter != null && ph - titleH > 65f) {
+                                        minOf(config.cwPx * 0.5f, (ph - titleH - 24f) * 0.5f)
+                                    } else 0f
 
                                     var descLayout: TextLayoutResult? = null
                                     var descH = 0f
-                                    if (!isEmpty && (ph - titleH - 12f) > 20f && !p.description.isNullOrBlank()) {
+                                    if (!isEmpty && (ph - titleH - imageSlot - 16f) > 20f && !p.description.isNullOrBlank()) {
                                         val descColor =
                                             if (isPast) config.colorTextPast else config.colorTextSecondary
-                                        val descKey = p.id + "d"
+                                        val descKey = p.id + "d" + imageSlot.toInt()
                                         descLayout = state.textLayoutCache.getOrPut(descKey) {
                                             textMeasurer.measure(
                                                 text = p.description,
                                                 style = config.styleDesc.copy(color = descColor),
                                                 constraints = Constraints(
                                                     maxWidth = (config.cwPx - 16f).toInt(),
-                                                    maxHeight = (ph - titleH - 16f).toInt()
+                                                    maxHeight = (ph - titleH - imageSlot - 20f).toInt()
                                                         .coerceAtLeast(0)
                                                 ),
                                                 overflow = TextOverflow.Ellipsis
@@ -241,7 +246,7 @@ class EpgDrawer(
                                     }
 
                                     val textTotalH =
-                                        titleH + if (descLayout != null) descH + 2f else 0f
+                                        titleH + imageSlot + if (descLayout != null) descH + 2f else 0f
                                     val baseShiftY = maxOf(0f, config.hhAreaPx - py)
                                     val maxShiftY = maxOf(0f, ph - 16f - textTotalH)
                                     val shiftY = minOf(baseShiftY, maxShiftY)
@@ -279,9 +284,21 @@ class EpgDrawer(
                                         )
                                     }
                                     if (descLayout != null) {
-                                        val descY = titleY + titleH + 2f
+                                        val descY = titleY + titleH + imageSlot + 2f
                                         if (descY + descH > config.hhAreaPx) {
                                             drawText(descLayout, topLeft = Offset(x + 10f, descY))
+                                        }
+                                    }
+                                    val imageTop = titleY + titleH + 2f
+                                    if (imagePainter != null && imageSlot > 0f) {
+                                        val width = config.cwPx - 20f
+                                        val intrinsic = imagePainter.intrinsicSize
+                                        if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
+                                            val scale = minOf(width / intrinsic.width, (imageSlot - 4f) / intrinsic.height)
+                                            val imageSize = Size(intrinsic.width * scale, intrinsic.height * scale)
+                                            translate(left = x + 10f, top = imageTop) {
+                                                with(imagePainter) { draw(imageSize) }
+                                            }
                                         }
                                     }
                                 }

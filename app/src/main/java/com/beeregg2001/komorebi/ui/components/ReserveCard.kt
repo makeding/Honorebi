@@ -1,6 +1,8 @@
 package com.beeregg2001.komorebi.ui.components
 
 import android.os.Build
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -174,6 +176,15 @@ fun ReserveCard(
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
+            item.gguideImageUrl?.let { imageUrl ->
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.width(100.dp).height(78.dp),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

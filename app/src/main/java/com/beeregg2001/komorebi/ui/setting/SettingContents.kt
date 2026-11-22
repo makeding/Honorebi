@@ -41,6 +41,7 @@ import androidx.tv.material3.*
 import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.PostRecordingBatch
@@ -93,7 +94,11 @@ fun GeneralSettingsContent(
     tifHideEmptyInputsR: FocusRequester,
     onToggleTifHideEmptyInputs: () -> Unit,
     sidebarR: FocusRequester,
-    onClick: (FocusRequester) -> Unit
+    onClick: (FocusRequester) -> Unit,
+    showTifNoSignalStyle: Boolean = false,
+    tifNoSignalStyle: TifNoSignalStyle = TifNoSignalStyle.BANNER,
+    tifNoSignalStyleR: FocusRequester? = null,
+    onEditTifNoSignalStyle: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text(
@@ -178,10 +183,27 @@ fun GeneralSettingsContent(
                 modifier = Modifier.focusRequester(tifHideEmptyInputsR).focusProperties {
                     left = sidebarR
                     up = nhkExclusionR
-                    down = FocusRequester.Cancel
+                    down = if (showTifNoSignalStyle && tifNoSignalStyleR != null) {
+                        tifNoSignalStyleR
+                    } else {
+                        FocusRequester.Cancel
+                    }
                 },
                 onClick = { onClick(tifHideEmptyInputsR); onToggleTifHideEmptyInputs() },
             )
+            if (showTifNoSignalStyle && tifNoSignalStyleR != null) {
+                SettingItem(
+                    title = "TV入力の信号なし表示",
+                    value = tifNoSignalStyle.label,
+                    icon = Icons.Default.SettingsInputHdmi,
+                    modifier = Modifier.focusRequester(tifNoSignalStyleR).focusProperties {
+                        left = sidebarR
+                        up = tifHideEmptyInputsR
+                        down = FocusRequester.Cancel
+                    },
+                    onClick = { onClick(tifNoSignalStyleR); onEditTifNoSignalStyle() },
+                )
+            }
         }
     }
 }

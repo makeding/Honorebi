@@ -1,6 +1,7 @@
 package com.beeregg2001.komorebi
 
 import android.app.Application
+import android.os.Build
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import coil.ImageLoader
@@ -8,6 +9,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import okhttp3.OkHttpClient
+import com.beeregg2001.komorebi.data.watchnext.WatchNextSyncCoordinator
 import com.beeregg2001.komorebi.data.worker.RecordSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +32,9 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
     @Inject
     @Named("image")
     lateinit var imageHttpClient: dagger.Lazy<OkHttpClient>
+
+    @Inject
+    lateinit var watchNextSync: dagger.Lazy<WatchNextSyncCoordinator>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -91,6 +96,9 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
             delay(RECORD_SYNC_SCHEDULE_DELAY_MS)
             // バックグラウンド同期スケジュールを登録
             runCatching { RecordSyncWorker.schedule(this@MainApplication) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                runCatching { watchNextSync.get().start(appScope) }
+            }
         }
     }
 

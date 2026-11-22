@@ -41,7 +41,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +59,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.repository.tif.TifInput
 import com.beeregg2001.komorebi.ui.home.DigitalClock
@@ -71,15 +75,35 @@ private fun audioLabel(track: TvTrackInfo, index: Int): String =
         ?: track.language?.takeIf { it.isNotBlank() }
         ?: "音声トラック ${index + 1}"
 
-private fun videoUnavailableMessage(reason: Int, isPassthrough: Boolean): String = when (reason) {
-    TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING ->
+internal const val TIF_NO_SIGNAL_THEMED_DELAY_MS = 800L
+
+internal sealed interface TifVideoStatus {
+    val text: String
+
+    data object Playing : TifVideoStatus {
+        override val text: String = ""
+    }
+
+    data class Transient(override val text: String) : TifVideoStatus
+
+    data class NoSignal(override val text: String) : TifVideoStatus
+
+    data class Notice(override val text: String) : TifVideoStatus
+}
+
+internal fun videoUnavailableStatus(reason: Int, isPassthrough: Boolean): TifVideoStatus = when (reason) {
+    TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING -> TifVideoStatus.Transient(
         if (isPassthrough) "信号を検出しています…" else "選局しています…"
-    TvInputManager.VIDEO_UNAVAILABLE_REASON_WEAK_SIGNAL ->
+    )
+    TvInputManager.VIDEO_UNAVAILABLE_REASON_WEAK_SIGNAL -> TifVideoStatus.NoSignal(
         if (isPassthrough) "信号がありません" else "電波が弱いか信号がありません"
-    TvInputManager.VIDEO_UNAVAILABLE_REASON_BUFFERING -> "読み込み中…"
-    TvInputManager.VIDEO_UNAVAILABLE_REASON_AUDIO_ONLY -> "音声のみの放送です"
-    5 -> "入力機器が接続されていません" // VIDEO_UNAVAILABLE_REASON_NOT_CONNECTED (API 30+)
-    else -> if (isPassthrough) "映像信号がありません (reason=$reason)" else "映像を利用できません (reason=$reason)"
+    )
+    TvInputManager.VIDEO_UNAVAILABLE_REASON_BUFFERING -> TifVideoStatus.Transient("読み込み中…")
+    TvInputManager.VIDEO_UNAVAILABLE_REASON_AUDIO_ONLY -> TifVideoStatus.Notice("音声のみの放送です")
+    5 -> TifVideoStatus.NoSignal("入力機器が接続されていません") // VIDEO_UNAVAILABLE_REASON_NOT_CONNECTED (API 30+)
+    else -> TifVideoStatus.NoSignal(
+        if (isPassthrough) "映像信号がありません (reason=$reason)" else "映像を利用できません (reason=$reason)"
+    )
 }
 
 /**
@@ -103,6 +127,11 @@ fun TifLivePlayerScreen(
     onLaunchSystemSettings: () -> Unit = {},
     onClockClick: () -> Unit = {},
     onExit: () -> Unit = {},
+    noSignalStyle: TifNoSignalStyle = TifNoSignalStyle.BANNER,
+    screensaverImageUris: List<String> = emptyList(),
+    screensaverIntervalSeconds: Int = 30,
+    screensaverTransition: String = "FADE",
+    suppressNoSignalVisual: Boolean = false,
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
@@ -165,8 +194,16 @@ fun TifLivePlayerScreen(
     }
 
     var videoStatus by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
-        mutableStateOf("映像の受信を開始しています…")
+        mutableStateOf<TifVideoStatus>(TifVideoStatus.Transient("映像の受信を開始しています…"))
     }
+    var handshakeRetryPending by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+        mutableStateOf(false)
+    }
+    val view = LocalView.current
+    val density = LocalDensity.current
+    val animationsEnabled = remember(context) { areSystemAnimatorsEnabled(context) }
+    var noSignalDegraded by remember { mutableStateOf(false) }
+    var containerWidthDp by remember { mutableFloatStateOf(0f) }
     var videoAvailable by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf(false) }
     var contentBlocked by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf(false) }
     var audioTracks by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
@@ -218,18 +255,18 @@ fun TifLivePlayerScreen(
                     when (state) {
                         TvInputManager.INPUT_STATE_CONNECTED -> {
                             if (!videoAvailable) {
-                                videoStatus = "信号を検出しています…"
+                                videoStatus = TifVideoStatus.Transient("信号を検出しています…")
                                 retuneGeneration++
                             }
                         }
                         TvInputManager.INPUT_STATE_CONNECTED_STANDBY -> {
                             if (!videoAvailable) {
-                                videoStatus = "入力機器が待機状態です"
+                                videoStatus = TifVideoStatus.NoSignal("入力機器が待機状態です")
                             }
                         }
                         TvInputManager.INPUT_STATE_DISCONNECTED -> {
                             videoAvailable = false
-                            videoStatus = "入力機器が接続されていません"
+                            videoStatus = TifVideoStatus.NoSignal("入力機器が接続されていません")
                         }
                     }
                 }
@@ -259,13 +296,36 @@ fun TifLivePlayerScreen(
             context.getSystemService(TvInputManager::class.java)?.getInputState(currentInputId)
         }.getOrNull()
         if (state != TvInputManager.INPUT_STATE_CONNECTED) return@LaunchedEffect
-        delay(1_500L)
-        if (!videoAvailable && !contentBlocked) {
-            coldHandshakeRetries++
-            videoStatus = "信号を検出しています…"
-            retuneGeneration++
+        handshakeRetryPending = true
+        try {
+            delay(1_500L)
+            if (!videoAvailable && !contentBlocked) {
+                coldHandshakeRetries++
+                videoStatus = TifVideoStatus.Transient("信号を検出しています…")
+                retuneGeneration++
+            }
+        } finally {
+            handshakeRetryPending = false
         }
     }
+
+    val themedReady by produceState(false, target, videoStatus, isStarted, handshakeRetryPending) {
+        value = false
+        if (target != null && videoStatus is TifVideoStatus.NoSignal && isStarted && !handshakeRetryPending) {
+            delay(TIF_NO_SIGNAL_THEMED_DELAY_MS)
+            value = true
+        }
+    }
+
+    val noSignalRenderMode = resolveNoSignalRenderMode(
+        style = noSignalStyle,
+        themedReady = themedReady,
+        suppressed = suppressNoSignalVisual,
+        hardwareAccelerated = view.isHardwareAccelerated,
+        animationsEnabled = animationsEnabled,
+        degraded = noSignalDegraded,
+        containerWidthDp = containerWidthDp,
+    )
 
     BackHandler(enabled = isMiniListOpen) { onMiniListToggle(false) }
     LaunchedEffect(isMiniListOpen, allChannels.isEmpty()) {
@@ -305,6 +365,9 @@ fun TifLivePlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onSizeChanged { size ->
+                containerWidthDp = with(density) { size.width.toDp().value }
+            }
             .onPreviewKeyEvent { event ->
                 val isOkKey = event.key == Key.DirectionCenter ||
                     event.key == Key.Enter ||
@@ -382,26 +445,31 @@ fun TifLivePlayerScreen(
                                     videoAvailable = true
                                     lastUnavailableReason = null
                                     coldHandshakeRetries = 0
-                                    if (!contentBlocked) videoStatus = ""
+                                    if (!contentBlocked) videoStatus = TifVideoStatus.Playing
                                 }
 
                                 override fun onContentBlocked(inputId: String, rating: TvContentRating) {
                                     contentBlocked = true
-                                    videoStatus =
+                                    videoStatus = TifVideoStatus.Notice(
                                         "視聴年齢制限によりブロックされています。端末のTV入力・保護者による使用制限の設定を確認し、許可後に「再選局」を選択してください。"
+                                    )
                                 }
 
                                 override fun onContentAllowed(inputId: String) {
                                     if (contentBlocked) {
                                         contentBlocked = false
-                                        videoStatus = if (videoAvailable) "" else "映像の受信を開始しています…"
+                                        videoStatus = if (videoAvailable) {
+                                            TifVideoStatus.Playing
+                                        } else {
+                                            TifVideoStatus.Transient("映像の受信を開始しています…")
+                                        }
                                     }
                                 }
 
                                 override fun onVideoSizeChanged(inputId: String, width: Int, height: Int) {
                                     if (width > 0 && height > 0) {
                                         videoAvailable = true
-                                        if (!contentBlocked) videoStatus = ""
+                                        if (!contentBlocked) videoStatus = TifVideoStatus.Playing
                                     }
                                 }
 
@@ -409,18 +477,18 @@ fun TifLivePlayerScreen(
                                     videoAvailable = false
                                     lastUnavailableReason = reason
                                     if (!contentBlocked) {
-                                        videoStatus = videoUnavailableMessage(reason, isPassthroughInput)
+                                        videoStatus = videoUnavailableStatus(reason, isPassthroughInput)
                                     }
                                 }
 
                                 override fun onConnectionFailed(inputId: String) {
                                     videoAvailable = false
-                                    videoStatus = "TV入力との接続に失敗しました"
+                                    videoStatus = TifVideoStatus.NoSignal("TV入力との接続に失敗しました")
                                 }
 
                                 override fun onDisconnected(inputId: String) {
                                     videoAvailable = false
-                                    videoStatus = "TV入力との接続が切れました"
+                                    videoStatus = TifVideoStatus.NoSignal("TV入力との接続が切れました")
                                 }
 
                                 override fun onTracksChanged(inputId: String, tracks: MutableList<TvTrackInfo>) {
@@ -438,7 +506,7 @@ fun TifLivePlayerScreen(
                                 activeView = this
                                 activeViewForLifecycle = this
                             } catch (error: Exception) {
-                                videoStatus = "TV入力の選局に失敗しました: " + error.message
+                                videoStatus = TifVideoStatus.Notice("TV入力の選局に失敗しました: " + error.message)
                                 reset()
                             }
                         }
@@ -453,6 +521,23 @@ fun TifLivePlayerScreen(
                         if (activeViewForLifecycle === view) activeViewForLifecycle = null
                     },
                     modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            if (videoStatus !is TifVideoStatus.Playing && !suppressNoSignalVisual) {
+                TifNoSignalLayer(
+                    mode = noSignalRenderMode,
+                    style = noSignalStyle,
+                    statusText = videoStatus.text,
+                    inputLabel = channel.name,
+                    isPassthroughInput = isPassthroughInput,
+                    screensaverImageUris = screensaverImageUris,
+                    screensaverIntervalSeconds = screensaverIntervalSeconds,
+                    screensaverTransition = screensaverTransition,
+                    showOverlay = showOverlay,
+                    paused = showOverlay || isMiniListOpen || !isStarted,
+                    onDegraded = { noSignalDegraded = true },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -546,7 +631,7 @@ fun TifLivePlayerScreen(
                                 try {
                                     activeView?.selectTrack(TvTrackInfo.TYPE_AUDIO, wanted)
                                 } catch (error: Exception) {
-                                    videoStatus = "音声切替に失敗しました: " + error.message
+                                    videoStatus = TifVideoStatus.Notice("音声切替に失敗しました: " + error.message)
                                 }
                             }
                         },
@@ -612,9 +697,15 @@ fun TifLivePlayerScreen(
         }
 
         // input/URI未解決時は解決失敗だけを表示し、映像受信待ちを重ねない。
-        if (target != null && videoStatus.isNotEmpty()) {
+        if (
+            target != null &&
+            videoStatus !is TifVideoStatus.Playing &&
+            videoStatus.text.isNotEmpty() &&
+            !suppressNoSignalVisual &&
+            noSignalRenderMode == NoSignalRenderMode.BANNER
+        ) {
             TifStatusBanner(
-                text = videoStatus,
+                text = videoStatus.text,
                 modifier = Modifier.align(Alignment.Center),
             )
         }

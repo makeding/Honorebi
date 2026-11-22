@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
@@ -113,7 +115,10 @@ fun HomeLauncherScreen(
     onReturnToPlayerClick: () -> Unit = {},
     onClockClick: () -> Unit = {},
     aiFocusReturnTick: Int = 0,
-    onAiReturnConsumed: () -> Unit = {}
+    onAiReturnConsumed: () -> Unit = {},
+    showUpgradeTour: Boolean = false,
+    upgradeTourSteps: List<UpgradeTourStep> = emptyList(),
+    onDismissUpgradeTour: () -> Unit = {},
 ) {
     val ui = rememberHomeLauncherState(
         initialTabIndex,
@@ -125,6 +130,7 @@ fun HomeLauncherScreen(
     )
 
     val focusMemory = rememberFocusMemory()
+    val spotlightTargets = rememberUpgradeSpotlightTargets()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val supportsTvInput = remember(context) {
@@ -420,6 +426,7 @@ fun HomeLauncherScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = if (!isFullScreenMode) TvRailCollapsedWidth else 0.dp)
+                .onGloballyPositioned { spotlightTargets.contentStageBounds = it.boundsInRoot() }
         ) {
             AnimatedContent(
                 targetState = tabController.activeSnapshot,
@@ -449,6 +456,7 @@ fun HomeLauncherScreen(
                                 canFocus = isCurrentSnapshot &&
                                     !isFullScreenMode &&
                                     !showTvInputs &&
+                                    !showUpgradeTour &&
                                     (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null)
                             },
                     ) {
@@ -651,7 +659,7 @@ fun HomeLauncherScreen(
                     hasActivePlayer = hasActivePlayer,
                     showInputSource = supportsTvInput || inputSourceApp != null,
                     networkConnectionStatus = networkConnectionStatus,
-                    canTakeFocus = !isEpgJumpingActive,
+                    canTakeFocus = !isEpgJumpingActive && !showUpgradeTour,
                     returnPlayerFocusRequester = returnPlayerFocusRequester,
                     inputSourceFocusRequester = inputSourceFocusRequester,
                     wifiSettingsFocusRequester = wifiSettingsFocusRequester,
@@ -678,6 +686,7 @@ fun HomeLauncherScreen(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 24.dp)
+                        .onGloballyPositioned { spotlightTargets.systemStripBounds = it.boundsInRoot() }
                         .zIndex(25f),
                 )
             }
@@ -689,7 +698,7 @@ fun HomeLauncherScreen(
                 isEpgJumping = isEpgJumpingActive,
                 upEdgeFocusRequester = topBarEntryRequester,
                 settingsItemFocusRequester = railSettingsFocusRequester,
-                settingsCanFocus = !isEpgJumpingActive,
+                settingsCanFocus = !isEpgJumpingActive && !showUpgradeTour,
                 onTabFocused = { tab ->
                     focusMemory.clear()
                     isEnteringContentFromRail = false
@@ -730,9 +739,11 @@ fun HomeLauncherScreen(
                 onBack = { scope.launch { handleLauncherBack() } },
                 startCollapsed = suppressInitialRailExpand,
                 onStartCollapsedConsumed = { suppressInitialRailExpand = false },
+                onSettingsButtonBoundsChanged = { spotlightTargets.settingsButtonBounds = it },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()
+                    .onGloballyPositioned { spotlightTargets.navRailBounds = it.boundsInRoot() }
                     .zIndex(30f),
             )
         }
@@ -753,6 +764,24 @@ fun HomeLauncherScreen(
                         inputSourceFocusRequester.safeRequestFocus("TvInputDismiss")
                     }
                 },
+            )
+        }
+        if (showUpgradeTour && upgradeTourSteps.isNotEmpty() && !isFullScreenMode && !showTvInputs) {
+            UpgradeSpotlightOverlay(
+                steps = upgradeTourSteps,
+                targets = spotlightTargets,
+                onFinish = {
+                    onDismissUpgradeTour()
+                    scope.launch {
+                        androidx.compose.runtime.withFrameNanos { }
+                        if (currentStartupFocusTarget == StartupFocusTarget.SIDEBAR) {
+                            tabController.tabRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourFinish_Rail")
+                        } else {
+                            tabController.contentRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourFinish_Content")
+                        }
+                    }
+                },
+                modifier = Modifier.zIndex(40f),
             )
         }
     }

@@ -110,6 +110,10 @@ fun ModernEpgCanvasEngine_Smooth(
         rememberAsyncImagePainter(model = url, imageLoader = channelLogoImageLoader)
     }
 
+    val guideImageUrls = (uiState as? EpgUiState.Success)?.data.orEmpty()
+        .flatMap { it.programs }.mapNotNull { it.gguideImageUrl }.distinct()
+    val guidePainters = guideImageUrls.associateWith { url -> rememberAsyncImagePainter(model = url) }
+
     val clockPainter = rememberVectorPainter(Icons.Default.Schedule)
     val reserveMap = remember(reserves) { reserves.associateBy { it.program.id } }
 
@@ -420,6 +424,7 @@ fun ModernEpgCanvasEngine_Smooth(
                                         state = epgState,
                                         animValues = animationValues(),
                                         logoPainters = filteredLogoPainters,
+                                        guidePainters = guidePainters,
                                         isGridFocused = isContentFocused || epgState.hasData,
                                         reserveMap = reserveMap,
                                         clockPainter = clockPainter,

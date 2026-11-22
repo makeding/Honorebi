@@ -19,6 +19,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -449,6 +451,15 @@ fun ProgramDetailScreen(
                     .focusable()
                     .verticalScroll(scrollState)
             ) {
+                safeProgram.gguideImageUrl?.let { imageUrl ->
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(180.dp),
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
                 // ★ 修正: timeFormat に応じた日付・時刻のフォーマット
                 Text(
                     text = ProgramTimeFormatter.formatRange(startTime.toDeviceTime(), endTime.toDeviceTime(), timeFormat, "yyyy/MM/dd(E)", " ～ "),

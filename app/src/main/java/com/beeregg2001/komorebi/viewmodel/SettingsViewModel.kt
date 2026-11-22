@@ -1,7 +1,9 @@
 package com.beeregg2001.komorebi.viewmodel
 
+import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
+import com.beeregg2001.komorebi.data.TifNoSignalStyle
 
 import android.content.Context
 import android.util.Log
@@ -31,6 +33,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -348,11 +351,44 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         true
     )
+    val tifNoSignalStyle: StateFlow<TifNoSignalStyle> = settingsRepository.tifNoSignalStyle.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        TifNoSignalStyle.BANNER
+    )
     val isSettingsInitialized: StateFlow<Boolean> = settingsRepository.isInitialized.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         true
     )
+
+    sealed interface UpgradeCheckState {
+        data object Loading : UpgradeCheckState
+        data class Ready(
+            val lastSeenVersionCode: Int?,
+            val isSettingsInitialized: Boolean,
+        ) : UpgradeCheckState
+    }
+
+    val upgradeCheckState: StateFlow<UpgradeCheckState> = combine(
+        settingsRepository.lastSeenVersionCode,
+        settingsRepository.isInitialized,
+    ) { lastSeen, initialized ->
+        UpgradeCheckState.Ready(
+            lastSeenVersionCode = lastSeen,
+            isSettingsInitialized = initialized,
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        UpgradeCheckState.Loading,
+    )
+
+    fun markVersionUpgradeSeen(versionCode: Int = BuildConfig.VERSION_CODE) {
+        viewModelScope.launch {
+            settingsRepository.updateLastSeenVersionCode(versionCode)
+        }
+    }
     val screensaverEnabled: StateFlow<Boolean> = settingsRepository.screensaverEnabled.stateIn(
         viewModelScope, SharingStarted.Eagerly, false
     )
@@ -779,6 +815,13 @@ class SettingsViewModel @Inject constructor(
                 !settingsRepository.tifHideEmptyInputs.first()
             )
         }
+    }
+
+    fun updateTifNoSignalStyle(value: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(
+            SettingsRepository.TIF_NO_SIGNAL_STYLE,
+            TifNoSignalStyle.fromPreference(value).name
+        )
     }
 
     fun toggleHideAppsTab() {
