@@ -72,18 +72,7 @@ fun PlayerProgramPanel(
 ) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Column(Modifier.fillMaxWidth().height(440.dp)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0x00000000),
-                        Color(0xEE0B0C10),
-                        Color(0xFA0B0C10),
-                        Color(0xFF0B0C10)
-                    ),
-                    startY = 0f,
-                    endY = 180f
-                )
-            )
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.95f))))
             .padding(horizontal = 64.dp, vertical = 24.dp).testTag("program-panel")) {
             Row(Modifier.fillMaxWidth().height(45.dp), verticalAlignment = Alignment.CenterVertically) {
                 PlayerChannelLogo(logoUrl, channelName, shouldCropLogo, Modifier.size(80.dp, 45.dp))
