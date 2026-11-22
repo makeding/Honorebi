@@ -61,4 +61,98 @@ class RecordedCardConsistencyTest {
             for (other in tags) assertEquals(bounds[other], compose.onNodeWithTag(other).getUnclippedBoundsInRoot())
         }
     }
+
+    @Test fun singleLineAndMultiLineTitlesAlignThirdLineMetadataVertically() {
+        val shortTitle = "短い番組タイトル"
+        val longTitle = "とても長い番組タイトルで二行目まで確実に折り返して三行目以降が省略されるはずのテスト番組タイトル"
+        val channelA = Channel(
+            id = "gr01",
+            displayChannelId = "gr01",
+            name = "放送局A",
+            channelNumber = "011",
+            type = "GR",
+            isWatchable = true,
+            isDisplay = true,
+            programPresent = null,
+            programFollowing = null,
+        )
+        val channelB = channelA.copy(id = "gr02", displayChannelId = "gr02", name = "放送局B")
+        val shortProgram = RecordedProgram(
+            id = 10,
+            title = shortTitle,
+            description = "",
+            startTime = "2026-10-13T12:00:00+09:00",
+            endTime = "2026-10-13T12:30:00+09:00",
+            duration = 1800.0,
+            isPartiallyRecorded = false,
+            channel = channelA,
+            recordedVideo = RecordedVideo(10, "Recorded", "/10.ts", null, null, 1800.0, "MPEG-TS", "H.264", "AAC-LC"),
+        )
+        val longProgram = shortProgram.copy(id = 11, title = longTitle, channel = channelB)
+
+        compose.setContent {
+            KomorebiTheme {
+                val longHistory = KonomiHistoryProgram(
+                    KonomiProgram("11", longTitle, "", null, longProgram.startTime, longProgram.endTime, "gr02"),
+                    120.0,
+                    longProgram.startTime,
+                )
+                Row(
+                    modifier = Modifier.size(900.dp, 300.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    VideoRecentRecordCard(
+                        program = shortProgram,
+                        history = null,
+                        konomiIp = "",
+                        konomiPort = "",
+                        backendType = "KonomiTV",
+                        onClick = {},
+                        onFocus = {},
+                        modifier = Modifier.testTag("short_recent"),
+                        focusRequester = remember { FocusRequester() },
+                        timeFormat = "24H",
+                        allowNetworkImages = false,
+                    )
+                    VideoRecentRecordCard(
+                        program = longProgram,
+                        history = null,
+                        konomiIp = "",
+                        konomiPort = "",
+                        backendType = "KonomiTV",
+                        onClick = {},
+                        onFocus = {},
+                        modifier = Modifier.testTag("long_recent"),
+                        focusRequester = remember { FocusRequester() },
+                        timeFormat = "24H",
+                        allowNetworkImages = false,
+                    )
+                    VideoWatchHistoryCard(
+                        historyItem = longHistory,
+                        matchedProgram = longProgram.copy(channel = channelB.copy(name = "放送局C")),
+                        konomiIp = "",
+                        konomiPort = "",
+                        backendType = "KonomiTV",
+                        onClick = {},
+                        onFocus = {},
+                        modifier = Modifier.testTag("long_history"),
+                        focusRequester = remember { FocusRequester() },
+                        timeFormat = "24H",
+                        allowNetworkImages = false,
+                    )
+                }
+            }
+        }
+
+        val shortCardBounds = compose.onNodeWithTag("short_recent").getUnclippedBoundsInRoot()
+        val shortMetaBounds = compose.onNodeWithText("放送局A · ", substring = true, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val longMetaBounds = compose.onNodeWithText("放送局B · ", substring = true, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val historyMetaBounds = compose.onNodeWithText("放送局C · ", substring = true, useUnmergedTree = true).getUnclippedBoundsInRoot()
+
+        assertEquals(shortMetaBounds.top, longMetaBounds.top)
+        assertEquals(shortMetaBounds.top, historyMetaBounds.top)
+        assert(shortMetaBounds.bottom <= shortCardBounds.bottom) {
+            "Expected metadata bottom (${shortMetaBounds.bottom}) <= card bottom (${shortCardBounds.bottom})"
+        }
+    }
 }

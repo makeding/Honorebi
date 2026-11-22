@@ -50,7 +50,6 @@ import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleGrid
 import com.beeregg2001.komorebi.ui.theme.TvCardFocusScaleWideCard
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
 import com.beeregg2001.komorebi.ui.theme.tnum
-import com.beeregg2001.komorebi.ui.theme.tvCardMarquee
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -266,6 +265,7 @@ fun WatchHistoryCard(
     konomiPort: String,
     getLogoUrl: suspend (String) -> String = { "" },
     shouldCropLogo: Boolean = false,
+    timeFormat: String = "24H",
     settingViewModel: SettingsViewModel = hiltViewModel(),
     onClick: () -> Unit,
     onFocus: (progress: Float, thumbnailUrl: String) -> Unit = { _, _ -> },
@@ -308,6 +308,23 @@ fun WatchHistoryCard(
         if (isFocused) onFocus(progress, currentThumbnailUrl)
     }
 
+    val broadcastStart = matchedProgram?.startTime ?: program.start_time
+    val broadcastDate = remember(broadcastStart, timeFormat) {
+        runCatching {
+            ProgramTimeFormatter.formatDateTime(
+                OffsetDateTime.parse(broadcastStart).toDeviceTime(),
+                timeFormat,
+                "M/d(E)",
+            )
+        }.getOrDefault("")
+    }
+    val metaText = remember(matchedProgram?.channel?.name, broadcastDate) {
+        listOfNotNull(
+            matchedProgram?.channel?.name?.takeIf { it.isNotBlank() },
+            broadcastDate.takeIf { it.isNotBlank() },
+        ).joinToString(" · ")
+    }
+
     val context = LocalContext.current
     val imageRequest = remember(matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl), currentThumbnailUrl) {
         val thumbnailCacheKey = matchedProgram?.recordedThumbnailCacheKey(currentThumbnailUrl)
@@ -324,7 +341,7 @@ fun WatchHistoryCard(
 
     val thumbShape = RoundedCornerShape(TvCardRadiusGrid)
 
-    // Below-the-Card 16:9: 216dp wide, 122dp pure 16:9 thumb + 3dp progress bar + 44dp title/meta below
+    // Below-the-Card 16:9: 216dp wide, 122dp pure 16:9 thumb + 3dp progress bar + 66dp title/meta below
     Surface(
         onClick = onClick,
         modifier = modifier
@@ -408,19 +425,19 @@ fun WatchHistoryCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(66.dp)
                     .padding(top = 6.dp, start = 2.dp, end = 2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = program.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(lineHeight = 19.sp),
+                    fontWeight = FontWeight.Bold,
                     color = if (isFocused) colors.textPrimary else colors.textPrimary.copy(alpha = 0.88f),
-                    maxLines = 1,
+                    minLines = 2,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.tvCardMarquee(isFocused)
                 )
-                val metaText = matchedProgram?.channel?.name.orEmpty()
                 if (metaText.isNotBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -442,7 +459,7 @@ fun WatchHistoryCard(
                         }
                         Text(
                             text = metaText,
-                            style = MaterialTheme.typography.labelMedium.copy(
+                            style = MaterialTheme.typography.labelMedium.tnum.copy(
                                 lineHeight = 14.sp,
                                 platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(

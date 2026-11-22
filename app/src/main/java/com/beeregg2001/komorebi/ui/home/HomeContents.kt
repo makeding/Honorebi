@@ -259,6 +259,7 @@ fun HomeContents(
                     homeViewModel = homeViewModel,
                     sectionId = "history",
                     focusMemory = focusMemory,
+                    timeFormat = timeFormat,
                     isLastSection = lastSectionId == "history",
                 )
             }

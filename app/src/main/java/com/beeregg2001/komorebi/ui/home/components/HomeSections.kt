@@ -535,6 +535,7 @@ fun WatchHistorySection(
     sectionId: String,
     focusMemory: FocusMemory,
     isLastSection: Boolean = false,
+    timeFormat: String = "24H",
 ) {
     val rowState = rememberLazyListState()
 
@@ -581,6 +582,7 @@ fun WatchHistorySection(
                     konomiPort = konomiPort,
                     getLogoUrl = getLogoUrl,
                     shouldCropLogo = shouldCropLogo,
+                    timeFormat = timeFormat,
                     onClick = { onHistoryClick(history) },
                     onFocus = { progressVal, thumbnailUrl ->
                         onUpdateHeroInfo(

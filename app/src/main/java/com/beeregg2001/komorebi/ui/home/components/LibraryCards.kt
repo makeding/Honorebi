@@ -143,6 +143,7 @@ private fun BelowCardMetadata(
             text = title,
             style = MaterialTheme.typography.titleSmall.copy(lineHeight = 19.sp),
             fontWeight = FontWeight.Bold,
+            minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             color = if (isFocused) colors.textPrimary else colors.textSecondary,
