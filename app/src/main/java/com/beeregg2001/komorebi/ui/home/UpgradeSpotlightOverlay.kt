@@ -356,6 +356,7 @@ fun UpgradeSpotlightOverlay(
                 )
                 .padding(horizontal = 24.dp, vertical = 20.dp)
                 .onFocusChanged { calloutHasFocus = it.hasFocus }
+                .focusProperties { exit = { FocusRequester.Cancel } }
                 .focusGroup(),
         ) {
             Column {
@@ -513,6 +514,18 @@ fun UpgradeSpotlightOverlay(
                             },
                             modifier = Modifier
                                 .focusRequester(primaryButtonFocusRequester)
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
+                                        if (isLastStep) {
+                                            onFinish()
+                                        } else {
+                                            stepIndex = (stepIndex + 1).coerceAtMost(steps.lastIndex)
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
                                 .focusProperties {
                                     up = FocusRequester.Cancel
                                     down = FocusRequester.Cancel
@@ -585,6 +598,8 @@ private fun SpotlightActionButton(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (isPrimary || isFocused) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
             )
         }
     }

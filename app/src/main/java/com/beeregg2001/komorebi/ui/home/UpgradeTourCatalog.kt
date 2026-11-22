@@ -72,8 +72,6 @@ object UpgradeTourCatalog {
                 title = "ディープTV統合（HDMI / TIF入力）",
                 description = "Android TV の外部入力や Watch Next 連携を Honorebi に統合しました。右上バーからの入力切替、弱信号時の自動再接続、無信号時の演出、空入力の非表示まで設定できます。",
                 placement = UpgradeCalloutPlacement.BOTTOM_CENTER,
-                actionLabel = "この設定を変更",
-                actionTarget = UpgradeTourAction.OPEN_DEEP_TV_SETTINGS,
             ),
             UpgradeTourStep(
                 targetId = UpgradeTourTargetId.COMMENT_ENGINE_SETTING,
@@ -82,8 +80,6 @@ object UpgradeTourCatalog {
                 title = "OpenGL ES 3.0 弾幕エンジン（Beta）",
                 description = "コメント描画エンジンをここから切り替えられます。さらにチャプター解析強化、プレイヤー下キー操作の高速化、libaribcaption のセキュリティ修正（CVE-2026-112284）も実装しました。",
                 placement = UpgradeCalloutPlacement.BELOW_RIGHT,
-                actionLabel = "この設定を変更",
-                actionTarget = UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS,
             ),
         )
         else -> emptyList()

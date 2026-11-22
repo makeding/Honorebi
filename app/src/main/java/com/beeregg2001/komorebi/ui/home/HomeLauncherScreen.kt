@@ -379,13 +379,28 @@ fun HomeLauncherScreen(
         }
     }
 
-    HomeEntryFocusEffect(
-        memory = focusMemory,
-        tabRequester = { tabController.tabRequesterAt(it) },
-        contentRequester = { tabController.contentRequesterAt(it) },
-        contentReadyGeneration = tabController.readyGeneration,
-        isContentReady = { tabController.isContentReadyAt(it) },
-    )
+    if (!showUpgradeTour) {
+        HomeEntryFocusEffect(
+            memory = focusMemory,
+            tabRequester = { tabController.tabRequesterAt(it) },
+            contentRequester = { tabController.contentRequesterAt(it) },
+            contentReadyGeneration = tabController.readyGeneration,
+            isContentReady = { tabController.isContentReadyAt(it) },
+        )
+    }
+
+    var wasShowingUpgradeTour by remember { mutableStateOf(showUpgradeTour) }
+    LaunchedEffect(showUpgradeTour, isSettingsOpen) {
+        if (wasShowingUpgradeTour && !showUpgradeTour && !isSettingsOpen) {
+            withFrameNanos { }
+            if (currentStartupFocusTarget == StartupFocusTarget.SIDEBAR) {
+                tabController.tabRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourDismiss_Rail")
+            } else {
+                tabController.contentRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourDismiss_Content")
+            }
+        }
+        wasShowingUpgradeTour = showUpgradeTour
+    }
 
     LaunchedEffect(pendingEnterContentTab, tabController.activeTab, tabController.readyGeneration, isFullScreenMode, railHasFocus) {
         val target = pendingEnterContentTab ?: return@LaunchedEffect
