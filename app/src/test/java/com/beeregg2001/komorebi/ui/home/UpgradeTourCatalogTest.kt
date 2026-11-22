@@ -1,10 +1,11 @@
 package com.beeregg2001.komorebi.ui.home
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,23 +109,23 @@ class UpgradeTourCatalogTest {
         compose.onNodeWithText("1 / 5").assertExists()
         compose.onNodeWithText(steps[0].title).assertExists()
 
-        compose.onNodeWithText("次へ").performClick()
+        compose.onNodeWithText("次へ").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("2 / 5").assertExists()
         compose.onNodeWithText(steps[1].title).assertExists()
 
-        compose.onNodeWithText("次へ").performClick()
+        compose.onNodeWithText("次へ").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("3 / 5").assertExists()
         compose.onNodeWithText(steps[2].title).assertExists()
 
-        compose.onNodeWithText("次へ").performClick()
+        compose.onNodeWithText("次へ").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("4 / 5").assertExists()
         compose.onNodeWithText(steps[3].title).assertExists()
 
-        compose.onNodeWithText("次へ").performClick()
+        compose.onNodeWithText("次へ").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("5 / 5").assertExists()
         compose.onNodeWithText(steps[4].title).assertExists()
 
-        compose.onNodeWithText("はじめる").performClick()
+        compose.onNodeWithText("はじめる").performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(1, finishedCount)
     }
 
@@ -143,7 +144,14 @@ class UpgradeTourCatalogTest {
             }
         }
 
-        compose.onNodeWithText("スキップ").performClick()
+        compose.onNodeWithText("スキップ").performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(1, finishedCount)
+    }
+
+    @Test
+    fun version121ProvidesAllFiveTourSteps() {
+        val steps = UpgradeTourCatalog.tourForVersion(UpgradeTourCatalog.VERSION_CODE_1_2_1)
+        assertEquals(5, steps.size)
+        assertTrue(steps.all { it.badge.startsWith("Honorebi 1.2.1") })
     }
 }
