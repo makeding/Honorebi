@@ -513,7 +513,11 @@ class TifRepository @Inject constructor(
     // TIFのchannel URIはMedia3が受け取るストリームURLではない。
     override suspend fun getLiveStreamUrl(channelId: String, quality: String, streamNumber: Int): String =
         throw UnsupportedOperationException("TIFはTvView.tune()によって視聴します。")
-    override suspend fun getChannelLogoUrl(channelId: String): String = ""
+    override suspend fun getChannelLogoUrl(channelId: String): String {
+        if (!channelId.startsWith("tif:channel:")) return ""
+        val rowId = channelId.removePrefix("tif:channel:").substringBefore(':').toLong()
+        return TvContract.buildChannelLogoUri(rowId).toString()
+    }
 
     private fun toEpgWrapper(
         row: ChannelRow, programs: List<ProgramRow>, displayName: String
