@@ -152,7 +152,9 @@ private fun BelowCardMetadata(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp),
             ) {
                 if (logoUrl.isNotBlank()) {
                     val logoRequest = remember(logoUrl, allowNetworkImages) {
@@ -175,7 +177,14 @@ private fun BelowCardMetadata(
                 }
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.labelMedium.tnum,
+                    style = MaterialTheme.typography.labelMedium.tnum.copy(
+                        lineHeight = 14.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        lineHeightStyle = LineHeightStyle(
+                            alignment = LineHeightStyle.Alignment.Center,
+                            trim = LineHeightStyle.Trim.Both,
+                        ),
+                    ),
                     color = if (isFocused) colors.textSecondary else colors.textMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
