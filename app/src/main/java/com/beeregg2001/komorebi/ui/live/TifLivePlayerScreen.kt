@@ -457,7 +457,7 @@ fun TifLivePlayerScreen(
             }
         }
 
-        if (showOverlay && !isMiniListOpen) {
+        if (showOverlay && (!isMiniListOpen || standaloneInput)) {
             val barShape = RoundedCornerShape(14.dp)
             Row(
                 modifier = Modifier
@@ -627,6 +627,10 @@ fun TifLivePlayerScreen(
                 },
                 onSystemPicker = null,
                 onDismiss = { onMiniListToggle(false) },
+                onReturnToHonorebi = {
+                    onMiniListToggle(false)
+                    onExit()
+                },
             )
         } else if (isMiniListOpen && allChannels.isNotEmpty()) {
             Box(modifier = Modifier.align(Alignment.BottomCenter)) {

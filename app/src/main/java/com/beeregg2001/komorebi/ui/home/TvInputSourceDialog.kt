@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Input
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.LockOpen
@@ -101,6 +102,7 @@ fun TvInputSourceDialog(
     onSystemPicker: (() -> Unit)?,
     onDismiss: () -> Unit,
     hideEmptyInputs: Boolean = true,
+    onReturnToHonorebi: (() -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
@@ -175,7 +177,8 @@ fun TvInputSourceDialog(
         }
     }
 
-    val hasAnySelectableItem = ports.isNotEmpty() ||
+    val hasAnySelectableItem = (onReturnToHonorebi != null) ||
+        ports.isNotEmpty() ||
         (hasAirPlay && airPlayLaunchIntent != null) ||
         (!granted && tunerInputs.isNotEmpty()) ||
         visibleTunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() }
@@ -293,6 +296,19 @@ fun TvInputSourceDialog(
                             }
 
                             var firstAssigned = false
+
+                            if (onReturnToHonorebi != null) {
+                                item(key = "honorebi_home") {
+                                    val isFirst = !firstAssigned
+                                    if (isFirst) firstAssigned = true
+                                    TvInputDrawerRow(
+                                        label = "Honorebi",
+                                        icon = Icons.Default.Home,
+                                        onClick = onReturnToHonorebi,
+                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
+                                    )
+                                }
+                            }
 
                             if (hasAirPlay && airPlayLaunchIntent != null) {
                                 item(key = "airplay_item") {
