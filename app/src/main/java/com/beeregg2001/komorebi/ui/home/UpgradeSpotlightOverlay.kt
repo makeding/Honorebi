@@ -2,8 +2,10 @@ package com.beeregg2001.komorebi.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateRectAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,7 +30,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -55,12 +56,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -187,35 +188,45 @@ fun UpgradeSpotlightOverlay(
     ) {
         val screenWidthPx = with(density) { maxWidth.toPx() }
         val screenHeightPx = with(density) { maxHeight.toPx() }
+        val measuredTargetRect = targets.boundsFor(currentStep.targetId)
+        val lastResolvedRectRef = remember { arrayOfNulls<Rect>(1) }
 
-        val rawTargetRect = targets.boundsFor(currentStep.targetId).let { measured ->
-            when {
-                measured != Rect.Zero && currentStep.targetId == UpgradeTourTargetId.CONTENT_STAGE -> {
-                    // Focus on a single card-sized region directly to the right of the sidebar.
-                    val cardLeft = measured.left + with(density) { 28.dp.toPx() }
-                    val cardTop = measured.top + with(density) { 64.dp.toPx() }
-                    val cardWidth = with(density) { 296.dp.toPx() }.coerceAtMost((measured.width - with(density) { 56.dp.toPx() }).coerceAtLeast(160f))
-                    val cardHeight = with(density) { 168.dp.toPx() }.coerceAtMost((measured.height * 0.36f).coerceAtLeast(120f))
-                    Rect(
-                        left = cardLeft,
-                        top = cardTop,
-                        right = cardLeft + cardWidth,
-                        bottom = cardTop + cardHeight,
-                    )
-                }
-                measured != Rect.Zero -> measured
-                else -> Rect(
-                    left = screenWidthPx * 0.15f,
-                    top = screenHeightPx * 0.15f,
-                    right = screenWidthPx * 0.45f,
-                    bottom = screenHeightPx * 0.45f,
+        val resolvedTargetRect = when {
+            measuredTargetRect != Rect.Zero && currentStep.targetId == UpgradeTourTargetId.CONTENT_STAGE -> {
+                // Focus on a single card-sized region directly to the right of the sidebar.
+                val cardLeft = measuredTargetRect.left + with(density) { 28.dp.toPx() }
+                val cardTop = measuredTargetRect.top + with(density) { 64.dp.toPx() }
+                val cardWidth = with(density) { 296.dp.toPx() }.coerceAtMost((measuredTargetRect.width - with(density) { 56.dp.toPx() }).coerceAtLeast(160f))
+                val cardHeight = with(density) { 168.dp.toPx() }.coerceAtMost((measuredTargetRect.height * 0.36f).coerceAtLeast(120f))
+                Rect(
+                    left = cardLeft,
+                    top = cardTop,
+                    right = cardLeft + cardWidth,
+                    bottom = cardTop + cardHeight,
                 )
+            }
+            measuredTargetRect != Rect.Zero -> measuredTargetRect
+            else -> null
+        }
+        val rawTargetRect = resolvedTargetRect
+            ?: lastResolvedRectRef[0]
+            ?: Rect(
+                left = screenWidthPx * 0.15f,
+                top = screenHeightPx * 0.15f,
+                right = screenWidthPx * 0.45f,
+                bottom = screenHeightPx * 0.45f,
+            )
+        androidx.compose.runtime.SideEffect {
+            if (resolvedTargetRect != null) {
+                lastResolvedRectRef[0] = resolvedTargetRect
             }
         }
 
-        val animatedRect by animateRectAsState(
+        // Keep as State<Rect> so reading `.value` happens strictly in the Canvas draw phase,
+        // avoiding per-frame recomposition of the overlay and callout card on low-end TVs.
+        val animatedRectState = animateRectAsState(
             targetValue = rawTargetRect,
-            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+            animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
             label = "spotlight_cutout_rect",
         )
 
@@ -228,37 +239,45 @@ fun UpgradeSpotlightOverlay(
         val cutoutCornerPx = with(density) { 22.dp.toPx() }
         val borderWidthPx = with(density) { 2.5.dp.toPx() }
         val haloWidthPx = with(density) { 9.dp.toPx() }
+        val scrimPath = remember { Path() }
+        val scrimColor = remember { Color(0xFF070A10).copy(alpha = 0.78f) }
+        val haloColor = colors.accent.copy(alpha = 0.22f)
+        val borderColor = colors.accent.copy(alpha = 0.92f)
+        val haloStroke = remember(haloWidthPx) { Stroke(width = haloWidthPx) }
+        val borderStroke = remember(borderWidthPx) { Stroke(width = borderWidthPx) }
 
-        // Dimmed scrim with transparent spotlight cutout
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
-        ) {
-            drawRect(color = Color(0xFF070A10).copy(alpha = 0.78f))
+        // Dimmed scrim with transparent spotlight cutout (single-pass EvenOdd path, no offscreen FBO)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val animatedRect = animatedRectState.value
+            scrimPath.reset()
+            scrimPath.fillType = PathFillType.EvenOdd
+            scrimPath.addRect(Rect(Offset.Zero, size))
 
             if (animatedRect.width > 0f && animatedRect.height > 0f) {
                 when (currentStep.shape) {
                     UpgradeSpotlightShape.CIRCLE -> {
                         val radius = (maxOf(animatedRect.width, animatedRect.height) / 2f) + cutoutPaddingPx
                         val center = animatedRect.center
-                        drawCircle(
-                            color = Color.Transparent,
-                            radius = radius,
-                            center = center,
-                            blendMode = BlendMode.Clear,
+                        scrimPath.addOval(
+                            Rect(
+                                left = center.x - radius,
+                                top = center.y - radius,
+                                right = center.x + radius,
+                                bottom = center.y + radius,
+                            ),
                         )
+                        drawPath(path = scrimPath, color = scrimColor)
                         drawCircle(
-                            color = colors.accent.copy(alpha = 0.22f),
+                            color = haloColor,
                             radius = radius + haloWidthPx / 2f,
                             center = center,
-                            style = Stroke(width = haloWidthPx),
+                            style = haloStroke,
                         )
                         drawCircle(
-                            color = colors.accent.copy(alpha = 0.92f),
+                            color = borderColor,
                             radius = radius + borderWidthPx / 2f,
                             center = center,
-                            style = Stroke(width = borderWidthPx),
+                            style = borderStroke,
                         )
                     }
                     UpgradeSpotlightShape.ROUNDED_RECT -> {
@@ -273,57 +292,62 @@ fun UpgradeSpotlightOverlay(
                         val topLeft = Offset(left, top)
                         val corner = CornerRadius(cutoutCornerPx, cutoutCornerPx)
 
+                        scrimPath.addRoundRect(
+                            RoundRect(
+                                left = left,
+                                top = top,
+                                right = right,
+                                bottom = bottom,
+                                cornerRadius = corner,
+                            ),
+                        )
+                        drawPath(path = scrimPath, color = scrimColor)
                         drawRoundRect(
-                            color = Color.Transparent,
+                            color = haloColor,
                             topLeft = topLeft,
                             size = cutoutSize,
                             cornerRadius = corner,
-                            blendMode = BlendMode.Clear,
+                            style = haloStroke,
                         )
                         drawRoundRect(
-                            color = colors.accent.copy(alpha = 0.22f),
+                            color = borderColor,
                             topLeft = topLeft,
                             size = cutoutSize,
                             cornerRadius = corner,
-                            style = Stroke(width = haloWidthPx),
-                        )
-                        drawRoundRect(
-                            color = colors.accent.copy(alpha = 0.92f),
-                            topLeft = topLeft,
-                            size = cutoutSize,
-                            cornerRadius = corner,
-                            style = Stroke(width = borderWidthPx),
+                            style = borderStroke,
                         )
                     }
                 }
+            } else {
+                drawPath(path = scrimPath, color = scrimColor)
             }
         }
 
-        // Callout card placed in the remaining blank space (余白)
-        val calloutWidth = if (currentStep.placement == UpgradeCalloutPlacement.LEFT_SIDE_PANEL) {
-            340.dp
-        } else {
-            460.dp
-        }
+        // Callout card placed in the remaining blank space (余白) using stable target bounds
+        // instead of the per-frame animating rect, preventing layout jumps and recomposition churn.
+        val isCompactPanel = currentStep.placement == UpgradeCalloutPlacement.LEFT_SIDE_PANEL
+        val calloutWidth = if (isCompactPanel) 380.dp else 460.dp
+        val calloutWidthPx = with(density) { calloutWidth.toPx() }
+        val edgeMarginPx = with(density) { 24.dp.toPx() }
         val calloutModifier = when (currentStep.placement) {
             UpgradeCalloutPlacement.RIGHT_OF_TARGET -> {
-                val startOffsetPx = (animatedRect.right + with(density) { 36.dp.toPx() })
-                    .coerceAtMost(screenWidthPx - with(density) { 490.dp.toPx() })
+                val maxStartX = (screenWidthPx - calloutWidthPx - edgeMarginPx).coerceAtLeast(edgeMarginPx)
+                val startOffsetPx = (rawTargetRect.right + with(density) { 36.dp.toPx() })
+                    .coerceIn(edgeMarginPx, maxStartX)
                     .roundToInt()
                 Modifier
                     .align(Alignment.CenterStart)
-                    .offset { IntOffset(x = startOffsetPx.coerceAtLeast(0), y = 0) }
+                    .offset { IntOffset(x = startOffsetPx, y = 0) }
             }
             UpgradeCalloutPlacement.BELOW_RIGHT -> {
                 if (currentStep.targetId == UpgradeTourTargetId.COMMENT_ENGINE_SETTING &&
-                    animatedRect != Rect.Zero &&
-                    animatedRect.center.y > screenHeightPx * 0.52f
+                    (measuredTargetRect == Rect.Zero || rawTargetRect.center.y > screenHeightPx * 0.52f)
                 ) {
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 40.dp, end = 48.dp)
                 } else {
-                    val topOffsetPx = (animatedRect.bottom + with(density) { 28.dp.toPx() })
+                    val topOffsetPx = (rawTargetRect.bottom + with(density) { 28.dp.toPx() })
                         .coerceAtMost(screenHeightPx * 0.55f)
                         .roundToInt()
                     Modifier
@@ -338,13 +362,14 @@ fun UpgradeSpotlightOverlay(
                     .padding(bottom = 32.dp)
             }
             UpgradeCalloutPlacement.BOTTOM_LEFT_BESIDE_RAIL -> {
-                val startOffsetPx = (animatedRect.right + with(density) { 40.dp.toPx() })
-                    .coerceAtMost(screenWidthPx - with(density) { 490.dp.toPx() })
+                val maxStartX = (screenWidthPx - calloutWidthPx - edgeMarginPx).coerceAtLeast(edgeMarginPx)
+                val startOffsetPx = (rawTargetRect.right + with(density) { 40.dp.toPx() })
+                    .coerceIn(edgeMarginPx, maxStartX)
                     .roundToInt()
                 Modifier
                     .align(Alignment.BottomStart)
                     .padding(bottom = 28.dp)
-                    .offset { IntOffset(x = startOffsetPx.coerceAtLeast(0), y = 0) }
+                    .offset { IntOffset(x = startOffsetPx, y = 0) }
             }
             UpgradeCalloutPlacement.LEFT_SIDE_PANEL -> {
                 Modifier
@@ -353,17 +378,18 @@ fun UpgradeSpotlightOverlay(
             }
         }
 
+        val calloutShape = remember { RoundedCornerShape(TvCardRadiusGrid + 4.dp) }
         Box(
             modifier = calloutModifier
-                .widthIn(max = calloutWidth)
-                .clip(RoundedCornerShape(TvCardRadiusGrid + 4.dp))
+                .width(calloutWidth)
+                .clip(calloutShape)
                 .background(colors.surface1.copy(alpha = 0.96f))
                 .border(
                     width = 1.dp,
                     color = colors.borderSubtle,
-                    shape = RoundedCornerShape(TvCardRadiusGrid + 4.dp),
+                    shape = calloutShape,
                 )
-                .padding(horizontal = 24.dp, vertical = 20.dp)
+                .padding(horizontal = if (isCompactPanel) 20.dp else 24.dp, vertical = 20.dp)
                 .onFocusChanged { calloutHasFocus = it.hasFocus }
                 .focusProperties { exit = { FocusRequester.Cancel } }
                 .focusGroup(),
@@ -372,7 +398,8 @@ fun UpgradeSpotlightOverlay(
                 AnimatedContent(
                     targetState = stepIndex,
                     transitionSpec = {
-                        fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                        (fadeIn(tween(150)) togetherWith fadeOut(tween(100)))
+                            .using(SizeTransform(clip = false, sizeAnimationSpec = { _, _ -> snap() }))
                     },
                     label = "upgrade_callout_step",
                 ) { idx ->
@@ -471,7 +498,7 @@ fun UpgradeSpotlightOverlay(
                     )
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (!isFirstStep) {
@@ -594,7 +621,7 @@ private fun SpotlightActionButton(
         modifier = modifier.onFocusChanged { isFocused = it.isFocused },
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {

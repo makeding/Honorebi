@@ -420,7 +420,7 @@ private fun SettingsMenuScreen(
                     .background(colors.surface1)
                     .padding(top = 32.dp, bottom = 32.dp, start = 16.dp, end = 16.dp)
                     .onFocusChanged { uiState.isSidebarFocused = it.hasFocus }
-                    .focusProperties { canFocus = !uiState.isRestoringFocus }
+                    .focusProperties { canFocus = !uiState.isRestoringFocus && !isUpgradeTourOverlayActive }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
