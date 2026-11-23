@@ -449,4 +449,75 @@ class LauncherTabControllerTest {
         assertFalse(startCollapsed.value)
         compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
     }
+
+    @Test
+    fun navRailLeftKeyTogglesExpandedAndCollapsedStateAndResetsAfterLeavingRail() {
+        val controller = LauncherTabController(initialTab = LauncherTab.HOME)
+        assertTrue(controller.markContentReady(controller.generation))
+        val upEdgeRequester = FocusRequester()
+        val settingsRequester = FocusRequester()
+        val startCollapsed = mutableStateOf(true)
+
+        compose.setContent {
+            Row {
+                LauncherNavRail(
+                    controller = controller,
+                    isEpgJumping = false,
+                    upEdgeFocusRequester = upEdgeRequester,
+                    settingsItemFocusRequester = settingsRequester,
+                    settingsCanFocus = true,
+                    onTabFocused = { controller.selectTab(it) },
+                    onOpenSettings = {},
+                    onHasFocusChanged = {},
+                    onBack = {},
+                    startCollapsed = startCollapsed.value,
+                    onStartCollapsedConsumed = { startCollapsed.value = false },
+                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("home-content")
+                        .focusRequester(controller.contentRequester(LauncherTab.HOME))
+                        .focusable(),
+                )
+            }
+        }
+
+        // Starts collapsed when startCollapsed is true.
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailCollapsedWidth)
+
+        // Pressing LEFT expands the rail and consumes initial collapsed suppression.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitForIdle()
+        assertFalse(startCollapsed.value)
+        compose.onNodeWithTag("launcher-tab-home").assertIsFocused()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
+
+        // Pressing LEFT again collapses the rail while keeping focus on the same tab.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-tab-home").assertIsFocused()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailCollapsedWidth)
+
+        // Pressing LEFT a third time expands it again.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-tab-home").assertIsFocused()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
+
+        // Manually collapse, leave rail via RIGHT into content, then return -> rail expands normally.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionLeft) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailCollapsedWidth)
+
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onNodeWithTag("home-content").assertIsFocused()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("launcher-tab-home").requestFocus().assertIsFocused()
+        compose.waitForIdle()
+        compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
+    }
 }

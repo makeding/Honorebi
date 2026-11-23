@@ -144,17 +144,18 @@ internal fun LauncherNavRail(
     var railHasFocus by remember { mutableStateOf(false) }
     var interactionTick by remember { mutableIntStateOf(0) }
     var isAutoCollapsed by remember { mutableStateOf(false) }
+    var isManuallyCollapsed by remember { mutableStateOf(false) }
     var suppressInitialExpand by remember(startCollapsed) { mutableStateOf(startCollapsed) }
 
-    LaunchedEffect(railHasFocus, suppressInitialExpand, interactionTick) {
+    LaunchedEffect(railHasFocus, suppressInitialExpand, isManuallyCollapsed, interactionTick) {
         isAutoCollapsed = false
-        if (railHasFocus && !suppressInitialExpand) {
+        if (railHasFocus && !suppressInitialExpand && !isManuallyCollapsed) {
             delay(RAIL_AUTO_COLLAPSE_MS)
             isAutoCollapsed = true
         }
     }
 
-    val isExpanded = railHasFocus && !isAutoCollapsed && !suppressInitialExpand
+    val isExpanded = railHasFocus && !isAutoCollapsed && !suppressInitialExpand && !isManuallyCollapsed
 
     val railWidth by animateDpAsState(
         targetValue = if (isExpanded) TvRailExpandedWidth else TvRailCollapsedWidth,
@@ -190,17 +191,34 @@ internal fun LauncherNavRail(
             .onFocusChanged { focusState ->
                 val hadFocus = railHasFocus
                 railHasFocus = focusState.hasFocus
-                if (hadFocus && !focusState.hasFocus && suppressInitialExpand) {
-                    suppressInitialExpand = false
-                    onStartCollapsedConsumed()
+                if (hadFocus && !focusState.hasFocus) {
+                    isManuallyCollapsed = false
+                    if (suppressInitialExpand) {
+                        suppressInitialExpand = false
+                        onStartCollapsedConsumed()
+                    }
                 }
-                if (focusState.hasFocus && !suppressInitialExpand) {
+                if (focusState.hasFocus && !suppressInitialExpand && !isManuallyCollapsed) {
                     interactionTick++
                 }
                 onHasFocusChanged(focusState.hasFocus)
             }
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
+                    if (event.key == Key.DirectionLeft) {
+                        if (isExpanded) {
+                            isManuallyCollapsed = true
+                        } else {
+                            isManuallyCollapsed = false
+                            isAutoCollapsed = false
+                            if (suppressInitialExpand) {
+                                suppressInitialExpand = false
+                                onStartCollapsedConsumed()
+                            }
+                            interactionTick++
+                        }
+                        return@onPreviewKeyEvent true
+                    }
                     if ((event.key == Key.DirectionUp || event.key == Key.DirectionDown) && suppressInitialExpand) {
                         suppressInitialExpand = false
                         onStartCollapsedConsumed()
