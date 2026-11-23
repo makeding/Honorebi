@@ -293,6 +293,22 @@ class MainRootStateTest {
         assertFalse(state.triggerHomeBack)
     }
 
+    @Test
+    fun returnToCurrentTabFromModule_preservesCurrentTabWhileClearingPlayback() {
+        val state = MainRootState()
+        val videoIndex = state.getVisibleTabs().indexOf("ビデオ")
+        state.currentTabIndex = videoIndex
+        state.playbackState.enterLive(channel())
+        val previousFocusTick = state.launcherHomeFocusTick
+
+        state.returnToCurrentTabFromModule()
+
+        assertEquals(videoIndex, state.currentTabIndex)
+        assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertEquals(previousFocusTick + 1, state.launcherHomeFocusTick)
+        assertFalse(state.triggerHomeBack)
+    }
+
     private fun channel(id: String = "gr-test") = Channel(
         id = id,
         displayChannelId = "gr011",

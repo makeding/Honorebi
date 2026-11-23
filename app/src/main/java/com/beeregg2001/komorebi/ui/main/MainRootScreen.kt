@@ -780,12 +780,20 @@ fun MainRootScreen(
         clearRootOverlays()
     }
 
-    val returnToLauncherHome = { startupTab: String ->
+    val returnToLauncherHome = {
+        val hasActiveModule = state.hasActiveModuleOrOverlay()
+        val preservedTabIndex = state.currentTabIndex
+
         if (state.isSettingsOpen) {
             closeSettingsAndRefresh()
         }
 
-        state.resetForLauncherHome(startupTab, hideAppsTab)
+        if (hasActiveModule) {
+            state.currentTabIndex = preservedTabIndex
+            state.returnToCurrentTabFromModule(hideAppsTab)
+        } else {
+            state.resetForLauncherHome("ホーム", hideAppsTab)
+        }
         if (tabs.getOrNull(state.currentTabIndex) == "番組表") epgViewModel.ensureInitialDataLoaded()
         clearRootOverlays()
     }
@@ -798,7 +806,7 @@ fun MainRootScreen(
                 isUpgradeTourDismissed = true
                 settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
             }
-            returnToLauncherHome(settingsViewModel.getStartupTabOnce())
+            returnToLauncherHome()
         }
     }
 

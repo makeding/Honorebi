@@ -121,6 +121,34 @@ class MainRootState {
         triggerHomeBack = false
     }
 
+    /** True when the user is currently inside a player, settings, sub-screen, or overlay above the launcher tabs. */
+    fun hasActiveModuleOrOverlay(): Boolean =
+        playbackState.isPlaybackActive ||
+            isSettingsOpen ||
+            isRecordListOpen ||
+            isSeriesListOpen ||
+            isSmbLibraryOpen ||
+            isOnAirOpen ||
+            epgSelectedProgram != null ||
+            selectedReserve != null ||
+            editingReserveItem != null ||
+            editingNewProgram != null ||
+            reserveToDelete != null ||
+            editingCondition != null ||
+            selectedConditionReserveItem != null ||
+            selectedProgramForAutoReserve != null ||
+            isAiConciergeOpen ||
+            isEpgJumpMenuOpen
+
+    /** Returns from an active module (player, settings, overlay) to the launcher while preserving the current tab. */
+    fun returnToCurrentTabFromModule(hideAppsTab: Boolean = false) {
+        val visibleCount = getVisibleTabs(hideAppsTab).size
+        currentTabIndex = if (visibleCount > 0) currentTabIndex.coerceIn(0, visibleCount - 1) else 0
+        playbackState.resetPlayback()
+        launcherHomeFocusTick++
+        triggerHomeBack = false
+    }
+
     // 戻るボタンの連打ガード
     private var lastBackPressTime by mutableLongStateOf(0L)
     fun canProcessBackPress(): Boolean {

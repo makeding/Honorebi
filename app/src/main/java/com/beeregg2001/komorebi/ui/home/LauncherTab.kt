@@ -27,12 +27,12 @@ enum class LauncherTab(
     APPS(
         title = "アプリ",
     ),
-    VIDEO(
-        title = "ビデオ",
-        ownsExternalReturnFocus = true,
-    ),
     ON_AIR(
         title = "放送中",
+        ownsExternalReturnFocus = true,
+    ),
+    VIDEO(
+        title = "ビデオ",
         ownsExternalReturnFocus = true,
     ),
     EPG(

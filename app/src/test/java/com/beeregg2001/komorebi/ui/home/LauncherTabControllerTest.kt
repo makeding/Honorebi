@@ -161,7 +161,7 @@ class LauncherTabControllerTest {
         assertEquals(LauncherTab.HOME, controller.activeTab)
 
         // VIDEO moved from index 3 to index 2, yet keeps its exact FocusRequester instances.
-        assertEquals(2, controller.visibleTabs.indexOf(LauncherTab.VIDEO))
+        assertEquals(3, controller.visibleTabs.indexOf(LauncherTab.VIDEO))
         assertSame(videoTabRequesterBefore, controller.tabRequesterAt(2))
         assertSame(videoContentRequesterBefore, controller.contentRequesterAt(2))
 
