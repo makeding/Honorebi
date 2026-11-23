@@ -66,7 +66,7 @@ fun MainRootDialogs(
     detailFocusRequester: FocusRequester,
     apiKey: String, // ★ 追加: 取得したAPIキーを受け取る
     onExitApp: () -> Unit,
-    closeSettingsAndRefresh: () -> Unit,
+    onCloseSettings: () -> Unit,
     closeAiConcierge: (Boolean) -> Unit,
     onGoToSettings: () -> Unit, // ★ 追加: 設定画面誘導コールバック
     onOpenWhatsNew: () -> Unit = {},
@@ -496,7 +496,7 @@ fun MainRootDialogs(
 
     if (state.isSettingsOpen) {
         SettingsScreen(
-            onBack = closeSettingsAndRefresh,
+            onBack = onCloseSettings,
             initialCategoryIndex = state.settingsInitialCategoryIndex,
             initialFocusItemIndex = state.settingsInitialFocusItemIndex,
             initialOpenDeviceCapabilities = state.settingsOpenDeviceCapabilities,

@@ -520,4 +520,88 @@ class LauncherTabControllerTest {
         compose.waitForIdle()
         compose.onNodeWithTag("launcher-nav-rail").assertWidthIsEqualTo(TvRailExpandedWidth)
     }
+
+    @Test
+    fun scrubbingUpPastHomeToTopStripCancelsPendingSelectionAndKeepsActiveTab() {
+        val controller = LauncherTabController(initialTab = LauncherTab.VIDEO)
+        assertTrue(controller.markContentReady(controller.generation))
+        val upEdgeRequester = FocusRequester()
+        val settingsRequester = FocusRequester()
+        var railHasFocus = false
+
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        compose.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                LauncherTabLifecycleHost(
+                    controller = controller,
+                    isFullScreenMode = false,
+                    networkAvailable = true,
+                    onEnsureEpgLoaded = {},
+                    onPollingChanged = {},
+                    onRefreshHomeData = {},
+                )
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("top-strip-entry")
+                            .focusRequester(upEdgeRequester)
+                            .focusable(),
+                    )
+                    LauncherNavRail(
+                        controller = controller,
+                        isEpgJumping = false,
+                        upEdgeFocusRequester = upEdgeRequester,
+                        settingsItemFocusRequester = settingsRequester,
+                        settingsCanFocus = true,
+                        onTabFocused = { controller.selectTab(it) },
+                        onOpenSettings = {},
+                        onHasFocusChanged = { hasFocus ->
+                            val hadFocus = railHasFocus
+                            railHasFocus = hasFocus
+                            if (hadFocus && !hasFocus) {
+                                controller.cancelPendingSelection()
+                            }
+                        },
+                        onBack = {},
+                    )
+                }
+            }
+        }
+
+        // Start focused on VIDEO (the active tab) and rapidly press UP past HOME into the top-right strip.
+        compose.onNodeWithTag("launcher-tab-video").requestFocus().assertIsFocused()
+        compose.onNodeWithTag("launcher-tab-video").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("launcher-tab-apps").assertIsFocused()
+        compose.onNodeWithTag("launcher-tab-apps").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("launcher-tab-live").assertIsFocused()
+        compose.onNodeWithTag("launcher-tab-live").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("launcher-tab-home").assertIsFocused()
+        compose.runOnIdle {
+            assertEquals(LauncherTab.HOME, controller.selectedTab)
+            assertEquals(LauncherTab.VIDEO, controller.activeTab)
+            assertEquals(LauncherTabPhase.COALESCING, controller.phase)
+        }
+
+        // Pressing UP from HOME moves focus into the top-right status strip and cancels the pending HOME scrub.
+        compose.onNodeWithTag("launcher-tab-home").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("top-strip-entry").assertIsFocused()
+        compose.runOnIdle {
+            assertEquals(LauncherTab.VIDEO, controller.selectedTab)
+            assertEquals(LauncherTab.VIDEO, controller.activeTab)
+            assertEquals(LauncherTabPhase.ACTIVE, controller.phase)
+        }
+
+        // Even after the coalesce window elapses, activeTab remains VIDEO (does not navigate to HOME).
+        compose.runOnIdle {
+            effects.advanceTimeBy(TAB_RENDER_COALESCE_MS + 100L)
+            effects.runCurrent()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(LauncherTab.VIDEO, controller.selectedTab)
+            assertEquals(LauncherTab.VIDEO, controller.activeTab)
+            assertEquals(0L, controller.generation)
+        }
+    }
 }

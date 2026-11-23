@@ -741,16 +741,31 @@ fun MainRootScreen(
 
     LaunchedEffect(state.isRecordListOpen) { if (state.isRecordListOpen) recordViewModel.triggerSmartSync() }
 
-    val closeSettingsAndRefresh = {
-        state.isSettingsOpen = false; state.isDataReady = false; state.isUiReady =
-        false; state.showConnectionErrorDialog = false
-        state.isOfflineMode = false
-        state.currentTabIndex = 0
-        channelViewModel.fetchChannels(); epgViewModel.preloadAllEpgData(); homeViewModel.refreshHomeData()
-        recordViewModel.fetchRecentRecordings(forceRefresh = false); reserveViewModel.fetchReserves()
-        state.settingsInitialCategoryIndex = 0
-        state.settingsInitialFocusItemIndex = null
-        state.settingsOpenDeviceCapabilities = false
+    val settingsDataRefreshRevision by settingsViewModel.dataRefreshRevision.collectAsState()
+    var settingsDataRevisionAtOpen by remember { mutableIntStateOf(settingsDataRefreshRevision) }
+    LaunchedEffect(state.isSettingsOpen) {
+        if (state.isSettingsOpen) {
+            settingsDataRevisionAtOpen = settingsDataRefreshRevision
+        }
+    }
+
+    val closeSettings = {
+        val needsBackgroundRefresh = shouldRefreshDataAfterSettingsClose(
+            dataRevisionChanged = settingsDataRefreshRevision != settingsDataRevisionAtOpen,
+            isDataReady = state.isDataReady,
+            isOfflineMode = state.isOfflineMode,
+            isChannelError = isChannelError,
+        )
+        state.closeSettings()
+        if (needsBackgroundRefresh) {
+            state.showConnectionErrorDialog = false
+            state.isOfflineMode = false
+            channelViewModel.fetchChannels()
+            epgViewModel.preloadAllEpgData()
+            homeViewModel.refreshHomeData()
+            recordViewModel.fetchRecentRecordings(forceRefresh = false)
+            reserveViewModel.fetchReserves()
+        }
     }
 
     val clearRootOverlays = {
@@ -775,7 +790,7 @@ fun MainRootScreen(
 
     val dismissRootOverlays = {
         if (state.isSettingsOpen) {
-            closeSettingsAndRefresh()
+            closeSettings()
         }
         clearRootOverlays()
     }
@@ -785,7 +800,7 @@ fun MainRootScreen(
         val preservedTabIndex = state.currentTabIndex
 
         if (state.isSettingsOpen) {
-            closeSettingsAndRefresh()
+            closeSettings()
         }
 
         if (hasActiveModule) {
@@ -837,7 +852,7 @@ fun MainRootScreen(
                 state.playbackState.handleBack()
             }
 
-            state.isSettingsOpen -> closeSettingsAndRefresh()
+            state.isSettingsOpen -> closeSettings()
             state.epgSelectedProgram != null -> state.epgSelectedProgram = null
             state.selectedReserve != null -> state.selectedReserve = null
             state.isEpgJumpMenuOpen -> state.isEpgJumpMenuOpen = false
@@ -1476,7 +1491,7 @@ fun MainRootScreen(
                 detailFocusRequester = detailFocusRequester,
                 apiKey = if (AI_FEATURES_ENABLED) geminiApiKey else "",
                 onExitApp = { showExitDialog = true },
-                closeSettingsAndRefresh = closeSettingsAndRefresh,
+                onCloseSettings = closeSettings,
                 closeAiConcierge = closeAiConcierge,
                 onGoToSettings = {
                     closeAiConcierge(true)
@@ -1485,7 +1500,7 @@ fun MainRootScreen(
                     state.isSettingsOpen = true
                 },
                 onOpenWhatsNew = {
-                    closeSettingsAndRefresh()
+                    closeSettings()
                     isManualUpgradeTourOpen = true
                 },
                 isUpgradeTourOverlayActive = isUpgradeTourActive,

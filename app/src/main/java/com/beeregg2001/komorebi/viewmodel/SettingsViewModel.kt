@@ -118,6 +118,8 @@ class SettingsViewModel @Inject constructor(
     private val connectionUpdateMutex = Mutex()
 
     private val _dynamicQualities = MutableStateFlow<List<StreamQuality>?>(null)
+    private val _dataRefreshRevision = MutableStateFlow(0)
+    val dataRefreshRevision: StateFlow<Int> = _dataRefreshRevision.asStateFlow()
     val honomiSession: StateFlow<HonomiSession?> by lazy { honomiAuthRepository.get().session }
     private val _honomiLoginInProgress = MutableStateFlow(false)
     val honomiLoginInProgress: StateFlow<Boolean> = _honomiLoginInProgress
@@ -708,6 +710,7 @@ class SettingsViewModel @Inject constructor(
             syncEngine.clearDatabase()
         }
         if (nextOwner != null) settingsRepository.setRecordCacheOwner(nextOwner)
+        _dataRefreshRevision.value++
         viewModelScope.launch { forceSyncStreamQualities() }
     }
 
@@ -730,10 +733,12 @@ class SettingsViewModel @Inject constructor(
 
     fun updateEdcbRecordPlayMethod(method: String) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(SettingsRepository.EDCB_RECORD_PLAY_METHOD, method)
+        _dataRefreshRevision.value++
         forceSyncStreamQualities()
     }
 
     fun triggerFullSync() {
+        _dataRefreshRevision.value++
         viewModelScope.launch { syncEngine.clearDatabase() }
     }
 
@@ -746,10 +751,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun clearEpgCache() {
+        _dataRefreshRevision.value++
         viewModelScope.launch { cacheManager.clearEpgCache() }
     }
 
     fun clearAllCache() {
+        _dataRefreshRevision.value++
         viewModelScope.launch {
             cacheManager.clearAll()
             syncEngine.clearDatabase()
@@ -893,6 +900,7 @@ class SettingsViewModel @Inject constructor(
                 SettingsRepository.HIDE_SUB_CHANNELS,
                 !settingsRepository.hideSubChannels.first()
             )
+            _dataRefreshRevision.value++
         }
     }
 
@@ -904,6 +912,7 @@ class SettingsViewModel @Inject constructor(
                 SettingsRepository.TIF_INTEGRATION_ENABLED,
                 !settingsRepository.tifIntegrationEnabled.first()
             )
+            _dataRefreshRevision.value++
         }
     }
 

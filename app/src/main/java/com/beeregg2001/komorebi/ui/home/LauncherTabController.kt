@@ -159,7 +159,8 @@ class LauncherTabController(
 
     /**
      * Cancels an uncommitted D-pad scrub selection (e.g. when focus moves into the
-     * bottom utility/settings footer) so the stage and highlight stay on [activeTab].
+     * bottom utility/settings footer or top-right status strip) so the stage and highlight
+     * stay on [activeTab].
      */
     fun cancelPendingSelection() {
         if (selectedTab == activeTab) return

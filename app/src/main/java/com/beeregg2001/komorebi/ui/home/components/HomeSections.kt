@@ -153,100 +153,89 @@ fun HomeQuickAppsStrip(
     val visibleApps = remember(apps) { apps.take(5) }
     val tileShape = RoundedCornerShape(TvCardRadiusListRow)
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        SectionHeader(
-            title = "よく使うアプリ",
-            icon = Icons.Default.Apps,
-            modifier = Modifier.padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            visibleApps.forEachIndexed { index, app ->
-                HomeQuickAppTile(
-                    app = app,
-                    shape = tileShape,
-                    onClick = { onAppClick(app) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(46.dp)
-                        .then(
-                            if (index == 0 && firstItemRequester != null) {
-                                Modifier.focusRequester(firstItemRequester)
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .focusProperties {
-                            if (index == 0) left = leftEdgeFocusRequester
-                            if (isLastSection) down = FocusRequester.Cancel
-                        },
-                )
-            }
-
-            // 6th tile: "すべて" (+) -> Apps tab
-            var allFocused by remember { mutableStateOf(false) }
-            Surface(
-                onClick = onOpenAllApps,
+        visibleApps.forEachIndexed { index, app ->
+            HomeQuickAppTile(
+                app = app,
+                shape = tileShape,
+                onClick = { onAppClick(app) },
                 modifier = Modifier
                     .weight(1f)
                     .height(46.dp)
                     .then(
-                        if (visibleApps.isEmpty() && firstItemRequester != null) {
+                        if (index == 0 && firstItemRequester != null) {
                             Modifier.focusRequester(firstItemRequester)
                         } else {
                             Modifier
                         }
                     )
                     .focusProperties {
-                        if (visibleApps.isEmpty()) left = leftEdgeFocusRequester
-                        right = FocusRequester.Cancel
+                        if (index == 0) left = leftEdgeFocusRequester
                         if (isLastSection) down = FocusRequester.Cancel
+                    },
+            )
+        }
+
+        // 6th tile: "すべて" (+) -> Apps tab
+        var allFocused by remember { mutableStateOf(false) }
+        Surface(
+            onClick = onOpenAllApps,
+            modifier = Modifier
+                .weight(1f)
+                .height(46.dp)
+                .then(
+                    if (visibleApps.isEmpty() && firstItemRequester != null) {
+                        Modifier.focusRequester(firstItemRequester)
+                    } else {
+                        Modifier
                     }
-                    .onFocusChanged { allFocused = it.isFocused },
-                shape = ClickableSurfaceDefaults.shape(tileShape),
-                scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
-                colors = ClickableSurfaceDefaults.colors(
-                    containerColor = colors.surface1,
-                    focusedContainerColor = colors.surface2,
-                    contentColor = colors.textSecondary,
-                    focusedContentColor = colors.textPrimary,
-                ),
-                border = ClickableSurfaceDefaults.border(
-                    border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = tileShape),
-                    focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = tileShape),
-                ),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        tint = if (allFocused) colors.accent else colors.textSecondary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "すべて",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (allFocused) colors.textPrimary else colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                )
+                .focusProperties {
+                    if (visibleApps.isEmpty()) left = leftEdgeFocusRequester
+                    right = FocusRequester.Cancel
+                    if (isLastSection) down = FocusRequester.Cancel
                 }
+                .onFocusChanged { allFocused = it.isFocused },
+            shape = ClickableSurfaceDefaults.shape(tileShape),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = colors.surface1,
+                focusedContainerColor = colors.surface2,
+                contentColor = colors.textSecondary,
+                focusedContentColor = colors.textPrimary,
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = Border(BorderStroke(1.dp, colors.borderSubtle), shape = tileShape),
+                focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = tileShape),
+            ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = if (allFocused) colors.accent else colors.textSecondary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "すべて",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (allFocused) colors.textPrimary else colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -103,12 +103,17 @@ class MainRootState {
     var editingCondition by mutableStateOf<ReservationCondition?>(null)
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
 
-    /** Called only after the latest remote open has resolved to an allowed target. */
-    fun bringRemotePlaybackToFront() {
+    /** Closes Settings without tearing down the mounted Home hierarchy or resetting the active tab. */
+    fun closeSettings() {
         isSettingsOpen = false
         settingsInitialCategoryIndex = 0
         settingsInitialFocusItemIndex = null
         settingsOpenDeviceCapabilities = false
+    }
+
+    /** Called only after the latest remote open has resolved to an allowed target. */
+    fun bringRemotePlaybackToFront() {
+        closeSettings()
         playbackState.exitMiniPlayer()
         remotePlaybackFocusTick++
     }
@@ -179,6 +184,13 @@ class MainRootState {
     fun getVisibleTabs(hideAppsTab: Boolean = false): List<String> =
         com.beeregg2001.komorebi.ui.home.LauncherTab.visibleTabs(hideAppsTab, tif = backendType == "TIF").map { it.title }
 }
+
+internal fun shouldRefreshDataAfterSettingsClose(
+    dataRevisionChanged: Boolean,
+    isDataReady: Boolean,
+    isOfflineMode: Boolean,
+    isChannelError: Boolean,
+): Boolean = dataRevisionChanged || !isDataReady || isOfflineMode || isChannelError
 
 @Composable
 fun rememberMainRootState(): MainRootState {

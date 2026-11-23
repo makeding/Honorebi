@@ -797,7 +797,12 @@ fun HomeLauncherScreen(
                     },
                     onHasFocusChanged = { hasFocus ->
                         stripHasFocus = hasFocus
-                        if (hasFocus) pendingEnterContentTab = null
+                        if (hasFocus) {
+                            pendingEnterContentTab = null
+                            isEnteringContentFromRail = false
+                            tabController.cancelPendingSelection()
+                            ui.selectedTabIndex = tabController.selectedIndex
+                        }
                         ui.topNavHasFocus = railHasFocus || hasFocus
                     },
                     onBack = { scope.launch { handleLauncherBack() } },
@@ -862,8 +867,15 @@ fun HomeLauncherScreen(
                 },
                 onPrepareEnterContent = { isEnteringContentFromRail = true },
                 onHasFocusChanged = { hasFocus ->
+                    val hadFocus = railHasFocus
                     railHasFocus = hasFocus
-                    if (!hasFocus) isEnteringContentFromRail = false
+                    if (hadFocus && !hasFocus) {
+                        isEnteringContentFromRail = false
+                        tabController.cancelPendingSelection()
+                        ui.selectedTabIndex = tabController.selectedIndex
+                    } else if (!hasFocus) {
+                        isEnteringContentFromRail = false
+                    }
                     ui.topNavHasFocus = hasFocus || stripHasFocus
                 },
                 onBack = { scope.launch { handleLauncherBack() } },

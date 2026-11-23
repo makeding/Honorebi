@@ -309,6 +309,73 @@ class MainRootStateTest {
         assertFalse(state.triggerHomeBack)
     }
 
+    @Test
+    fun closeSettings_preservesReadyHomeStateAndCurrentTab() {
+        val state = MainRootState()
+        val epgIndex = state.getVisibleTabs().indexOf("番組表")
+        state.currentTabIndex = epgIndex
+        state.isDataReady = true
+        state.isUiReady = true
+        state.isSettingsOpen = true
+        state.settingsInitialCategoryIndex = 5
+        state.settingsInitialFocusItemIndex = 6
+        state.settingsOpenDeviceCapabilities = true
+
+        state.closeSettings()
+
+        assertFalse(state.isSettingsOpen)
+        assertEquals(0, state.settingsInitialCategoryIndex)
+        assertNull(state.settingsInitialFocusItemIndex)
+        assertFalse(state.settingsOpenDeviceCapabilities)
+        assertTrue(state.isDataReady)
+        assertTrue(state.isUiReady)
+        assertEquals(epgIndex, state.currentTabIndex)
+    }
+
+    @Test
+    fun shouldRefreshDataAfterSettingsClose_onlyWhenDataSettingsChangedOrRecovering() {
+        assertFalse(
+            shouldRefreshDataAfterSettingsClose(
+                dataRevisionChanged = false,
+                isDataReady = true,
+                isOfflineMode = false,
+                isChannelError = false,
+            )
+        )
+        assertTrue(
+            shouldRefreshDataAfterSettingsClose(
+                dataRevisionChanged = true,
+                isDataReady = true,
+                isOfflineMode = false,
+                isChannelError = false,
+            )
+        )
+        assertTrue(
+            shouldRefreshDataAfterSettingsClose(
+                dataRevisionChanged = false,
+                isDataReady = false,
+                isOfflineMode = false,
+                isChannelError = false,
+            )
+        )
+        assertTrue(
+            shouldRefreshDataAfterSettingsClose(
+                dataRevisionChanged = false,
+                isDataReady = true,
+                isOfflineMode = true,
+                isChannelError = false,
+            )
+        )
+        assertTrue(
+            shouldRefreshDataAfterSettingsClose(
+                dataRevisionChanged = false,
+                isDataReady = true,
+                isOfflineMode = false,
+                isChannelError = true,
+            )
+        )
+    }
+
     private fun channel(id: String = "gr-test") = Channel(
         id = id,
         displayChannelId = "gr011",
