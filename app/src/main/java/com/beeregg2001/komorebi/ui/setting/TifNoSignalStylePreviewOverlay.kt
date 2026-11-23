@@ -228,6 +228,29 @@ internal fun TifNoSignalStylePreviewOverlay(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.testTag(TIF_NO_SIGNAL_PREVIEW_LABEL_TAG),
                         )
+                        if (supportsColorCustomization) {
+                            Row(
+                                modifier = Modifier
+                                    .background(Color.White.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 9.dp, vertical = 2.dp)
+                                    .testTag(TIF_NO_SIGNAL_PREVIEW_COLOR_TAG),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(previewAccentColor.mainArgb), CircleShape)
+                                        .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape),
+                                )
+                                Text(
+                                    text = "カラー: ${previewAccentColor.label}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.90f),
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                         if (previewStyle == currentStyle) {
                             Box(
                                 modifier = Modifier
@@ -255,31 +278,6 @@ internal fun TifNoSignalStylePreviewOverlay(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.testTag(TIF_NO_SIGNAL_PREVIEW_DESCRIPTION_TAG),
                     )
-
-                    if (supportsColorCustomization) {
-                        Row(
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
-                                .padding(horizontal = 10.dp, vertical = 3.dp)
-                                .testTag(TIF_NO_SIGNAL_PREVIEW_COLOR_TAG),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(9.dp)
-                                    .background(Color(previewAccentColor.mainArgb), CircleShape)
-                                    .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape),
-                            )
-                            Text(
-                                text = "カラー: ${previewAccentColor.label}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.90f),
-                                maxLines = 1,
-                            )
-                        }
-                    }
 
                     Row(
                         modifier = Modifier.padding(top = 4.dp),

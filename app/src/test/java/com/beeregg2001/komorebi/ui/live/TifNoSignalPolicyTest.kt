@@ -254,7 +254,7 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.STARFIELD,
             TifNoSignalStyle.CRAYON_TITLE,
             TifNoSignalStyle.PRECURE_SPARKLE,
-            TifNoSignalStyle.AIPRI_LIVE,
+            // TifNoSignalStyle.AIPRI_LIVE,
         )
         for (effectStyle in animatedEffectStyles) {
             assertEquals(
@@ -362,7 +362,7 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.STARFIELD to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.CRAYON_TITLE to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.PRECURE_SPARKLE to NoSignalRenderMode.EFFECT,
-            TifNoSignalStyle.AIPRI_LIVE to NoSignalRenderMode.EFFECT,
+            // TifNoSignalStyle.AIPRI_LIVE to NoSignalRenderMode.EFFECT,
         )
         assertEquals(16, TifNoSignalStyle.entries.size)
         assertEquals(TifNoSignalStyle.entries.toSet(), expected.keys)

@@ -230,12 +230,12 @@ internal fun TifNoSignalEffectSurface(
                 paused = paused,
                 onDegraded = onDegraded,
             )
-            TifNoSignalStyle.AIPRI_LIVE -> AipriLiveEffect(
-                statusText = statusText,
-                inputLabel = inputLabel,
-                paused = paused,
-                onDegraded = onDegraded,
-            )
+            // TifNoSignalStyle.AIPRI_LIVE -> AipriLiveEffect(
+            //     statusText = statusText,
+            //     inputLabel = inputLabel,
+            //     paused = paused,
+            //     onDegraded = onDegraded,
+            // )
             else -> Unit
         }
     }
@@ -1611,24 +1611,32 @@ private fun CrayonTitleEffect(
             Spacer(modifier = Modifier.height(18.dp))
 
             // Iconic bouncy tilted multi-color sticker title: 「信号がないゾ！」
+            // Pad each glyph inside its graphicsLayer so thick sticker stroke + shadow never clip,
+            // and use negative Row spacing to preserve tight playful kerning.
             Row(
+                modifier = Modifier.graphicsLayer { clip = false },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy((-22).dp),
             ) {
                 for (i in CRAYON_TITLE_CHARS.indices) {
                     val ch = CRAYON_TITLE_CHARS[i]
                     val fillColor = CRAYON_TITLE_COLORS[i]
                     val tilt = CRAYON_TITLE_TILTS[i]
                     Box(
-                        modifier = Modifier.graphicsLayer {
-                            val t = elapsedState.value
-                            rotationZ = tilt + sin(t * 2.0f + i * 0.7f) * 2.2f
-                            translationY = sin(t * 2.4f + i * 0.65f) * 5f
-                        },
+                        modifier = Modifier
+                            .graphicsLayer {
+                                clip = false
+                                val t = elapsedState.value
+                                rotationZ = tilt + sin(t * 2.0f + i * 0.7f) * 2.2f
+                                translationY = sin(t * 2.4f + i * 0.65f) * 5f
+                            }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
                     ) {
                         // Layer 1: thick white sticker outline + drop shadow
                         Text(
                             text = ch,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible,
                             style = TextStyle(
                                 color = Color.White,
                                 fontSize = 62.sp,
@@ -1640,6 +1648,8 @@ private fun CrayonTitleEffect(
                         // Layer 2: hand-drawn dark crayon ink outline
                         Text(
                             text = ch,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible,
                             style = TextStyle(
                                 color = CRAYON_INK,
                                 fontSize = 62.sp,
@@ -1650,6 +1660,8 @@ private fun CrayonTitleEffect(
                         // Layer 3: vivid crayon fill
                         Text(
                             text = ch,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible,
                             style = TextStyle(
                                 color = fillColor,
                                 fontSize = 62.sp,
@@ -2019,9 +2031,14 @@ private fun PrecureSparkleEffect(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Box(contentAlignment = Alignment.Center) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
                     Text(
                         text = "しんごう待機中♪",
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
                         style = TextStyle(
                             color = Color.White,
                             fontSize = 44.sp,
@@ -2034,6 +2051,8 @@ private fun PrecureSparkleEffect(
                     )
                     Text(
                         text = "しんごう待機中♪",
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
                         style = TextStyle(
                             color = PRECURE_PINK,
                             fontSize = 44.sp,
@@ -2327,9 +2346,14 @@ private fun AipriLiveEffect(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Box(contentAlignment = Alignment.Center) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
                     Text(
                         text = "バズリウム待機中★",
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
                         style = TextStyle(
                             color = Color.White,
                             fontSize = 42.sp,
@@ -2342,6 +2366,8 @@ private fun AipriLiveEffect(
                     )
                     Text(
                         text = "バズリウム待機中★",
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
                         style = TextStyle(
                             color = AIPRI_HIMARI_PINK,
                             fontSize = 42.sp,

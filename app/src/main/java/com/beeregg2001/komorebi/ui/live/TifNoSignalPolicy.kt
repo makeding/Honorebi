@@ -31,7 +31,7 @@ internal fun previewNoSignalRenderMode(style: TifNoSignalStyle): NoSignalRenderM
         TifNoSignalStyle.STARFIELD,
         TifNoSignalStyle.CRAYON_TITLE,
         TifNoSignalStyle.PRECURE_SPARKLE,
-        TifNoSignalStyle.AIPRI_LIVE,
+        // TifNoSignalStyle.AIPRI_LIVE,
         TifNoSignalStyle.NOK_CALLSIGN -> NoSignalRenderMode.EFFECT
     }
 
@@ -68,8 +68,8 @@ internal fun resolveNoSignalRenderMode(
         TifNoSignalStyle.DOT_MATRIX,
         TifNoSignalStyle.STARFIELD,
         TifNoSignalStyle.CRAYON_TITLE,
-        TifNoSignalStyle.PRECURE_SPARKLE,
-        TifNoSignalStyle.AIPRI_LIVE -> {
+        // TifNoSignalStyle.AIPRI_LIVE,
+        TifNoSignalStyle.PRECURE_SPARKLE -> {
             if (hardwareAccelerated && animationsEnabled && !degraded) {
                 NoSignalRenderMode.EFFECT
             } else {

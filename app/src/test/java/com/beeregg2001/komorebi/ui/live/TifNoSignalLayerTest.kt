@@ -177,7 +177,7 @@ class TifNoSignalLayerTest {
             TifNoSignalStyle.STARFIELD,
             TifNoSignalStyle.CRAYON_TITLE,
             TifNoSignalStyle.PRECURE_SPARKLE,
-            TifNoSignalStyle.AIPRI_LIVE,
+            // TifNoSignalStyle.AIPRI_LIVE,
         )
         val activeStyle = androidx.compose.runtime.mutableStateOf(effectStyles.first())
         compose.mainClock.autoAdvance = false
