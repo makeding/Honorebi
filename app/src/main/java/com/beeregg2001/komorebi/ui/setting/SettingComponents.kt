@@ -114,6 +114,7 @@ sealed class SettingDialogState {
     object HonomiLogin : SettingDialogState()
     object HonomiLogout : SettingDialogState()
     object DefaultHomeGuide : SettingDialogState()
+    object NoSignalStylePreview : SettingDialogState()
 
     data class SmbAction(val target: SmbServer) : SettingDialogState()
     data class SmbSetup(val target: SmbServer? = null) : SettingDialogState()

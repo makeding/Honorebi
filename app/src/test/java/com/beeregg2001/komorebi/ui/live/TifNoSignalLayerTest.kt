@@ -162,4 +162,51 @@ class TifNoSignalLayerTest {
             withOverlay.left.value,
         )
     }
+
+    @Test
+    fun allEightEffectStylesRenderEffectTagAndHaveZeroFocusableNodes() {
+        val effectStyles = listOf(
+            TifNoSignalStyle.ARIB_COLOR_BARS,
+            TifNoSignalStyle.ANALOG_STATIC,
+            TifNoSignalStyle.SIGNAL_WAVE,
+            TifNoSignalStyle.MINIMAL_CLOCK,
+            TifNoSignalStyle.AURORA_AMBIENT,
+            TifNoSignalStyle.DOT_MATRIX,
+            TifNoSignalStyle.STARFIELD,
+            TifNoSignalStyle.SIGNAL_RADAR,
+        )
+        val activeStyle = androidx.compose.runtime.mutableStateOf(effectStyles.first())
+        compose.mainClock.autoAdvance = false
+
+        compose.setContent {
+            KomorebiTheme {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    TifNoSignalLayer(
+                        mode = NoSignalRenderMode.EFFECT,
+                        style = activeStyle.value,
+                        statusText = "信号がありません",
+                        inputLabel = "HDMI 1",
+                        isPassthroughInput = true,
+                        screensaverImageUris = emptyList(),
+                        screensaverIntervalSeconds = 30,
+                        screensaverTransition = "FADE",
+                        showOverlay = false,
+                        paused = false,
+                        onDegraded = {},
+                    )
+                }
+            }
+        }
+
+        for (style in effectStyles) {
+            activeStyle.value = style
+            // Advance past the 200ms Crossfade and a few animation frames.
+            compose.mainClock.advanceTimeBy(300)
+            repeat(3) { compose.mainClock.advanceTimeByFrame() }
+            compose.waitForIdle()
+
+            compose.onNodeWithTag(TIF_NO_SIGNAL_EFFECT_TAG, useUnmergedTree = true).assertExists()
+            compose.onAllNodes(isFocusable(), useUnmergedTree = true).assertCountEquals(0)
+        }
+    }
 }

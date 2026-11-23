@@ -114,18 +114,18 @@ internal fun TifNoSignalLayer(
 ) {
     val resolvedSeed = remember(physicsSeed) { physicsSeed ?: System.nanoTime() }
     Crossfade(
-        targetState = mode,
+        targetState = mode to style,
         animationSpec = tween(durationMillis = 200),
         modifier = modifier
             .fillMaxSize()
             .clearAndSetSemantics { contentDescription = statusText },
         label = "TifNoSignalLayer",
-    ) { activeMode ->
+    ) { (activeMode, activeStyle) ->
         when (activeMode) {
             NoSignalRenderMode.BANNER -> Unit
             NoSignalRenderMode.BOUNCE -> {
                 TifNoSignalBounceSurface(
-                    style = style,
+                    style = activeStyle,
                     statusText = statusText,
                     inputLabel = inputLabel,
                     isPassthroughInput = isPassthroughInput,
@@ -156,6 +156,19 @@ internal fun TifNoSignalLayer(
                         )
                     }
                 }
+            }
+            NoSignalRenderMode.EFFECT -> {
+                TifNoSignalEffectSurface(
+                    style = activeStyle,
+                    statusText = statusText,
+                    inputLabel = inputLabel,
+                    isPassthroughInput = isPassthroughInput,
+                    showOverlay = showOverlay,
+                    paused = paused,
+                    dimmed = dimmed,
+                    onDegraded = onDegraded,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }

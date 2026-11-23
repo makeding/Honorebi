@@ -185,5 +185,185 @@ class TifNoSignalPolicyTest {
                 ),
             )
         }
+
+        // Static/low-motion effect styles resolve to EFFECT even when animations/hw accel are off
+        val staticEffectStyles = listOf(
+            TifNoSignalStyle.ARIB_COLOR_BARS,
+            TifNoSignalStyle.MINIMAL_CLOCK,
+        )
+        for (effectStyle in staticEffectStyles) {
+            assertEquals(
+                NoSignalRenderMode.EFFECT,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = false,
+                    animationsEnabled = false,
+                    degraded = true,
+                    containerWidthDp = 480f,
+                ),
+            )
+            // Still fall back to BANNER when not ready, suppressed, or narrow
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = false,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = true,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 479f,
+                ),
+            )
+        }
+
+        // Animated effect styles succeed when hw accel + animations + not degraded, else BANNER
+        val animatedEffectStyles = listOf(
+            TifNoSignalStyle.ANALOG_STATIC,
+            TifNoSignalStyle.SIGNAL_WAVE,
+            TifNoSignalStyle.AURORA_AMBIENT,
+            TifNoSignalStyle.DOT_MATRIX,
+            TifNoSignalStyle.STARFIELD,
+            TifNoSignalStyle.SIGNAL_RADAR,
+        )
+        for (effectStyle in animatedEffectStyles) {
+            assertEquals(
+                NoSignalRenderMode.EFFECT,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = false,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = false,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = true,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = false,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = true,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 960f,
+                ),
+            )
+            assertEquals(
+                NoSignalRenderMode.BANNER,
+                resolveNoSignalRenderMode(
+                    style = effectStyle,
+                    themedReady = true,
+                    suppressed = false,
+                    hardwareAccelerated = true,
+                    animationsEnabled = true,
+                    degraded = false,
+                    containerWidthDp = 479f,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun previewNoSignalRenderModeMapsAllTwelveStyles() {
+        val expected = mapOf(
+            TifNoSignalStyle.BANNER to NoSignalRenderMode.BANNER,
+            TifNoSignalStyle.DVD_BOUNCE to NoSignalRenderMode.BOUNCE,
+            TifNoSignalStyle.HONOREBI_BOUNCE to NoSignalRenderMode.BOUNCE,
+            TifNoSignalStyle.SCREENSAVER to NoSignalRenderMode.SCREENSAVER,
+            TifNoSignalStyle.ARIB_COLOR_BARS to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.ANALOG_STATIC to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.SIGNAL_WAVE to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.MINIMAL_CLOCK to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.AURORA_AMBIENT to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.DOT_MATRIX to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.STARFIELD to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.SIGNAL_RADAR to NoSignalRenderMode.EFFECT,
+        )
+        assertEquals(12, TifNoSignalStyle.entries.size)
+        assertEquals(TifNoSignalStyle.entries.toSet(), expected.keys)
+        for ((style, expectedMode) in expected) {
+            assertEquals(
+                "previewNoSignalRenderMode($style)",
+                expectedMode,
+                previewNoSignalRenderMode(style),
+            )
+        }
     }
 }

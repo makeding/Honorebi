@@ -707,11 +707,7 @@ private fun SettingsMenuScreen(
                                 scope.launch { repository.saveBoolean(SettingsRepository.TIF_SHOW_TUNER_INPUTS, !prefs.tifShowTunerInputs) }
                             },
                             onEditNoSignalStyle = {
-                                uiState.activeDialog = SettingDialogState.Selection(
-                                    "TV入力の信号なし表示",
-                                    TifNoSignalStyle.entries.map { it.label to it.name },
-                                    prefs.tifNoSignalStyle.name,
-                                ) { viewModel.updateTifNoSignalStyle(it) }
+                                uiState.activeDialog = SettingDialogState.NoSignalStylePreview
                             },
                             onRefreshTif = { channelViewModel.fetchChannels() },
                             onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9 },
@@ -1510,6 +1506,18 @@ private fun SettingsMenuScreen(
                     { closeDialog() },
                     { viewModel.saveSmbServer(it); closeDialog() })
             }
+
+            is SettingDialogState.NoSignalStylePreview -> TifNoSignalStylePreviewOverlay(
+                currentStyle = prefs.tifNoSignalStyle,
+                screensaverImageUris = screensaverImages,
+                screensaverIntervalSeconds = 5,
+                screensaverTransition = screensaverTransition,
+                onSelect = {
+                    viewModel.updateTifNoSignalStyle(it.name)
+                    closeDialog()
+                },
+                onDismiss = { closeDialog() },
+            )
 
             else -> {}
         }

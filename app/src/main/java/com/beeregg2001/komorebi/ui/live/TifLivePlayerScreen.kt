@@ -1109,7 +1109,7 @@ private fun TifTopSystemStrip(
 }
 
 @Composable
-private fun TifStatusBanner(
+internal fun TifStatusBanner(
     text: String,
     modifier: Modifier = Modifier,
 ) {
