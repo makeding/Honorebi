@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.ui.player.PlayerLCropOverlay
+import com.beeregg2001.komorebi.ui.player.RecordedPlayerCropInputProfile
 
 
 /* 画面中央に表示される再生・一時停止等のオーバーレイを表示するメソッド */
@@ -120,5 +121,9 @@ fun VideoLCropOverlay(
     state: VideoPlayerState,
     onClose: () -> Unit
 ) {
-    PlayerLCropOverlay(crop = state.crop, onClose = onClose)
+    PlayerLCropOverlay(
+        crop = state.crop,
+        onClose = onClose,
+        inputProfile = RecordedPlayerCropInputProfile,
+    )
 }

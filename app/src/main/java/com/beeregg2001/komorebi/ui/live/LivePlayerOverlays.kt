@@ -44,6 +44,7 @@ import com.beeregg2001.komorebi.ui.player.formatPlayerEndTime
 import com.beeregg2001.komorebi.ui.player.PlayerWallClock
 import androidx.compose.ui.platform.testTag
 import java.time.ZonedDateTime
+import com.beeregg2001.komorebi.ui.player.LivePlayerCropInputProfile
 import com.beeregg2001.komorebi.ui.player.PlayerLCropOverlay
 import com.beeregg2001.komorebi.ui.player.liveChannelNumberLabel
 import com.beeregg2001.komorebi.ui.player.liveChannelTitle
@@ -460,5 +461,9 @@ fun LCropOverlay(
     state: LivePlayerState,
     onClose: () -> Unit
 ) {
-    PlayerLCropOverlay(crop = state.crop, onClose = onClose)
+    PlayerLCropOverlay(
+        crop = state.crop,
+        onClose = onClose,
+        inputProfile = LivePlayerCropInputProfile,
+    )
 }

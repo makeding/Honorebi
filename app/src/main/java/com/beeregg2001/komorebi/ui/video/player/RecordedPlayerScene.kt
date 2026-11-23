@@ -364,7 +364,8 @@ internal fun BoxScope.RecordedPlaybackOverlays(
     AnimatedVisibility(
         visible = state.crop.mode != PlayerCropMode.HIDDEN,
         enter = fadeIn(),
-        exit = fadeOut()
+        exit = fadeOut(),
+        modifier = Modifier.zIndex(5f)
     ) {
         VideoLCropOverlay(state = state, onClose = onLCropClose)
     }
@@ -865,6 +866,7 @@ internal fun handleRecordedPlayerKeyEvent(
         return true
     }
     if (isSubOverlayOpen) return false
+    if (state.crop.mode == PlayerCropMode.MENU) return false
 
     // 次エピソードのカウントダウン表示中は、オーバーレイ側の操作
     // （今すぐ／キャンセルのフォーカス移動・決定・Back）にキーを譲る。

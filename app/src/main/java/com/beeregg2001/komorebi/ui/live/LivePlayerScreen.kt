@@ -43,6 +43,7 @@ import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -923,7 +924,7 @@ fun LivePlayerScreen(
             }
             if (isTifChannel) {
                 Box(Modifier.fillMaxSize().focusRequester(mainFocusRequester)
-                    .focusable(!isPiPMode && !isMiniListOpen && !isSubMenuOpen)) {
+                    .focusable(!isPiPMode && !isMiniListOpen && !isSubMenuOpen && ps.crop.mode == PlayerCropMode.HIDDEN)) {
                     TifLivePlayerScreen(
                         channel = currentChannelItem, groupedChannels = groupedChannels,
                         isMiniListOpen = false, onMiniListToggle = onMiniListToggle,
@@ -1017,17 +1018,25 @@ fun LivePlayerScreen(
         androidx.compose.animation.AnimatedVisibility(
             visible = !isPiPMode && ps.crop.mode != PlayerCropMode.HIDDEN,
             enter = fadeIn(),
-            exit = fadeOut()
+            exit = fadeOut(),
+            modifier = Modifier.zIndex(5f)
         ) {
             LCropOverlay(
                 state = ps,
                 onClose = {
-                    ps.crop.mode = PlayerCropMode.HIDDEN; scope.launch {
-                    delay(200); mainFocusRequester.safeRequestFocus(
-                    TAG
-                )
+                    ps.crop.mode = PlayerCropMode.HIDDEN
+                    scope.launch {
+                        delay(100)
+                        if (ps.crop.mode == PlayerCropMode.HIDDEN &&
+                            !isPiPMode &&
+                            !currentIsSubMenuOpen &&
+                            !currentIsMiniListOpen
+                        ) {
+                            mainFocusRequester.safeRequestFocusWithRetry(TAG)
+                        }
+                    }
                 }
-                })
+            )
         }
 
         val mainLoadingPresentation = remember(

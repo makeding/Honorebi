@@ -175,7 +175,6 @@ class VideoPlayerState {
                 keyCode = keyCode,
                 isActionDown = isActionDown,
                 profile = RecordedPlayerCropInputProfile,
-                onReturnToMenu = { onSubMenuToggle(true) }
             )
         }
 

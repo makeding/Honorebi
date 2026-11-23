@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.tv.material3.Button
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -43,6 +44,7 @@ import com.beeregg2001.komorebi.common.UserFacingFailure
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.player.PlaybackSourceFeedback
 import com.beeregg2001.komorebi.ui.player.PlaybackSourceRequest
+import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlayerSurface
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
@@ -109,7 +111,8 @@ internal fun SmbPlayerScreen(
     )
     val subMenuFocusRequester = remember { FocusRequester() }
     val controlsFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(showControls, isSubMenuOpen, isModernSettingsOpen, sourceRequest) {
+    LaunchedEffect(showControls, isSubMenuOpen, isModernSettingsOpen, sourceRequest, state.crop.mode) {
+        if (state.crop.mode != PlayerCropMode.HIDDEN) return@LaunchedEffect
         if (isSubMenuOpen) subMenuFocusRequester.requestFocus()
         else if (!isModernSettingsOpen && sourceRequest == PlaybackSourceRequest.Ready && showControls) {
             controlsFocusRequester.requestFocus()
@@ -311,7 +314,7 @@ internal fun SmbPlayerScreen(
             timeFormat = timeFormat,
             allComments = emptyList(),
             tiledThumbnailUrl = metadata.thumbnailUrl,
-            isVisible = showControls,
+            isVisible = showControls && state.crop.mode == PlayerCropMode.HIDDEN,
             isSeekingPreviewVisible = false,
             isModernUi = isModern,
             isPlaying = state.isPlayerPlaying,
@@ -380,7 +383,12 @@ internal fun SmbPlayerScreen(
             },
             onQualitySelect = {},
             onCommentToggle = {},
-            onLCropToggle = { toggleRecordedLCrop(state) { onSubMenuToggle(false) } },
+            onLCropToggle = {
+                toggleRecordedLCrop(state) {
+                    onSubMenuToggle(false)
+                    onShowControlsChange(false)
+                }
+            },
             onCmSkipModeToggle = {},
             onHdrRenderModeToggle = {},
             onDataBroadcastingToggle = {},
@@ -414,10 +422,26 @@ internal fun SmbPlayerScreen(
                 },
                 onQualitySelect = {},
                 onCommentToggle = {},
-                onLCropToggle = { toggleRecordedLCrop(state) { isModernSettingsOpen = false } },
+                onLCropToggle = {
+                    toggleRecordedLCrop(state) {
+                        isModernSettingsOpen = false
+                        onShowControlsChange(false)
+                    }
+                },
                 onCmSkipModeToggle = {},
                 capabilities = PlaybackUiCapabilities.Smb,
                 onClose = { isModernSettingsOpen = false },
+            )
+        }
+        AnimatedVisibility(
+            visible = !isPiPMode && state.crop.mode != PlayerCropMode.HIDDEN,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.zIndex(5f),
+        ) {
+            VideoLCropOverlay(
+                state = state,
+                onClose = { closeRecordedLCrop(state) },
             )
         }
         if (isProgramInfoOpen) {

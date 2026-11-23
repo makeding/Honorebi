@@ -33,6 +33,7 @@ import com.beeregg2001.komorebi.data.model.StreamQuality
 import com.beeregg2001.komorebi.viewmodel.VideoPlayerViewModel
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.CmSkipMode
 import com.beeregg2001.komorebi.common.UrlBuilder
@@ -1494,7 +1495,7 @@ internal fun RecordedPlayerScreen(
 
         if (isSubMenuOpen) {
             ui.subMenuFocusRequester.safeRequestFocus(TAG)
-        } else if (showControls && isModern && !isSubOverlayOpen) {
+        } else if (showControls && isModern && !isSubOverlayOpen && vs.crop.mode == PlayerCropMode.HIDDEN) {
             if (!ui.wasControlsVisible) {
                 ui.playerControlsFocusRequester.safeRequestFocus(TAG)
             }
@@ -1739,6 +1740,7 @@ internal fun RecordedPlayerScreen(
     }
     val toggleLCrop: () -> Unit = {
         toggleRecordedLCrop(vs) {
+            ui.isModernSettingsOpen = false
             onSubMenuToggle(false)
             onShowControlsChange(false)
         }
@@ -1871,8 +1873,10 @@ internal fun RecordedPlayerScreen(
                 onLCropClose = {
                     closeRecordedLCrop(vs)
                     scope.launch {
-                        delay(200)
-                        ui.mainFocusRequester.safeRequestFocus(TAG)
+                        delay(100)
+                        if (vs.crop.mode == PlayerCropMode.HIDDEN && !isPiPMode && !isSubOverlayOpen) {
+                            ui.mainFocusRequester.safeRequestFocusWithRetry(TAG)
+                        }
                     }
                 },
                 cmSkipMode = cmSkipMode,
