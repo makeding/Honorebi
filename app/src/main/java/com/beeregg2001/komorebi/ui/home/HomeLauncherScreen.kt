@@ -257,6 +257,18 @@ fun HomeLauncherScreen(
             onBackTriggered()
             return
         }
+        if (railHasFocus) {
+            val activeTab = tabController.selectedTab
+            if (tabController.isContentReadyFor(activeTab)) {
+                isEnteringContentFromRail = true
+                androidx.compose.runtime.withFrameNanos { }
+                if (tabController.contentRequester(activeTab).safeRequestFocus("Back_CollapseRail")) {
+                    onBackTriggered()
+                    return
+                }
+                isEnteringContentFromRail = false
+            }
+        }
         val defaultTab = LauncherTab.fromTitle(settingsViewModel.getStartupTabOnce())
             ?.takeIf { it in visibleTabs }
             ?: visibleTabs.first()

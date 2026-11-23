@@ -448,6 +448,8 @@ fun OnAirScreen(
                     onRestored = { returnCell = null; onReturnFocusConsumed() },
                     onProgram = onProgramClick,
                     onBack = ::closeDetail,
+                    leftNavFocusRequester = leftNavFocusRequester,
+                    entryFocusRequester = initialFocusRequester,
                     modifier = Modifier.fillMaxSize().testTag("onair-details"),
                 )
             } else {

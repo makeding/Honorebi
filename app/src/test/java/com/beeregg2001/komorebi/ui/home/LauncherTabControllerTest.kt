@@ -160,10 +160,10 @@ class LauncherTabControllerTest {
         assertEquals(LauncherTab.HOME, controller.selectedTab)
         assertEquals(LauncherTab.HOME, controller.activeTab)
 
-        // VIDEO moved from index 3 to index 2, yet keeps its exact FocusRequester instances.
+        // VIDEO moved from index 4 to index 3, yet keeps its exact FocusRequester instances.
         assertEquals(3, controller.visibleTabs.indexOf(LauncherTab.VIDEO))
-        assertSame(videoTabRequesterBefore, controller.tabRequesterAt(2))
-        assertSame(videoContentRequesterBefore, controller.contentRequesterAt(2))
+        assertSame(videoTabRequesterBefore, controller.tabRequesterAt(3))
+        assertSame(videoContentRequesterBefore, controller.contentRequesterAt(3))
 
         // Syncing again when current tab is still visible returns null.
         assertNull(controller.syncVisibleTabs(LauncherTab.visibleTabs(hideAppsTab = false)))

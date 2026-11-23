@@ -28,11 +28,11 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FiberSmartRecord
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -417,7 +417,7 @@ internal fun LauncherNavRail(
         RailVersionFooter(
             isFocused = isVersionFocused,
             labelAlpha = labelAlpha,
-            fullVersion = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            fullVersion = "v${BuildConfig.VERSION_NAME.substringBefore("-")} (${BuildConfig.VERSION_CODE})",
             contentColor = if (isVersionFocused) colors.textPrimary else colors.textSecondary.copy(alpha = 0.72f),
             modifier = Modifier
                 .testTag("launcher-rail-version")
@@ -509,10 +509,10 @@ private fun RailVersionFooter(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = Icons.Outlined.Info,
+                imageVector = Icons.Default.Info,
                 contentDescription = fullVersion,
                 tint = contentColor,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(20.dp),
             )
         }
 

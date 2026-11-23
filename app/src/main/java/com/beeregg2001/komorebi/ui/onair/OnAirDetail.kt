@@ -57,6 +57,8 @@ internal fun OnAirDetail(
     timeFormat: String,
     returnCell: String?, onRestored: () -> Unit, onProgram: (RecordedProgram) -> Unit, onBack: () -> Unit, modifier: Modifier,
     waitingForPlayerReturn: Boolean = false,
+    leftNavFocusRequester: FocusRequester = FocusRequester.Cancel,
+    entryFocusRequester: FocusRequester? = null,
 ) {
     val colors = KomorebiTheme.colors
     val matrix = remember(detail.programs) { buildSeriesEpisodeMatrix(detail.programs) }
@@ -239,6 +241,7 @@ internal fun OnAirDetail(
                         detail.summaryStatus, "作品情報", viewModel::retrySummary, Modifier.padding(bottom = 6.dp),
                         chipFocusRequester = summaryRetryFocus,
                         chipDown = summaryFocus,
+                        chipLeft = leftNavFocusRequester,
                     )
                     SeriesSummaryPanel(
                         series = series,
@@ -249,9 +252,14 @@ internal fun OnAirDetail(
                         focusRequester = summaryFocus,
                         upRequester = heroUp,
                         downRequester = heroDown,
+                        leftRequester = leftNavFocusRequester,
                         onToggleExpanded = { viewModel.setSummaryExpanded(!state.summaryExpanded) },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(
+                                if (entryFocusRequester != null) Modifier.focusRequester(entryFocusRequester)
+                                else Modifier
+                            )
                             .then(
                                 if (state.summaryExpanded) Modifier.heightIn(min = heroHeight, max = heroExpandedMax)
                                 else Modifier.height(heroHeight)
@@ -284,6 +292,7 @@ internal fun OnAirDetail(
                             chipFocusRequester = programsRetryFocus,
                             chipUp = if (detail.summaryStatus is OnAirLoadState.Error) summaryRetryFocus else summaryFocus,
                             chipDown = defaultCell ?: FocusRequester.Cancel,
+                            chipLeft = leftNavFocusRequester,
                         )
                         if (matrix.rows.isEmpty()) {
                             when (detail.programsStatus) {
@@ -501,6 +510,7 @@ private fun SeriesSummaryPanel(
     focusRequester: FocusRequester,
     upRequester: FocusRequester,
     downRequester: FocusRequester,
+    leftRequester: FocusRequester = FocusRequester.Cancel,
     onToggleExpanded: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -521,7 +531,7 @@ private fun SeriesSummaryPanel(
         modifier = modifier.fillMaxWidth().focusRequester(focusRequester).testTag("onair-summary")
             .focusProperties {
                 up = upRequester
-                left = FocusRequester.Cancel
+                left = leftRequester
                 right = downRequester
                 down = downRequester
             }
@@ -717,6 +727,7 @@ private fun DetailStatus(
     chipFocusRequester: FocusRequester? = null,
     chipUp: FocusRequester = FocusRequester.Cancel,
     chipDown: FocusRequester = FocusRequester.Cancel,
+    chipLeft: FocusRequester = FocusRequester.Cancel,
 ) {
     val error = status as? OnAirLoadState.Error ?: return
     Row(modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -729,7 +740,7 @@ private fun DetailStatus(
                 .focusProperties {
                     up = chipUp
                     down = chipDown
-                    left = FocusRequester.Cancel
+                    left = chipLeft
                     right = FocusRequester.Cancel
                 },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(5.dp)),

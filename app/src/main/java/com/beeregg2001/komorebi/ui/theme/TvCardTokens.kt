@@ -56,7 +56,7 @@ const val TvCardScrimAlphaUnfocused = 0f
 val TvRailCollapsedWidth = 68.dp
 
 /** 左ナビゲーションレール (展開時・オーバーレイ) */
-val TvRailExpandedWidth = 196.dp
+val TvRailExpandedWidth = 172.dp
 
 /** レール / サイドバー選択中インジケータ (左端ピル) */
 val TvRailSelectedIndicatorWidth = 3.dp
