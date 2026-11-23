@@ -126,13 +126,19 @@ class DeepTvIntegrationSettingsTest {
 
         fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
         val toggle = row("TV入力（TIF）統合を有効にする")
+        val castAccess = row("キャスト・リモート操作の接続許可")
+        val showTuners = row("入力ソースにテレビ信号を表示")
         val hideEmpty = row("チャンネル未登録のTV入力を非表示")
         val noSignal = row("TV入力の信号なし表示")
         val refreshTif = row("TV入力を再読み込み")
 
-        // Expanded focus chain: row7 -> row8 -> row9 -> TV入力を再読み込み
+        // Expanded focus chain: toggle -> castAccess -> showTuners -> hideEmpty -> noSignal -> TV入力を再読み込み
         toggle.requestFocus().assertIsFocused().assertTextContains("ON")
         toggle.performKeyInput { pressKey(Key.DirectionDown) }
+        castAccess.assertIsFocused()
+        castAccess.performKeyInput { pressKey(Key.DirectionDown) }
+        showTuners.assertIsFocused()
+        showTuners.performKeyInput { pressKey(Key.DirectionDown) }
         hideEmpty.assertIsFocused()
         hideEmpty.performKeyInput { pressKey(Key.DirectionDown) }
         noSignal.assertIsFocused()
@@ -143,21 +149,28 @@ class DeepTvIntegrationSettingsTest {
         noSignal.performKeyInput { pressKey(Key.DirectionUp) }
         hideEmpty.assertIsFocused()
         hideEmpty.performKeyInput { pressKey(Key.DirectionUp) }
+        showTuners.assertIsFocused()
+        showTuners.performKeyInput { pressKey(Key.DirectionUp) }
+        castAccess.assertIsFocused()
+        castAccess.performKeyInput { pressKey(Key.DirectionUp) }
         toggle.assertIsFocused()
 
-        // Toggle OFF -> persists, collapses rows 8-9 & TifInputSettings, keeps focus on row7, down = Cancel
+        // Toggle OFF -> persists, collapses TIF detail rows, keeps focus on toggle, down moves to castAccess
         toggle.performKeyInput { pressKey(Key.DirectionCenter) }
         compose.waitForIdle()
         compose.waitUntil(3000) { runBlocking { !repository.tifIntegrationEnabled.first() } }
         assertFalse(runBlocking { repository.tifIntegrationEnabled.first() })
 
         toggle.assertIsFocused().assertTextContains("OFF")
+        compose.onNode(hasText("入力ソースにテレビ信号を表示")).assertDoesNotExist()
         compose.onNode(hasText("チャンネル未登録のTV入力を非表示")).assertDoesNotExist()
         compose.onNode(hasText("TV入力の信号なし表示")).assertDoesNotExist()
         compose.onNode(hasText("TV入力を再読み込み")).assertDoesNotExist()
 
         toggle.performKeyInput { pressKey(Key.DirectionDown) }
-        toggle.assertIsFocused()
+        castAccess.assertIsFocused()
+        castAccess.performKeyInput { pressKey(Key.DirectionDown) }
+        castAccess.assertIsFocused()
     }
 
     @Test
@@ -357,7 +370,8 @@ class DeepTvIntegrationSettingsTest {
 
         fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
         val osPip = row("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行")
-        val hideEmpty = row("チャンネル未登録のTV入力を非表示")
+        val castAccess = row("キャスト・リモート操作の接続許可")
+        val showTuners = row("入力ソースにテレビ信号を表示")
 
         compose.onNode(hasText("TV入力（TIF）統合を有効にする"))
             .assertIsNotEnabled()
@@ -365,8 +379,12 @@ class DeepTvIntegrationSettingsTest {
 
         osPip.requestFocus().assertIsFocused()
         osPip.performKeyInput { pressKey(Key.DirectionDown) }
-        hideEmpty.assertIsFocused()
-        hideEmpty.performKeyInput { pressKey(Key.DirectionUp) }
+        castAccess.assertIsFocused()
+        castAccess.performKeyInput { pressKey(Key.DirectionDown) }
+        showTuners.assertIsFocused()
+        showTuners.performKeyInput { pressKey(Key.DirectionUp) }
+        castAccess.assertIsFocused()
+        castAccess.performKeyInput { pressKey(Key.DirectionUp) }
         osPip.assertIsFocused()
     }
 

@@ -159,8 +159,8 @@ fun ConnectionSettingsContent(
                     }
                 }
             }
+            val selected = ConnectionSourcePolicy.resolve(prefs.backendType, selectable)
             SettingsSection("メインシステム") {
-                val selected = ConnectionSourcePolicy.resolve(prefs.backendType, selectable)
                 row(4, "メインシステム",
                     selectable.firstOrNull { it.backend == selected }?.label ?: AppStrings.SETTINGS_VALUE_UNSET,
                     Icons.Default.CheckCircle, itemRs[3],
@@ -179,7 +179,7 @@ fun ConnectionSettingsContent(
                     else -> "メインシステムに従う（トランスコード）"
                 }, Icons.Default.PriorityHigh,
                     when {
-                        prefs.backendType == ConnectionSource.TIF.backend -> tifLast
+                        selected == ConnectionSource.TIF.backend -> tifLast
                         !canSelectMain -> itemRs[3]
                         else -> itemRs[4]
                     },

@@ -87,11 +87,11 @@ fun DeepTvIntegrationSettingsContent(
         add(DeepTvItemIndex.REMOTE_KEYS)
         add(DeepTvItemIndex.NUMBER_TUNING)
         if (pipSupported) add(DeepTvItemIndex.OS_PIP)
-        add(DeepTvItemIndex.CAST_ACCESS)
         if (!lockedByMainSystem) add(DeepTvItemIndex.TIF_TOGGLE)
+        add(DeepTvItemIndex.CAST_ACCESS)
         if (expanded) {
-            add(DeepTvItemIndex.TIF_HIDE_EMPTY)
             add(DeepTvItemIndex.TIF_SHOW_TUNERS)
+            add(DeepTvItemIndex.TIF_HIDE_EMPTY)
             add(DeepTvItemIndex.TIF_NO_SIGNAL)
         }
     }
