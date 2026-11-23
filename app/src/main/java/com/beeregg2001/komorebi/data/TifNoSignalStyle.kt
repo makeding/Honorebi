@@ -6,9 +6,9 @@ enum class TifNoSignalStyle(
 ) {
     BANNER("標準バナー", "中央にシンプルなステータスバナーを表示"),
     SCREENSAVER("スクリーンセーバー", "設定済みのスクリーンセーバーを表示"),
+    NOK_CALLSIGN("N〇K", "コールサイン（▲▼でカラー変更）"),
     DVD_BOUNCE("DVD風バウンス", "懐かしのロゴが画面端で跳ね返る演出"),
     HONOREBI_BOUNCE("Honorebi バウンス", "Honorebi ロゴが光りながらバウンス"),
-    NOK_CALLSIGN("N〇K", "コールサイン（▲▼でカラー変更）"),
     ARIB_COLOR_BARS("ARIB カラーバー", "地デジ試験電波風の静止カラーバー"),
     ARIB_COLOR_BARS_SCROLL("ARIB スクロールバー", "深夜放送の試験電波風スクロールカラーバー"),
     ANALOG_STATIC("アナログ砂嵐", "レトロなCRTブラウン管の砂嵐とOSD"),
