@@ -259,6 +259,39 @@ class LivePlaybackSlotControllerTest {
         }
     }
 
+    @Test
+    fun debouncedBeginKeepsExistingPlaybackAliveUntilReleased() = runBlocking {
+        val oldClosed = CountDownLatch(1)
+        val lateClosed = CountDownLatch(1)
+        val controller = LivePlaybackSlotController("debounce-test")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var oldRecoveryCancelled = false
+        try {
+            val first = controller.begin()
+            assertTrue(first.installLease(lease("old", oldClosed)))
+            assertTrue(first.launchRecovery(scope) { try { awaitCancellation() } finally { oldRecoveryCancelled = true } })
+
+            val debouncing = controller.begin(releaseExistingPlayback = false)
+            assertTrue(oldRecoveryCancelled)
+            assertFalse(first.isCurrent())
+            assertTrue(debouncing.isCurrent())
+            assertEquals("old", controller.currentLease()?.id)
+            assertEquals(1L, oldClosed.count)
+
+            // Superseded run still cannot install a late lease during debounce.
+            assertFalse(first.installLease(lease("late", lateClosed)))
+            assertTrue(lateClosed.await(2, TimeUnit.SECONDS))
+
+            // Committing after debounce releases the preserved playback cleanly.
+            controller.releasePlayback("channel_switch")
+            assertTrue(oldClosed.await(2, TimeUnit.SECONDS))
+            assertTrue(debouncing.isCurrent())
+        } finally {
+            controller.stop("test")
+            scope.cancel()
+        }
+    }
+
     private fun lease(id: String, released: CountDownLatch) = LiveStreamSessionLease(
         LiveStreamSessionResponse(id, "https://example.invalid/$id", "hls")
     ) { released.countDown() }

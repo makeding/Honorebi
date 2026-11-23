@@ -116,7 +116,7 @@ class LivePlayerViewModel @Inject constructor(
     companion object {
         private const val TAG = "LivePlayerViewModel"
         private const val MAX_AUTO_RETRY = 2
-        private const val CHANNEL_SWITCH_STREAM_DEBOUNCE_MS = 100L
+        internal const val CHANNEL_SWITCH_STREAM_DEBOUNCE_MS = 100L
         private const val LIVE_HISTORY_CHECKPOINT_MS = 10_000L
     }
 
@@ -456,6 +456,8 @@ class LivePlayerViewModel @Inject constructor(
                 "player=${_mainPlayer.value != null}, channel=${mainCurrentChannel?.displayChannelId}, " +
                 "source=$mainCurrentSource, quality=${mainCurrentQuality?.value}"
         )
+        _mainPlayer.value = null
+        clearMainRuntimeState()
         if (releaseSlot) mainSlot.stop(reason) else mainSlot.releasePlayback(reason)
         mainCaptionFence.reset()
         mainB62SubtitleSamples.clearPending()
@@ -463,8 +465,6 @@ class LivePlayerViewModel @Inject constructor(
         mainSuperimposeDecoder.reset()
         _mainSubtitleLanguages.value = emptyList()
 
-        _mainPlayer.value = null
-        clearMainRuntimeState()
         mainRawMmtsLayerController.reset()
 
         if (!preserveTerminalStatus) {
@@ -815,13 +815,11 @@ class LivePlayerViewModel @Inject constructor(
     ) {
         if (!nhkExclusionRepository.state.value.isLoaded || nhkExclusionRepository.isExcluded(channel)) return
         if (channel.displayChannelId.isBlank() || channel.displayChannelId == "null") return
-        // Save the old main pane before its channel/player is replaced. Dual playback is
-        // intentionally not reported: the focused main pane is the live watch contract.
-        saveMainLiveHistory(final = true)
+        val shouldDebounce = !isAutoRetry && mainCurrentChannel != null && mainCurrentChannel?.id != channel.id
+        val preserveExistingPlayback = shouldDebounce && mainSlot.currentRuntime() != null
         if (!isAutoRetry) mainIntent = LiveSlotIntent(channel, source, isEdcbDirect, quality, uiContext)
         val token = beginChannelSession(LivePlaybackSlot.MAIN, channel.id)
         Log.i(TAG, "main request channel=${channel.id} source=$source quality=${quality.value} token=${token.epoch} retry=$isAutoRetry")
-        if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
         if (!isAutoRetry) {
             mainAutoRetryCount = 0
             mainNetworkRecoveryGate.onPlaybackStarted()
@@ -829,8 +827,14 @@ class LivePlayerViewModel @Inject constructor(
             _mainPlayerError.value = null
             _mainPlayerErrorIsCapabilityRelated.value = false
         }
-        mainCurrentChannel = channel
-        dataBroadcastingStore.beginSession(channel.id)
+        if (!preserveExistingPlayback) {
+            // Save the old main pane before its channel/player is replaced. Dual playback is
+            // intentionally not reported: the focused main pane is the live watch contract.
+            saveMainLiveHistory(final = true)
+            if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
+            mainCurrentChannel = channel
+            dataBroadcastingStore.beginSession(channel.id)
+        }
 
         viewModelScope.launch {
             val logoUrl = channelLogoCache.getChannelLogoUrl(channel)
@@ -838,12 +842,12 @@ class LivePlayerViewModel @Inject constructor(
         }
 
         mainPlaybackHealth.reset()
-        val mainRun = mainSlot.begin()
+        val mainRun = mainSlot.begin(releaseExistingPlayback = !preserveExistingPlayback)
         val mainJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
                 // チャンネル名は UI 側で即時更新し、ストリームだけを短くデバウンスする。
-                // 連続切替ではこの Job がキャンセルされるため、最後のチャンネルだけを要求する。
-                if (!isAutoRetry) delay(CHANNEL_SWITCH_STREAM_DEBOUNCE_MS)
+                // 連続切替ではこの Job がキャンセルされるため、旧再生を保ったまま最後のチャンネルだけを要求する。
+                if (shouldDebounce) delay(CHANNEL_SWITCH_STREAM_DEBOUNCE_MS)
                 if (!channelSessions.isCurrent(token)) return@launch
                 if (!isAutoRetry) {
                     withContext(Dispatchers.Main.immediate) {
@@ -853,8 +857,15 @@ class LivePlayerViewModel @Inject constructor(
                 mainPlaybackMutex.withLock {
                     withContext(Dispatchers.Main) {
                         if (!channelSessions.isCurrent(token)) return@withContext
-                        stopMainPlaybackSafely(endSession = false, releaseSlot = false); _mainSseStatus.value =
-                        "Standby"
+                        stopMainPlaybackSafely(
+                            reason = if (shouldDebounce) "channel_switch" else "start_main",
+                            endSession = false,
+                            releaseSlot = false
+                        )
+                        if (mainCurrentChannel?.id != channel.id) setSubtitleLanguage(1)
+                        mainCurrentChannel = channel
+                        dataBroadcastingStore.beginSession(channel.id)
+                        _mainSseStatus.value = "Standby"
                         if (!isAutoRetry || !_mainSseDetail.value.contains("自動復旧")) {
                             _mainSseDetail.value = "ストリームを準備中..."
                         }

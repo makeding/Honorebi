@@ -45,15 +45,21 @@ internal class LivePlaybackSlotController(
     fun currentEventSource(): EventSource? = synchronized(lock) { eventSource }
     fun currentLease(): LiveStreamSessionLease? = synchronized(lock) { upstreamLease }
 
-    fun begin(): Run {
+    fun begin(releaseExistingPlayback: Boolean = true): Run {
         val previous: Resources
         val run: Run
         synchronized(lock) {
             generation += 1
             playbackBlocked = false
-            previous = takeResourcesLocked()
+            previous = if (releaseExistingPlayback) {
+                takeResourcesLocked()
+            } else {
+                Resources(job, recoveryJob, null, null, null).also {
+                    job = null
+                    recoveryJob = null
+                }
+            }
             run = Run(generation)
-            job = null
         }
         previous.release("replaced")
         return run

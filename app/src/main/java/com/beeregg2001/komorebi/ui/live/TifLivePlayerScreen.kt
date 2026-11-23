@@ -197,36 +197,24 @@ fun TifLivePlayerScreen(
     }
 
     // 明示的な再選局は新セッションを作成し、古いTvViewを解放する。
-    var retuneGeneration by remember(channel.id) { mutableIntStateOf(0) }
-    var coldHandshakeRetries by remember(channel.id, isStarted, sessionGeneration) { mutableIntStateOf(0) }
-    var lastUnavailableReason by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    // 同一 inputId 内のチャンネル切替は TvView を破棄せずデバウンス後にそのまま tune() する。
+    var retuneGeneration by remember { mutableIntStateOf(0) }
+    var lastTunedChannelId by remember(isStarted, sessionGeneration) { mutableStateOf<String?>(null) }
+    var lastRetuneGeneration by remember(isStarted, sessionGeneration) { mutableIntStateOf(retuneGeneration) }
+    var coldHandshakeRetries by remember(isStarted, sessionGeneration) { mutableIntStateOf(0) }
+    var lastUnavailableReason by remember(isStarted, sessionGeneration) {
         mutableStateOf<Int?>(null)
     }
-    var target by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    var target by remember(isStarted, sessionGeneration) {
         mutableStateOf<TifInput.TuneTarget?>(null)
     }
-    var resolutionComplete by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf(false) }
-    var resolveError by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<String?>(null) }
-    LaunchedEffect(context, channel.id, isStarted, retuneGeneration, sessionGeneration) {
-        target = null
-        resolutionComplete = false
-        resolveError = null
-        if (isStarted) {
-            try {
-                target = withContext(Dispatchers.IO) { TifInput.resolveTarget(context, channel.id) }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                resolveError = "TV入力の確認に失敗しました: " + error.message
-            }
-        }
-        resolutionComplete = true
-    }
+    var resolutionComplete by remember(isStarted, sessionGeneration) { mutableStateOf(false) }
+    var resolveError by remember(isStarted, sessionGeneration) { mutableStateOf<String?>(null) }
 
-    var videoStatus by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    var videoStatus by remember(isStarted, sessionGeneration) {
         mutableStateOf<TifVideoStatus>(TifVideoStatus.Transient("映像の受信を開始しています…"))
     }
-    var handshakeRetryPending by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    var handshakeRetryPending by remember(isStarted, sessionGeneration) {
         mutableStateOf(false)
     }
     val view = LocalView.current
@@ -234,19 +222,62 @@ fun TifLivePlayerScreen(
     val animationsEnabled = remember(context) { areSystemAnimatorsEnabled(context) }
     var noSignalDegraded by remember { mutableStateOf(false) }
     var containerWidthDp by remember { mutableFloatStateOf(0f) }
-    var videoAvailable by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf(false) }
-    var contentBlocked by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf(false) }
-    var audioTracks by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    var videoAvailable by remember(isStarted, sessionGeneration) { mutableStateOf(false) }
+    var contentBlocked by remember(isStarted, sessionGeneration) { mutableStateOf(false) }
+    var audioTracks by remember(isStarted, sessionGeneration) {
         mutableStateOf<List<TvTrackInfo>>(emptyList())
     }
-    var selectedAudioId by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<String?>(null) }
-    var subtitleTracks by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    var selectedAudioId by remember(isStarted, sessionGeneration) { mutableStateOf<String?>(null) }
+    var subtitleTracks by remember(isStarted, sessionGeneration) {
         mutableStateOf<List<TvTrackInfo>>(emptyList())
     }
-    var selectedSubtitleId by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) {
+    var selectedSubtitleId by remember(isStarted, sessionGeneration) {
         mutableStateOf<String?>(null)
     }
-    var activeView by remember(channel.id, isStarted, retuneGeneration, sessionGeneration) { mutableStateOf<TvView?>(null) }
+    var activeView by remember(isStarted, sessionGeneration) { mutableStateOf<TvView?>(null) }
+
+    LaunchedEffect(context, channel.id, isStarted, retuneGeneration, sessionGeneration) {
+        if (!isStarted) {
+            target = null
+            resolveError = null
+            resolutionComplete = true
+            return@LaunchedEffect
+        }
+        val isRetune = retuneGeneration != lastRetuneGeneration
+        val isChannelSwitch = lastTunedChannelId != null && lastTunedChannelId != channel.id && !isRetune
+        if (isChannelSwitch) {
+            // 連続切替では直前のチューニング要求をキャンセルし、旧 TvView の映像を保ったまま待機する。
+            delay(LivePlayerViewModel.CHANNEL_SWITCH_STREAM_DEBOUNCE_MS)
+        } else if (target == null) {
+            resolutionComplete = false
+            resolveError = null
+        }
+        var resolvedTarget: TifInput.TuneTarget? = null
+        var resolvedError: String? = null
+        try {
+            resolvedTarget = withContext(Dispatchers.IO) { TifInput.resolveTarget(context, channel.id) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            resolvedError = "TV入力の確認に失敗しました: " + error.message
+        }
+        if (lastTunedChannelId != channel.id) {
+            coldHandshakeRetries = 0
+        }
+        lastTunedChannelId = channel.id
+        lastRetuneGeneration = retuneGeneration
+        lastUnavailableReason = null
+        videoAvailable = false
+        contentBlocked = false
+        audioTracks = emptyList()
+        selectedAudioId = null
+        subtitleTracks = emptyList()
+        selectedSubtitleId = null
+        videoStatus = TifVideoStatus.Transient("映像の受信を開始しています…")
+        resolveError = resolvedError
+        target = resolvedTarget
+        resolutionComplete = true
+    }
     var captions by rememberSaveable(channel.id, initialCaptions) { mutableStateOf(initialCaptions) }
     LaunchedEffect(initialCaptions, videoOnly) { if (videoOnly) captions = initialCaptions }
     LaunchedEffect(activeView, captions, subtitleTracks) {
@@ -537,7 +568,11 @@ fun TifLivePlayerScreen(
             )
         } else {
             val tuneTarget = requireNotNull(target)
-            key(tuneTarget.inputId, channel.id, retuneGeneration, sessionGeneration) {
+            val latestChannel by rememberUpdatedState(channel)
+            val latestOnChannelPlaybackCommitted by rememberUpdatedState(onChannelPlaybackCommitted)
+            val latestIsPassthroughInput by rememberUpdatedState(isPassthroughInput)
+            key(tuneTarget.inputId, retuneGeneration, sessionGeneration) {
+                var tunedUri by remember { mutableStateOf<android.net.Uri?>(null) }
                 AndroidView(
                     factory = { viewContext ->
                         TvView(viewContext).apply {
@@ -546,7 +581,7 @@ fun TifLivePlayerScreen(
                             keepScreenOn = isStarted && !systemSleepAllowed
                             setCallback(object : TvView.TvInputCallback() {
                                 override fun onVideoAvailable(inputId: String) {
-                                    onChannelPlaybackCommitted(channel)
+                                    latestOnChannelPlaybackCommitted(latestChannel)
                                     videoAvailable = true
                                     lastUnavailableReason = null
                                     coldHandshakeRetries = 0
@@ -582,7 +617,7 @@ fun TifLivePlayerScreen(
                                     videoAvailable = false
                                     lastUnavailableReason = reason
                                     if (!contentBlocked) {
-                                        videoStatus = videoUnavailableStatus(reason, isPassthroughInput)
+                                        videoStatus = videoUnavailableStatus(reason, latestIsPassthroughInput)
                                     }
                                 }
 
@@ -615,6 +650,7 @@ fun TifLivePlayerScreen(
                             try {
                                 setStreamVolume(1.0f)
                                 tune(tuneTarget.inputId, tuneTarget.channelUri)
+                                tunedUri = tuneTarget.channelUri
                                 activeView = this
                                 activeViewForLifecycle = this
                             } catch (error: Exception) {
@@ -625,6 +661,15 @@ fun TifLivePlayerScreen(
                     },
                     update = { view ->
                         view.keepScreenOn = isStarted && !systemSleepAllowed
+                        if (tunedUri != tuneTarget.channelUri) {
+                            try {
+                                view.setStreamVolume(1.0f)
+                                view.tune(tuneTarget.inputId, tuneTarget.channelUri)
+                                tunedUri = tuneTarget.channelUri
+                            } catch (error: Exception) {
+                                videoStatus = TifVideoStatus.Notice("TV入力の選局に失敗しました: " + error.message)
+                            }
+                        }
                     },
                     onRelease = { view ->
                         view.keepScreenOn = false

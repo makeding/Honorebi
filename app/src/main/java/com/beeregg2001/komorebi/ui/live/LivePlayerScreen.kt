@@ -483,7 +483,7 @@ fun LivePlayerScreen(
         if (currentChannelItem.id == lastChannelIdForSwitchHint) return@LaunchedEffect
         lastChannelIdForSwitchHint = currentChannelItem.id
         isChannelSwitchDebouncing = true
-        delay(100L)
+        delay(LivePlayerViewModel.CHANNEL_SWITCH_STREAM_DEBOUNCE_MS)
         isChannelSwitchDebouncing = false
     }
 
