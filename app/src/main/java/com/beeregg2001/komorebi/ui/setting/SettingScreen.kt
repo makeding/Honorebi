@@ -34,9 +34,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +72,8 @@ internal val TIME_FORMAT_OPTIONS = listOf(
     "24時間表記" to "24H",
     "12時間表記 (AM/PM)" to "12H"
 )
+
+internal const val SETTING_CATEGORY_COALESCE_MS = 200L
 
 private data class SettingSidebarRow(
     val contentIndex: Int,
@@ -268,16 +272,53 @@ private fun SettingsMenuScreen(
 
     val mainScrollState = rememberScrollState()
     val sidebarScrollState = rememberScrollState()
+    var activeCategoryIndex by remember(initialCategoryIndex) { mutableIntStateOf(initialCategoryIndex) }
+    var pendingContentFocusCategory by remember { mutableStateOf<Int?>(null) }
 
+    // Coalesce rapid D-pad scrubs on the settings sidebar before swapping the right-hand content tree.
     LaunchedEffect(uiState.selectedCategoryIndex, isUpgradeTourOverlayActive) {
+        if (activeCategoryIndex != uiState.selectedCategoryIndex) {
+            if (!isUpgradeTourOverlayActive) {
+                delay(SETTING_CATEGORY_COALESCE_MS)
+            }
+            activeCategoryIndex = uiState.selectedCategoryIndex
+        }
+    }
+
+    val commitAndFocusCategory: (Int) -> Unit = { categoryIndex ->
+        uiState.selectedCategoryIndex = categoryIndex
+        if (activeCategoryIndex == categoryIndex) {
+            pendingContentFocusCategory = null
+            itemFocusRequesters.getOrNull(categoryIndex)?.firstOrNull()
+                ?.safeRequestFocus("CategoryItem_Click")
+        } else {
+            activeCategoryIndex = categoryIndex
+            pendingContentFocusCategory = categoryIndex
+        }
+    }
+
+    LaunchedEffect(activeCategoryIndex, pendingContentFocusCategory) {
+        if (pendingContentFocusCategory == activeCategoryIndex) {
+            androidx.compose.runtime.withFrameNanos { }
+            itemFocusRequesters.getOrNull(activeCategoryIndex)?.firstOrNull()
+                ?.safeRequestFocusWithRetry(
+                    tag = "SettingScreen_CommitCategory",
+                    maxRetries = 4,
+                    delayMillis = 40L
+                )
+            pendingContentFocusCategory = null
+        }
+    }
+
+    LaunchedEffect(activeCategoryIndex, isUpgradeTourOverlayActive) {
         if (isUpgradeTourOverlayActive) {
-            if (uiState.selectedCategoryIndex == 5) {
+            if (activeCategoryIndex == 5) {
                 androidx.compose.runtime.withFrameNanos { }
                 mainScrollState.scrollTo(mainScrollState.maxValue)
             } else {
                 mainScrollState.scrollTo(0)
             }
-        } else if (initialFocusItemIndex == null || uiState.selectedCategoryIndex != initialCategoryIndex) {
+        } else if (initialFocusItemIndex == null || activeCategoryIndex != initialCategoryIndex) {
             mainScrollState.scrollTo(0)
         }
     }
@@ -333,6 +374,7 @@ private fun SettingsMenuScreen(
     LaunchedEffect(initialOpenDeviceCapabilities) {
         if (initialOpenDeviceCapabilities) {
             uiState.selectedCategoryIndex = 11
+            activeCategoryIndex = 11
             uiState.restoreFocusRequester = itemFocusRequesters[11][5]
             uiState.restoreCategoryIndex = 11
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
@@ -459,14 +501,25 @@ private fun SettingsMenuScreen(
                                 onFocused = {
                                     uiState.selectedCategoryIndex = row.contentIndex
                                 },
-                                onClick = { targetR.safeRequestFocus("CategoryItem_Click") },
+                                onClick = { commitAndFocusCategory(row.contentIndex) },
                                 enabled = !uiState.isRestoringFocus,
                                 modifier = Modifier
                                     .padding(start = if (row.isChild) 16.dp else 0.dp)
                                     .focusRequester(sidebarRowRequesters[index])
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.type == KeyEventType.KeyDown &&
+                                            keyEvent.key == Key.DirectionRight &&
+                                            activeCategoryIndex != row.contentIndex
+                                        ) {
+                                            commitAndFocusCategory(row.contentIndex)
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
                                     .focusProperties {
                                         left = FocusRequester.Cancel // ★ 修正: 左キーでフォーカスが迷子になるのを防ぐ
-                                        right = targetR
+                                        right = if (activeCategoryIndex == row.contentIndex) targetR else FocusRequester.Cancel
                                         up = if (index == 0) FocusRequester.Cancel else sidebarRowRequesters[index - 1]
                                         down = if (index == sidebarRows.lastIndex) homeBackRequester else sidebarRowRequesters[index + 1]
                                     }
@@ -488,7 +541,7 @@ private fun SettingsMenuScreen(
                             left = FocusRequester.Cancel // ★ 修正: こちらも左キーへの防波堤を追加
                             up = sidebarRowRequesters.lastOrNull() ?: FocusRequester.Default
                             down = FocusRequester.Cancel
-                            right = itemFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
+                            right = itemFocusRequesters.getOrNull(activeCategoryIndex)
                                 ?.firstOrNull() ?: FocusRequester.Default
                         }
                 )
@@ -507,13 +560,13 @@ private fun SettingsMenuScreen(
                     .fillMaxHeight()
                     .padding(vertical = 48.dp, horizontal = 64.dp)
                     .onGloballyPositioned { coords ->
-                        if (uiState.selectedCategoryIndex == 9) {
+                        if (activeCategoryIndex == 9) {
                             onDeepTvBoundsChanged(coords.boundsInRoot())
                         }
                     }
             ) {
                 CompositionLocalProvider(
-                    LocalBringIntoViewSpec provides if (uiState.selectedCategoryIndex == 11) {
+                    LocalBringIntoViewSpec provides if (activeCategoryIndex == 11) {
                         AppInfoBringIntoViewSpec
                     } else {
                         LocalBringIntoViewSpec.current
@@ -527,7 +580,7 @@ private fun SettingsMenuScreen(
                         .verticalScroll(mainScrollState)
                         .padding(horizontal = 4.dp, vertical = 4.dp)
                 ) {
-                    when (uiState.selectedCategoryIndex) {
+                    when (activeCategoryIndex) {
                         0 -> GeneralSettingsContent(
                             prefs.startupTab,
                             prefs.startupFocusTarget.label,

@@ -36,9 +36,9 @@ enum class TifNoSignalAccentColor(
     CRIMSON("G（紅）", 0xFFB51B0B, 0xFFC94121, 0xFFF29A86),
     EMERALD("E（翠）", 0xFF0E6B47, 0xFF1A8A5E, 0xFF86DFB8),
     COBALT("BS（藍）", 0xFF0F3B82, 0xFF1D56B3, 0xFF8CB6F5),
-    AMBER("山吹", 0xFF9C5206, 0xFFC97312, 0xFFF7C47C),
-    VIOLET("藤", 0xFF4C1D7A, 0xFF6D2FA8, 0xFFC8A2F0),
-    SLATE("墨", 0xFF181C24, 0xFF282F3D, 0xFF7D889E);
+    VIOLET("BSP4K（紫）", 0xFF3D1566, 0xFF5B2396, 0xFFC39BF0),
+    SLATE("BS8K（黒）", 0xFF0B0D11, 0xFF191D24, 0xFF7A8290);
+    GRAY("灰", 0xFF525D69, 0xFF6E7B88, 0xFFB8C4D0),
 
     companion object {
         val concreteEntries: List<TifNoSignalAccentColor> = entries.filter { it != RANDOM }

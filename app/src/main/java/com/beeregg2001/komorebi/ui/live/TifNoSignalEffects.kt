@@ -1736,42 +1736,53 @@ private fun NokCallsignEffect(
                 .drawWithCache {
                     val w = size.width
                     val h = size.height
-                    // Slanted broadcast parallelogram geometry matching the classic NHK station-ID ribbon
+                    // 1:1 NHK station-ID geometry: slanted diagonal ribbons that curve smoothly
+                    // downward at a concentric rounded elbow near the bottom edge (y ≈ 0.86..1.00).
                     val slant = w * 0.145f
-                    val silverLeftTop = w * 0.20f
-                    val silverW = w * 0.022f
-                    val leftRibbonW = w * 0.058f
-                    val mainPanelW = w * 0.655f
-                    val rightRibbonW = w * 0.24f
+                    val elbowStartY = h * 0.855f
+                    val elbowCtrlY = h * 0.945f
+                    val bottomY = h * 1.04f
 
-                    fun slantedStripPath(topLeftX: Float, width: Float): Path = Path().apply {
-                        moveTo(topLeftX, -h * 0.05f)
-                        lineTo(topLeftX + width, -h * 0.05f)
-                        lineTo(topLeftX + width - slant, h * 1.05f)
-                        lineTo(topLeftX - slant, h * 1.05f)
-                        close()
+                    fun slantedCurvedFillRight(topX: Float, elbowRadiusFactor: Float = 1f): Path {
+                        val elbowX = topX - slant * (elbowStartY / h)
+                        val ctrlX = elbowX - slant * 0.068f * elbowRadiusFactor
+                        val endX = ctrlX + w * 0.012f * elbowRadiusFactor
+                        return Path().apply {
+                            moveTo(topX, -h * 0.04f)
+                            lineTo(w * 1.08f, -h * 0.04f)
+                            lineTo(w * 1.08f, bottomY)
+                            lineTo(endX, bottomY)
+                            quadraticTo(ctrlX, elbowCtrlY, elbowX, elbowStartY)
+                            close()
+                        }
                     }
 
-                    val silverPath = slantedStripPath(silverLeftTop, silverW)
-                    val leftRibbonPath = slantedStripPath(silverLeftTop + silverW, leftRibbonW)
-                    val mainPanelPath = slantedStripPath(silverLeftTop + silverW + leftRibbonW, mainPanelW)
-                    val rightRibbonPath = slantedStripPath(silverLeftTop + silverW + leftRibbonW + mainPanelW, rightRibbonW)
+                    // Layered right-filling curved slanted shapes (exact concentric rounded elbows):
+                    // 1. Deep base (full screen)
+                    // 2. Silver-gray highlight edge
+                    val silverLayer = slantedCurvedFillRight(w * 0.195f, elbowRadiusFactor = 1.0f)
+                    // 3. Left pastel ribbon
+                    val leftRibbonLayer = slantedCurvedFillRight(w * 0.218f, elbowRadiusFactor = 0.96f)
+                    // 4. Center rich mid-tone main panel
+                    val mainPanelLayer = slantedCurvedFillRight(w * 0.278f, elbowRadiusFactor = 0.88f)
+                    // 5. Right pastel ribbon
+                    val rightRibbonLayer = slantedCurvedFillRight(w * 0.935f, elbowRadiusFactor = 0.92f)
 
                     onDrawBehind {
                         drawRect(deepColor)
-                        drawPath(silverPath, color = NOK_SILVER_EDGE)
-                        drawPath(leftRibbonPath, color = ribbonColor)
-                        drawPath(mainPanelPath, color = mainColor)
-                        drawPath(rightRibbonPath, color = ribbonColor)
+                        drawPath(silverLayer, color = NOK_SILVER_EDGE)
+                        drawPath(leftRibbonLayer, color = ribbonColor)
+                        drawPath(mainPanelLayer, color = mainColor)
+                        drawPath(rightRibbonLayer, color = ribbonColor)
                     }
                 },
         )
 
-        // Centered 3-line broadcast station-ID typography (clear above bottom preview HUD)
+        // Upper-center 3-line broadcast station-ID typography (1:1 NHK vertical placement, clear of preview HUD)
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(bottom = 44.dp)
+                .padding(bottom = 112.dp)
                 .graphicsLayer {
                     translationX = shiftX
                     translationY = shiftY
@@ -1781,8 +1792,8 @@ private fun NokCallsignEffect(
             Text(
                 text = inputLabel.uppercase(Locale.US),
                 color = Color.White,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Medium,
+                fontSize = 38.sp,
+                fontWeight = FontWeight.SemiBold,
                 letterSpacing = 3.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1792,19 +1803,19 @@ private fun NokCallsignEffect(
             Text(
                 text = "HonoRebi",
                 color = Color.White,
-                fontSize = 62.sp,
-                lineHeight = 66.sp,
+                fontSize = 66.sp,
+                lineHeight = 70.sp,
                 fontWeight = FontWeight.Black,
                 fontStyle = FontStyle.Italic,
                 letterSpacing = 2.sp,
                 maxLines = 1,
             )
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = statusText.ifBlank { "ホノレビデジタルテレビジョン" },
-                color = Color.White.copy(alpha = 0.95f),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.96f),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold,
                 letterSpacing = 2.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
