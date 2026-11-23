@@ -1,16 +1,24 @@
 package com.beeregg2001.komorebi.ui.setting
 
+import android.Manifest
 import android.app.Application
+import android.content.ContentProvider
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.pm.ActivityInfo
 import android.content.pm.ResolveInfo
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -143,6 +151,139 @@ class ScreensaverImageFilesTest {
         assertTrue(source.isFile)
         // Repeating cleanup after persistence is safe.
         ScreensaverImageFiles.removeSavedImages(context, listOf(copied[0]))
+    }
+
+    private data class FakeMediaRow(
+        val id: Long,
+        val displayName: String,
+        val bucketId: String?,
+        val bucketName: String?,
+        val dateAdded: Long,
+    )
+
+    private class FakeMediaStoreProvider(private val rows: List<FakeMediaRow>) : ContentProvider() {
+        override fun onCreate(): Boolean = true
+
+        override fun query(
+            uri: Uri,
+            projection: Array<out String>?,
+            selection: String?,
+            selectionArgs: Array<out String>?,
+            sortOrder: String?,
+        ): Cursor {
+            val cols = projection ?: arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.BUCKET_ID,
+                MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+                MediaStore.Images.Media.DATE_ADDED,
+            )
+            val filtered = rows.filter { row ->
+                when {
+                    selection == null -> true
+                    selection.contains("IS NULL") -> row.bucketId.isNullOrBlank()
+                    selection.contains("= ?") && !selectionArgs.isNullOrEmpty() -> row.bucketId == selectionArgs[0]
+                    else -> true
+                }
+            }.sortedWith(compareByDescending<FakeMediaRow> { it.dateAdded }.thenByDescending { it.id })
+
+            val cursor = MatrixCursor(cols)
+            for (row in filtered) {
+                val values = Array<Any?>(cols.size) { index ->
+                    when (cols[index]) {
+                        MediaStore.Images.Media._ID -> row.id
+                        MediaStore.Images.Media.DISPLAY_NAME -> row.displayName
+                        MediaStore.Images.Media.BUCKET_ID -> row.bucketId
+                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME -> row.bucketName
+                        MediaStore.Images.Media.DATE_ADDED -> row.dateAdded
+                        else -> null
+                    }
+                }
+                cursor.addRow(values)
+            }
+            return cursor
+        }
+
+        override fun getType(uri: Uri): String? = null
+        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    }
+
+    private fun registerFakeMediaStore(rows: List<FakeMediaRow>) {
+        val provider = FakeMediaStoreProvider(rows)
+        val info = android.content.pm.ProviderInfo().apply { authority = MediaStore.AUTHORITY }
+        provider.attachInfo(context, info)
+        org.robolectric.shadows.ShadowContentResolver.registerProviderInternal(MediaStore.AUTHORITY, provider)
+    }
+
+    @Test fun albumsGroupsByBucketNewestFirstAndPrependsAllImages() {
+        registerFakeMediaStore(
+            listOf(
+                FakeMediaRow(1L, "old_cam.jpg", "cam", "Camera", 100L),
+                FakeMediaRow(2L, "usb_shot.png", "usb", "USB Photos", 300L),
+                FakeMediaRow(3L, "new_cam.jpg", "cam", "Camera", 250L),
+                FakeMediaRow(4L, "orphan.webp", null, null, 200L),
+            ),
+        )
+
+        val albums = ScreensaverImageFiles.albums(context)
+        assertEquals(4, albums.size)
+
+        val all = albums[0]
+        assertTrue(all.isAlbum)
+        assertFalse(all.isFolder)
+        assertFalse(all.isImage)
+        assertEquals("すべての画像", all.name)
+        assertEquals(ScreensaverImageFiles.ALL_IMAGES_BUCKET_ID, all.bucketId)
+        assertEquals("bucket:${ScreensaverImageFiles.ALL_IMAGES_BUCKET_ID}", all.key)
+        assertEquals(4, all.itemCount)
+        assertEquals(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, 2L), all.coverUri)
+
+        assertEquals(listOf("USB Photos", "Camera", "その他の画像"), albums.drop(1).map { it.name })
+        assertEquals(listOf(1, 2, 1), albums.drop(1).map { it.itemCount })
+        assertEquals(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, 3L), albums[2].coverUri)
+    }
+
+    @Test fun albumsReturnsEmptyListWhenMediaStoreHasNoImages() {
+        registerFakeMediaStore(emptyList())
+        assertTrue(ScreensaverImageFiles.albums(context).isEmpty())
+    }
+
+    @Test fun albumImagesFiltersByBucketAndDelegatesAllImages() {
+        registerFakeMediaStore(
+            listOf(
+                FakeMediaRow(1L, "cam_old.jpg", "cam", "Camera", 100L),
+                FakeMediaRow(2L, "usb_new.png", "usb", "USB Photos", 300L),
+                FakeMediaRow(3L, "cam_new.jpg", "cam", "Camera", 250L),
+                FakeMediaRow(4L, "orphan.webp", "", "", 200L),
+            ),
+        )
+
+        val all = ScreensaverImageFiles.albumImages(context, ScreensaverImageFiles.ALL_IMAGES_BUCKET_ID)
+        assertEquals(listOf("usb_new.png", "cam_new.jpg", "orphan.webp", "cam_old.jpg"), all.map { it.name })
+        assertTrue(all.all { it.isImage })
+
+        val cam = ScreensaverImageFiles.albumImages(context, "cam")
+        assertEquals(listOf("cam_new.jpg", "cam_old.jpg"), cam.map { it.name })
+
+        val other = ScreensaverImageFiles.albumImages(context, "__DEFAULT__")
+        assertEquals(listOf("orphan.webp"), other.map { it.name })
+    }
+
+    @Test fun hasFullAccessDistinguishesPartialPhotoAccessOnApi34() {
+        val shadowApp = shadowOf(context)
+        shadowApp.denyPermissions(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+        )
+        assertFalse(ScreensaverImageFiles.hasFullAccess(context, sdk = 34))
+
+        shadowApp.grantPermissions(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        assertFalse(ScreensaverImageFiles.hasFullAccess(context, sdk = 34))
+
+        shadowApp.grantPermissions(Manifest.permission.READ_MEDIA_IMAGES)
+        assertTrue(ScreensaverImageFiles.hasFullAccess(context, sdk = 34))
     }
 
 }

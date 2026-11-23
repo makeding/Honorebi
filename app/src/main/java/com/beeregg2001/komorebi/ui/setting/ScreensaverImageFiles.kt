@@ -24,14 +24,37 @@ internal data class ScreensaverFileEntry(
     val name: String,
     val directory: File? = null,
     val uri: Uri? = null,
+    val bucketId: String? = null,
+    val coverUri: Uri? = null,
+    val itemCount: Int? = null,
 ) {
-    val key: String get() = directory?.absolutePath ?: uri.toString()
+    val isAlbum: Boolean get() = bucketId != null
+    val isFolder: Boolean get() = directory != null
+    val isImage: Boolean get() = uri != null && bucketId == null && directory == null
+    val key: String get() = when {
+        bucketId != null -> "bucket:$bucketId"
+        directory != null -> directory.absolutePath
+        else -> uri.toString()
+    }
 }
 
 internal object ScreensaverImageFiles {
     private const val DIRECTORY = "screensaver-images"
     private const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
+    const val ALL_IMAGES_BUCKET_ID = "__ALL__"
+    private const val DEFAULT_BUCKET_ID = "__DEFAULT__"
+    private const val DEFAULT_ALBUM_LABEL = "その他の画像"
+    private const val ALL_IMAGES_LABEL = "すべての画像"
     private val extensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif")
+
+    private data class MediaImageRow(
+        val id: Long,
+        val displayName: String,
+        val bucketId: String,
+        val bucketName: String,
+        val dateAdded: Long,
+        val uri: Uri,
+    )
 
     fun permissions(sdk: Int = Build.VERSION.SDK_INT): Array<String> = when {
         sdk >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
@@ -41,6 +64,15 @@ internal object ScreensaverImageFiles {
 
     fun hasAccess(context: Context): Boolean = permissions().any {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun hasFullAccess(context: Context, sdk: Int = Build.VERSION.SDK_INT): Boolean {
+        val required = if (sdk >= 33) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return ContextCompat.checkSelfPermission(context, required) == PackageManager.PERMISSION_GRANTED
     }
 
     fun documentIntent() = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -139,17 +171,151 @@ internal object ScreensaverImageFiles {
         imagePaths.sortedWith(String.CASE_INSENSITIVE_ORDER).map { Uri.fromFile(File(it)) }
     }
 
-    fun images(context: Context): List<ScreensaverFileEntry> {
-        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        return buildList {
-            context.contentResolver.query(
-                collection, arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME),
-                null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC",
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    add(ScreensaverFileEntry(cursor.getString(1) ?: "画像", uri = ContentUris.withAppendedId(collection, cursor.getLong(0))))
+    private fun imageCollections(context: Context): List<Uri> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val volumes = runCatching { MediaStore.getExternalVolumeNames(context) }.getOrNull().orEmpty()
+            if (volumes.isNotEmpty()) {
+                return volumes.map { MediaStore.Images.Media.getContentUri(it) }
+            }
+        }
+        return listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+    }
+
+    private fun queryMediaRows(
+        context: Context,
+        includeBuckets: Boolean,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null,
+    ): List<MediaImageRow> {
+        val projection = if (includeBuckets) {
+            arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.BUCKET_ID,
+                MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+                MediaStore.Images.Media.DATE_ADDED,
+            )
+        } else {
+            arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.DATE_ADDED,
+            )
+        }
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC, ${MediaStore.Images.Media._ID} DESC"
+        val rows = mutableListOf<MediaImageRow>()
+        val seenUris = mutableSetOf<Uri>()
+        var anySucceeded = false
+
+        for (collection in imageCollections(context)) {
+            val cursor = context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
+                ?: continue
+            anySucceeded = true
+            cursor.use { c ->
+                val idIdx = c.getColumnIndex(MediaStore.Images.Media._ID)
+                val nameIdx = c.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
+                val dateIdx = c.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+                val bucketIdIdx = if (includeBuckets) c.getColumnIndex(MediaStore.Images.Media.BUCKET_ID) else -1
+                val bucketNameIdx = if (includeBuckets) c.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME) else -1
+                while (c.moveToNext()) {
+                    val id = if (idIdx >= 0) c.getLong(idIdx) else continue
+                    val uri = ContentUris.withAppendedId(collection, id)
+                    if (!seenUris.add(uri)) continue
+                    val displayName = (if (nameIdx >= 0) c.getString(nameIdx) else null)?.takeIf { it.isNotBlank() } ?: "画像"
+                    val dateAdded = if (dateIdx >= 0 && !c.isNull(dateIdx)) c.getLong(dateIdx) else 0L
+                    val rawBucketId = if (bucketIdIdx >= 0 && !c.isNull(bucketIdIdx)) c.getString(bucketIdIdx) else null
+                    val rawBucketName = if (bucketNameIdx >= 0 && !c.isNull(bucketNameIdx)) c.getString(bucketNameIdx) else null
+                    val bucketId = rawBucketId?.takeIf { it.isNotBlank() } ?: DEFAULT_BUCKET_ID
+                    val bucketName = rawBucketName?.takeIf { it.isNotBlank() } ?: DEFAULT_ALBUM_LABEL
+                    rows += MediaImageRow(
+                        id = id,
+                        displayName = displayName,
+                        bucketId = bucketId,
+                        bucketName = bucketName,
+                        dateAdded = dateAdded,
+                        uri = uri,
+                    )
                 }
-            } ?: throw IOException("画像一覧を読み取れません。再試行してください。")
+            }
+        }
+
+        if (!anySucceeded) {
+            throw IOException("画像一覧を読み取れません。再試行してください。")
+        }
+
+        return rows.sortedWith(compareByDescending<MediaImageRow> { it.dateAdded }.thenByDescending { it.id })
+    }
+
+    fun images(context: Context): List<ScreensaverFileEntry> =
+        queryMediaRows(context, includeBuckets = false).map { row ->
+            ScreensaverFileEntry(name = row.displayName, uri = row.uri)
+        }
+
+    fun albums(context: Context): List<ScreensaverFileEntry> {
+        val rows = queryMediaRows(context, includeBuckets = true)
+        if (rows.isEmpty()) return emptyList()
+
+        data class BucketAcc(
+            val bucketId: String,
+            var name: String,
+            val coverUri: Uri,
+            var count: Int,
+        )
+
+        val buckets = LinkedHashMap<String, BucketAcc>()
+        for (row in rows) {
+            val existing = buckets[row.bucketId]
+            if (existing == null) {
+                buckets[row.bucketId] = BucketAcc(
+                    bucketId = row.bucketId,
+                    name = row.bucketName,
+                    coverUri = row.uri,
+                    count = 1,
+                )
+            } else {
+                existing.count += 1
+                if (existing.name == DEFAULT_ALBUM_LABEL && row.bucketName != DEFAULT_ALBUM_LABEL) {
+                    existing.name = row.bucketName
+                }
+            }
+        }
+
+        return buildList(buckets.size + 1) {
+            add(
+                ScreensaverFileEntry(
+                    name = ALL_IMAGES_LABEL,
+                    bucketId = ALL_IMAGES_BUCKET_ID,
+                    coverUri = rows.first().uri,
+                    itemCount = rows.size,
+                ),
+            )
+            buckets.values.forEach { acc ->
+                add(
+                    ScreensaverFileEntry(
+                        name = acc.name,
+                        bucketId = acc.bucketId,
+                        coverUri = acc.coverUri,
+                        itemCount = acc.count,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun albumImages(context: Context, bucketId: String): List<ScreensaverFileEntry> {
+        if (bucketId == ALL_IMAGES_BUCKET_ID) return images(context)
+        val (selection, selectionArgs) = if (bucketId == DEFAULT_BUCKET_ID) {
+            "${MediaStore.Images.Media.BUCKET_ID} IS NULL OR ${MediaStore.Images.Media.BUCKET_ID} = ''" to null
+        } else {
+            "${MediaStore.Images.Media.BUCKET_ID} = ?" to arrayOf(bucketId)
+        }
+        return queryMediaRows(
+            context = context,
+            includeBuckets = false,
+            selection = selection,
+            selectionArgs = selectionArgs,
+        ).map { row ->
+            ScreensaverFileEntry(name = row.displayName, uri = row.uri)
         }
     }
 
