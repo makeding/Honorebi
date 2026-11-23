@@ -22,13 +22,13 @@ internal fun previewNoSignalRenderMode(style: TifNoSignalStyle): NoSignalRenderM
         TifNoSignalStyle.DVD_BOUNCE,
         TifNoSignalStyle.HONOREBI_BOUNCE -> NoSignalRenderMode.BOUNCE
         TifNoSignalStyle.ARIB_COLOR_BARS,
+        TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL,
         TifNoSignalStyle.ANALOG_STATIC,
         TifNoSignalStyle.SIGNAL_WAVE,
         TifNoSignalStyle.MINIMAL_CLOCK,
         TifNoSignalStyle.AURORA_AMBIENT,
         TifNoSignalStyle.DOT_MATRIX,
-        TifNoSignalStyle.STARFIELD,
-        TifNoSignalStyle.SIGNAL_RADAR -> NoSignalRenderMode.EFFECT
+        TifNoSignalStyle.STARFIELD -> NoSignalRenderMode.EFFECT
     }
 
 internal fun resolveNoSignalRenderMode(
@@ -56,12 +56,12 @@ internal fun resolveNoSignalRenderMode(
                 NoSignalRenderMode.BANNER
             }
         }
+        TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL,
         TifNoSignalStyle.ANALOG_STATIC,
         TifNoSignalStyle.SIGNAL_WAVE,
         TifNoSignalStyle.AURORA_AMBIENT,
         TifNoSignalStyle.DOT_MATRIX,
-        TifNoSignalStyle.STARFIELD,
-        TifNoSignalStyle.SIGNAL_RADAR -> {
+        TifNoSignalStyle.STARFIELD -> {
             if (hardwareAccelerated && animationsEnabled && !degraded) {
                 NoSignalRenderMode.EFFECT
             } else {

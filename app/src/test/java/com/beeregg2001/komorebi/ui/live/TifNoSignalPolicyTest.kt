@@ -245,12 +245,12 @@ class TifNoSignalPolicyTest {
 
         // Animated effect styles succeed when hw accel + animations + not degraded, else BANNER
         val animatedEffectStyles = listOf(
+            TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL,
             TifNoSignalStyle.ANALOG_STATIC,
             TifNoSignalStyle.SIGNAL_WAVE,
             TifNoSignalStyle.AURORA_AMBIENT,
             TifNoSignalStyle.DOT_MATRIX,
             TifNoSignalStyle.STARFIELD,
-            TifNoSignalStyle.SIGNAL_RADAR,
         )
         for (effectStyle in animatedEffectStyles) {
             assertEquals(
@@ -341,20 +341,20 @@ class TifNoSignalPolicyTest {
     }
 
     @Test
-    fun previewNoSignalRenderModeMapsAllTwelveStyles() {
+    fun previewNoSignalRenderModeMapsAllStyles() {
         val expected = mapOf(
             TifNoSignalStyle.BANNER to NoSignalRenderMode.BANNER,
             TifNoSignalStyle.DVD_BOUNCE to NoSignalRenderMode.BOUNCE,
             TifNoSignalStyle.HONOREBI_BOUNCE to NoSignalRenderMode.BOUNCE,
             TifNoSignalStyle.SCREENSAVER to NoSignalRenderMode.SCREENSAVER,
             TifNoSignalStyle.ARIB_COLOR_BARS to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.ANALOG_STATIC to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.SIGNAL_WAVE to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.MINIMAL_CLOCK to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.AURORA_AMBIENT to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.DOT_MATRIX to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.STARFIELD to NoSignalRenderMode.EFFECT,
-            TifNoSignalStyle.SIGNAL_RADAR to NoSignalRenderMode.EFFECT,
         )
         assertEquals(12, TifNoSignalStyle.entries.size)
         assertEquals(TifNoSignalStyle.entries.toSet(), expected.keys)

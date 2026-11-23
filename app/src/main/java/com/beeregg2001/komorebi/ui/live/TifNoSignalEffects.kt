@@ -45,8 +45,8 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -133,19 +133,6 @@ private val AURORA_ORB1_COLORS = listOf(Color(0xFF3B82F6).copy(alpha = 0.24f), C
 private val AURORA_ORB2_COLORS = listOf(Color(0xFF14B8A6).copy(alpha = 0.22f), Color.Transparent)
 private val AURORA_ORB3_COLORS = listOf(Color(0xFF8B5CF6).copy(alpha = 0.20f), Color.Transparent)
 
-private val RADAR_ACCENT = Color(0xFF38BDF8)
-private val RADAR_RING_COLOR = RADAR_ACCENT.copy(alpha = 0.09f)
-private val RADAR_CROSSHAIR_COLOR = RADAR_ACCENT.copy(alpha = 0.06f)
-private val RADAR_SWEEP_LINE_COLORS = listOf(RADAR_ACCENT.copy(alpha = 0.55f), RADAR_ACCENT.copy(alpha = 0.05f))
-private val RADAR_SWEEP_CONE_STOPS = arrayOf(
-    0.00f to Color.Transparent,
-    0.84f to Color.Transparent,
-    0.96f to RADAR_ACCENT.copy(alpha = 0.11f),
-    1.00f to RADAR_ACCENT.copy(alpha = 0.24f),
-)
-private val RADAR_RING_STROKE = Stroke(width = 1.2f)
-private val RADAR_RIPPLE_STROKE = Stroke(width = 2.4f)
-
 @Composable
 internal fun TifNoSignalEffectSurface(
     style: TifNoSignalStyle,
@@ -170,6 +157,13 @@ internal fun TifNoSignalEffectSurface(
                 inputLabel = inputLabel,
                 showOverlay = showOverlay,
                 paused = paused,
+            )
+            TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL -> AribScrollingColorBarsEffect(
+                statusText = statusText,
+                inputLabel = inputLabel,
+                showOverlay = showOverlay,
+                paused = paused,
+                onDegraded = onDegraded,
             )
             TifNoSignalStyle.ANALOG_STATIC -> AnalogStaticEffect(
                 statusText = statusText,
@@ -206,13 +200,6 @@ internal fun TifNoSignalEffectSurface(
             TifNoSignalStyle.STARFIELD -> StarfieldEffect(
                 statusText = statusText,
                 inputLabel = inputLabel,
-                paused = paused,
-                onDegraded = onDegraded,
-            )
-            TifNoSignalStyle.SIGNAL_RADAR -> SignalRadarEffect(
-                statusText = statusText,
-                inputLabel = inputLabel,
-                isPassthroughInput = isPassthroughInput,
                 paused = paused,
                 onDegraded = onDegraded,
             )
@@ -265,8 +252,112 @@ private fun rememberElapsedSeconds(
 }
 
 // ---------------------------------------------------------------------------
-// 1. ARIB STD-B28 Japanese Digital Broadcast Color Bars
+// 1. ARIB STD-B28 Japanese Digital Broadcast Color Bars (Static & Scrolling)
 // ---------------------------------------------------------------------------
+private fun DrawScope.drawAribColorBarsTile(
+    w: Float,
+    h: Float,
+    rampBrush: Brush,
+    includeIqBlocks: Boolean = false,
+) {
+    val sideW = w * 0.125f
+    val centerW = w - sideW * 2f
+    val barW = centerW / 7f
+
+    val topH = h * (7f / 12f)
+    val midH = h * (1f / 12f)
+    val rampH = h * (1f / 12f)
+    val rampY = topH + midH
+    val botY = rampY + rampH
+    val botH = h - botY
+
+    // Pattern 1 (7/12): 40% gray sidebands + 7x 75% color bars
+    drawRect(ARIB_GRAY_40, Offset.Zero, Size(sideW + 0.5f, topH + 0.5f))
+    for (i in ARIB_MAIN_BARS.indices) {
+        val left = sideW + i * barW
+        val right = if (i == ARIB_MAIN_BARS.lastIndex) w - sideW else sideW + (i + 1) * barW
+        drawRect(ARIB_MAIN_BARS[i], Offset(left, 0f), Size(right - left + 0.5f, topH + 0.5f))
+    }
+    drawRect(ARIB_GRAY_40, Offset(w - sideW, 0f), Size(sideW + 0.5f, topH + 0.5f))
+
+    // Pattern 2 (1/12): 100% Cyan | (-I or 100% White) | 75% White | 100% Blue
+    drawRect(Color(0xFF00FFFF), Offset(0f, topH), Size(sideW + 0.5f, midH + 0.5f))
+    if (includeIqBlocks) {
+        drawRect(Color(0xFF003B5C), Offset(sideW, topH), Size(barW + 0.5f, midH + 0.5f))
+    } else {
+        drawRect(ARIB_WHITE_100, Offset(sideW, topH), Size(barW + 0.5f, midH + 0.5f))
+    }
+    drawRect(ARIB_WHITE_75, Offset(sideW + barW, topH), Size(barW * 6f + 0.5f, midH + 0.5f))
+    drawRect(Color(0xFF0000FF), Offset(w - sideW, topH), Size(sideW + 0.5f, midH + 0.5f))
+
+    // Pattern 3 (1/12): 100% Yellow | (+Q optional) + 0%->100% Luminance Ramp | 100% Red
+    drawRect(Color(0xFFFFFF00), Offset(0f, rampY), Size(sideW + 0.5f, rampH + 0.5f))
+    if (includeIqBlocks) {
+        drawRect(Color(0xFF3B0066), Offset(sideW, rampY), Size(barW + 0.5f, rampH + 0.5f))
+        drawRect(
+            brush = rampBrush,
+            topLeft = Offset(sideW + barW, rampY),
+            size = Size(barW * 6f + 0.5f, rampH + 0.5f),
+        )
+    } else {
+        drawRect(
+            brush = rampBrush,
+            topLeft = Offset(sideW, rampY),
+            size = Size(centerW + 0.5f, rampH + 0.5f),
+        )
+    }
+    drawRect(Color(0xFFFF0000), Offset(w - sideW, rampY), Size(sideW + 0.5f, rampH + 0.5f))
+
+    // Pattern 4 (3/12): 15% Gray | Black | 100% White block | Black + subtle PLUGE | 15% Gray
+    drawRect(ARIB_GRAY_15, Offset(0f, botY), Size(sideW + 0.5f, botH + 0.5f))
+    val black1W = barW * 1.5f
+    val whiteBlockW = barW * 2.0f
+    val black2X = sideW + black1W + whiteBlockW
+    val black2W = (w - sideW) - black2X
+    drawRect(Color.Black, Offset(sideW, botY), Size(black1W + 0.5f, botH + 0.5f))
+    drawRect(ARIB_WHITE_100, Offset(sideW + black1W, botY), Size(whiteBlockW + 0.5f, botH + 0.5f))
+    drawRect(Color.Black, Offset(black2X, botY), Size(black2W + 0.5f, botH + 0.5f))
+    val plugeW = barW * 0.28f
+    drawRect(Color(0xFF0A0A0A), Offset(black2X + black2W * 0.42f, botY), Size(plugeW, botH + 0.5f))
+    drawRect(Color(0xFF141414), Offset(black2X + black2W * 0.56f, botY), Size(plugeW, botH + 0.5f))
+    drawRect(ARIB_GRAY_15, Offset(w - sideW, botY), Size(sideW + 0.5f, botH + 0.5f))
+}
+
+@Composable
+private fun AribBroadcastTelopText(
+    text: String,
+    fontSizeSp: Float = 26f,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        Text(
+            text = text,
+            style = TextStyle(
+                color = Color.Black,
+                fontSize = fontSizeSp.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp,
+                drawStyle = ARIB_TELOP_OUTLINE_STROKE,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 520.dp),
+        )
+        Text(
+            text = text,
+            style = TextStyle(
+                color = Color.White,
+                fontSize = fontSizeSp.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 520.dp),
+        )
+    }
+}
+
 @Composable
 private fun AribColorBarsEffect(
     statusText: String,
@@ -282,7 +373,6 @@ private fun AribColorBarsEffect(
             tick++
         }
     }
-    // Gentle OLED burn-in pixel shift over time (with slight overscan so edges stay seamless)
     val shiftX = sin(tick * 0.05f) * 6f
     val shiftY = cos(tick * 0.04f) * 4f
 
@@ -301,67 +391,20 @@ private fun AribColorBarsEffect(
                     val h = size.height
                     val sideW = w * 0.125f
                     val centerW = w - sideW * 2f
-                    val barW = centerW / 7f
-
-                    val topH = h * (7f / 12f)
-                    val midH = h * (1f / 12f)
-                    val rampH = h * (1f / 12f)
-                    val rampY = topH + midH
-                    val botY = rampY + rampH
-                    val botH = h - botY
-
                     val rampBrush = Brush.horizontalGradient(
                         colorStops = ARIB_RAMP_STOPS,
                         startX = sideW,
                         endX = sideW + centerW,
                     )
-
                     onDrawBehind {
-                        // Pattern 1 (7/12): 40% gray sidebands + 7x 75% color bars
-                        drawRect(ARIB_GRAY_40, Offset.Zero, Size(sideW, topH))
-                        for (i in ARIB_MAIN_BARS.indices) {
-                            val left = sideW + i * barW
-                            val right = if (i == ARIB_MAIN_BARS.lastIndex) w - sideW else sideW + (i + 1) * barW
-                            drawRect(ARIB_MAIN_BARS[i], Offset(left, 0f), Size(right - left, topH))
-                        }
-                        drawRect(ARIB_GRAY_40, Offset(w - sideW, 0f), Size(sideW, topH))
-
-                        // Pattern 2 (1/12): 100% Cyan | 100% White (1 bar) | 75% White (6 bars) | 100% Blue
-                        drawRect(Color(0xFF00FFFF), Offset(0f, topH), Size(sideW, midH))
-                        drawRect(ARIB_WHITE_100, Offset(sideW, topH), Size(barW, midH))
-                        drawRect(ARIB_WHITE_75, Offset(sideW + barW, topH), Size(barW * 6f, midH))
-                        drawRect(Color(0xFF0000FF), Offset(w - sideW, topH), Size(sideW, midH))
-
-                        // Pattern 3 (1/12): 100% Yellow | 0%->100% Luminance Ramp | 100% Red
-                        drawRect(Color(0xFFFFFF00), Offset(0f, rampY), Size(sideW, rampH))
-                        drawRect(
-                            brush = rampBrush,
-                            topLeft = Offset(sideW, rampY),
-                            size = Size(centerW, rampH),
-                        )
-                        drawRect(Color(0xFFFF0000), Offset(w - sideW, rampY), Size(sideW, rampH))
-
-                        // Pattern 4 (3/12): 15% Gray | Black | 100% White block | Black + subtle PLUGE | 15% Gray
-                        drawRect(ARIB_GRAY_15, Offset(0f, botY), Size(sideW, botH))
-                        val black1W = barW * 1.5f
-                        val whiteBlockW = barW * 2.0f
-                        val black2X = sideW + black1W + whiteBlockW
-                        val black2W = (w - sideW) - black2X
-                        drawRect(Color.Black, Offset(sideW, botY), Size(black1W, botH))
-                        drawRect(ARIB_WHITE_100, Offset(sideW + black1W, botY), Size(whiteBlockW, botH))
-                        drawRect(Color.Black, Offset(black2X, botY), Size(black2W, botH))
-                        // Subtle PLUGE calibration steps inside right black region
-                        val plugeW = barW * 0.28f
-                        drawRect(Color(0xFF0A0A0A), Offset(black2X + black2W * 0.42f, botY), Size(plugeW, botH))
-                        drawRect(Color(0xFF141414), Offset(black2X + black2W * 0.56f, botY), Size(plugeW, botH))
-                        drawRect(ARIB_GRAY_15, Offset(w - sideW, botY), Size(sideW, botH))
+                        drawAribColorBarsTile(w = w, h = h, rampBrush = rampBrush, includeIqBlocks = false)
                     }
                 },
         )
 
-        // Classic Japanese digital broadcast outlined telop (top-left, hidden if live OSD is shown)
         if (!showOverlay) {
-            Box(
+            AribBroadcastTelopText(
+                text = statusText.ifBlank { "信号がありません" },
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 152.dp, top = 56.dp)
@@ -369,37 +412,9 @@ private fun AribColorBarsEffect(
                         translationX = shiftX * 0.6f
                         translationY = shiftY * 0.6f
                     },
-            ) {
-                val telopText = statusText.ifBlank { "信号がありません" }
-                Text(
-                    text = telopText,
-                    style = TextStyle(
-                        color = Color.Black,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.sp,
-                        drawStyle = ARIB_TELOP_OUTLINE_STROKE,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 520.dp),
-                )
-                Text(
-                    text = telopText,
-                    style = TextStyle(
-                        color = Color.White,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.sp,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 520.dp),
-                )
-            }
+            )
         }
 
-        // Subtle broadcast station watermark in top-right 40% gray band
         Text(
             text = "KOMOREBI",
             color = Color.White.copy(alpha = 0.34f),
@@ -411,7 +426,6 @@ private fun AribColorBarsEffect(
                 .padding(end = 28.dp, top = 26.dp),
         )
 
-        // Broadcast station callsign block inside Pattern 4 bottom-right black area
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -442,6 +456,141 @@ private fun AribColorBarsEffect(
                 letterSpacing = 1.5.sp,
                 maxLines = 1,
             )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Dynamic Diagonal-Scrolling ARIB Color Bars (Late-night DTV Test Broadcast)
+// ---------------------------------------------------------------------------
+@Composable
+private fun AribScrollingColorBarsEffect(
+    statusText: String,
+    inputLabel: String,
+    showOverlay: Boolean,
+    paused: Boolean,
+    onDegraded: () -> Unit,
+) {
+    val elapsedState = rememberElapsedSeconds(paused = paused, onDegraded = onDegraded)
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(paused) {
+        if (paused) return@LaunchedEffect
+        while (isActive) {
+            nowMillis = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+
+    val dateFmt = remember { SimpleDateFormat("yyyy年M月d日(E)", Locale.JAPANESE) }
+    val timeFmt = remember { SimpleDateFormat("H:mm", Locale.JAPANESE) }
+    val dateObj = remember(nowMillis / 1000L) { Date(nowMillis) }
+    val clockShadow = remember { Shadow(color = Color.Black.copy(alpha = 0.45f), offset = Offset(1.5f, 1.5f), blurRadius = 3f) }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
+                    val sideW = w * 0.125f
+                    val centerW = w - sideW * 2f
+                    val barW = centerW / 7f
+                    val rampBrush = Brush.horizontalGradient(
+                        colorStops = ARIB_RAMP_STOPS,
+                        startX = sideW + barW,
+                        endX = sideW + centerW,
+                    )
+                    onDrawBehind {
+                        val elapsed = elapsedState.value
+                        // Smooth diagonal down-right scroll wrapping seamlessly in X and Y
+                        val ox = ((elapsed * 0.14f) % 1f) * w
+                        val oy = ((elapsed * 0.12f) % 1f) * h
+
+                        translate(left = ox, top = oy) {
+                            drawAribColorBarsTile(w, h, rampBrush, includeIqBlocks = true)
+                        }
+                        translate(left = ox - w, top = oy) {
+                            drawAribColorBarsTile(w, h, rampBrush, includeIqBlocks = true)
+                        }
+                        translate(left = ox, top = oy - h) {
+                            drawAribColorBarsTile(w, h, rampBrush, includeIqBlocks = true)
+                        }
+                        translate(left = ox - w, top = oy - h) {
+                            drawAribColorBarsTile(w, h, rampBrush, includeIqBlocks = true)
+                        }
+                    }
+                },
+        )
+
+        // Top-left Japanese broadcast outlined telop (status + input callsign, hidden when live OSD shows)
+        if (!showOverlay) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 42.dp, top = 34.dp),
+                horizontalAlignment = Alignment.Start,
+            ) {
+                AribBroadcastTelopText(
+                    text = statusText.ifBlank { "信号がありません" },
+                    fontSizeSp = 26f,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                AribBroadcastTelopText(
+                    text = inputLabel.uppercase(Locale.US),
+                    fontSizeSp = 24f,
+                )
+            }
+        }
+
+        // Lower-right broadcast date + time + bold station wordmark (MBS sign-off inspired, clear of preview HUD)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 72.dp, bottom = 128.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                text = dateFmt.format(dateObj),
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = 1.sp,
+                    fontFeatureSettings = "tnum",
+                    shadow = clockShadow,
+                ),
+                maxLines = 1,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+            ) {
+                Text(
+                    text = timeFmt.format(dateObj),
+                    style = TextStyle(
+                        color = Color.White,
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = 1.sp,
+                        fontFeatureSettings = "tnum",
+                        shadow = clockShadow,
+                    ),
+                    maxLines = 1,
+                )
+                Text(
+                    text = "KOMOREBI",
+                    style = TextStyle(
+                        color = Color.White,
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 3.sp,
+                        shadow = clockShadow,
+                    ),
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -1193,143 +1342,6 @@ private fun StarfieldEffect(
                 text = statusText,
                 color = Color.White.copy(alpha = 0.6f),
                 fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 360.dp),
-            )
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 8. Signal Search Radar Ripples
-// ---------------------------------------------------------------------------
-@Composable
-private fun SignalRadarEffect(
-    statusText: String,
-    inputLabel: String,
-    isPassthroughInput: Boolean,
-    paused: Boolean,
-    onDegraded: () -> Unit,
-) {
-    val elapsedState = rememberElapsedSeconds(paused = paused, onDegraded = onDegraded)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF04070C)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Spacer(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithCache {
-                    val center = Offset(size.width / 2f, size.height * 0.42f)
-                    val maxR = size.minDimension * 0.37f
-                    val sweepEnd = Offset(center.x + maxR, center.y)
-                    val sweepConeBrush = Brush.sweepGradient(
-                        *RADAR_SWEEP_CONE_STOPS,
-                        center = center,
-                    )
-                    val sweepLineBrush = Brush.linearGradient(
-                        colors = RADAR_SWEEP_LINE_COLORS,
-                        start = center,
-                        end = sweepEnd,
-                    )
-
-                    onDrawBehind {
-                        val elapsed = elapsedState.value
-
-                        // Static faint range rings & crosshair
-                        for (i in 1..3) {
-                            drawCircle(
-                                color = RADAR_RING_COLOR,
-                                radius = maxR * (i / 3f),
-                                center = center,
-                                style = RADAR_RING_STROKE,
-                            )
-                        }
-                        drawLine(
-                            color = RADAR_CROSSHAIR_COLOR,
-                            start = Offset(center.x - maxR, center.y),
-                            end = Offset(center.x + maxR, center.y),
-                            strokeWidth = 1f,
-                        )
-                        drawLine(
-                            color = RADAR_CROSSHAIR_COLOR,
-                            start = Offset(center.x, center.y - maxR),
-                            end = Offset(center.x, center.y + maxR),
-                            strokeWidth = 1f,
-                        )
-
-                        // Rotating radar phosphor afterglow cone + leading beam (zero per-frame allocations)
-                        val angleDeg = (elapsed * 48f) % 360f
-                        rotate(degrees = angleDeg, pivot = center) {
-                            drawCircle(
-                                brush = sweepConeBrush,
-                                radius = maxR,
-                                center = center,
-                            )
-                            drawLine(
-                                brush = sweepLineBrush,
-                                start = center,
-                                end = sweepEnd,
-                                strokeWidth = 2.4f,
-                                cap = StrokeCap.Round,
-                            )
-                        }
-
-                        // 3 staggered expanding sonar ripples
-                        val ringCount = 3
-                        for (i in 0 until ringCount) {
-                            val progress = ((elapsed * 0.34f + i.toFloat() / ringCount) % 1f)
-                            val radius = 34f + progress * (maxR - 34f)
-                            val alpha = (1f - progress) * (1f - progress) * 0.55f
-                            drawCircle(
-                                color = RADAR_ACCENT.copy(alpha = alpha),
-                                radius = radius,
-                                center = center,
-                                style = RADAR_RIPPLE_STROKE,
-                            )
-                        }
-                    }
-                },
-        )
-
-        Column(
-            modifier = Modifier.padding(bottom = 52.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(Color(0xFF0C1929), CircleShape)
-                    .border(1.5.dp, RADAR_ACCENT.copy(alpha = 0.55f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = if (isPassthroughInput) Icons.Default.SettingsInputHdmi else Icons.Default.LiveTv,
-                    contentDescription = null,
-                    tint = Color(0xFF7DD3FC),
-                    modifier = Modifier.size(26.dp),
-                )
-            }
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = inputLabel,
-                color = Color.White.copy(alpha = 0.92f),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 360.dp),
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = statusText,
-                color = Color(0xFFBAE6FD).copy(alpha = 0.72f),
-                fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 360.dp),
