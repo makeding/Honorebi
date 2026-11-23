@@ -15,7 +15,8 @@ enum class TifNoSignalStyle(
     MINIMAL_CLOCK("ミニマル時計", "焼き付き防止シフト付きの省電力時計"),
     AURORA_AMBIENT("オーロラ", "深く穏やかに揺らぐアンビエント光彩"),
     DOT_MATRIX("ドットマトリクス", "LEDドット表示と呼吸ステータスランプ"),
-    STARFIELD("スターフィールド", "漆黒の宇宙を漂うスターフィールド");
+    STARFIELD("スターフィールド", "漆黒の宇宙を漂うスターフィールド"),
+    CRAYON_TITLE("クレヨンタイトル", "ポップな手描き風タイトルカード演出");
 
     companion object {
         fun fromPreference(value: String?): TifNoSignalStyle =

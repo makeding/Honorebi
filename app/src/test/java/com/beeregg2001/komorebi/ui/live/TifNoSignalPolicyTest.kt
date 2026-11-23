@@ -251,6 +251,7 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.AURORA_AMBIENT,
             TifNoSignalStyle.DOT_MATRIX,
             TifNoSignalStyle.STARFIELD,
+            TifNoSignalStyle.CRAYON_TITLE,
         )
         for (effectStyle in animatedEffectStyles) {
             assertEquals(
@@ -355,8 +356,9 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.AURORA_AMBIENT to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.DOT_MATRIX to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.STARFIELD to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.CRAYON_TITLE to NoSignalRenderMode.EFFECT,
         )
-        assertEquals(12, TifNoSignalStyle.entries.size)
+        assertEquals(13, TifNoSignalStyle.entries.size)
         assertEquals(TifNoSignalStyle.entries.toSet(), expected.keys)
         for ((style, expectedMode) in expected) {
             assertEquals(

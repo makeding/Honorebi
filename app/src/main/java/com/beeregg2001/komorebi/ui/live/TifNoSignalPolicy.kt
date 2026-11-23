@@ -28,7 +28,8 @@ internal fun previewNoSignalRenderMode(style: TifNoSignalStyle): NoSignalRenderM
         TifNoSignalStyle.MINIMAL_CLOCK,
         TifNoSignalStyle.AURORA_AMBIENT,
         TifNoSignalStyle.DOT_MATRIX,
-        TifNoSignalStyle.STARFIELD -> NoSignalRenderMode.EFFECT
+        TifNoSignalStyle.STARFIELD,
+        TifNoSignalStyle.CRAYON_TITLE -> NoSignalRenderMode.EFFECT
     }
 
 internal fun resolveNoSignalRenderMode(
@@ -61,7 +62,8 @@ internal fun resolveNoSignalRenderMode(
         TifNoSignalStyle.SIGNAL_WAVE,
         TifNoSignalStyle.AURORA_AMBIENT,
         TifNoSignalStyle.DOT_MATRIX,
-        TifNoSignalStyle.STARFIELD -> {
+        TifNoSignalStyle.STARFIELD,
+        TifNoSignalStyle.CRAYON_TITLE -> {
             if (hardwareAccelerated && animationsEnabled && !degraded) {
                 NoSignalRenderMode.EFFECT
             } else {

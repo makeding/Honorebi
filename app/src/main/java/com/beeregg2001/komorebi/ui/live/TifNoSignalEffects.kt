@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -198,6 +199,12 @@ internal fun TifNoSignalEffectSurface(
                 onDegraded = onDegraded,
             )
             TifNoSignalStyle.STARFIELD -> StarfieldEffect(
+                statusText = statusText,
+                inputLabel = inputLabel,
+                paused = paused,
+                onDegraded = onDegraded,
+            )
+            TifNoSignalStyle.CRAYON_TITLE -> CrayonTitleEffect(
                 statusText = statusText,
                 inputLabel = inputLabel,
                 paused = paused,
@@ -1346,6 +1353,295 @@ private fun StarfieldEffect(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 360.dp),
             )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Crayon Pop Anime Episode Title Card (90s Crayon Illustration Aesthetic)
+// ---------------------------------------------------------------------------
+private enum class CrayonShapeKind { CIRCLE, TRIANGLE, STAR, SQUIGGLE, RING, DIAMOND }
+
+private class CrayonMotif(
+    val nx: Float,
+    val ny: Float,
+    val sizeDp: Float,
+    val color: Color,
+    val kind: CrayonShapeKind,
+    val baseRot: Float,
+    val phase: Float,
+    val speed: Float,
+)
+
+private val CRAYON_INK = Color(0xFF2B2118)
+private val CRAYON_BG_TOP = Color(0xFFF6E7B4)
+private val CRAYON_BG_BOTTOM = Color(0xFFECD59B)
+private val CRAYON_BG_COLORS = listOf(CRAYON_BG_TOP, CRAYON_BG_BOTTOM)
+private val CRAYON_OUTLINE_STROKE = Stroke(width = 3.2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val CRAYON_RING_STROKE = Stroke(width = 6.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val CRAYON_SQUIGGLE_STROKE = Stroke(width = 5.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val CRAYON_WHITE_STICKER_STROKE = Stroke(width = 16f, join = StrokeJoin.Round)
+private val CRAYON_DARK_STICKER_STROKE = Stroke(width = 7f, join = StrokeJoin.Round)
+private val CRAYON_CHAR_SHADOW = Shadow(color = Color(0xCC2B2118), offset = Offset(4f, 5f), blurRadius = 0f)
+
+private val CRAYON_TITLE_CHARS = arrayOf("信", "号", "が", "な", "い", "ゾ", "！")
+private val CRAYON_TITLE_COLORS = arrayOf(
+    Color(0xFFE63946), // Crayon Red
+    Color(0xFFF77F00), // Crayon Orange
+    Color(0xFF2A9D8F), // Crayon Mint-Teal
+    Color(0xFF1D70B8), // Crayon Sky-Blue
+    Color(0xFF9B5DE5), // Crayon Grape
+    Color(0xFFE63946), // Crayon Red
+    Color(0xFFF4A261), // Crayon Marigold
+)
+private val CRAYON_TITLE_TILTS = floatArrayOf(-6f, 4.5f, -3.5f, 5.5f, -4.5f, 4f, -3f)
+
+private fun buildCrayonMotifs(): Array<CrayonMotif> = arrayOf(
+    // Left & top-left playful crayon motifs
+    CrayonMotif(0.08f, 0.14f, 44f, Color(0xFFE63946), CrayonShapeKind.STAR, -14f, 0.2f, 1.1f),
+    CrayonMotif(0.18f, 0.30f, 34f, Color(0xFF3A86FF), CrayonShapeKind.TRIANGLE, 18f, 1.4f, 0.9f),
+    CrayonMotif(0.07f, 0.52f, 42f, Color(0xFF2A9D8F), CrayonShapeKind.SQUIGGLE, -12f, 2.1f, 1.3f),
+    CrayonMotif(0.15f, 0.72f, 38f, Color(0xFFF77F00), CrayonShapeKind.RING, 8f, 0.7f, 1.0f),
+    CrayonMotif(0.27f, 0.12f, 28f, Color(0xFF9B5DE5), CrayonShapeKind.CIRCLE, 0f, 3.0f, 0.8f),
+    CrayonMotif(0.42f, 0.10f, 34f, Color(0xFF2A9D8F), CrayonShapeKind.DIAMOND, 15f, 1.8f, 1.2f),
+    CrayonMotif(0.58f, 0.11f, 38f, Color(0xFFE63946), CrayonShapeKind.SQUIGGLE, 10f, 2.6f, 1.0f),
+    // Right & top-right playful crayon motifs
+    CrayonMotif(0.75f, 0.13f, 32f, Color(0xFFF77F00), CrayonShapeKind.TRIANGLE, -22f, 0.5f, 1.1f),
+    CrayonMotif(0.90f, 0.16f, 46f, Color(0xFF3A86FF), CrayonShapeKind.STAR, 12f, 2.2f, 0.95f),
+    CrayonMotif(0.84f, 0.36f, 36f, Color(0xFF9B5DE5), CrayonShapeKind.RING, -8f, 1.1f, 1.15f),
+    CrayonMotif(0.93f, 0.56f, 40f, Color(0xFFE63946), CrayonShapeKind.DIAMOND, 20f, 3.4f, 1.0f),
+    CrayonMotif(0.86f, 0.74f, 36f, Color(0xFF2A9D8F), CrayonShapeKind.CIRCLE, 0f, 0.9f, 1.25f),
+    CrayonMotif(0.28f, 0.84f, 32f, Color(0xFF3A86FF), CrayonShapeKind.STAR, -18f, 2.8f, 0.85f),
+    CrayonMotif(0.72f, 0.82f, 38f, Color(0xFFF77F00), CrayonShapeKind.SQUIGGLE, -6f, 1.6f, 1.1f),
+)
+
+private fun buildUnitTrianglePath(radius: Float): Path = Path().apply {
+    moveTo(0f, -radius)
+    lineTo(radius * 0.92f, radius * 0.78f)
+    lineTo(-radius * 0.92f, radius * 0.78f)
+    close()
+}
+
+private fun buildUnitStarPath(outerR: Float): Path = Path().apply {
+    val innerR = outerR * 0.46f
+    for (i in 0 until 10) {
+        val angle = (-90.0 + i * 36.0) * kotlin.math.PI / 180.0
+        val r = if ((i and 1) == 0) outerR else innerR
+        val x = (cos(angle) * r).toFloat()
+        val y = (sin(angle) * r).toFloat()
+        if (i == 0) moveTo(x, y) else lineTo(x, y)
+    }
+    close()
+}
+
+private fun buildUnitDiamondPath(radius: Float): Path = Path().apply {
+    moveTo(0f, -radius)
+    lineTo(radius * 0.78f, 0f)
+    lineTo(0f, radius)
+    lineTo(-radius * 0.78f, 0f)
+    close()
+}
+
+private fun buildUnitSquigglePath(halfW: Float): Path = Path().apply {
+    val amp = halfW * 0.34f
+    moveTo(-halfW, 0f)
+    cubicTo(-halfW * 0.65f, -amp, -halfW * 0.35f, -amp, 0f, 0f)
+    cubicTo(halfW * 0.35f, amp, halfW * 0.65f, amp, halfW, 0f)
+}
+
+@Composable
+private fun CrayonTitleEffect(
+    statusText: String,
+    inputLabel: String,
+    paused: Boolean,
+    onDegraded: () -> Unit,
+) {
+    val motifs = remember { buildCrayonMotifs() }
+    val elapsedState = rememberElapsedSeconds(paused = paused, onDegraded = onDegraded)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val bgBrush = Brush.verticalGradient(colors = CRAYON_BG_COLORS)
+                    val dotColor = Color(0xFFD6B97A).copy(alpha = 0.34f)
+                    val dotStep = 34.dp.toPx()
+                    val dotRadius = 2.2.dp.toPx()
+                    val misreg = 3.5.dp.toPx()
+
+                    // Pre-build unit paths scaled per motif size (zero per-frame Path allocations)
+                    val motifPaths = Array(motifs.size) { i ->
+                        val r = motifs[i].sizeDp.dp.toPx() * 0.5f
+                        when (motifs[i].kind) {
+                            CrayonShapeKind.TRIANGLE -> buildUnitTrianglePath(r)
+                            CrayonShapeKind.STAR -> buildUnitStarPath(r)
+                            CrayonShapeKind.DIAMOND -> buildUnitDiamondPath(r)
+                            CrayonShapeKind.SQUIGGLE -> buildUnitSquigglePath(r)
+                            else -> null
+                        }
+                    }
+                    val motifRadii = FloatArray(motifs.size) { motifs[it].sizeDp.dp.toPx() * 0.5f }
+
+                    onDrawBehind {
+                        val elapsed = elapsedState.value
+                        // Warm pastel crayon paper background + subtle polka-dot paper pattern
+                        drawRect(brush = bgBrush)
+                        var py = dotStep * 0.5f
+                        var rowIdx = 0
+                        while (py < size.height) {
+                            var px = if ((rowIdx and 1) == 0) dotStep * 0.5f else dotStep
+                            while (px < size.width) {
+                                drawCircle(dotColor, radius = dotRadius, center = Offset(px, py))
+                                px += dotStep
+                            }
+                            py += dotStep
+                            rowIdx++
+                        }
+
+                        // Playful floating hand-drawn crayon shapes with slight misregistered ink outline
+                        for (i in motifs.indices) {
+                            val m = motifs[i]
+                            val r = motifRadii[i]
+                            val cx = size.width * m.nx + sin(elapsed * m.speed * 0.7f + m.phase) * 7f
+                            val cy = size.height * m.ny + cos(elapsed * m.speed + m.phase) * 9f
+                            val rot = m.baseRot + sin(elapsed * m.speed * 0.8f + m.phase) * 8f
+
+                            translate(left = cx, top = cy) {
+                                rotate(degrees = rot, pivot = Offset.Zero) {
+                                    when (m.kind) {
+                                        CrayonShapeKind.CIRCLE -> {
+                                            drawCircle(m.color, radius = r, center = Offset(misreg, misreg))
+                                            drawCircle(CRAYON_INK, radius = r, center = Offset.Zero, style = CRAYON_OUTLINE_STROKE)
+                                        }
+                                        CrayonShapeKind.RING -> {
+                                            drawCircle(m.color, radius = r, center = Offset(misreg * 0.6f, misreg * 0.6f), style = CRAYON_RING_STROKE)
+                                            drawCircle(CRAYON_INK, radius = r, center = Offset.Zero, style = CRAYON_OUTLINE_STROKE)
+                                        }
+                                        CrayonShapeKind.SQUIGGLE -> {
+                                            val p = motifPaths[i] ?: return@rotate
+                                            translate(left = misreg, top = misreg) {
+                                                drawPath(p, color = m.color, style = CRAYON_SQUIGGLE_STROKE)
+                                            }
+                                            drawPath(p, color = CRAYON_INK, style = CRAYON_OUTLINE_STROKE)
+                                        }
+                                        else -> {
+                                            val p = motifPaths[i] ?: return@rotate
+                                            translate(left = misreg, top = misreg) {
+                                                drawPath(p, color = m.color)
+                                            }
+                                            drawPath(p, color = CRAYON_INK, style = CRAYON_OUTLINE_STROKE)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+        )
+
+        // Centered bouncy Shin-chan style episode title card lockup (clear of ~110dp bottom preview HUD)
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 54.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Top eyebrow crayon tag
+            val tagShape = RoundedCornerShape(999.dp)
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { rotationZ = -2.2f }
+                    .background(Color(0xFFFFFBF0), tagShape)
+                    .border(2.5.dp, CRAYON_INK, tagShape)
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = "★  $inputLabel  ★",
+                    color = CRAYON_INK,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 360.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Iconic bouncy tilted multi-color sticker title: 「信号がないゾ！」
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                for (i in CRAYON_TITLE_CHARS.indices) {
+                    val ch = CRAYON_TITLE_CHARS[i]
+                    val fillColor = CRAYON_TITLE_COLORS[i]
+                    val tilt = CRAYON_TITLE_TILTS[i]
+                    Box(
+                        modifier = Modifier.graphicsLayer {
+                            val t = elapsedState.value
+                            rotationZ = tilt + sin(t * 2.0f + i * 0.7f) * 2.2f
+                            translationY = sin(t * 2.4f + i * 0.65f) * 5f
+                        },
+                    ) {
+                        // Layer 1: thick white sticker outline + drop shadow
+                        Text(
+                            text = ch,
+                            style = TextStyle(
+                                color = Color.White,
+                                fontSize = 62.sp,
+                                fontWeight = FontWeight.Black,
+                                drawStyle = CRAYON_WHITE_STICKER_STROKE,
+                                shadow = CRAYON_CHAR_SHADOW,
+                            ),
+                        )
+                        // Layer 2: hand-drawn dark crayon ink outline
+                        Text(
+                            text = ch,
+                            style = TextStyle(
+                                color = CRAYON_INK,
+                                fontSize = 62.sp,
+                                fontWeight = FontWeight.Black,
+                                drawStyle = CRAYON_DARK_STICKER_STROKE,
+                            ),
+                        )
+                        // Layer 3: vivid crayon fill
+                        Text(
+                            text = ch,
+                            style = TextStyle(
+                                color = fillColor,
+                                fontSize = 62.sp,
+                                fontWeight = FontWeight.Black,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Hand-drawn subtitle pill
+            val pillShape = RoundedCornerShape(14.dp)
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { rotationZ = 1.2f }
+                    .background(Color(0xFFFFFBF0).copy(alpha = 0.94f), pillShape)
+                    .border(2.dp, CRAYON_INK, pillShape)
+                    .padding(horizontal = 22.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = statusText.ifBlank { "信号がありません" },
+                    color = CRAYON_INK,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 420.dp),
+                )
+            }
         }
     }
 }
