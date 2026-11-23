@@ -714,11 +714,14 @@ fun DisplaySettingsContent(
     onShowScreensaverGallery: () -> Unit = {},
     playerClockModeR: FocusRequester? = null,
     onEditPlayerClockMode: () -> Unit = {},
+    screensaverWebUploadR: FocusRequester? = null,
+    onOpenScreensaverWebUpload: () -> Unit = {},
 ) {
     val isTimeLinked = themeSeason == "KOMOREBI" || themeSeason == "KYLE"
     val clockR = playerClockModeR ?: remember { FocusRequester() }
     val upcomingR = screensaverUpcomingR ?: remember { FocusRequester() }
     val galleryR = screensaverGalleryR ?: remember { FocusRequester() }
+    val webUploadR = screensaverWebUploadR ?: remember { FocusRequester() }
     val playerPreviewR = screensaverPlayerPreviewR ?: remember { FocusRequester() }
     val baseThemeLabel =
         if (isTimeLinked) "時間連動テーマ" else if (!isDarkMode) AppStrings.SETTINGS_VALUE_THEME_DARK else AppStrings.SETTINGS_VALUE_THEME_LIGHT
@@ -922,16 +925,25 @@ fun DisplaySettingsContent(
                 if (screensaverImageCount == 0) "未選択" else "${screensaverImageCount} 枚",
                 Icons.Default.AddPhotoAlternate,
                 modifier = Modifier.focusRequester(screensaverImagesR).focusProperties {
-                    left = sidebarR; up = screensaverTransitionR; down = galleryR
+                    left = sidebarR; up = screensaverTransitionR; down = webUploadR
                 },
                 onClick = { onClick(screensaverImagesR); onPickScreensaverImages() }
+            )
+            SettingItem(
+                "スマホから画像を管理",
+                if (screensaverImageCount == 0) "QRコードで追加" else "QRコード・現在 ${screensaverImageCount} 枚",
+                Icons.Default.QrCode,
+                modifier = Modifier.focusRequester(webUploadR).focusProperties {
+                    left = sidebarR; up = screensaverImagesR; down = galleryR
+                },
+                onClick = { onClick(webUploadR); onOpenScreensaverWebUpload() }
             )
             SettingItem(
                 "登録画像一覧",
                 "${screensaverImageCount} 枚",
                 Icons.Default.PhotoLibrary,
                 modifier = Modifier.focusRequester(galleryR).focusProperties {
-                    left = sidebarR; up = screensaverImagesR; down = upcomingR
+                    left = sidebarR; up = webUploadR; down = upcomingR
                 },
                 onClick = { onClick(galleryR); onShowScreensaverGallery() }
             )

@@ -116,6 +116,7 @@ class SettingsViewModel @Inject constructor(
 
     private val gson = Gson()
     private val connectionUpdateMutex = Mutex()
+    internal val screensaverImageStore = ScreensaverImageStore(context, settingsRepository)
 
     private val _dynamicQualities = MutableStateFlow<List<StreamQuality>?>(null)
     private val _dataRefreshRevision = MutableStateFlow(0)
@@ -534,6 +535,13 @@ class SettingsViewModel @Inject constructor(
 
     fun setScreensaverImageUris(uris: List<String>) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, Gson().toJson(uris.distinct()))
+    }
+
+    suspend fun importScreensaverImages(uris: List<android.net.Uri>): List<String> =
+        screensaverImageStore.importUris(uris)
+
+    suspend fun deleteScreensaverImages(removed: List<String>) {
+        screensaverImageStore.removeUris(removed)
     }
 
     fun setScreensaverShowUpcoming(enabled: Boolean) = viewModelScope.launch(Dispatchers.IO) {
@@ -970,6 +978,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun startScreensaverSetup() {
+        try {
+            _connectionSetupState.value.session?.revoke()
+            _connectionSetupState.value = ConnectionSetupUiState(ConnectionSetupSession(source = "SCREENSAVER"))
+            startGeminiLocalServer()
+        } catch (error: Exception) {
+            _connectionSetupState.value.session?.revoke()
+            _connectionSetupState.value = com.beeregg2001.komorebi.setup.ConnectionSetupUiState(
+                error = "画像管理ページを開けませんでした。ネットワーク接続を確認して再試行してください。",
+            )
+            Log.e("SettingsViewModel", "Screensaver setup server failed", error)
+        }
+    }
+
     private suspend fun saveWebConnectionSettings(snapshot: com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot): com.beeregg2001.komorebi.data.ConnectionSettingsSnapshot = connectionUpdateMutex.withLock {
         val before = settingsRepository.connectionSettings()
         if (settingsRepository.recordCacheOwner.first() == null) {
@@ -994,6 +1016,11 @@ class SettingsViewModel @Inject constructor(
                     session = { _connectionSetupState.value.session },
                     read = { settingsRepository.connectionSettings().copy(account = com.beeregg2001.komorebi.data.ConnectionAccountSettings(honomiSession.value?.userName)) },
                     save = { saveWebConnectionSettings(it) },
+                    readAsset = { path -> context.assets.open(path).use { it.readBytes() } },
+                )
+                screensaverSetupRoutes(
+                    session = { _connectionSetupState.value.session },
+                    store = screensaverImageStore,
                     readAsset = { path -> context.assets.open(path).use { it.readBytes() } },
                 )
                 get("/") { call.respondText(getSetupHtml(), ContentType.Text.Html) }

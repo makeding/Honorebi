@@ -21,4 +21,13 @@ Unsaved edits use origin-scoped `sessionStorage` drafts. Restoration merges chan
 
 Account endpoints under `/api/connections/account` require the same open QR session. Clicking account linking first applies any edited KonomiTV connection/Access fields, retaining unrelated unsaved edits as a draft; no separate save is required. Pairing starts on the TV; the phone navigates directly to the provider's verification page while the TV continues polling. Closing the QR dialog cancels polling. Logout requires explicit confirmation.
 
+## Screensaver image management
+
+The same bundle also serves the mobile screensaver image uploader at `/screensaver/` (or `?mode=screensaver`), authenticated via the same per-window `X-Setup-Token` fragment secret:
+
+- `GET /api/screensaver/images` — returns the saved image inventory (`id`, `index`, `byteSize`, `owned`), `maxImageBytes`, and `maxFilesPerUpload`.
+- `GET /api/screensaver/images/{id}/content?thumbnail=1` — returns a downsampled JPEG thumbnail (or original image bytes when `thumbnail` is omitted).
+- `POST /api/screensaver/images` — accepts `multipart/form-data` (`images` field, up to 20 files per request, 64 MiB per file), validates image bounds, saves into app-private storage, and returns the updated inventory.
+- `DELETE /api/screensaver/images/{id}` and `DELETE /api/screensaver/images` — delete one or all saved screensaver images and return the updated inventory.
+
 Validation contracts: [settings categories](../docs/validation/settings_categories.md). Run `pnpm test` for the frontend regressions; Android HTTP/persistence and focus tests also cover the packaged assets.

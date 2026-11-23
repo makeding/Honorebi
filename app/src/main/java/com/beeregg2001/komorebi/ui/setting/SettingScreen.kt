@@ -170,23 +170,13 @@ private fun SettingsMenuScreen(
     val screensaverInterval by viewModel.screensaverIntervalSeconds.collectAsState()
     val screensaverTransition by viewModel.screensaverTransition.collectAsState()
     val screensaverImages by viewModel.screensaverImageUris.collectAsState()
+    val screensaverWebUploadR = remember { FocusRequester() }
     val screensaverGalleryR = remember { FocusRequester() }
     val screensaverPlayerPreviewR = remember { FocusRequester() }
     var showScreensaverGallery by remember { mutableStateOf(false) }
     var screensaverPreview by remember { mutableStateOf(false) }
     var screensaverPlayerPreview by remember { mutableStateOf(false) }
     var showInternalImagePicker by remember { mutableStateOf(false) }
-    val screensaverImagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        val accepted = uris.filter { uri ->
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                true
-            }.getOrDefault(false)
-        }.map { it.toString() }
-        if (accepted.isNotEmpty()) viewModel.setScreensaverImageUris(screensaverImages + accepted)
-    }
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val flatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
@@ -1107,12 +1097,7 @@ private fun SettingsMenuScreen(
                             { viewModel.setPlayerEndSleepMinutes(when (playerEndSleepMinutes) { 0 -> 15; 15 -> 30; 30 -> 60; 60 -> 120; else -> 0 }) },
                             { viewModel.setScreensaverIntervalSeconds(when (screensaverInterval) { 5 -> 15; 15 -> 30; 30 -> 60; else -> 5 }) },
                             { viewModel.setScreensaverTransition(when (screensaverTransition) { "FADE" -> "SLIDE"; "SLIDE" -> "NONE"; else -> "FADE" }) },
-                            {
-                                if (ScreensaverImageFiles.hasDocumentPicker(context)) {
-                                    try { screensaverImagePicker.launch(arrayOf("image/*")) }
-                                    catch (_: android.content.ActivityNotFoundException) { showInternalImagePicker = true }
-                                } else showInternalImagePicker = true
-                            },
+                            { showInternalImagePicker = true },
                             { screensaverPreview = true },
                             onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 },
                             screensaverPlayerPreviewR = screensaverPlayerPreviewR,
@@ -1129,6 +1114,10 @@ private fun SettingsMenuScreen(
                                     PlayerClockMode.entries.map { it.label to it.name },
                                     prefs.playerClockMode.name,
                                 ) { viewModel.updatePlayerClockMode(it) }
+                            },
+                            screensaverWebUploadR = screensaverWebUploadR,
+                            onOpenScreensaverWebUpload = {
+                                uiState.activeDialog = SettingDialogState.ScreensaverWebSetup
                             },
                         )
 
@@ -1437,6 +1426,18 @@ private fun SettingsMenuScreen(
                     onDismiss = { closeDialog() }, onManualInput = { closeDialog() },
                 )
             }
+            is SettingDialogState.ScreensaverWebSetup -> {
+                val localIp by viewModel.localIpAddress.collectAsState()
+                val setupState by viewModel.connectionSetupState.collectAsState()
+                ScreensaverWebSetupDialog(
+                    serverIp = localIp,
+                    state = setupState,
+                    savedImageCount = screensaverImages.size,
+                    onStart = { viewModel.startScreensaverSetup() },
+                    onStop = { viewModel.stopGeminiLocalServer() },
+                    onDismiss = { closeDialog() },
+                )
+            }
             is SettingDialogState.GeminiSetup -> {
                 val localIp by viewModel.localIpAddress.collectAsState()
                 GeminiSetupDialog(
@@ -1524,30 +1525,13 @@ private fun SettingsMenuScreen(
         if (showInternalImagePicker) {
             ScreensaverImagePicker(
                 onDismiss = { showInternalImagePicker = false; closeDialog() },
-                onImport = { uris ->
-                    val imported = ScreensaverImageFiles.import(context, uris)
-                    try {
-                        repository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS,
-                            com.google.gson.Gson().toJson((screensaverImages + imported).distinct()))
-                    } catch (failure: Throwable) {
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                            imported.forEach { java.io.File(android.net.Uri.parse(it).path!!).delete() }
-                        }
-                        throw failure
-                    }
-                },
+                onImport = { uris -> viewModel.importScreensaverImages(uris) },
             )
         }
         if (showScreensaverGallery) {
             ScreensaverImageGallery(
                 imageUris = screensaverImages,
-                onDelete = { removed ->
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                        val remaining = screensaverImages.filterNot { it in removed }
-                        repository.saveString(SettingsRepository.SCREENSAVER_IMAGE_URIS, com.google.gson.Gson().toJson(remaining))
-                        ScreensaverImageFiles.removeSavedImages(context, removed)
-                    }
-                },
+                onDelete = { removed -> viewModel.deleteScreensaverImages(removed) },
                 onDismiss = { showScreensaverGallery = false; closeDialog() },
             )
         }

@@ -110,6 +110,7 @@ sealed class SettingDialogState {
     data class LinkQr(val title: String, val url: String) : SettingDialogState()
     object GeminiSetup : SettingDialogState()
     data class ConnectionSetup(val source: String?) : SettingDialogState()
+    object ScreensaverWebSetup : SettingDialogState()
     object DeviceCapabilities : SettingDialogState()
     object HonomiLogin : SettingDialogState()
     object HonomiLogout : SettingDialogState()

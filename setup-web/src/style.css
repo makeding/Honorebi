@@ -475,3 +475,95 @@ input:disabled, select:disabled { opacity: .65; }
 .feedback-slot { min-height: 168px; }
 input::placeholder { color: #bfa7af; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.screensaver-feedback {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  margin-top: 14px;
+}
+.screensaver-feedback > * {
+  width: 100%;
+}
+.screensaver-gallery-block {
+  margin-top: 16px;
+}
+.screensaver-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.screensaver-card {
+  overflow: hidden;
+  border: 1px solid #63474d;
+  border-radius: 14px;
+  background: #322124;
+  display: flex;
+  flex-direction: column;
+}
+.screensaver-thumb-slot {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #211618;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.screensaver-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.screensaver-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #cdbdbf;
+}
+.screensaver-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.screensaver-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.screensaver-meta strong {
+  font-size: 0.95rem;
+}
+.screensaver-meta small {
+  color: #cdbdbf;
+  font-size: 0.8rem;
+}
+.screensaver-delete-btn {
+  min-height: 38px;
+  padding: 0 12px;
+}
+@media (max-width: 520px) {
+  .screensaver-grid {
+    grid-template-columns: 1fr;
+  }
+}
