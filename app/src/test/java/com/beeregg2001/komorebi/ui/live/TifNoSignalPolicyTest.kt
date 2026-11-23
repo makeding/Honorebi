@@ -188,6 +188,7 @@ class TifNoSignalPolicyTest {
 
         // Static/low-motion effect styles resolve to EFFECT even when animations/hw accel are off
         val staticEffectStyles = listOf(
+            TifNoSignalStyle.NOK_CALLSIGN,
             TifNoSignalStyle.ARIB_COLOR_BARS,
             TifNoSignalStyle.MINIMAL_CLOCK,
         )
@@ -252,6 +253,7 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.DOT_MATRIX,
             TifNoSignalStyle.STARFIELD,
             TifNoSignalStyle.CRAYON_TITLE,
+            TifNoSignalStyle.PRECURE_SPARKLE,
         )
         for (effectStyle in animatedEffectStyles) {
             assertEquals(
@@ -348,6 +350,7 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.DVD_BOUNCE to NoSignalRenderMode.BOUNCE,
             TifNoSignalStyle.HONOREBI_BOUNCE to NoSignalRenderMode.BOUNCE,
             TifNoSignalStyle.SCREENSAVER to NoSignalRenderMode.SCREENSAVER,
+            TifNoSignalStyle.NOK_CALLSIGN to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.ARIB_COLOR_BARS to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.ANALOG_STATIC to NoSignalRenderMode.EFFECT,
@@ -357,8 +360,9 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.DOT_MATRIX to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.STARFIELD to NoSignalRenderMode.EFFECT,
             TifNoSignalStyle.CRAYON_TITLE to NoSignalRenderMode.EFFECT,
+            TifNoSignalStyle.PRECURE_SPARKLE to NoSignalRenderMode.EFFECT,
         )
-        assertEquals(13, TifNoSignalStyle.entries.size)
+        assertEquals(15, TifNoSignalStyle.entries.size)
         assertEquals(TifNoSignalStyle.entries.toSet(), expected.keys)
         for ((style, expectedMode) in expected) {
             assertEquals(

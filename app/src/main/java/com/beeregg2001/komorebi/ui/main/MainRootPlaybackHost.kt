@@ -112,6 +112,7 @@ fun MainRootPlaybackHost(
                 !com.beeregg2001.komorebi.ui.live.usesLiveOsd(target.channel.id, target.channel.type)) {
                 val subtitle by settingsViewModel.liveSubtitleDefault.collectAsState()
                 val tifNoSignalStyle by settingsViewModel.tifNoSignalStyle.collectAsState()
+                val tifNoSignalAccentColor by settingsViewModel.tifNoSignalAccentColor.collectAsState()
                 val screensaverImageUris by settingsViewModel.screensaverImageUris.collectAsState()
                 val screensaverIntervalSeconds by settingsViewModel.screensaverIntervalSeconds.collectAsState()
                 val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
@@ -130,6 +131,7 @@ fun MainRootPlaybackHost(
                     onLaunchSystemSettings = onLaunchSystemSettings,
                     onClockClick = onTriggerScreensaver,
                     noSignalStyle = tifNoSignalStyle,
+                    noSignalAccentColor = tifNoSignalAccentColor,
                     screensaverImageUris = screensaverImageUris,
                     screensaverIntervalSeconds = screensaverIntervalSeconds,
                     screensaverTransition = screensaverTransition,

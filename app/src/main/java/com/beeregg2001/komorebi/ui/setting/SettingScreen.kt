@@ -1510,12 +1510,16 @@ private fun SettingsMenuScreen(
 
             is SettingDialogState.NoSignalStylePreview -> TifNoSignalStylePreviewOverlay(
                 currentStyle = prefs.tifNoSignalStyle,
+                currentAccentColor = prefs.tifNoSignalAccentColor,
                 screensaverImageUris = screensaverImages,
                 screensaverIntervalSeconds = 5,
                 screensaverTransition = screensaverTransition,
                 onSelect = {
                     viewModel.updateTifNoSignalStyle(it.name)
                     closeDialog()
+                },
+                onSelectAccentColor = {
+                    viewModel.updateTifNoSignalAccentColor(it.name)
                 },
                 onDismiss = { closeDialog() },
             )

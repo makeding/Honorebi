@@ -58,6 +58,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.R
+import com.beeregg2001.komorebi.data.TifNoSignalAccentColor
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.ui.screensaver.ScreensaverContent
 import kotlinx.coroutines.isActive
@@ -108,6 +109,7 @@ internal fun TifNoSignalLayer(
     paused: Boolean,
     onDegraded: () -> Unit,
     modifier: Modifier = Modifier,
+    accentColor: TifNoSignalAccentColor = TifNoSignalAccentColor.RANDOM,
     dimmed: Boolean = false,
     physicsSeed: Long? = null,
     onLogoComposed: (() -> Unit)? = null,
@@ -160,6 +162,7 @@ internal fun TifNoSignalLayer(
             NoSignalRenderMode.EFFECT -> {
                 TifNoSignalEffectSurface(
                     style = activeStyle,
+                    accentColor = accentColor,
                     statusText = statusText,
                     inputLabel = inputLabel,
                     isPassthroughInput = isPassthroughInput,

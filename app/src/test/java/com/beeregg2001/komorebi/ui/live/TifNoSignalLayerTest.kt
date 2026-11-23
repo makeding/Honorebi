@@ -166,6 +166,7 @@ class TifNoSignalLayerTest {
     @Test
     fun allEffectStylesRenderEffectTagAndHaveZeroFocusableNodes() {
         val effectStyles = listOf(
+            TifNoSignalStyle.NOK_CALLSIGN,
             TifNoSignalStyle.ARIB_COLOR_BARS,
             TifNoSignalStyle.ARIB_COLOR_BARS_SCROLL,
             TifNoSignalStyle.ANALOG_STATIC,
@@ -175,6 +176,7 @@ class TifNoSignalLayerTest {
             TifNoSignalStyle.DOT_MATRIX,
             TifNoSignalStyle.STARFIELD,
             TifNoSignalStyle.CRAYON_TITLE,
+            TifNoSignalStyle.PRECURE_SPARKLE,
         )
         val activeStyle = androidx.compose.runtime.mutableStateOf(effectStyles.first())
         compose.mainClock.autoAdvance = false

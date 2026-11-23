@@ -1,6 +1,8 @@
 package com.beeregg2001.komorebi.ui.live
 
 import android.graphics.Bitmap
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -56,6 +58,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -66,6 +69,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.R
+import com.beeregg2001.komorebi.data.TifNoSignalAccentColor
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -148,6 +152,7 @@ internal fun TifNoSignalEffectSurface(
     dimmed: Boolean,
     onDegraded: () -> Unit,
     modifier: Modifier = Modifier,
+    accentColor: TifNoSignalAccentColor = TifNoSignalAccentColor.RANDOM,
 ) {
     Box(
         modifier = modifier
@@ -156,6 +161,12 @@ internal fun TifNoSignalEffectSurface(
             .testTag(TIF_NO_SIGNAL_EFFECT_TAG),
     ) {
         when (style) {
+            TifNoSignalStyle.NOK_CALLSIGN -> NokCallsignEffect(
+                statusText = statusText,
+                inputLabel = inputLabel,
+                accentColor = accentColor,
+                paused = paused,
+            )
             TifNoSignalStyle.ARIB_COLOR_BARS -> AribColorBarsEffect(
                 statusText = statusText,
                 inputLabel = inputLabel,
@@ -208,6 +219,12 @@ internal fun TifNoSignalEffectSurface(
                 onDegraded = onDegraded,
             )
             TifNoSignalStyle.CRAYON_TITLE -> CrayonTitleEffect(
+                statusText = statusText,
+                inputLabel = inputLabel,
+                paused = paused,
+                onDegraded = onDegraded,
+            )
+            TifNoSignalStyle.PRECURE_SPARKLE -> PrecureSparkleEffect(
                 statusText = statusText,
                 inputLabel = inputLabel,
                 paused = paused,
@@ -1651,6 +1668,366 @@ private fun CrayonTitleEffect(
                 Text(
                     text = statusText.ifBlank { "信号がありません" },
                     color = CRAYON_INK,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 420.dp),
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 9. N〇K Broadcast Station-ID Callsign Card (Up/Down customizable color + Random)
+// ---------------------------------------------------------------------------
+private val NOK_SILVER_EDGE = Color(0xFFDADADA)
+
+@Composable
+private fun NokCallsignEffect(
+    statusText: String,
+    inputLabel: String,
+    accentColor: TifNoSignalAccentColor,
+    paused: Boolean,
+) {
+    val randomFallback = remember {
+        val concrete = TifNoSignalAccentColor.concreteEntries
+        concrete[Random.nextInt(concrete.size)]
+    }
+    val resolvedPalette = if (accentColor == TifNoSignalAccentColor.RANDOM) randomFallback else accentColor
+    val deepColor by animateColorAsState(
+        targetValue = Color(resolvedPalette.deepArgb),
+        animationSpec = tween(durationMillis = 240),
+        label = "nokDeep",
+    )
+    val mainColor by animateColorAsState(
+        targetValue = Color(resolvedPalette.mainArgb),
+        animationSpec = tween(durationMillis = 240),
+        label = "nokMain",
+    )
+    val ribbonColor by animateColorAsState(
+        targetValue = Color(resolvedPalette.ribbonArgb),
+        animationSpec = tween(durationMillis = 240),
+        label = "nokRibbon",
+    )
+
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(paused) {
+        if (paused) return@LaunchedEffect
+        while (isActive) {
+            delay(1000L)
+            tick++
+        }
+    }
+    val shiftX = sin(tick * 0.05f) * 6f
+    val shiftY = cos(tick * 0.04f) * 4f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(deepColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
+                    // Slanted broadcast parallelogram geometry matching the classic NHK station-ID ribbon
+                    val slant = w * 0.145f
+                    val silverLeftTop = w * 0.20f
+                    val silverW = w * 0.022f
+                    val leftRibbonW = w * 0.058f
+                    val mainPanelW = w * 0.655f
+                    val rightRibbonW = w * 0.24f
+
+                    fun slantedStripPath(topLeftX: Float, width: Float): Path = Path().apply {
+                        moveTo(topLeftX, -h * 0.05f)
+                        lineTo(topLeftX + width, -h * 0.05f)
+                        lineTo(topLeftX + width - slant, h * 1.05f)
+                        lineTo(topLeftX - slant, h * 1.05f)
+                        close()
+                    }
+
+                    val silverPath = slantedStripPath(silverLeftTop, silverW)
+                    val leftRibbonPath = slantedStripPath(silverLeftTop + silverW, leftRibbonW)
+                    val mainPanelPath = slantedStripPath(silverLeftTop + silverW + leftRibbonW, mainPanelW)
+                    val rightRibbonPath = slantedStripPath(silverLeftTop + silverW + leftRibbonW + mainPanelW, rightRibbonW)
+
+                    onDrawBehind {
+                        drawRect(deepColor)
+                        drawPath(silverPath, color = NOK_SILVER_EDGE)
+                        drawPath(leftRibbonPath, color = ribbonColor)
+                        drawPath(mainPanelPath, color = mainColor)
+                        drawPath(rightRibbonPath, color = ribbonColor)
+                    }
+                },
+        )
+
+        // Centered 3-line broadcast station-ID typography (clear above bottom preview HUD)
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 44.dp)
+                .graphicsLayer {
+                    translationX = shiftX
+                    translationY = shiftY
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = inputLabel.uppercase(Locale.US),
+                color = Color.White,
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 3.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 520.dp),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "HonoRebi",
+                color = Color.White,
+                fontSize = 62.sp,
+                lineHeight = 66.sp,
+                fontWeight = FontWeight.Black,
+                fontStyle = FontStyle.Italic,
+                letterSpacing = 2.sp,
+                maxLines = 1,
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = statusText.ifBlank { "ホノレビデジタルテレビジョン" },
+                color = Color.White.copy(alpha = 0.95f),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 2.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 560.dp),
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 10. PreCure Magical-Girl Sparkle Title Card
+// ---------------------------------------------------------------------------
+private enum class PrecureParticleKind { HEART, KIRAKIRA, BUBBLE }
+
+private class PrecureParticle(
+    val nx: Float,
+    val ny: Float,
+    val sizeDp: Float,
+    val color: Color,
+    val kind: PrecureParticleKind,
+    val phase: Float,
+    val speed: Float,
+)
+
+private val PRECURE_BG_COLORS = listOf(
+    Color(0xFFFFE4F2),
+    Color(0xFFF6D9FF),
+    Color(0xFFD8EEFF),
+)
+private val PRECURE_PINK = Color(0xFFFF3E9D)
+private val PRECURE_PLUM = Color(0xFF7A1F52)
+private val PRECURE_GOLD = Color(0xFFFFC83D)
+private val PRECURE_STICKER_OUTLINE = Stroke(width = 14f, join = StrokeJoin.Round)
+private val PRECURE_TITLE_SHADOW = Shadow(color = Color(0x66FF3E9D), offset = Offset(0f, 5f), blurRadius = 8f)
+
+private fun buildPrecureParticles(): Array<PrecureParticle> = arrayOf(
+    PrecureParticle(0.08f, 0.20f, 34f, Color(0xFFFF5CAE), PrecureParticleKind.HEART, 0.3f, 0.045f),
+    PrecureParticle(0.16f, 0.56f, 28f, Color(0xFFFFD166), PrecureParticleKind.KIRAKIRA, 1.1f, 0.038f),
+    PrecureParticle(0.11f, 0.80f, 44f, Color(0xFFFFFFFF), PrecureParticleKind.BUBBLE, 2.0f, 0.032f),
+    PrecureParticle(0.24f, 0.14f, 24f, Color(0xFF60A5FA), PrecureParticleKind.KIRAKIRA, 2.8f, 0.042f),
+    PrecureParticle(0.32f, 0.78f, 30f, Color(0xFFC084FC), PrecureParticleKind.HEART, 0.8f, 0.036f),
+    PrecureParticle(0.45f, 0.10f, 32f, Color(0xFFFFFFFF), PrecureParticleKind.KIRAKIRA, 1.7f, 0.040f),
+    PrecureParticle(0.58f, 0.12f, 26f, Color(0xFFFF5CAE), PrecureParticleKind.HEART, 3.2f, 0.035f),
+    PrecureParticle(0.72f, 0.16f, 36f, Color(0xFFFFFFFF), PrecureParticleKind.BUBBLE, 0.5f, 0.030f),
+    PrecureParticle(0.84f, 0.22f, 32f, Color(0xFFFFD166), PrecureParticleKind.KIRAKIRA, 2.4f, 0.046f),
+    PrecureParticle(0.91f, 0.48f, 36f, Color(0xFFFF5CAE), PrecureParticleKind.HEART, 1.4f, 0.040f),
+    PrecureParticle(0.82f, 0.72f, 26f, Color(0xFF38BDF8), PrecureParticleKind.KIRAKIRA, 3.6f, 0.044f),
+    PrecureParticle(0.68f, 0.84f, 42f, Color(0xFFFFFFFF), PrecureParticleKind.BUBBLE, 2.9f, 0.028f),
+    PrecureParticle(0.20f, 0.36f, 22f, Color(0xFFFFFFFF), PrecureParticleKind.KIRAKIRA, 4.1f, 0.050f),
+    PrecureParticle(0.78f, 0.38f, 28f, Color(0xFFC084FC), PrecureParticleKind.HEART, 0.9f, 0.039f),
+)
+
+private fun buildUnitHeartPath(r: Float): Path = Path().apply {
+    moveTo(0f, r * 0.85f)
+    cubicTo(-r * 1.15f, r * 0.25f, -r * 1.1f, -r * 0.75f, 0f, -r * 0.22f)
+    cubicTo(r * 1.1f, -r * 0.75f, r * 1.15f, r * 0.25f, 0f, r * 0.85f)
+    close()
+}
+
+private fun buildUnitKirakiraPath(r: Float): Path = Path().apply {
+    val c = r * 0.24f
+    moveTo(0f, -r)
+    quadraticTo(c, -c, r, 0f)
+    quadraticTo(c, c, 0f, r)
+    quadraticTo(-c, c, -r, 0f)
+    quadraticTo(-c, -c, 0f, -r)
+    close()
+}
+
+@Composable
+private fun PrecureSparkleEffect(
+    statusText: String,
+    inputLabel: String,
+    paused: Boolean,
+    onDegraded: () -> Unit,
+) {
+    val particles = remember { buildPrecureParticles() }
+    val elapsedState = rememberElapsedSeconds(paused = paused, onDegraded = onDegraded)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val bgBrush = Brush.linearGradient(
+                        colors = PRECURE_BG_COLORS,
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                    )
+                    val rayCenter = Offset(size.width * 0.5f, size.height * 0.44f)
+                    val rayLen = size.maxDimension * 0.85f
+                    val rayWedge = Path().apply {
+                        moveTo(0f, 0f)
+                        lineTo(rayLen, -rayLen * 0.13f)
+                        lineTo(rayLen, rayLen * 0.13f)
+                        close()
+                    }
+                    val particlePaths = Array(particles.size) { i ->
+                        val r = particles[i].sizeDp.dp.toPx() * 0.5f
+                        when (particles[i].kind) {
+                            PrecureParticleKind.HEART -> buildUnitHeartPath(r)
+                            PrecureParticleKind.KIRAKIRA -> buildUnitKirakiraPath(r)
+                            PrecureParticleKind.BUBBLE -> null
+                        }
+                    }
+                    val particleRadii = FloatArray(particles.size) { particles[it].sizeDp.dp.toPx() * 0.5f }
+                    val bubbleStroke = Stroke(width = 2.dp.toPx())
+
+                    onDrawBehind {
+                        val elapsed = elapsedState.value
+                        drawRect(brush = bgBrush)
+
+                        // Soft rotating pastel magical sunburst rays
+                        val baseRot = (elapsed * 6f) % 360f
+                        translate(left = rayCenter.x, top = rayCenter.y) {
+                            for (k in 0 until 10) {
+                                rotate(degrees = baseRot + k * 36f, pivot = Offset.Zero) {
+                                    drawPath(rayWedge, color = Color.White.copy(alpha = 0.22f))
+                                }
+                            }
+                        }
+
+                        // Rising & twinkling hearts, 4-point kirakira stars, and pastel bubbles
+                        for (i in particles.indices) {
+                            val p = particles[i]
+                            val r = particleRadii[i]
+                            var yNorm = (p.ny - elapsed * p.speed) % 1.15f
+                            if (yNorm < -0.08f) yNorm += 1.15f
+                            val cx = size.width * p.nx + sin(elapsed * 1.3f + p.phase) * 14f
+                            val cy = size.height * yNorm
+                            val twinkle = 0.55f + 0.45f * ((sin(elapsed * 3.0f + p.phase) + 1f) * 0.5f)
+
+                            translate(left = cx, top = cy) {
+                                when (p.kind) {
+                                    PrecureParticleKind.BUBBLE -> {
+                                        drawCircle(Color.White.copy(alpha = 0.24f * twinkle), radius = r, center = Offset.Zero)
+                                        drawCircle(Color.White.copy(alpha = 0.65f * twinkle), radius = r, center = Offset.Zero, style = bubbleStroke)
+                                        drawCircle(Color.White.copy(alpha = 0.8f * twinkle), radius = r * 0.22f, center = Offset(-r * 0.32f, -r * 0.32f))
+                                    }
+                                    PrecureParticleKind.KIRAKIRA -> {
+                                        val path = particlePaths[i] ?: return@translate
+                                        val s = 0.72f + 0.35f * twinkle
+                                        scale(scaleX = s, scaleY = s, pivot = Offset.Zero) {
+                                            drawPath(path, color = p.color.copy(alpha = 0.92f * twinkle))
+                                        }
+                                    }
+                                    PrecureParticleKind.HEART -> {
+                                        val path = particlePaths[i] ?: return@translate
+                                        rotate(degrees = sin(elapsed * 1.6f + p.phase) * 14f, pivot = Offset.Zero) {
+                                            drawPath(path, color = p.color.copy(alpha = 0.78f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+        )
+
+        // Centered magical-girl frosted heart crest (safe above ~110dp bottom preview HUD)
+        val outerShape = RoundedCornerShape(36.dp)
+        val innerShape = RoundedCornerShape(30.dp)
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 52.dp)
+                .background(Color.White.copy(alpha = 0.78f), outerShape)
+                .border(3.dp, PRECURE_PINK.copy(alpha = 0.85f), outerShape)
+                .padding(6.dp)
+                .border(1.5.dp, PRECURE_GOLD, innerShape)
+                .padding(horizontal = 42.dp, vertical = 22.dp),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val ribbonShape = RoundedCornerShape(999.dp)
+                Box(
+                    modifier = Modifier
+                        .background(PRECURE_PINK, ribbonShape)
+                        .padding(horizontal = 18.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = "♥  $inputLabel  ♥",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 340.dp),
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "しんごう待機中♪",
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                            drawStyle = PRECURE_STICKER_OUTLINE,
+                            shadow = PRECURE_TITLE_SHADOW,
+                        ),
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = "しんごう待機中♪",
+                        style = TextStyle(
+                            color = PRECURE_PINK,
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                        ),
+                        maxLines = 1,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "✦  ${statusText.ifBlank { "信号がありません" }}  ✦",
+                    color = PRECURE_PLUM,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,

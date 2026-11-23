@@ -29,7 +29,9 @@ internal fun previewNoSignalRenderMode(style: TifNoSignalStyle): NoSignalRenderM
         TifNoSignalStyle.AURORA_AMBIENT,
         TifNoSignalStyle.DOT_MATRIX,
         TifNoSignalStyle.STARFIELD,
-        TifNoSignalStyle.CRAYON_TITLE -> NoSignalRenderMode.EFFECT
+        TifNoSignalStyle.CRAYON_TITLE,
+        TifNoSignalStyle.PRECURE_SPARKLE,
+        TifNoSignalStyle.NOK_CALLSIGN -> NoSignalRenderMode.EFFECT
     }
 
 internal fun resolveNoSignalRenderMode(
@@ -48,7 +50,8 @@ internal fun resolveNoSignalRenderMode(
         TifNoSignalStyle.BANNER -> NoSignalRenderMode.BANNER
         TifNoSignalStyle.SCREENSAVER -> NoSignalRenderMode.SCREENSAVER
         TifNoSignalStyle.ARIB_COLOR_BARS,
-        TifNoSignalStyle.MINIMAL_CLOCK -> NoSignalRenderMode.EFFECT
+        TifNoSignalStyle.MINIMAL_CLOCK,
+        TifNoSignalStyle.NOK_CALLSIGN -> NoSignalRenderMode.EFFECT
         TifNoSignalStyle.DVD_BOUNCE,
         TifNoSignalStyle.HONOREBI_BOUNCE -> {
             if (hardwareAccelerated && animationsEnabled && !degraded) {
@@ -63,7 +66,8 @@ internal fun resolveNoSignalRenderMode(
         TifNoSignalStyle.AURORA_AMBIENT,
         TifNoSignalStyle.DOT_MATRIX,
         TifNoSignalStyle.STARFIELD,
-        TifNoSignalStyle.CRAYON_TITLE -> {
+        TifNoSignalStyle.CRAYON_TITLE,
+        TifNoSignalStyle.PRECURE_SPARKLE -> {
             if (hardwareAccelerated && animationsEnabled && !degraded) {
                 NoSignalRenderMode.EFFECT
             } else {

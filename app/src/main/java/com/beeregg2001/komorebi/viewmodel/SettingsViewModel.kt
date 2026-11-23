@@ -383,6 +383,12 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         TifNoSignalStyle.BANNER
     )
+    val tifNoSignalAccentColor: StateFlow<com.beeregg2001.komorebi.data.TifNoSignalAccentColor> =
+        settingsRepository.tifNoSignalAccentColor.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            com.beeregg2001.komorebi.data.TifNoSignalAccentColor.RANDOM
+        )
     val deepTvFeatureSettings: StateFlow<DeepTvFeatureSettings> = settingsRepository.deepTvFeatureSettings.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
@@ -937,6 +943,13 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.saveString(
             SettingsRepository.TIF_NO_SIGNAL_STYLE,
             TifNoSignalStyle.fromPreference(value).name
+        )
+    }
+
+    fun updateTifNoSignalAccentColor(value: String) = viewModelScope.launch(Dispatchers.IO) {
+        settingsRepository.saveString(
+            SettingsRepository.TIF_NO_SIGNAL_ACCENT_COLOR,
+            com.beeregg2001.komorebi.data.TifNoSignalAccentColor.fromPreference(value).name
         )
     }
 

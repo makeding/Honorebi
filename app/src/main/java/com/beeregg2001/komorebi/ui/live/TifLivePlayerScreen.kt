@@ -61,6 +61,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.data.TifNoSignalAccentColor
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.repository.tif.TifInput
@@ -146,6 +147,7 @@ fun TifLivePlayerScreen(
     onClockClick: () -> Unit = {},
     onExit: () -> Unit = {},
     noSignalStyle: TifNoSignalStyle = TifNoSignalStyle.BANNER,
+    noSignalAccentColor: TifNoSignalAccentColor = TifNoSignalAccentColor.RANDOM,
     screensaverImageUris: List<String> = emptyList(),
     screensaverIntervalSeconds: Int = 30,
     screensaverTransition: String = "FADE",
@@ -711,6 +713,7 @@ fun TifLivePlayerScreen(
                 TifNoSignalLayer(
                     mode = noSignalRenderMode,
                     style = noSignalStyle,
+                    accentColor = noSignalAccentColor,
                     statusText = videoStatus.text,
                     inputLabel = channel.name,
                     isPassthroughInput = isPassthroughInput,

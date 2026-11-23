@@ -184,6 +184,7 @@ class SettingsRepository @Inject constructor(
         val CAST_ACCESS_MODE = stringPreferencesKey("cast_access_mode")
         val TIF_SHOW_TUNER_INPUTS = booleanPreferencesKey("tif_show_tuner_inputs")
         val TIF_NO_SIGNAL_STYLE = stringPreferencesKey("tif_no_signal_style")
+        val TIF_NO_SIGNAL_ACCENT_COLOR = stringPreferencesKey("tif_no_signal_accent_color")
 
         val WATCH_NEXT_ENABLED = booleanPreferencesKey("watch_next_enabled")
         val WATCH_NEXT_NEXT_EPISODE_ENABLED = booleanPreferencesKey("watch_next_next_episode_enabled")
@@ -385,6 +386,10 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[TIF_SHOW_TUNER_INPUTS] ?: false }
     val tifNoSignalStyle: Flow<TifNoSignalStyle> =
         context.dataStore.data.map { TifNoSignalStyle.fromPreference(it[TIF_NO_SIGNAL_STYLE]) }
+    val tifNoSignalAccentColor: Flow<com.beeregg2001.komorebi.data.TifNoSignalAccentColor> =
+        context.dataStore.data.map {
+            com.beeregg2001.komorebi.data.TifNoSignalAccentColor.fromPreference(it[TIF_NO_SIGNAL_ACCENT_COLOR])
+        }
 
     private val defaultDeepTvFeatureSettings = DeepTvFeatureSettings()
 

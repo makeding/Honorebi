@@ -50,6 +50,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
+import com.beeregg2001.komorebi.data.TifNoSignalAccentColor
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.ui.live.TifNoSignalLayer
 import com.beeregg2001.komorebi.ui.live.TifStatusBanner
@@ -64,6 +65,7 @@ internal const val TIF_NO_SIGNAL_PREVIEW_COUNTER_TAG = "tif-no-signal-preview-co
 internal const val TIF_NO_SIGNAL_PREVIEW_APPLIED_BADGE_TAG = "tif-no-signal-preview-applied-badge"
 internal const val TIF_NO_SIGNAL_PREVIEW_PREV_TAG = "tif-no-signal-preview-prev"
 internal const val TIF_NO_SIGNAL_PREVIEW_NEXT_TAG = "tif-no-signal-preview-next"
+internal const val TIF_NO_SIGNAL_PREVIEW_COLOR_TAG = "tif-no-signal-preview-color"
 
 private val PreviewHudScrim = Color(0xD60C1018)
 private val PreviewHudBorder = Color.White.copy(alpha = 0.16f)
@@ -78,13 +80,21 @@ internal fun TifNoSignalStylePreviewOverlay(
     onSelect: (TifNoSignalStyle) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    currentAccentColor: TifNoSignalAccentColor = TifNoSignalAccentColor.RANDOM,
+    onSelectAccentColor: ((TifNoSignalAccentColor) -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val styles = remember { TifNoSignalStyle.entries }
+    val accentColors = remember { TifNoSignalAccentColor.entries }
     var previewIndex by remember(currentStyle) {
         mutableIntStateOf(styles.indexOf(currentStyle).coerceAtLeast(0))
     }
+    var accentColorIndex by remember(currentAccentColor) {
+        mutableIntStateOf(accentColors.indexOf(currentAccentColor).coerceAtLeast(0))
+    }
     val previewStyle = styles[previewIndex]
+    val previewAccentColor = accentColors[accentColorIndex]
+    val supportsColorCustomization = previewStyle == TifNoSignalStyle.NOK_CALLSIGN
     val focusRequester = remember { FocusRequester() }
 
     val selectPrevious = {
@@ -92,6 +102,12 @@ internal fun TifNoSignalStylePreviewOverlay(
     }
     val selectNext = {
         previewIndex = (previewIndex + 1) % styles.size
+    }
+    val selectPreviousColor = {
+        accentColorIndex = (accentColorIndex - 1 + accentColors.size) % accentColors.size
+    }
+    val selectNextColor = {
+        accentColorIndex = (accentColorIndex + 1) % accentColors.size
     }
 
     LaunchedEffect(Unit) {
@@ -124,6 +140,9 @@ internal fun TifNoSignalStylePreviewOverlay(
                     Key.DirectionCenter,
                     Key.Enter,
                     Key.NumPadEnter -> {
+                        if (supportsColorCustomization) {
+                            onSelectAccentColor?.invoke(previewAccentColor)
+                        }
                         onSelect(previewStyle)
                         true
                     }
@@ -132,8 +151,14 @@ internal fun TifNoSignalStylePreviewOverlay(
                         onDismiss()
                         true
                     }
-                    Key.DirectionUp,
-                    Key.DirectionDown -> true
+                    Key.DirectionUp -> {
+                        if (supportsColorCustomization) selectPreviousColor()
+                        true
+                    }
+                    Key.DirectionDown -> {
+                        if (supportsColorCustomization) selectNextColor()
+                        true
+                    }
                     else -> false
                 }
             }
@@ -148,6 +173,7 @@ internal fun TifNoSignalStylePreviewOverlay(
             TifNoSignalLayer(
                 mode = previewNoSignalRenderMode(previewStyle),
                 style = previewStyle,
+                accentColor = previewAccentColor,
                 statusText = "信号がありません",
                 inputLabel = "HDMI 1",
                 isPassthroughInput = true,
@@ -230,6 +256,31 @@ internal fun TifNoSignalStylePreviewOverlay(
                         modifier = Modifier.testTag(TIF_NO_SIGNAL_PREVIEW_DESCRIPTION_TAG),
                     )
 
+                    if (supportsColorCustomization) {
+                        Row(
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 10.dp, vertical = 3.dp)
+                                .testTag(TIF_NO_SIGNAL_PREVIEW_COLOR_TAG),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .background(Color(previewAccentColor.mainArgb), CircleShape)
+                                    .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape),
+                            )
+                            Text(
+                                text = "カラー: ${previewAccentColor.label}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.90f),
+                                maxLines = 1,
+                            )
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.padding(top = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -272,7 +323,11 @@ internal fun TifNoSignalStylePreviewOverlay(
             }
 
             Text(
-                text = "◀ ▶ 切替   •   決定 選択   •   戻る キャンセル",
+                text = if (supportsColorCustomization) {
+                    "◀ ▶ 切替   •   ▲ ▼ カラー   •   決定 選択   •   戻る キャンセル"
+                } else {
+                    "◀ ▶ 切替   •   決定 選択   •   戻る キャンセル"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.62f),
                 textAlign = TextAlign.Center,
