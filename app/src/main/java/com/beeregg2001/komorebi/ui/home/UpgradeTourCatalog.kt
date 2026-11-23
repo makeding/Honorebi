@@ -40,9 +40,10 @@ data class UpgradeTourStep(
 object UpgradeTourCatalog {
     const val VERSION_CODE_1_2_0 = 35
     const val VERSION_CODE_1_2_1 = 36
+    const val VERSION_CODE_1_2_2 = 37
 
     fun tourForVersion(versionCode: Int): List<UpgradeTourStep> = when (versionCode) {
-        VERSION_CODE_1_2_0, VERSION_CODE_1_2_1 -> listOf(
+        VERSION_CODE_1_2_0, VERSION_CODE_1_2_1, VERSION_CODE_1_2_2 -> listOf(
             UpgradeTourStep(
                 targetId = UpgradeTourTargetId.NAV_RAIL,
                 shape = UpgradeSpotlightShape.CIRCLE,
