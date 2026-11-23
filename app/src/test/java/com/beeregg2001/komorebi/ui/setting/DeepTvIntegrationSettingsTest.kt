@@ -130,9 +130,10 @@ class DeepTvIntegrationSettingsTest {
         val showTuners = row("入力ソースにテレビ信号を表示")
         val hideEmpty = row("チャンネル未登録のTV入力を非表示")
         val noSignal = row("TV入力の信号なし表示")
+        val channelDebug = row("チャンネル診断")
         val refreshTif = row("TV入力を再読み込み")
 
-        // Expanded focus chain: toggle -> castAccess -> showTuners -> hideEmpty -> noSignal -> TV入力を再読み込み
+        // Expanded focus chain: toggle -> castAccess -> showTuners -> hideEmpty -> noSignal -> チャンネル診断 -> TV入力を再読み込み
         toggle.requestFocus().assertIsFocused().assertTextContains("ON")
         toggle.performKeyInput { pressKey(Key.DirectionDown) }
         castAccess.assertIsFocused()
@@ -143,8 +144,12 @@ class DeepTvIntegrationSettingsTest {
         hideEmpty.performKeyInput { pressKey(Key.DirectionDown) }
         noSignal.assertIsFocused()
         noSignal.performKeyInput { pressKey(Key.DirectionDown) }
+        channelDebug.assertIsFocused()
+        channelDebug.performKeyInput { pressKey(Key.DirectionDown) }
         refreshTif.assertIsFocused()
         refreshTif.performKeyInput { pressKey(Key.DirectionUp) }
+        channelDebug.assertIsFocused()
+        channelDebug.performKeyInput { pressKey(Key.DirectionUp) }
         noSignal.assertIsFocused()
         noSignal.performKeyInput { pressKey(Key.DirectionUp) }
         hideEmpty.assertIsFocused()
