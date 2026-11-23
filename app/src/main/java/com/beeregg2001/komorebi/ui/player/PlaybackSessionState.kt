@@ -72,6 +72,7 @@ data class PlaybackOpenIntentToken(val id: Long)
  */
 internal fun shouldDismissPlayerOverlaysForRemoteCommand(command: HonomiRemoteCommand): Boolean = when (command) {
     is HonomiRemoteCommand.OpenLive,
+    is HonomiRemoteCommand.SelectSource,
     is HonomiRemoteCommand.OpenRecording,
     HonomiRemoteCommand.Play,
     HonomiRemoteCommand.Pause,

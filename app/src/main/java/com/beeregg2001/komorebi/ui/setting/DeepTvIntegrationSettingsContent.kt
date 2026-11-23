@@ -48,7 +48,9 @@ object DeepTvItemIndex {
     const val TIF_TOGGLE = 7
     const val TIF_HIDE_EMPTY = 8
     const val TIF_NO_SIGNAL = 9
-    const val COUNT = 10
+    const val CAST_ACCESS = 10
+    const val TIF_SHOW_TUNERS = 11
+    const val COUNT = 12
 }
 
 @Composable
@@ -57,6 +59,7 @@ fun DeepTvIntegrationSettingsContent(
     enabled: Boolean,
     lockedByMainSystem: Boolean,
     hideEmptyInputs: Boolean,
+    showTunerInputs: Boolean,
     noSignalStyle: TifNoSignalStyle,
     features: DeepTvFeatureSettings = DeepTvFeatureSettings(),
     pipSupported: Boolean = true,
@@ -65,6 +68,7 @@ fun DeepTvIntegrationSettingsContent(
     onToggleFeature: (DeepTvFeature) -> Unit = {},
     onToggleEnabled: () -> Unit,
     onToggleHideEmpty: () -> Unit,
+    onToggleShowTuners: () -> Unit,
     onEditNoSignalStyle: () -> Unit,
     onRefreshTif: () -> Unit,
     onClick: (FocusRequester) -> Unit,
@@ -83,9 +87,11 @@ fun DeepTvIntegrationSettingsContent(
         add(DeepTvItemIndex.REMOTE_KEYS)
         add(DeepTvItemIndex.NUMBER_TUNING)
         if (pipSupported) add(DeepTvItemIndex.OS_PIP)
+        add(DeepTvItemIndex.CAST_ACCESS)
         if (!lockedByMainSystem) add(DeepTvItemIndex.TIF_TOGGLE)
         if (expanded) {
             add(DeepTvItemIndex.TIF_HIDE_EMPTY)
+            add(DeepTvItemIndex.TIF_SHOW_TUNERS)
             add(DeepTvItemIndex.TIF_NO_SIGNAL)
         }
     }
@@ -246,8 +252,20 @@ fun DeepTvIntegrationSettingsContent(
             SectionNote(statusNote)
         }
 
+        CastAccessSettings(modifier = itemModifier(DeepTvItemIndex.CAST_ACCESS))
+
         if (expanded) {
             SettingsSection("表示・動作設定") {
+                SettingItem(
+                    title = "入力ソースにテレビ信号を表示",
+                    value = if (showTunerInputs) "ON" else "OFF",
+                    icon = Icons.Default.FilterList,
+                    modifier = itemModifier(DeepTvItemIndex.TIF_SHOW_TUNERS),
+                    onClick = {
+                        onClick(itemRs[DeepTvItemIndex.TIF_SHOW_TUNERS])
+                        onToggleShowTuners()
+                    },
+                )
                 SettingItem(
                     title = "チャンネル未登録のTV入力を非表示",
                     value = if (hideEmptyInputs) "ON" else "OFF",

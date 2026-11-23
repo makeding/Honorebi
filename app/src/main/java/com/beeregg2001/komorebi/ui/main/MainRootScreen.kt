@@ -83,6 +83,27 @@ fun MainRootScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = rememberMainRootState()
+    val hideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
+    val integrationActive by settingsViewModel.tifIntegrationActive.collectAsState()
+    val showTuners by settingsViewModel.tifShowTunerInputs.collectAsState()
+    var inputGeneration by remember { mutableIntStateOf(0) }
+    var remoteInputs by remember { mutableStateOf<RemoteInputs?>(null) }
+    val selectedInputId = (state.playbackState.renderPlaybackTarget as? PlaybackTarget.Live)?.channel?.id
+    DisposableEffect(context) {
+        val manager = context.getSystemService(android.media.tv.TvInputManager::class.java)
+        val callback = object : android.media.tv.TvInputManager.TvInputCallback() {
+            override fun onInputAdded(inputId: String) { inputGeneration++ }
+            override fun onInputRemoved(inputId: String) { inputGeneration++ }
+            override fun onInputUpdated(inputId: String) { inputGeneration++ }
+            override fun onInputStateChanged(inputId: String, state: Int) { inputGeneration++ }
+        }
+        manager?.registerCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
+        onDispose { manager?.unregisterCallback(callback) }
+    }
+    LaunchedEffect(inputGeneration, hideEmptyInputs, showTuners, integrationActive, selectedInputId) {
+        remoteInputs = remoteInputs(context, hideEmptyInputs, showTuners && integrationActive, selectedInputId)
+        remoteControlViewModel.client.updateInputSources(remoteInputs!!.json)
+    }
     remember(launchedFromDeepLink) {
         if (launchedFromDeepLink) state.hasAppliedStartupChannel = true
     }
@@ -242,6 +263,20 @@ fun MainRootScreen(
                 state.playbackState.dismissPlayerOverlaysForRemoteControl()
             }
             when (command) {
+                is HonomiRemoteCommand.SelectSource -> {
+                    val channel = remoteInputs?.channels?.get(command.sourceId)
+                    if (channel == null) {
+                        remoteControlViewModel.client.reportSourceResult(command.commandId, false, "SOURCE_UNAVAILABLE")
+                    } else {
+                        remoteControlViewModel.client.sendState(contentType = "Live", title = channel.name, isBuffering = true)
+                        remoteControlViewModel.client.reportInputSignal(channel.id, "Loading", null)
+                        state.bringRemotePlaybackToFront()
+                        onRemotePlaybackOpened()
+                        state.playbackState.enterLive(channel)
+                        homeViewModel.saveLastChannel(channel)
+                        remoteControlViewModel.client.reportSourceResult(command.commandId, true, null)
+                    }
+                }
                 is HonomiRemoteCommand.OpenLive -> {
                     openPlayback(
                         PlaybackOpenRequest.Live(

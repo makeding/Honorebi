@@ -23,6 +23,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import com.beeregg2001.komorebi.data.SettingsRepository
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,6 +53,7 @@ data class HonomiRemoteChapter(
 )
 
 sealed interface HonomiRemoteCommand {
+    data class SelectSource(val sourceId: String, val commandId: String) : HonomiRemoteCommand
     data class OpenLive(val displayChannelId: String) : HonomiRemoteCommand
     data class OpenRecording(val recordedProgramId: Int, val positionSeconds: Double) : HonomiRemoteCommand
     data object Play : HonomiRemoteCommand
@@ -83,6 +87,7 @@ internal fun parseHonomiRemoteCommand(gson: Gson, text: String): HonomiRemoteCom
     if (envelope.get("type")?.asString != "Command") return@runCatching null
     val command = envelope.getAsJsonObject("command") ?: return@runCatching null
     when (command.get("type")?.asString) {
+        "SelectSource" -> HonomiRemoteCommand.SelectSource(command.get("source_id").asString, envelope.get("command_id").asString)
         "OpenLive" -> HonomiRemoteCommand.OpenLive(command.get("display_channel_id").asString)
         "OpenRecording" -> HonomiRemoteCommand.OpenRecording(
             recordedProgramId = command.get("recorded_program_id").asInt,
@@ -136,6 +141,7 @@ class HonomiRemoteControlClient @Inject constructor(
     private val gson: Gson,
     private val sessionStore: HonomiSessionStore,
     private val nhkExclusionRepository: NHKExclusionRepository,
+    private val settingsRepository: SettingsRepository,
 ) {
     private val webSocketClient = okHttpClient.newBuilder()
         .followRedirects(false)
@@ -147,6 +153,43 @@ class HonomiRemoteControlClient @Inject constructor(
     private var connectionJob: Job? = null
     @Volatile private var activeWebSocket: WebSocket? = null
     @Volatile private var latestStateJson: String? = null
+    @Volatile private var inputSources: JsonArray? = null
+    @Volatile private var accessMode = CastAccessMode.ACCOUNT
+    private var sourceCommandResult: JsonObject? = null
+
+    fun reportInputSignal(sourceId: String, status: String, reason: String? = null) {
+        val state = latestStateJson?.let { gson.fromJson(it, JsonObject::class.java) } ?: return
+        state.add("input_signal", JsonObject().apply {
+            addProperty("source_id", sourceId)
+            addProperty("status", status)
+            reason?.let { addProperty("reason", it) }
+        })
+        state.addProperty("state_sequence", ++stateSequence)
+        latestStateJson = gson.toJson(state)
+        activeWebSocket?.send(latestStateJson!!)
+    }
+
+    fun reportSourceResult(commandId: String, applied: Boolean, errorCode: String? = null) {
+        val state = latestStateJson?.let { gson.fromJson(it, JsonObject::class.java) } ?: return
+        sourceCommandResult = JsonObject().apply {
+            addProperty("command_id", commandId)
+            addProperty("status", if (applied) "Applied" else "Failed")
+            errorCode?.let { addProperty("error_code", it) }
+        }
+        state.add("source_command_result", sourceCommandResult)
+        state.addProperty("state_sequence", ++stateSequence)
+        latestStateJson = gson.toJson(state)
+        activeWebSocket?.send(latestStateJson!!)
+    }
+
+    fun updateInputSources(sources: JsonArray) {
+        inputSources = sources
+        val state = latestStateJson?.let { gson.fromJson(it, JsonObject::class.java) } ?: return
+        state.add("input_sources", sources)
+        state.addProperty("state_sequence", ++stateSequence)
+        latestStateJson = gson.toJson(state)
+        activeWebSocket?.send(latestStateJson!!)
+    }
     private var nhkCommandResult: JsonObject? = null
     private val appliedNHKCommands = linkedSetOf<String>()
 
@@ -168,9 +211,14 @@ class HonomiRemoteControlClient @Inject constructor(
     fun refreshNHKExclusionState() {
         val current = latestStateJson?.let { gson.fromJson(it, JsonObject::class.java) } ?: JsonObject().apply {
             addProperty("type", "State")
+            add("capabilities", JsonObject().apply {
+                add("commands", JsonArray().apply { add("SelectSource") })
+            })
+            inputSources?.let { add("input_sources", it) }
             addProperty("content_type", "Idle")
         }
         addNHKExclusionState(current)
+        current.addProperty("access_mode", accessMode.name)
         current.addProperty("state_sequence", ++stateSequence)
         val json = gson.toJson(current)
         latestStateJson = json
@@ -205,7 +253,16 @@ class HonomiRemoteControlClient @Inject constructor(
     ) {
         val state = JsonObject().apply {
             addProperty("type", "State")
+            addProperty("access_mode", accessMode.name)
+            add("capabilities", JsonObject().apply {
+                addProperty("protocol_version", 1)
+                add("commands", JsonArray().apply {
+                    listOf("OpenLive", "OpenRecording", "Play", "Pause", "Stop", "SeekRelative", "SeekTo", "SkipChapter", "SkipCM", "SetCMSkipMode", "EnableTemporaryNHKHide", "VolumeUp", "VolumeDown", "VolumeMute", "SelectSource").forEach { add(it) }
+                })
+            })
+            inputSources?.let { add("input_sources", it) }
             addNHKExclusionState(this)
+            add("source_command_result", sourceCommandResult)
             addProperty("content_type", contentType)
             title?.let { addProperty("title", it) }
             subtitle?.let { addProperty("subtitle", it) }
@@ -248,7 +305,15 @@ class HonomiRemoteControlClient @Inject constructor(
     /** ルート画面の寿命に合わせて接続を開始する。同じ画面からの重複開始は無視する。 */
     fun start(scope: CoroutineScope) {
         if (connectionJob?.isActive == true) return
+        scope.launch {
+            settingsRepository.castAccessMode.distinctUntilChanged().collect { mode ->
+                accessMode = mode
+                refreshNHKExclusionState()
+            }
+        }
         connectionJob = scope.launch {
+            accessMode = settingsRepository.castAccessMode.first()
+            refreshNHKExclusionState()
             while (currentCoroutineContext().isActive) {
                 val sessionAndDeviceId = withContext(Dispatchers.IO) {
                     sessionStore.current()?.let { it to sessionStore.remoteDeviceId() }
@@ -285,7 +350,7 @@ class HonomiRemoteControlClient @Inject constructor(
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         when (val event = parseHonomiRemoteServerEvent(gson, text)) {
                             HonomiRemoteServerEvent.RequestState -> latestStateJson?.let(webSocket::send)
-                            is HonomiRemoteServerEvent.Command -> _commands.tryEmit(event.command)
+                            is HonomiRemoteServerEvent.Command -> if (accessMode != CastAccessMode.OFF) _commands.tryEmit(event.command)
                             null -> Unit
                         }
                     }

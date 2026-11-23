@@ -151,9 +151,14 @@ fun TifLivePlayerScreen(
     suppressNoSignalVisual: Boolean = false,
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     jikkyoViewModel: TifJikkyoViewModel = hiltViewModel(),
+    remoteControlViewModel: com.beeregg2001.komorebi.viewmodel.RemoteControlViewModel = hiltViewModel(),
 ) {
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
+    LaunchedEffect(channel.id) {
+        remoteControlViewModel.client.sendState(contentType = "Live", title = channel.name, isBuffering = true)
+        remoteControlViewModel.client.reportInputSignal(channel.id, "Loading", null)
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val systemSleepAllowed by ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
     val playerIdleOwner = remember { Any() }
@@ -581,6 +586,8 @@ fun TifLivePlayerScreen(
                             keepScreenOn = isStarted && !systemSleepAllowed
                             setCallback(object : TvView.TvInputCallback() {
                                 override fun onVideoAvailable(inputId: String) {
+                                    remoteControlViewModel.client.sendState(contentType = "Live", title = latestChannel.name, isPlaying = true)
+                                    remoteControlViewModel.client.reportInputSignal(latestChannel.id, "Available", null)
                                     latestOnChannelPlaybackCommitted(latestChannel)
                                     videoAvailable = true
                                     lastUnavailableReason = null
@@ -614,6 +621,7 @@ fun TifLivePlayerScreen(
                                 }
 
                                 override fun onVideoUnavailable(inputId: String, reason: Int) {
+                                    remoteControlViewModel.client.reportInputSignal(latestChannel.id, "Unavailable", reason.toString())
                                     videoAvailable = false
                                     lastUnavailableReason = reason
                                     if (!contentBlocked) {
@@ -622,11 +630,13 @@ fun TifLivePlayerScreen(
                                 }
 
                                 override fun onConnectionFailed(inputId: String) {
+                                    remoteControlViewModel.client.reportInputSignal(latestChannel.id, "Error", "CONNECTION_FAILED")
                                     videoAvailable = false
                                     videoStatus = TifVideoStatus.NoSignal("TV入力との接続に失敗しました")
                                 }
 
                                 override fun onDisconnected(inputId: String) {
+                                    remoteControlViewModel.client.reportInputSignal(latestChannel.id, "Error", "DISCONNECTED")
                                     videoAvailable = false
                                     videoStatus = TifVideoStatus.NoSignal("TV入力との接続が切れました")
                                 }

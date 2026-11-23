@@ -37,6 +37,7 @@ internal fun shouldDispatchRemoteTransport(
     // 画面遷移と CM スキップ設定の変更は再生セッションではなくアプリ全体の状態を触るため、
     // MainRootScreen 側のコレクターが担当する。
     is HonomiRemoteCommand.OpenLive,
+    is HonomiRemoteCommand.SelectSource,
     is HonomiRemoteCommand.OpenRecording,
     is HonomiRemoteCommand.SetCMSkipMode,
     is HonomiRemoteCommand.EnableTemporaryNHKHide -> false
@@ -107,6 +108,7 @@ fun RootSystemMediaSessionHost(
                     AudioManager.FLAG_SHOW_UI,
                 )
                 is HonomiRemoteCommand.OpenLive,
+                is HonomiRemoteCommand.SelectSource,
                 is HonomiRemoteCommand.OpenRecording,
                 is HonomiRemoteCommand.SetCMSkipMode,
                 is HonomiRemoteCommand.EnableTemporaryNHKHide -> Unit

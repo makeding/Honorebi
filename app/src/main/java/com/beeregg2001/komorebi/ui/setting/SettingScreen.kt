@@ -688,6 +688,7 @@ private fun SettingsMenuScreen(
                             enabled = prefs.tifIntegrationEnabled,
                             lockedByMainSystem = prefs.backendType == "TIF",
                             hideEmptyInputs = prefs.tifHideEmptyInputs,
+                            showTunerInputs = prefs.tifShowTunerInputs,
                             noSignalStyle = prefs.tifNoSignalStyle,
                             features = prefs.deepTvFeatures,
                             pipSupported = pipSupported,
@@ -702,6 +703,9 @@ private fun SettingsMenuScreen(
                                 }
                             },
                             onToggleHideEmpty = { viewModel.toggleTifHideEmptyInputs() },
+                            onToggleShowTuners = {
+                                scope.launch { repository.saveBoolean(SettingsRepository.TIF_SHOW_TUNER_INPUTS, !prefs.tifShowTunerInputs) }
+                            },
                             onEditNoSignalStyle = {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "TV入力の信号なし表示",

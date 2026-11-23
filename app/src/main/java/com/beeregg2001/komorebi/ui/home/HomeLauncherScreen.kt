@@ -177,6 +177,7 @@ fun HomeLauncherScreen(
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
     val currentStartupFocusTarget by settingsViewModel.startupFocusTarget.collectAsState()
     val tifHideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
+    val tifShowTunerInputs by settingsViewModel.tifShowTunerInputs.collectAsState()
     val tifActive by settingsViewModel.tifIntegrationActive.collectAsState()
     val useTifPicker = supportsTvInput && tifActive
     LaunchedEffect(useTifPicker) {
@@ -873,7 +874,7 @@ fun HomeLauncherScreen(
                     { showTvInputs = false; homeViewModel.launchInputSourcePicker(app) }
                 },
                 hideEmptyInputs = tifHideEmptyInputs,
-                showTunerChannels = false,
+                showTunerChannels = tifShowTunerInputs,
                 onDismiss = {
                     showTvInputs = false
                     scope.launch {

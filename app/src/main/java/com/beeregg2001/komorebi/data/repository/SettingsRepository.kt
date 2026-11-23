@@ -181,6 +181,8 @@ class SettingsRepository @Inject constructor(
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
         val TIF_INTEGRATION_ENABLED = booleanPreferencesKey("tif_integration_enabled")
         val TIF_HIDE_EMPTY_INPUTS = booleanPreferencesKey("tif_hide_empty_inputs")
+        val CAST_ACCESS_MODE = stringPreferencesKey("cast_access_mode")
+        val TIF_SHOW_TUNER_INPUTS = booleanPreferencesKey("tif_show_tuner_inputs")
         val TIF_NO_SIGNAL_STYLE = stringPreferencesKey("tif_no_signal_style")
 
         val WATCH_NEXT_ENABLED = booleanPreferencesKey("watch_next_enabled")
@@ -372,8 +374,15 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[HIDE_SUB_CHANNELS] ?: false }
     val tifIntegrationEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[TIF_INTEGRATION_ENABLED] ?: true }
+    val castAccessMode: Flow<com.beeregg2001.komorebi.data.remote.CastAccessMode> =
+        context.dataStore.data.map {
+            it[CAST_ACCESS_MODE]?.let(com.beeregg2001.komorebi.data.remote.CastAccessMode::valueOf)
+                ?: com.beeregg2001.komorebi.data.remote.CastAccessMode.ACCOUNT
+        }
     val tifHideEmptyInputs: Flow<Boolean> =
         context.dataStore.data.map { it[TIF_HIDE_EMPTY_INPUTS] ?: true }
+    val tifShowTunerInputs: Flow<Boolean> =
+        context.dataStore.data.map { it[TIF_SHOW_TUNER_INPUTS] ?: false }
     val tifNoSignalStyle: Flow<TifNoSignalStyle> =
         context.dataStore.data.map { TifNoSignalStyle.fromPreference(it[TIF_NO_SIGNAL_STYLE]) }
 

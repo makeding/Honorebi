@@ -367,6 +367,9 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         true
     )
+    val tifShowTunerInputs: StateFlow<Boolean> = settingsRepository.tifShowTunerInputs.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), false
+    )
     val tifHideEmptyInputs: StateFlow<Boolean> = settingsRepository.tifHideEmptyInputs.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
