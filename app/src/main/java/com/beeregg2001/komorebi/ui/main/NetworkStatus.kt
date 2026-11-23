@@ -2,12 +2,14 @@ package com.beeregg2001.komorebi.ui.main
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import java.net.Inet4Address
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
@@ -45,6 +47,26 @@ internal data class NetworkCapabilitySnapshot(
     val isVpn: Boolean = false,
     val isRoutable: Boolean = true,
 )
+
+internal data class NetworkLinkSnapshot(
+    val hasIpv4: Boolean,
+    val dnsServers: Set<String>,
+    val domains: String?,
+)
+
+/**
+ * Returns true when an already-up network gains IPv4 addressing, new DNS servers, or search domains
+ * (e.g., IPv4 DHCP finishing after IPv6 RA on wake, where local LAN DNS becomes available later).
+ */
+internal fun didLinkGainRoutingOrDns(
+    previous: NetworkLinkSnapshot?,
+    current: NetworkLinkSnapshot,
+): Boolean {
+    if (previous == null) return false
+    return (!previous.hasIpv4 && current.hasIpv4) ||
+        (current.dnsServers - previous.dnsServers).isNotEmpty() ||
+        (previous.domains.isNullOrBlank() && !current.domains.isNullOrBlank())
+}
 
 internal fun networkSnapshot(
     hasWifi: Boolean = false,
@@ -140,6 +162,7 @@ internal fun rememberNetworkConnectionStatus(
         lastWakeGeneration = wakeGeneration
         var disposed = false
         val knownCapabilities = linkedMapOf<Network, NetworkCapabilities>()
+        val knownLinks = linkedMapOf<Network, NetworkLinkSnapshot>()
         var pendingDisconnect: Runnable? = null
 
         fun cancelPendingDisconnect() {
@@ -206,6 +229,11 @@ internal fun rememberNetworkConnectionStatus(
                     connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
                         knownCapabilities[network] = capabilities
                     }
+                    if (network !in knownLinks) {
+                        connectivityManager.getLinkProperties(network)?.let { props ->
+                            knownLinks[network] = props.toLinkSnapshot()
+                        }
+                    }
                     publishState(allowGrace = true)
                 }
             }
@@ -214,6 +242,7 @@ internal fun rememberNetworkConnectionStatus(
                 mainHandler.post {
                     if (disposed) return@post
                     knownCapabilities.remove(network)
+                    knownLinks.remove(network)
                     publishState(allowGrace = true)
                 }
             }
@@ -228,6 +257,20 @@ internal fun rememberNetworkConnectionStatus(
             ) {
                 updateNetwork(network, networkCapabilities)
             }
+
+            override fun onLinkPropertiesChanged(
+                network: Network,
+                linkProperties: LinkProperties,
+            ) {
+                mainHandler.post {
+                    if (disposed) return@post
+                    val next = linkProperties.toLinkSnapshot()
+                    val previous = knownLinks.put(network, next)
+                    if (didLinkGainRoutingOrDns(previous, next) && state.value.isAvailable) {
+                        notifyPhysicalRestored()
+                    }
+                }
+            }
         }
 
         // Rebuild from both activeNetwork and allNetworks (allNetworks is deprecated on API 31+).
@@ -235,11 +278,17 @@ internal fun rememberNetworkConnectionStatus(
             connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
                 knownCapabilities[network] = capabilities
             }
+            connectivityManager.getLinkProperties(network)?.let { props ->
+                knownLinks[network] = props.toLinkSnapshot()
+            }
         }
         @Suppress("DEPRECATION")
         connectivityManager.allNetworks.forEach { network ->
             connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
                 knownCapabilities[network] = capabilities
+            }
+            connectivityManager.getLinkProperties(network)?.let { props ->
+                knownLinks[network] = props.toLinkSnapshot()
             }
         }
         publishState(allowGrace = isWakeTransition, useWakeGrace = isWakeTransition)
@@ -288,3 +337,9 @@ private fun NetworkCapabilities.toNetworkSnapshot(isDefault: Boolean): NetworkCa
         isSuspended = isSuspended,
     )
 }
+
+private fun LinkProperties.toLinkSnapshot(): NetworkLinkSnapshot = NetworkLinkSnapshot(
+    hasIpv4 = linkAddresses.any { it.address is Inet4Address },
+    dnsServers = dnsServers.mapNotNull { it.hostAddress }.toSet(),
+    domains = domains?.trim()?.takeIf { it.isNotEmpty() },
+)

@@ -198,7 +198,9 @@ class AppContentStore internal constructor(
         ) {
             return
         }
-        refreshChannels()
+        // When cached channels are already present (e.g. warm resume / activity recreation after sleep),
+        // use silent recovery retries so transient post-wake DHCP/DNS races don't flash an error.
+        refreshChannels(afterNetworkRecovery = _groupedChannels.value.isNotEmpty())
     }
 
     fun refreshRecentRecordings(afterRecovery: Boolean = false) {

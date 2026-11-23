@@ -159,6 +159,30 @@ class AppWakeRecoveryTest {
         } finally { scope.cancel() }
     }
 
+    @Test(timeout = 10_000) fun staleRefreshWithCachedChannelsRecoversSilentlyFromTransientHostError() = runBlocking {
+        val provider = FakeLiveProvider()
+        try {
+            val store = store(provider)
+            store.isChannelsLoading.first { !it }
+            store.groupedChannels.first { it.isNotEmpty() }
+            store.setAppAwake(false)
+            advance(120_000)
+            provider.failuresRemaining = 1
+            provider.response = response("after-dhcp")
+            store.setAppAwake(true)
+            store.refreshChannelsIfStale()
+            assertEquals(2, provider.requests)
+            assertFalse(store.connectionError.value)
+            assertTrue(store.isChannelsRecovering.value)
+            advance(1_000)
+            store.isChannelsLoading.first { !it }
+            store.groupedChannels.first { it["GR"]?.single()?.id == "after-dhcp" }
+            assertEquals(3, provider.requests)
+            assertFalse(store.connectionError.value)
+            assertFalse(store.isChannelsRecovering.value)
+        } finally { scope.cancel() }
+    }
+
     @Test(timeout = 10_000) fun authenticationFailurePreservesSpecificReasonWithoutAutomaticRetries() = runBlocking {
         val provider = FakeLiveProvider().apply {
             denied = BackendApiException("BACKEND_AUTH_DENIED", 403, "http://server/api/channels", "application/json",

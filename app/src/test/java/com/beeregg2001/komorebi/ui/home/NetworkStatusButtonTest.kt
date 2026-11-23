@@ -84,4 +84,52 @@ class NetworkStatusButtonTest {
             compose.onNodeWithText(label).assertDoesNotExist()
         }
     }
+
+    @Test
+    fun backendFailureOverridesNetworkIconInPlaceWithoutMovingNeighbors() {
+        val feedbackKind = mutableStateOf(HomeConnectionFeedbackKind.Hidden)
+        val focusRequester = FocusRequester()
+        val leftFocusRequester = FocusRequester()
+        val rightFocusRequester = FocusRequester()
+        compose.setContent {
+            KomorebiTheme {
+                Row {
+                    Box(Modifier.size(48.dp).testTag("left-neighbor"))
+                    NetworkStatusButton(
+                        status = NetworkConnectionStatus(NetworkTransport.ETHERNET, true),
+                        focusRequester = focusRequester,
+                        leftFocusRequester = leftFocusRequester,
+                        rightFocusRequester = rightFocusRequester,
+                        canTakeFocus = true,
+                        onClick = {},
+                        connectionFeedbackKind = feedbackKind.value,
+                    )
+                    Box(Modifier.size(48.dp).testTag("right-neighbor"))
+                }
+            }
+        }
+
+        val cases = listOf(
+            HomeConnectionFeedbackKind.Hidden to "有線ネットワーク設定",
+            HomeConnectionFeedbackKind.BackendFailure to "サーバーに接続できません。Wi-Fi 設定",
+            HomeConnectionFeedbackKind.Recovering to "サーバーへの接続を確認しています。Wi-Fi 設定",
+        )
+        val buttonBounds = mutableListOf<DpRect>()
+        val rightNeighborBounds = mutableListOf<DpRect>()
+        cases.forEach { (kind, description) ->
+            compose.runOnIdle { feedbackKind.value = kind }
+            compose.waitForIdle()
+            compose.onNodeWithTag(NETWORK_STATUS_BUTTON_TEST_TAG)
+                .assertWidthIsEqualTo(48.dp)
+                .assertHeightIsEqualTo(48.dp)
+            compose.onNodeWithContentDescription(description).assertExists()
+            buttonBounds += compose.onNodeWithTag(NETWORK_STATUS_BUTTON_TEST_TAG)
+                .getUnclippedBoundsInRoot()
+            rightNeighborBounds += compose.onNodeWithTag("right-neighbor")
+                .getUnclippedBoundsInRoot()
+        }
+
+        assertEquals(1, buttonBounds.distinct().size)
+        assertEquals(1, rightNeighborBounds.distinct().size)
+    }
 }

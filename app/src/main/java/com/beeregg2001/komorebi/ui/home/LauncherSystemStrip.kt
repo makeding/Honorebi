@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
@@ -183,14 +184,21 @@ internal fun NetworkStatusButton(
     canTakeFocus: Boolean,
     onClick: () -> Unit,
     downFocusRequester: FocusRequester = FocusRequester.Default,
+    connectionFeedbackKind: HomeConnectionFeedbackKind = HomeConnectionFeedbackKind.Hidden,
 ) {
     val colors = KomorebiTheme.colors
     val focusSpec = tvCardFocus(TvCardFamily.SYSTEM_ICON)
-    val (icon, description) = when (status.transport) {
-        NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi 設定"
-        NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線ネットワーク設定"
-        NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
-        NetworkTransport.DISCONNECTED -> Icons.Default.WifiOff to "オフライン。Wi-Fi 設定"
+    val hasServerFailure = status.isAvailable && connectionFeedbackKind != HomeConnectionFeedbackKind.Hidden
+    val isAlertState = !status.isAvailable || hasServerFailure
+    val (icon, description) = when {
+        !status.isAvailable -> Icons.Default.WifiOff to "オフライン。Wi-Fi 設定"
+        connectionFeedbackKind == HomeConnectionFeedbackKind.Recovering ->
+            Icons.Default.CloudOff to "サーバーへの接続を確認しています。Wi-Fi 設定"
+        hasServerFailure -> Icons.Default.CloudOff to "サーバーに接続できません。Wi-Fi 設定"
+        status.transport == NetworkTransport.WIFI -> Icons.Default.Wifi to "Wi-Fi 設定"
+        status.transport == NetworkTransport.ETHERNET -> Icons.Default.SettingsEthernet to "有線ネットワーク設定"
+        status.transport == NetworkTransport.OTHER -> Icons.Default.Wifi to "ネットワーク設定"
+        else -> Icons.Default.WifiOff to "オフライン。Wi-Fi 設定"
     }
 
     Surface(
@@ -213,10 +221,10 @@ internal fun NetworkStatusButton(
             focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent), shape = RoundedCornerShape(10.dp)),
         ),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (status.isAvailable) Color.Transparent else colors.accentSoft,
+            containerColor = if (isAlertState) colors.danger.copy(alpha = 0.16f) else Color.Transparent,
             focusedContainerColor = colors.surface2,
-            contentColor = if (status.isAvailable) colors.textSecondary else colors.accent,
-            focusedContentColor = if (status.isAvailable) colors.textPrimary else colors.accent,
+            contentColor = if (isAlertState) colors.danger else colors.textSecondary,
+            focusedContentColor = if (isAlertState) colors.danger else colors.textPrimary,
         ),
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -341,6 +349,7 @@ internal fun LauncherSystemStrip(
     onClockClick: () -> Unit = {},
     isContentReady: Boolean = true,
     isCompactStatusOnly: Boolean = false,
+    connectionFeedbackKind: HomeConnectionFeedbackKind = HomeConnectionFeedbackKind.Hidden,
 ) {
     val colors = KomorebiTheme.colors
     val focusManager = LocalFocusManager.current
@@ -550,6 +559,7 @@ internal fun LauncherSystemStrip(
             canTakeFocus = canTakeFocus,
             onClick = onLaunchWifiSettings,
             downFocusRequester = FocusRequester.Cancel,
+            connectionFeedbackKind = connectionFeedbackKind,
         )
 
         AnimatedVisibility(

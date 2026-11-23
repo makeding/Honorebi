@@ -737,24 +737,19 @@ fun HomeLauncherScreen(
                     }
                 }
 
-                HomeConnectionFeedback(
-                    state = homeConnectionFeedbackState(
-                        networkAvailable = networkConnectionStatus.isAvailable,
-                        hasBackendFailure = hasBackendFailure,
-                        backendFailureReason = backendFailureReason,
-                        recoveryInProgress = isBackendRecoveryInProgress,
-                    ),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp, start = 48.dp, end = 48.dp),
-                )
-
             if (!isFullScreenMode) {
+                val connectionFeedbackState = homeConnectionFeedbackState(
+                    networkAvailable = networkConnectionStatus.isAvailable,
+                    hasBackendFailure = hasBackendFailure,
+                    backendFailureReason = backendFailureReason,
+                    recoveryInProgress = isBackendRecoveryInProgress,
+                )
                 LauncherSystemStrip(
                     timeFormat = timeFormat,
                     mediaPillState = mediaPillState,
                     showInputSource = useTifPicker || inputSourceApp != null,
                     networkConnectionStatus = networkConnectionStatus,
+                    connectionFeedbackKind = connectionFeedbackState.kind,
                     canTakeFocus = !isEpgJumpingActive && !showUpgradeTour && !showNotificationCenter,
                     returnPlayerFocusRequester = returnPlayerFocusRequester,
                     inputSourceFocusRequester = inputSourceFocusRequester,
