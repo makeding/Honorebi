@@ -329,6 +329,7 @@ fun TifLivePlayerScreen(
     val clockFocus = remember { FocusRequester() }
     var controlHasFocus by remember { mutableStateOf(false) }
     var consumeNextOkKeyUp by remember { mutableStateOf(false) }
+    var consumeNextBackKeyUp by remember { mutableStateOf(false) }
     var overlayInteractionTick by remember { mutableIntStateOf(0) }
     val displaySettingsIntent = remember(context) {
         Intent(Settings.ACTION_DISPLAY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).takeIf {
@@ -444,7 +445,7 @@ fun TifLivePlayerScreen(
         containerWidthDp = containerWidthDp,
     )
 
-    BackHandler(enabled = isMiniListOpen || (useLiveOsd && showOverlay)) {
+    BackHandler(enabled = !videoOnly && (isMiniListOpen || showOverlay)) {
         when {
             isMiniListOpen -> onMiniListToggle(false)
             showProgramDetails -> showProgramDetails = false
@@ -494,6 +495,32 @@ fun TifLivePlayerScreen(
                 containerWidthDp = with(density) { size.width.toDp().value }
             }
             .onPreviewKeyEvent { event ->
+                val isBackKey = event.key == Key.Back ||
+                    event.key == Key.Escape ||
+                    event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                    event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE
+                if (!videoOnly && isBackKey) {
+                    if (event.type == KeyEventType.KeyUp && consumeNextBackKeyUp) {
+                        consumeNextBackKeyUp = false
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.type == KeyEventType.KeyDown) {
+                        if (consumeNextBackKeyUp) return@onPreviewKeyEvent true
+                        val canDismissMiniList = isMiniListOpen && !standaloneInput
+                        val canDismissOverlay = !isMiniListOpen && showOverlay
+                        if (canDismissMiniList || canDismissOverlay) {
+                            if (event.nativeKeyEvent.repeatCount == 0) {
+                                consumeNextBackKeyUp = true
+                                when {
+                                    canDismissMiniList -> onMiniListToggle(false)
+                                    showProgramDetails -> showProgramDetails = false
+                                    else -> onShowOverlayChange(false)
+                                }
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                }
                 if (useLiveOsd && showOverlay && !isMiniListOpen && event.type == KeyEventType.KeyDown) {
                     if (event.key == Key.DirectionDown && !showProgramDetails) {
                         showProgramDetails = true
