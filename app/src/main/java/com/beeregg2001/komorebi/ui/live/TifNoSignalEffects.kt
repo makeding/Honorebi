@@ -230,6 +230,12 @@ internal fun TifNoSignalEffectSurface(
                 paused = paused,
                 onDegraded = onDegraded,
             )
+            TifNoSignalStyle.AIPRI_LIVE -> AipriLiveEffect(
+                statusText = statusText,
+                inputLabel = inputLabel,
+                paused = paused,
+                onDegraded = onDegraded,
+            )
             else -> Unit
         }
     }
@@ -2043,6 +2049,314 @@ private fun PrecureSparkleEffect(
                 Text(
                     text = "✦  ${statusText.ifBlank { "信号がありません" }}  ✦",
                     color = PRECURE_PLUM,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 420.dp),
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 11. AiPri Verse Live Stage / Buzzrium Title Card
+// ---------------------------------------------------------------------------
+private enum class AipriParticleKind { DIAMOND, CARD, KIRAKIRA }
+
+private class AipriParticle(
+    val nx: Float,
+    val ny: Float,
+    val sizeDp: Float,
+    val color: Color,
+    val kind: AipriParticleKind,
+    val phase: Float,
+    val speed: Float,
+)
+
+private val AIPRI_BG_COLORS = listOf(
+    Color(0xFF2B0B4E),
+    Color(0xFF56157D),
+    Color(0xFF19246B),
+    Color(0xFF0D4C8B),
+)
+private val AIPRI_HIMARI_PINK = Color(0xFFFF4DA6)
+private val AIPRI_MITSUKI_CYAN = Color(0xFF2CE6FF)
+private val AIPRI_BUZZRIUM_GOLD = Color(0xFFFFD84D)
+private val AIPRI_ICE_CYAN = Color(0xFFC4F6FF)
+private val AIPRI_CARD_FILL = Color(0xD8150B30)
+private val AIPRI_BORDER_COLORS = listOf(
+    AIPRI_HIMARI_PINK,
+    AIPRI_BUZZRIUM_GOLD,
+    AIPRI_MITSUKI_CYAN,
+    AIPRI_HIMARI_PINK,
+)
+private val AIPRI_PILL_COLORS = listOf(
+    Color(0xFFFF3D9A),
+    Color(0xFF8B46FF),
+    Color(0xFF19C6FF),
+)
+private val AIPRI_STICKER_OUTLINE = Stroke(width = 13f, join = StrokeJoin.Round)
+private val AIPRI_TITLE_SHADOW = Shadow(color = Color(0x99FF4DA6), offset = Offset(0f, 5f), blurRadius = 12f)
+
+private fun buildAipriParticles(): Array<AipriParticle> = arrayOf(
+    AipriParticle(0.07f, 0.24f, 30f, AIPRI_HIMARI_PINK, AipriParticleKind.DIAMOND, 0.2f, 0.046f),
+    AipriParticle(0.14f, 0.62f, 34f, AIPRI_BUZZRIUM_GOLD, AipriParticleKind.CARD, 1.0f, 0.034f),
+    AipriParticle(0.21f, 0.16f, 26f, AIPRI_MITSUKI_CYAN, AipriParticleKind.KIRAKIRA, 2.1f, 0.050f),
+    AipriParticle(0.28f, 0.80f, 24f, Color.White, AipriParticleKind.KIRAKIRA, 0.7f, 0.042f),
+    AipriParticle(0.36f, 0.12f, 28f, AIPRI_HIMARI_PINK, AipriParticleKind.CARD, 1.8f, 0.036f),
+    AipriParticle(0.49f, 0.09f, 30f, AIPRI_BUZZRIUM_GOLD, AipriParticleKind.KIRAKIRA, 2.9f, 0.044f),
+    AipriParticle(0.63f, 0.14f, 26f, AIPRI_MITSUKI_CYAN, AipriParticleKind.DIAMOND, 3.4f, 0.040f),
+    AipriParticle(0.74f, 0.20f, 34f, AIPRI_HIMARI_PINK, AipriParticleKind.CARD, 0.5f, 0.032f),
+    AipriParticle(0.84f, 0.30f, 32f, AIPRI_BUZZRIUM_GOLD, AipriParticleKind.KIRAKIRA, 2.3f, 0.048f),
+    AipriParticle(0.92f, 0.56f, 30f, AIPRI_MITSUKI_CYAN, AipriParticleKind.DIAMOND, 1.3f, 0.041f),
+    AipriParticle(0.81f, 0.76f, 28f, Color.White, AipriParticleKind.KIRAKIRA, 3.8f, 0.045f),
+    AipriParticle(0.67f, 0.86f, 32f, AIPRI_MITSUKI_CYAN, AipriParticleKind.CARD, 2.7f, 0.033f),
+    AipriParticle(0.18f, 0.42f, 22f, Color.White, AipriParticleKind.DIAMOND, 4.0f, 0.052f),
+    AipriParticle(0.79f, 0.44f, 26f, AIPRI_HIMARI_PINK, AipriParticleKind.KIRAKIRA, 1.5f, 0.043f),
+)
+
+private fun buildAipriPrismPath(r: Float): Path = Path().apply {
+    moveTo(0f, -r)
+    lineTo(r * 0.72f, 0f)
+    lineTo(0f, r)
+    lineTo(-r * 0.72f, 0f)
+    close()
+}
+
+@Composable
+private fun AipriLiveEffect(
+    statusText: String,
+    inputLabel: String,
+    paused: Boolean,
+    onDegraded: () -> Unit,
+) {
+    val particles = remember { buildAipriParticles() }
+    val elapsedState = rememberElapsedSeconds(paused = paused, onDegraded = onDegraded)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val bgBrush = Brush.linearGradient(
+                        colors = AIPRI_BG_COLORS,
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                    )
+                    val stageHorizonY = size.height * 0.70f
+                    val beamLen = size.maxDimension * 1.15f
+                    val beamWedge = Path().apply {
+                        moveTo(0f, 0f)
+                        lineTo(-beamLen * 0.14f, -beamLen)
+                        lineTo(beamLen * 0.14f, -beamLen)
+                        close()
+                    }
+                    val leftSpotOrigin = Offset(size.width * 0.14f, size.height * 1.04f)
+                    val rightSpotOrigin = Offset(size.width * 0.86f, size.height * 1.04f)
+                    val haloCenter = Offset(size.width * 0.5f, size.height * 0.46f)
+                    val outerRingRadius = size.minDimension * 0.42f
+                    val innerRingRadius = size.minDimension * 0.34f
+                    val ringStroke = Stroke(width = 2.dp.toPx())
+                    val cardStroke = Stroke(width = 1.8.dp.toPx())
+                    val gridStrokePx = 1.2.dp.toPx()
+
+                    val particlePaths = Array(particles.size) { i ->
+                        val r = particles[i].sizeDp.dp.toPx() * 0.5f
+                        when (particles[i].kind) {
+                            AipriParticleKind.DIAMOND -> buildAipriPrismPath(r)
+                            AipriParticleKind.KIRAKIRA -> buildUnitKirakiraPath(r)
+                            AipriParticleKind.CARD -> null
+                        }
+                    }
+                    val particleRadii = FloatArray(particles.size) { particles[it].sizeDp.dp.toPx() * 0.5f }
+                    val cardCorner = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+
+                    onDrawBehind {
+                        val elapsed = elapsedState.value
+                        drawRect(brush = bgBrush)
+
+                        // Sweeping dual concert spotlights (Himari pink + Mitsuki cyan)
+                        val leftAngle = 22f + sin(elapsed * 0.9f) * 14f
+                        val rightAngle = -22f - sin(elapsed * 0.85f + 1.2f) * 14f
+                        translate(left = leftSpotOrigin.x, top = leftSpotOrigin.y) {
+                            rotate(degrees = leftAngle, pivot = Offset.Zero) {
+                                drawPath(beamWedge, color = AIPRI_HIMARI_PINK.copy(alpha = 0.20f))
+                            }
+                        }
+                        translate(left = rightSpotOrigin.x, top = rightSpotOrigin.y) {
+                            rotate(degrees = rightAngle, pivot = Offset.Zero) {
+                                drawPath(beamWedge, color = AIPRI_MITSUKI_CYAN.copy(alpha = 0.20f))
+                            }
+                        }
+
+                        // Subtle AiPri Verse perspective neon stage floor grid
+                        val floorHeight = size.height - stageHorizonY
+                        for (row in 0..4) {
+                            val t = row / 4f
+                            val y = stageHorizonY + floorHeight * t * t
+                            val alpha = 0.10f + 0.16f * t
+                            drawLine(
+                                color = AIPRI_MITSUKI_CYAN.copy(alpha = alpha),
+                                start = Offset(0f, y),
+                                end = Offset(size.width, y),
+                                strokeWidth = gridStrokePx,
+                            )
+                        }
+                        val vanishX = size.width * 0.5f
+                        for (col in -5..5) {
+                            val topX = vanishX + col * (size.width * 0.085f)
+                            val bottomX = vanishX + col * (size.width * 0.22f)
+                            drawLine(
+                                color = AIPRI_HIMARI_PINK.copy(alpha = 0.16f),
+                                start = Offset(topX, stageHorizonY),
+                                end = Offset(bottomX, size.height),
+                                strokeWidth = gridStrokePx,
+                            )
+                        }
+
+                        // Rotating holographic prism halo rings behind the center stage card
+                        val pulse = 0.96f + 0.04f * sin(elapsed * 2.2f)
+                        drawCircle(
+                            color = AIPRI_HIMARI_PINK.copy(alpha = 0.26f),
+                            radius = outerRingRadius * pulse,
+                            center = haloCenter,
+                            style = ringStroke,
+                        )
+                        drawCircle(
+                            color = AIPRI_MITSUKI_CYAN.copy(alpha = 0.30f),
+                            radius = innerRingRadius * (2f - pulse),
+                            center = haloCenter,
+                            style = ringStroke,
+                        )
+
+                        // Rising holographic diamonds, mini AiPri cards, and Buzzrium sparkles
+                        for (i in particles.indices) {
+                            val p = particles[i]
+                            val r = particleRadii[i]
+                            var yNorm = (p.ny - elapsed * p.speed) % 1.16f
+                            if (yNorm < -0.08f) yNorm += 1.16f
+                            val cx = size.width * p.nx + sin(elapsed * 1.4f + p.phase) * 16f
+                            val cy = size.height * yNorm
+                            val twinkle = 0.55f + 0.45f * ((sin(elapsed * 3.4f + p.phase) + 1f) * 0.5f)
+
+                            translate(left = cx, top = cy) {
+                                when (p.kind) {
+                                    AipriParticleKind.DIAMOND -> {
+                                        val path = particlePaths[i] ?: return@translate
+                                        rotate(degrees = sin(elapsed * 1.5f + p.phase) * 18f, pivot = Offset.Zero) {
+                                            drawPath(path, color = p.color.copy(alpha = 0.72f * twinkle))
+                                            drawPath(path, color = Color.White.copy(alpha = 0.65f * twinkle), style = cardStroke)
+                                        }
+                                    }
+                                    AipriParticleKind.KIRAKIRA -> {
+                                        val path = particlePaths[i] ?: return@translate
+                                        val s = 0.75f + 0.35f * twinkle
+                                        scale(scaleX = s, scaleY = s, pivot = Offset.Zero) {
+                                            drawPath(path, color = p.color.copy(alpha = 0.94f * twinkle))
+                                        }
+                                    }
+                                    AipriParticleKind.CARD -> {
+                                        val cardW = r * 1.35f
+                                        val cardH = r * 1.9f
+                                        val topLeft = Offset(-cardW * 0.5f, -cardH * 0.5f)
+                                        val cardSize = Size(cardW, cardH)
+                                        rotate(degrees = sin(elapsed * 1.2f + p.phase) * 16f, pivot = Offset.Zero) {
+                                            drawRoundRect(
+                                                color = p.color.copy(alpha = 0.24f * twinkle),
+                                                topLeft = topLeft,
+                                                size = cardSize,
+                                                cornerRadius = cardCorner,
+                                            )
+                                            drawRoundRect(
+                                                color = p.color.copy(alpha = 0.85f * twinkle),
+                                                topLeft = topLeft,
+                                                size = cardSize,
+                                                cornerRadius = cardCorner,
+                                                style = cardStroke,
+                                            )
+                                            drawCircle(
+                                                color = Color.White.copy(alpha = 0.75f * twinkle),
+                                                radius = r * 0.22f,
+                                                center = Offset.Zero,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+        )
+
+        // Centered AiPri Verse holographic Buzzrium card (safe above ~110dp bottom preview HUD)
+        val outerShape = RoundedCornerShape(32.dp)
+        val innerShape = RoundedCornerShape(26.dp)
+        val borderBrush = remember { Brush.linearGradient(colors = AIPRI_BORDER_COLORS) }
+        val pillBrush = remember { Brush.horizontalGradient(colors = AIPRI_PILL_COLORS) }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 52.dp)
+                .background(AIPRI_CARD_FILL, outerShape)
+                .border(3.dp, borderBrush, outerShape)
+                .padding(6.dp)
+                .border(1.5.dp, AIPRI_BUZZRIUM_GOLD.copy(alpha = 0.85f), innerShape)
+                .padding(horizontal = 42.dp, vertical = 22.dp),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val pillShape = RoundedCornerShape(999.dp)
+                Box(
+                    modifier = Modifier
+                        .background(pillBrush, pillShape)
+                        .padding(horizontal = 18.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text = "★  AIPRI VERSE  •  $inputLabel  ★",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 380.dp),
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "バズリウム待機中★",
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                            drawStyle = AIPRI_STICKER_OUTLINE,
+                            shadow = AIPRI_TITLE_SHADOW,
+                        ),
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = "バズリウム待機中★",
+                        style = TextStyle(
+                            color = AIPRI_HIMARI_PINK,
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                        ),
+                        maxLines = 1,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "♪  ${statusText.ifBlank { "信号がありません" }}  ♪",
+                    color = AIPRI_ICE_CYAN,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
