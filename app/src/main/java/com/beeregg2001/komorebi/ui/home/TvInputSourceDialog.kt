@@ -1,8 +1,5 @@
 package com.beeregg2001.komorebi.ui.home
 
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.tv.TvInputInfo
 import android.media.tv.TvInputManager
@@ -24,7 +21,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Input
@@ -66,30 +62,6 @@ import com.beeregg2001.komorebi.ui.components.DialogActionRole
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import kotlinx.coroutines.CancellationException
 
-private fun isAirPlayInput(context: Context, info: TvInputInfo): Boolean {
-    val id = info.id.lowercase()
-    val label = TifInput.label(context, info).lowercase()
-    return id.contains("airplay") || label.contains("airplay")
-}
-
-private fun resolveAirPlayLaunchIntent(context: Context): Intent? {
-    val pm = context.packageManager
-    val candidates = listOf(
-        Intent(Intent.ACTION_MAIN).apply {
-            component = ComponentName(
-                "com.mediatek.partner.airplay_sys",
-                "com.mediatek.partner.airplay_sys.AirPlayAwarenessActivity",
-            )
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        },
-        Intent("Show.Settings.AirplayAPK").apply {
-            setPackage("com.mediatek.partner.airplay_sys")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        },
-    )
-    return candidates.firstOrNull { pm.resolveActivity(it, 0) != null }
-}
-
 private fun passthroughIcon(info: TvInputInfo?): ImageVector = when (info?.type) {
     TvInputInfo.TYPE_HDMI -> Icons.Default.SettingsInputHdmi
     else -> Icons.Default.Input
@@ -122,12 +94,8 @@ fun TvInputSourceDialog(
         }
     }
     val ports = remember(inputs) { repository.passthroughChannels(inputs) }
-    val airPlayLaunchIntent = remember(generation) { resolveAirPlayLaunchIntent(context) }
-    val hasAirPlay = remember(inputs, airPlayLaunchIntent) {
-        airPlayLaunchIntent != null || inputs.any { isAirPlayInput(context, it) }
-    }
     val tunerInputs = remember(inputs) {
-        inputs.filterNot { it.isPassthroughInput || isAirPlayInput(context, it) }
+        inputs.filterNot { it.isPassthroughInput }
     }
     val visibleTunerInputs = remember(tunerInputs, tunerChannels, hideEmptyInputs, loading) {
         if (hideEmptyInputs) tunerInputs.filter { tunerChannels[it.id].orEmpty().isNotEmpty() }
@@ -180,7 +148,6 @@ fun TvInputSourceDialog(
 
     val hasAnySelectableItem = (onReturnToHonorebi != null) ||
         ports.isNotEmpty() ||
-        (hasAirPlay && airPlayLaunchIntent != null) ||
         (showTunerChannels && !granted && tunerInputs.isNotEmpty()) ||
         (showTunerChannels && visibleTunerInputs.any { tunerChannels[it.id].orEmpty().isNotEmpty() })
 
@@ -260,7 +227,7 @@ fun TvInputSourceDialog(
                             contentPadding = PaddingValues(vertical = 4.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            if (loading && ports.isEmpty() && !(hasAirPlay && airPlayLaunchIntent != null) && tunerChannels.isEmpty()) {
+                            if (loading && ports.isEmpty() && tunerChannels.isEmpty()) {
                                 item(key = "loading") {
                                     Text(
                                         text = "TV入力を読み込み中…",
@@ -285,7 +252,7 @@ fun TvInputSourceDialog(
                                 }
                             }
 
-                            if (!loading && ports.isEmpty() && !hasAirPlay &&
+                            if (!loading && ports.isEmpty() &&
                                 (!showTunerChannels || visibleTunerInputs.isEmpty())) {
                                 item(key = "empty") {
                                     Text(
@@ -307,23 +274,6 @@ fun TvInputSourceDialog(
                                         label = "Honorebi",
                                         icon = Icons.Default.Home,
                                         onClick = onReturnToHonorebi,
-                                        modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
-                                    )
-                                }
-                            }
-
-                            if (hasAirPlay && airPlayLaunchIntent != null) {
-                                item(key = "airplay_item") {
-                                    val isFirst = !firstAssigned
-                                    if (isFirst) firstAssigned = true
-                                    TvInputDrawerRow(
-                                        label = "AirPlay",
-                                        icon = Icons.Default.Cast,
-                                        onClick = {
-                                            runCatching { context.startActivity(airPlayLaunchIntent) }
-                                                .onSuccess { onDismiss() }
-                                                .onFailure { error = "AirPlay画面を開けませんでした" }
-                                        },
                                         modifier = if (isFirst) Modifier.focusRequester(firstItemFocus) else Modifier,
                                     )
                                 }

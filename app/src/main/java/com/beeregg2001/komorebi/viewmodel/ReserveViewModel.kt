@@ -11,9 +11,10 @@ import com.beeregg2001.komorebi.data.model.ReserveRecordSettings
 import com.beeregg2001.komorebi.data.model.ReserveRequest
 import com.beeregg2001.komorebi.data.repository.ReserveProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,8 +57,28 @@ class ReserveViewModel @Inject constructor(
 
     // ReserveViewModel.kt に以下のメソッドを追加
     fun refreshAll(showLoading: Boolean = true) {
-        fetchReserves(showLoading)
-        fetchConditions(showLoading)
+        viewModelScope.launch {
+            val shouldBlock = showLoading && _reserves.value.isEmpty() && _conditions.value.isEmpty()
+            if (shouldBlock) _isLoading.value = true
+            _isRefreshing.value = true
+            try {
+                coroutineScope {
+                    launch {
+                        reserveProvider.getReserves()
+                            .onSuccess { list -> _reserves.value = list }
+                            .onFailure { e -> Log.e(TAG, "Failed to fetch reservations", e) }
+                    }
+                    launch {
+                        reserveProvider.getReservationConditions()
+                            .onSuccess { list -> _conditions.value = list }
+                            .onFailure { e -> Log.e(TAG, "Failed to fetch conditions", e) }
+                    }
+                }
+            } finally {
+                if (shouldBlock) _isLoading.value = false
+                _isRefreshing.value = false
+            }
+        }
     }
 
     fun updateTabIndex(index: Int) {
@@ -80,9 +101,13 @@ class ReserveViewModel @Inject constructor(
     private val _conditions = MutableStateFlow<List<ReservationCondition>>(emptyList())
     val conditions: StateFlow<List<ReservationCondition>> = _conditions.asStateFlow()
 
-    // API通信中かどうかを示すローディングフラグ
+    // API通信中かどうかを示すローディングフラグ（初回空状態のみ）
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    // バックグラウンド再取得中フラグ（表示中のリストを破棄しない）
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     private val _isSingleReservationSubmitting = MutableStateFlow(false)
     val isSingleReservationSubmitting: StateFlow<Boolean> = _isSingleReservationSubmitting.asStateFlow()
@@ -106,12 +131,18 @@ class ReserveViewModel @Inject constructor(
      */
     fun fetchReserves(showLoading: Boolean = true) {
         viewModelScope.launch {
-            if (showLoading) _isLoading.value = true
-            // ★ 修正: reserveProvider のメソッドを呼び出す
-            reserveProvider.getReserves()
-                .onSuccess { list -> _reserves.value = list }
-                .onFailure { e -> Log.e(TAG, "Failed to fetch reservations", e) }
-            if (showLoading) _isLoading.value = false
+            val shouldBlock = showLoading && _reserves.value.isEmpty()
+            if (shouldBlock) _isLoading.value = true
+            _isRefreshing.value = true
+            try {
+                // ★ 修正: reserveProvider のメソッドを呼び出す
+                reserveProvider.getReserves()
+                    .onSuccess { list -> _reserves.value = list }
+                    .onFailure { e -> Log.e(TAG, "Failed to fetch reservations", e) }
+            } finally {
+                if (shouldBlock) _isLoading.value = false
+                _isRefreshing.value = false
+            }
         }
     }
 
@@ -120,12 +151,18 @@ class ReserveViewModel @Inject constructor(
      */
     fun fetchConditions(showLoading: Boolean = true) {
         viewModelScope.launch {
-            if (showLoading) _isLoading.value = true
-            // ★ 修正: reserveProvider のメソッドを呼び出す
-            reserveProvider.getReservationConditions()
-                .onSuccess { list -> _conditions.value = list }
-                .onFailure { e -> Log.e(TAG, "Failed to fetch conditions", e) }
-            if (showLoading) _isLoading.value = false
+            val shouldBlock = showLoading && _conditions.value.isEmpty()
+            if (shouldBlock) _isLoading.value = true
+            _isRefreshing.value = true
+            try {
+                // ★ 修正: reserveProvider のメソッドを呼び出す
+                reserveProvider.getReservationConditions()
+                    .onSuccess { list -> _conditions.value = list }
+                    .onFailure { e -> Log.e(TAG, "Failed to fetch conditions", e) }
+            } finally {
+                if (shouldBlock) _isLoading.value = false
+                _isRefreshing.value = false
+            }
         }
     }
 
@@ -186,12 +223,13 @@ class ReserveViewModel @Inject constructor(
         }
         _isSingleReservationSubmitting.value = true
         viewModelScope.launch {
-            _isLoading.value = true
             try {
                 val result = withTimeout(SINGLE_RESERVATION_TIMEOUT_MS) { request() }
                 result.fold(
                     onSuccess = {
-                        fetchReserves(showLoading = false)
+                        reserveProvider.getReserves()
+                            .onSuccess { list -> _reserves.value = list }
+                            .onFailure { e -> Log.e(TAG, "Failed to refresh reservations after mutation", e) }
                         onResult(SingleReservationResult.Success)
                     },
                     onFailure = { error ->
@@ -209,7 +247,6 @@ class ReserveViewModel @Inject constructor(
                 onResult(SingleReservationResult.Failure(userFacingFailure(error, "RESERVATION_FAILED")))
             } finally {
                 _isSingleReservationSubmitting.value = false
-                _isLoading.value = false
             }
         }
     }

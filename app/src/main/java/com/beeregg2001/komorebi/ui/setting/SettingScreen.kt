@@ -559,6 +559,7 @@ private fun SettingsMenuScreen(
                                         "ライブ" to "ライブ",
                                         "アプリ" to "アプリ",
                                         "ビデオ" to "ビデオ",
+                                        "放送中" to "放送中",
                                         "番組表" to "番組表",
                                         "録画予約" to "録画予約"
                                     ),

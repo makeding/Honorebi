@@ -522,6 +522,19 @@ fun HomeLauncherScreen(
                                     (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null)
                             },
                     ) {
+                        val openOnAirTab: () -> Unit = {
+                            val onAirIndex = visibleTabs.indexOf(LauncherTab.ON_AIR)
+                            if (onAirIndex != -1) {
+                                suppressInitialRailExpand = false
+                                tabController.selectTab(LauncherTab.ON_AIR, immediate = true)
+                                ui.selectedTabIndex = onAirIndex
+                                ui.onTabSelected(onAirIndex, onTabChange, homeViewModel)
+                                focusMemory.requestContent(onAirIndex)
+                            } else {
+                                onShowOnAir()
+                            }
+                        }
+
                         when (snapshot.tab) {
                             LauncherTab.HOME -> HomeContents(
                                 lastWatchedChannels = translatedLastChannels,
@@ -574,7 +587,7 @@ fun HomeLauncherScreen(
                                 tabIndex = snapshotTabIndex,
                                 topBarFocusRequester = topBarEntryRequester,
                                 onShowAllRecordings = onShowAllRecordings,
-                                onShowOnAir = onShowOnAir,
+                                onShowOnAir = openOnAirTab,
                                 hideAppsTab = hideAppsTab,
                                 onScrolledChanged = { isContentScrolled = it },
                             )
@@ -621,7 +634,7 @@ fun HomeLauncherScreen(
                                 onShowAllRecordings = onShowAllRecordings,
                                 onShowSeriesList = onShowSeriesList,
                                 onShowSmbLibrary = onShowSmbLibrary,
-                                onShowOnAir = onShowOnAir,
+                                onShowOnAir = openOnAirTab,
                                 topBarFocusRequester = topBarEntryRequester,
                                 openedSeriesTitle = ui.openedSeriesTitle,
                                 onOpenedSeriesTitleChange = { ui.openedSeriesTitle = it },
@@ -644,6 +657,25 @@ fun HomeLauncherScreen(
                                 onOverlayReturnConsumed = onOverlayReturnConsumed,
                                 onContentReady = snapshotReady,
                                 onScrolledChanged = { isContentScrolled = it },
+                            )
+
+                            LauncherTab.ON_AIR -> com.beeregg2001.komorebi.ui.onair.OnAirScreen(
+                                konomiIp = konomiIp,
+                                konomiPort = konomiPort,
+                                timeFormat = timeFormat,
+                                onProgramClick = { onProgramSelected(it) },
+                                onBack = {
+                                    snapshotTabRequester.safeRequestFocus(TAG)
+                                },
+                                onSettings = { onSettingsToggle(true) },
+                                initialFocusRequester = snapshotContentRequester,
+                                isReturningFromPlayer = isReturningFromPlayer && isCurrentSnapshot,
+                                onReturnFocusConsumed = onReturnFocusConsumed,
+                                topFocusRequester = topBarEntryRequester,
+                                leftNavFocusRequester = snapshotTabRequester,
+                                isEmbeddedTab = true,
+                                autoRequestInitialFocus = false,
+                                onContentReady = snapshotReady,
                             )
 
                             LauncherTab.EPG -> EpgNavigationContainer(

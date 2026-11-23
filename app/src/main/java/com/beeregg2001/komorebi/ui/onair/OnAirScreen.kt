@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -50,6 +51,9 @@ import com.beeregg2001.komorebi.data.model.OnAirSeries
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.ChannelLogoBadge
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingEnd
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingStart
+import com.beeregg2001.komorebi.ui.theme.TvContentPaddingTop
 import com.beeregg2001.komorebi.viewmodel.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -80,8 +84,10 @@ internal val OnAirWarningColor = Color(0xFFFFB4AB)
 
 // カードが小さくなりすぎないよう、1曜日ぶんの列幅を固定して横スクロールさせる。
 private val WEEK_COLUMN_WIDTH = 180.dp
+private val EMBEDDED_WEEK_COLUMN_WIDTH = 196.dp
 private val WEEK_COLUMN_SPACING = 12.dp
 private val WEEK_FOCUS_GUTTER = 8.dp
+private val EMBEDDED_WEEK_FOCUS_GUTTER = 4.dp
 private val WEEK_HEADER_HEIGHT = 34.dp
 private val WEEK_CARD_SPACING = 10.dp
 
@@ -141,6 +147,10 @@ fun OnAirScreen(
     onReturnFocusConsumed: () -> Unit,
     viewModel: OnAirViewModel = hiltViewModel(),
     topFocusRequester: FocusRequester = FocusRequester.Default,
+    leftNavFocusRequester: FocusRequester = FocusRequester.Cancel,
+    isEmbeddedTab: Boolean = false,
+    autoRequestInitialFocus: Boolean = !isEmbeddedTab,
+    onContentReady: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val colors = KomorebiTheme.colors
@@ -177,12 +187,14 @@ fun OnAirScreen(
     }
     val initialSeriesId = initialDay.takeIf { it in 0..6 }?.let { byWeekday[it].firstOrNull()?.id }
 
-    val columnWidthPx = with(density) { WEEK_COLUMN_WIDTH.roundToPx() }
+    val columnWidth = if (isEmbeddedTab) EMBEDDED_WEEK_COLUMN_WIDTH else WEEK_COLUMN_WIDTH
+    val focusGutter = if (isEmbeddedTab) EMBEDDED_WEEK_FOCUS_GUTTER else WEEK_FOCUS_GUTTER
+    val columnWidthPx = with(density) { columnWidth.roundToPx() }
     val columnSpacingPx = with(density) { WEEK_COLUMN_SPACING.roundToPx() }
-    val focusGutterPx = with(density) { WEEK_FOCUS_GUTTER.roundToPx() }
+    val focusGutterPx = with(density) { focusGutter.roundToPx() }
     val focusInsetPx = with(density) { 8.dp.roundToPx() }
     // Keep the fixed header and horizontally scrolling card row on the exact same measured width.
-    val weekContentWidth = WEEK_COLUMN_WIDTH * weekdays.size + WEEK_COLUMN_SPACING * (weekdays.size - 1)
+    val weekContentWidth = columnWidth * weekdays.size + WEEK_COLUMN_SPACING * (weekdays.size - 1)
     val cardHeightPx = (columnWidthPx * 10f / 16f).toInt()
     val cardSpacingPx = with(density) { WEEK_CARD_SPACING.roundToPx() }
 
@@ -199,10 +211,10 @@ fun OnAirScreen(
     }
 
     fun cardLeft(day: Int, index: Int): FocusRequester {
-        if (day == 0) return FocusRequester.Cancel
-        val prevDay = neighborDay(day, -1) ?: return FocusRequester.Cancel
+        if (day == 0) return leftNavFocusRequester
+        val prevDay = neighborDay(day, -1) ?: return leftNavFocusRequester
         val targetIndex = index.coerceIn(0, (byWeekday[prevDay].size - 1).coerceAtLeast(0))
-        return requesterAt(prevDay, targetIndex) ?: FocusRequester.Cancel
+        return requesterAt(prevDay, targetIndex) ?: leftNavFocusRequester
     }
 
     fun cardRight(day: Int, index: Int): FocusRequester {
@@ -287,9 +299,10 @@ fun OnAirScreen(
         freshEntryPrepared,
         expanded?.seriesId,
         state.backendSupported,
-        state.listStatus
+        state.listStatus,
+        autoRequestInitialFocus,
     ) {
-        if (!freshEntryPrepared || isReturningFromPlayer || expanded != null || initialFocusPlaced) return@LaunchedEffect
+        if (!autoRequestInitialFocus || !freshEntryPrepared || isReturningFromPlayer || expanded != null || initialFocusPlaced) return@LaunchedEffect
         val day = initialDay
         if (day in 0..6 && initialSeriesId != null) {
             scrollToCard(day, 0, animate = false)
@@ -390,7 +403,20 @@ fun OnAirScreen(
     BackHandler(enabled = pageFocused) { pageBack() }
 
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 10.dp)
+        Modifier.fillMaxSize()
+            .then(
+                if (isEmbeddedTab) {
+                    Modifier.padding(
+                        start = TvContentPaddingStart,
+                        end = TvContentPaddingEnd,
+                        top = TvContentPaddingTop,
+                        bottom = 12.dp,
+                    )
+                } else {
+                    Modifier.padding(horizontal = 40.dp, vertical = 10.dp)
+                }
+            )
+            .onGloballyPositioned { onContentReady() }
             .onFocusChanged { pageFocused = it.hasFocus }.focusGroup()
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && (event.key == Key.Back || event.key == Key.Escape)) {
@@ -427,44 +453,109 @@ fun OnAirScreen(
             } else {
                 Column(Modifier.fillMaxSize()) {
                     val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
-                    Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = WEEK_FOCUS_GUTTER),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text("放送中", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        if (state.series.isNotEmpty()) {
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "${state.series.size} 番組",
-                                color = colors.textSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier
-                                    .background(colors.surface, RoundedCornerShape(6.dp))
-                                    .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
+                    val season = state.selectedSeason
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(if (isEmbeddedTab) 48.dp else 60.dp)
+                            .padding(
+                                start = focusGutter,
+                                end = if (isEmbeddedTab) 316.dp else focusGutter,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "放送中",
+                            color = colors.textPrimary,
+                            fontSize = if (isEmbeddedTab) 22.sp else 24.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        if (isEmbeddedTab) {
+                            Spacer(Modifier.width(14.dp))
+                            if (season != null) {
+                                OnAirAction(
+                                    "${season.seasonLabel}  ▾",
+                                    { choosingSeason = true },
+                                    Modifier
+                                        .focusRequester(seasonFocus)
+                                        .testTag("onair-season-selector")
+                                        .focusProperties {
+                                            left = leftNavFocusRequester
+                                            up = topFocusRequester
+                                            down = headerFocus.getValue(state.selectedWeekday)
+                                        },
+                                )
+                            } else if (isLoading) {
+                                Box(
+                                    Modifier.width(124.dp).height(36.dp)
+                                        .background(colors.surface, RoundedCornerShape(8.dp))
+                                        .border(1.dp, colors.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                                )
+                            }
+                            if (state.series.isNotEmpty()) {
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "${state.series.size} 番組",
+                                    color = colors.textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier
+                                        .background(colors.surface, RoundedCornerShape(6.dp))
+                                        .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                )
+                            }
+                            if (state.listStatus == OnAirLoadState.Loading && state.series.isNotEmpty()) {
+                                Spacer(Modifier.width(12.dp))
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp).testTag("onair-refresh-progress"),
+                                    color = colors.accent, strokeWidth = 2.dp,
+                                )
+                            }
+                        } else {
+                            if (state.series.isNotEmpty()) {
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "${state.series.size} 番組",
+                                    color = colors.textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier
+                                        .background(colors.surface, RoundedCornerShape(6.dp))
+                                        .border(1.dp, colors.textPrimary.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            if (state.listStatus == OnAirLoadState.Loading && state.series.isNotEmpty()) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp).testTag("onair-refresh-progress"),
+                                    color = colors.accent, strokeWidth = 2.dp,
+                                )
+                                Spacer(Modifier.width(12.dp))
+                            }
+                            if (season != null) {
+                                OnAirAction(
+                                    "${season.seasonLabel}  ▾", { choosingSeason = true },
+                                    Modifier.focusRequester(seasonFocus).testTag("onair-season-selector")
+                                        .focusProperties {
+                                            left = leftNavFocusRequester
+                                            up = topFocusRequester
+                                            down = headerFocus.getValue(state.selectedWeekday)
+                                        },
+                                )
+                            } else if (isLoading) {
+                                Box(
+                                    Modifier.width(136.dp).height(38.dp)
+                                        .background(colors.surface, RoundedCornerShape(8.dp))
+                                        .border(1.dp, colors.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                                )
+                            }
                         }
-                        Spacer(Modifier.weight(1f))
-                        if (state.listStatus == OnAirLoadState.Loading && state.series.isNotEmpty()) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp).testTag("onair-refresh-progress"),
-                                color = colors.accent, strokeWidth = 2.dp,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                        }
-                        val season = state.selectedSeason
-                        if (season != null) {
-                            OnAirAction(
-                                "${season.seasonLabel}  ▾", { choosingSeason = true },
-                                Modifier.focusRequester(seasonFocus).testTag("onair-season-selector")
-                                    .focusProperties { up = topFocusRequester; down = headerFocus.getValue(state.selectedWeekday) },
-                            )
-                        } else if (isLoading) {
-                            Box(
-                                Modifier.width(136.dp).height(38.dp)
-                                    .background(colors.surface, RoundedCornerShape(8.dp))
-                                    .border(1.dp, colors.textPrimary.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
-                            )
-                        }
+                    }
+
+                    if (isEmbeddedTab) {
+                        Spacer(Modifier.height(10.dp))
                     }
 
                     when {
@@ -473,6 +564,12 @@ fun OnAirScreen(
                             "HonomiTV の接続を設定してください。 [ON_AIR_UNSUPPORTED]", "接続設定を開く", onSettings,
                             modifier = Modifier.weight(1f),
                             actionFocusRequester = emptyActionFocus,
+                            extraActionModifier = Modifier
+                                .then(if (initialSeriesId == null) Modifier.focusRequester(initialFocusRequester) else Modifier)
+                                .focusProperties {
+                                    left = leftNavFocusRequester
+                                    up = topFocusRequester
+                                },
                         )
                         state.series.isEmpty() && state.listStatus is OnAirLoadState.Error -> {
                             val error = state.listStatus as OnAirLoadState.Error
@@ -480,6 +577,12 @@ fun OnAirScreen(
                                 "放送中を読み込めませんでした", "${error.message}\n[${error.code}]", "再試行", viewModel::retryList,
                                 modifier = Modifier.weight(1f),
                                 actionFocusRequester = emptyActionFocus,
+                                extraActionModifier = Modifier
+                                    .then(if (initialSeriesId == null) Modifier.focusRequester(initialFocusRequester) else Modifier)
+                                    .focusProperties {
+                                        left = leftNavFocusRequester
+                                        up = topFocusRequester
+                                    },
                             )
                         }
                         else -> Column(Modifier.weight(1f).fillMaxWidth()) {
@@ -490,7 +593,7 @@ fun OnAirScreen(
                                     .horizontalScroll(hScroll)
                                     .testTag("onair-grid"),
                             ) {
-                                Column(Modifier.fillMaxHeight().padding(horizontal = WEEK_FOCUS_GUTTER)) {
+                                Column(Modifier.fillMaxHeight().padding(horizontal = focusGutter)) {
                                     Row(
                                         Modifier.requiredWidth(weekContentWidth).height(WEEK_HEADER_HEIGHT),
                                         horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
@@ -498,7 +601,7 @@ fun OnAirScreen(
                                         (0..6).forEach { day ->
                                             val daySeries = byWeekday[day]
                                             val headerTargets = DayHeaderFocusTargets(
-                                                left = if (day == 0) FocusRequester.Cancel else headerFocus.getValue(day - 1),
+                                                left = if (day == 0) leftNavFocusRequester else headerFocus.getValue(day - 1),
                                                 right = if (day == 6) FocusRequester.Cancel else headerFocus.getValue(day + 1),
                                                 up = if (state.selectedSeason != null) seasonFocus else topFocusRequester,
                                                 down = requesterAt(day, 0) ?: FocusRequester.Cancel,
@@ -520,7 +623,14 @@ fun OnAirScreen(
                                                         scope.launch { requester.safeRequestFocusWithRetry("OnAirHeaderConfirm") }
                                                     }
                                                 },
-                                                modifier = Modifier.testTag("onair-day-header-$day"),
+                                                modifier = Modifier
+                                                    .width(columnWidth)
+                                                    .then(
+                                                        if (initialSeriesId == null && day == state.selectedWeekday) {
+                                                            Modifier.focusRequester(initialFocusRequester)
+                                                        } else Modifier
+                                                    )
+                                                    .testTag("onair-day-header-$day"),
                                             )
                                         }
                                     }
@@ -530,12 +640,12 @@ fun OnAirScreen(
                                         Column(Modifier.weight(1f)) {
                                             Row(
                                                 Modifier.requiredWidth(weekContentWidth)
-                                                    .padding(vertical = WEEK_FOCUS_GUTTER),
+                                                    .padding(vertical = focusGutter),
                                                 horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
                                             ) {
                                                 repeat(7) {
                                                     Column(
-                                                        Modifier.width(WEEK_COLUMN_WIDTH),
+                                                        Modifier.width(columnWidth),
                                                         verticalArrangement = Arrangement.spacedBy(WEEK_CARD_SPACING),
                                                     ) {
                                                         repeat(3) {
@@ -552,12 +662,12 @@ fun OnAirScreen(
                                             Column(Modifier.weight(1f).verticalScroll(vScroll)) {
                                             Row(
                                                 Modifier.requiredWidth(weekContentWidth)
-                                                    .padding(vertical = WEEK_FOCUS_GUTTER),
+                                                    .padding(vertical = focusGutter),
                                                 horizontalArrangement = Arrangement.spacedBy(WEEK_COLUMN_SPACING),
                                             ) {
                                                 (0..6).forEach { day ->
                                                     val daySeries = byWeekday[day]
-                                                    Column(Modifier.width(WEEK_COLUMN_WIDTH)) {
+                                                    Column(Modifier.width(columnWidth)) {
                                                         if (daySeries.isEmpty()) {
                                                             Box(
                                                                 Modifier.fillMaxWidth().height(84.dp)
@@ -639,7 +749,6 @@ private fun DayHeader(
     Surface(
         onClick = onClick,
         modifier = modifier
-            .width(WEEK_COLUMN_WIDTH)
             .focusRequester(focusRequester)
             .onFocusChanged { if (it.isFocused) onFocus() }
             .focusProperties {
@@ -711,6 +820,7 @@ internal fun OnAirEmpty(
     onAction: () -> Unit = {},
     modifier: Modifier = Modifier,
     actionFocusRequester: FocusRequester? = null,
+    extraActionModifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, color = KomorebiTheme.colors.textPrimary)
@@ -719,7 +829,9 @@ internal fun OnAirEmpty(
             OnAirAction(
                 action,
                 onAction,
-                modifier = if (actionFocusRequester != null) Modifier.focusRequester(actionFocusRequester) else Modifier,
+                modifier = extraActionModifier.then(
+                    if (actionFocusRequester != null) Modifier.focusRequester(actionFocusRequester) else Modifier
+                ),
             )
         }
     }

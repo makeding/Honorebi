@@ -124,7 +124,6 @@ fun ReserveListScreen(
     val listFocusRequester = remember { FocusRequester() }
     val tabFocusRequesters = remember { List(tabs.size) { FocusRequester() } }
 
-    val localSafeHouse = remember { FocusRequester() }
     val ticketManager = rememberReserveFocusTicketManager()
 
     val scope = rememberCoroutineScope()
@@ -135,6 +134,17 @@ fun ReserveListScreen(
     val conditionListState = rememberLazyListState()
 
     var previousOverlayOpen by remember { mutableStateOf(isReserveOverlayOpen) }
+    var lastFocusedIndex by remember { mutableIntStateOf(0) }
+    var listAreaHasFocus by remember { mutableStateOf(false) }
+
+    val currentIds = remember(selectedTabIndex, reserves, normalReserves, conditions) {
+        when (selectedTabIndex) {
+            0 -> reserves.map { it.id }
+            1 -> normalReserves.map { it.id }
+            else -> conditions.map { it.id }
+        }
+    }
+    val showBlockingSpinner = isLoading && currentIds.isEmpty()
 
     LaunchedEffect(Unit) {
         viewModel.refreshAll()
@@ -176,6 +186,7 @@ fun ReserveListScreen(
     LaunchedEffect(isReserveOverlayOpen) {
         if (previousOverlayOpen && !isReserveOverlayOpen) {
             Log.i("KomorebiFocus", "[ReserveList] オーバーレイが閉じました。チケットを発行します。")
+            withFrameNanos { }
             val conditionId = viewModel.lastClickedConditionId
             val reserveId = viewModel.lastClickedReserveId
             if (conditionId != null) {
@@ -183,85 +194,81 @@ fun ReserveListScreen(
             } else if (reserveId != null) {
                 ticketManager.issueForReserve(reserveId)
             } else {
-                contentFirstItemRequester?.safeRequestFocusWithRetry("ReserveListFallback")
+                tabFocusRequesters[selectedTabIndex].safeRequestFocusWithRetry("ReserveListOverlayFallback")
             }
         }
         previousOverlayOpen = isReserveOverlayOpen
     }
 
-    var restoreReserveId by remember { mutableStateOf<Int?>(null) }
-    var restoreConditionId by remember { mutableStateOf<Int?>(null) }
-    var wasLoading by remember { mutableStateOf(isLoading) }
+    var wasBlockingLoading by remember { mutableStateOf(showBlockingSpinner) }
 
-    LaunchedEffect(isLoading) {
+    LaunchedEffect(showBlockingSpinner) {
         if (isReserveOverlayOpen) {
-            Log.i(
-                "KomorebiFocus",
-                "[ReserveList] オーバーレイ起動中のためリロード時のフォーカス退避・復元をスキップします"
-            )
-            wasLoading = isLoading
+            wasBlockingLoading = showBlockingSpinner
             return@LaunchedEffect
         }
-        if (isLoading) {
-            wasLoading = true
-            val resId = viewModel.lastClickedReserveId
+        if (wasBlockingLoading && !showBlockingSpinner && !isTopNavFocused && ticketManager.currentTicket == ReserveFocusTicket.NONE) {
             val condId = viewModel.lastClickedConditionId
+            val resId = viewModel.lastClickedReserveId
+            when {
+                condId != null -> ticketManager.issueForCondition(condId)
+                resId != null -> ticketManager.issueForReserve(resId)
+                else -> ticketManager.issueForTop()
+            }
+        }
+        wasBlockingLoading = showBlockingSpinner
+    }
 
-            if (resId != null || condId != null) {
-                Log.i(
-                    "KomorebiFocus",
-                    "[ReserveList] リロード開始。コンテンツにフォーカスがあるため、IDを退避してSafeHouseへ逃がします。"
-                )
-                restoreReserveId = resId
-                restoreConditionId = condId
-                localSafeHouse.safeRequestFocusWithRetry("ReserveLocalSafeHouse")
-            } else {
-                Log.i(
-                    "KomorebiFocus",
-                    "[ReserveList] リロード開始。退避するIDがないためSafeHouseへの退避をスキップします。"
-                )
-            }
-        } else {
-            if (restoreConditionId != null || restoreReserveId != null) {
-                Log.i(
-                    "KomorebiFocus",
-                    "[ReserveList] リロード完了。退避していたIDでチケットを発行します。"
-                )
-                if (restoreConditionId != null) {
-                    ticketManager.issueForCondition(restoreConditionId!!)
-                    restoreConditionId = null
-                } else if (restoreReserveId != null) {
-                    ticketManager.issueForReserve(restoreReserveId!!)
-                    restoreReserveId = null
+    // 録画完了などでフォーカス中の予約アイテムがリストから消えた場合、即座に近傍アイテムへフォーカスを救済する
+    LaunchedEffect(currentIds, selectedTabIndex) {
+        if (showBlockingSpinner || isTopNavFocused || isReserveOverlayOpen) return@LaunchedEffect
+        if (ticketManager.currentTicket != ReserveFocusTicket.NONE) return@LaunchedEffect
+        val trackedId = if (selectedTabIndex == 2) viewModel.lastClickedConditionId else viewModel.lastClickedReserveId
+        if (trackedId != null && trackedId !in currentIds) {
+            Log.w(
+                "KomorebiFocus",
+                "[ReserveList] フォーカス中のアイテム(id=$trackedId)がリストから消滅したため近傍へ復帰します"
+            )
+            if (currentIds.isNotEmpty()) {
+                val fallbackId = currentIds[lastFocusedIndex.coerceIn(0, currentIds.lastIndex)]
+                if (selectedTabIndex == 2) {
+                    viewModel.lastClickedConditionId = fallbackId
+                    ticketManager.issueForCondition(fallbackId)
+                } else {
+                    viewModel.lastClickedReserveId = fallbackId
+                    ticketManager.issueForReserve(fallbackId)
                 }
-            } else if (wasLoading && !isTopNavFocused && ticketManager.currentTicket == ReserveFocusTicket.NONE) {
-                Log.i(
-                    "KomorebiFocus",
-                    "[ReserveList] リロード完了。復元すべきIDがないためCONTENT_TOPチケットを発行します。"
-                )
-                ticketManager.issueForTop()
             } else {
-                Log.i("KomorebiFocus", "[ReserveList] リロード完了。復元すべきIDはありません。")
+                viewModel.clearFocusMemory()
+                withFrameNanos { }
+                tabFocusRequesters[selectedTabIndex].safeRequestFocusWithRetry("ReserveListEmptyFallback")
             }
-            wasLoading = false
+        } else if (listAreaHasFocus && currentIds.isEmpty()) {
+            withFrameNanos { }
+            tabFocusRequesters[selectedTabIndex].safeRequestFocusWithRetry("ReserveListClearedFallback")
         }
     }
 
     LaunchedEffect(
         ticketManager.currentTicket,
         ticketManager.issueTime,
-        isLoading,
+        showBlockingSpinner,
         reserves.size,
         normalReserves.size,
         conditions.size
     ) {
-        if (isLoading) return@LaunchedEffect
+        if (showBlockingSpinner) return@LaunchedEffect
 
         when (ticketManager.currentTicket) {
             ReserveFocusTicket.TARGET_RESERVE_ID -> {
                 val targetId = ticketManager.targetReserveId
                 if (targetId != null) {
                     var isFound = false
+                    val activeList = when (selectedTabIndex) {
+                        0 -> reserves
+                        1 -> normalReserves
+                        else -> emptyList()
+                    }
                     when (selectedTabIndex) {
                         0 -> {
                             val index = reserves.indexOfFirst { it.id == targetId }
@@ -280,11 +287,21 @@ fun ReserveListScreen(
                         }
                     }
                     if (!isFound) {
-                        Log.w(
-                            "KomorebiFocus",
-                            "[ReserveList] 対象の予約が見つかりません(削除済)。リスト先頭へ戻ります。"
-                        )
-                        ticketManager.issueForTop()
+                        if (activeList.isNotEmpty()) {
+                            val fallbackItem = activeList[lastFocusedIndex.coerceIn(0, activeList.lastIndex)]
+                            Log.w(
+                                "KomorebiFocus",
+                                "[ReserveList] 対象の予約が見つかりません(削除/録画終了)。近傍(id=${fallbackItem.id})へ復帰します。"
+                            )
+                            viewModel.lastClickedReserveId = fallbackItem.id
+                            ticketManager.issueForReserve(fallbackItem.id)
+                        } else {
+                            Log.w(
+                                "KomorebiFocus",
+                                "[ReserveList] 対象の予約が見つかりません(リスト空)。タブへ戻ります。"
+                            )
+                            ticketManager.issueForTop()
+                        }
                     }
                 }
             }
@@ -303,11 +320,21 @@ fun ReserveListScreen(
                         }
                     }
                     if (!isFound) {
-                        Log.w(
-                            "KomorebiFocus",
-                            "[ReserveList] 対象の条件が見つかりません(削除済)。リスト先頭へ戻ります。"
-                        )
-                        ticketManager.issueForTop()
+                        if (conditions.isNotEmpty()) {
+                            val fallbackCond = conditions[lastFocusedIndex.coerceIn(0, conditions.lastIndex)]
+                            Log.w(
+                                "KomorebiFocus",
+                                "[ReserveList] 対象の条件が見つかりません(削除済)。近傍(id=${fallbackCond.id})へ復帰します。"
+                            )
+                            viewModel.lastClickedConditionId = fallbackCond.id
+                            ticketManager.issueForCondition(fallbackCond.id)
+                        } else {
+                            Log.w(
+                                "KomorebiFocus",
+                                "[ReserveList] 対象の条件が見つかりません(リスト空)。タブへ戻ります。"
+                            )
+                            ticketManager.issueForTop()
+                        }
                     }
                 }
             }
@@ -353,8 +380,6 @@ fun ReserveListScreen(
                         )
 
                         viewModel.clearFocusMemory()
-                        restoreReserveId = null
-                        restoreConditionId = null
                         onBack()
                         return@onKeyEvent true
                     }
@@ -362,20 +387,6 @@ fun ReserveListScreen(
                 false
             }
     ) {
-        Box(
-            modifier = Modifier
-                .size(1.dp)
-                .alpha(0f)
-                .focusRequester(localSafeHouse)
-                .focusProperties {
-                    up = FocusRequester.Cancel
-                    down = FocusRequester.Cancel
-                    left = FocusRequester.Cancel
-                    right = FocusRequester.Cancel
-                }
-                .focusable()
-        )
-
         if (contentFirstItemRequester != null) {
             Box(
                 modifier = Modifier
@@ -438,6 +449,7 @@ fun ReserveListScreen(
                             )
                             .focusProperties {
                                 up = topBarFocusRequester ?: topNavFocusRequester ?: FocusRequester.Default
+                                down = if (!showBlockingSpinner) listFocusRequester else FocusRequester.Cancel
                                 if (index == 0) left = topNavFocusRequester ?: FocusRequester.Cancel
                                 if (index == tabs.lastIndex) right = FocusRequester.Cancel
                             }
@@ -471,7 +483,7 @@ fun ReserveListScreen(
             }
         }
 
-        if (isLoading) {
+        if (showBlockingSpinner) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = colors.textPrimary)
             }
@@ -497,6 +509,7 @@ fun ReserveListScreen(
                                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    .onFocusChanged { listAreaHasFocus = it.hasFocus }
                                     .focusGroup()
                             ) {
                                 itemsIndexed(reserves, key = { _, it -> "all_res_${it.id}" }) { index, program ->
@@ -517,6 +530,7 @@ fun ReserveListScreen(
                                         konomiIp = konomiIp,
                                         konomiPort = konomiPort,
                                         onClick = {
+                                            lastFocusedIndex = index
                                             viewModel.lastClickedReserveId = program.id
                                             viewModel.lastClickedConditionId = null
                                             onProgramClick(program)
@@ -534,6 +548,7 @@ fun ReserveListScreen(
                                             }
                                             .onFocusChanged {
                                                 if (it.isFocused || it.hasFocus) {
+                                                    lastFocusedIndex = index
                                                     viewModel.lastClickedReserveId = program.id
                                                     viewModel.lastClickedConditionId = null
                                                 }
@@ -566,6 +581,7 @@ fun ReserveListScreen(
                                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    .onFocusChanged { listAreaHasFocus = it.hasFocus }
                                     .focusGroup()
                             ) {
                                 itemsIndexed(normalReserves, key = { _, it -> "norm_${it.id}" }) { index, program ->
@@ -586,6 +602,7 @@ fun ReserveListScreen(
                                         konomiIp = konomiIp,
                                         konomiPort = konomiPort,
                                         onClick = {
+                                            lastFocusedIndex = index
                                             viewModel.lastClickedReserveId = program.id
                                             viewModel.lastClickedConditionId = null
                                             onProgramClick(program)
@@ -603,6 +620,7 @@ fun ReserveListScreen(
                                             }
                                             .onFocusChanged {
                                                 if (it.isFocused || it.hasFocus) {
+                                                    lastFocusedIndex = index
                                                     viewModel.lastClickedReserveId = program.id
                                                     viewModel.lastClickedConditionId = null
                                                 }
@@ -635,6 +653,7 @@ fun ReserveListScreen(
                                 contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 48.dp),
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    .onFocusChanged { listAreaHasFocus = it.hasFocus }
                                     .focusGroup()
                             ) {
                                 itemsIndexed(conditions, key = { _, it -> "cond_${it.id}" }) { index, condition ->
@@ -653,6 +672,7 @@ fun ReserveListScreen(
                                     KeywordConditionCard(
                                         condition = condition,
                                         onClick = {
+                                            lastFocusedIndex = index
                                             viewModel.lastClickedConditionId = condition.id
                                             viewModel.lastClickedReserveId = null
                                             onConditionClick(condition)
@@ -674,6 +694,7 @@ fun ReserveListScreen(
                                             }
                                             .onFocusChanged {
                                                 if (it.isFocused || it.hasFocus) {
+                                                    lastFocusedIndex = index
                                                     viewModel.lastClickedConditionId = condition.id
                                                     viewModel.lastClickedReserveId = null
                                                 }

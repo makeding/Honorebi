@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FiberSmartRecord
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Info
@@ -99,6 +100,7 @@ private fun railIcon(tab: LauncherTab): ImageVector = when (tab) {
     LauncherTab.LIVE -> Icons.Default.LiveTv
     LauncherTab.APPS -> Icons.Default.Apps
     LauncherTab.VIDEO -> Icons.Default.VideoLibrary
+    LauncherTab.ON_AIR -> Icons.Default.Schedule
     LauncherTab.EPG -> Icons.Default.DateRange
     LauncherTab.RESERVE -> Icons.Default.FiberSmartRecord
 }

@@ -97,10 +97,16 @@ fun PlayerChannelStatus(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlayerChannelLogo(logoUrl, channelName, shouldCropLogo, Modifier.size(56.dp, 32.dp))
+        Text(
+            channelName.ifBlank { "チャンネル情報なし" },
+            modifier = nameModifier.weight(1f, fill = false),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.width(16.dp))
-        Text(channelName.ifBlank { "チャンネル情報なし" }, modifier = nameModifier,
-            style = MaterialTheme.typography.titleMedium, color = Color.White,
-            fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        PlayerChannelLogo(logoUrl, channelName, shouldCropLogo, Modifier.size(56.dp, 32.dp))
     }
 }

@@ -2,15 +2,16 @@ package com.beeregg2001.komorebi.ui.reserve
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.*
@@ -29,6 +30,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.data.SettingsRepository
@@ -92,7 +94,7 @@ fun ReserveSettingsDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.9f))
+            .background(Color.Black.copy(alpha = 0.78f))
             .focusProperties { exit = { FocusRequester.Cancel } }
             .focusRestorer()
             .focusGroup()
@@ -110,7 +112,8 @@ fun ReserveSettingsDialog(
     ) {
         Surface(
             modifier = Modifier
-                .width(600.dp)
+                .width(640.dp)
+                .border(1.dp, colors.textPrimary.copy(alpha = 0.14f), RoundedCornerShape(16.dp))
                 .focusProperties {
                     enter = {
                         if (isFirstEnter) {
@@ -130,43 +133,35 @@ fun ReserveSettingsDialog(
             )
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = if (isNewReservation) "詳細予約設定" else "予約設定の変更",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = colors.textPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = SystemFontFamily,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-                Text(
-                    text = programTitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+                Column(
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = if (isNewReservation) "詳細予約設定" else "予約設定の変更",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = colors.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = SystemFontFamily,
+                    )
+                    Text(
+                        text = programTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                HorizontalDivider(
+                    color = colors.textPrimary.copy(alpha = 0.12f),
+                    modifier = Modifier.padding(vertical = 4.dp)
                 )
 
-                Divider(
-                    color = colors.textPrimary.copy(alpha = 0.1f),
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                // Reserve a stable slot so a failed request does not shift the controls or focus.
-                Text(
-                    text = failure?.let { "${it.message} [${it.code}]" } ?: " ",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (failure != null) MaterialTheme.colorScheme.error else Color.Transparent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(horizontal = 8.dp),
-                    maxLines = 3,
-                )
-
-                SettingRow(label = "予約を有効にする") {
+                ReserveSettingRow(label = "予約を有効にする") {
                     Switch(
                         checked = isEnabled,
                         onCheckedChange = { isEnabled = it },
@@ -180,8 +175,7 @@ fun ReserveSettingsDialog(
                     )
                 }
 
-                // ★修正: IconButton をTV向けの PriorityCircleButton に変更
-                SettingRow(label = "優先度 (1-5)") {
+                ReserveSettingRow(label = "優先度 (1-5)") {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -193,10 +187,10 @@ fun ReserveSettingsDialog(
                         )
                         Text(
                             text = priority.toString(),
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             color = colors.textPrimary,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(30.dp),
+                            modifier = Modifier.width(28.dp),
                             textAlign = TextAlign.Center
                         )
                         PriorityCircleButton(
@@ -207,7 +201,7 @@ fun ReserveSettingsDialog(
                     }
                 }
 
-                SettingRow(label = "録画後実行バッチ") {
+                ReserveSettingRow(label = "録画後実行バッチ") {
                     val currentBatName =
                         batchList.find { it.path == selectedBatPath }?.name ?: "なし"
                     Button(
@@ -218,11 +212,15 @@ fun ReserveSettingsDialog(
                             contentColor = colors.textPrimary
                         )
                     ) {
-                        Text(text = currentBatName)
+                        Text(
+                            text = currentBatName,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
 
-                SettingRow(label = "イベントリレー追従") {
+                ReserveSettingRow(label = "イベントリレー追従") {
                     Switch(
                         checked = isEventRelay,
                         onCheckedChange = { isEventRelay = it },
@@ -235,14 +233,28 @@ fun ReserveSettingsDialog(
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(
+                    color = colors.textPrimary.copy(alpha = 0.10f),
+                    modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
+                )
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Reserve a stable slot next to the footer actions so failure messages never shift layout.
+                    Text(
+                        text = failure?.let { "${it.message} [${it.code}]" } ?: " ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (failure != null) MaterialTheme.colorScheme.error else Color.Transparent,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+
                     DialogActionButton(
                         DialogActionRole.Secondary,
                         { if (!isSubmitting) onDismiss() },
@@ -251,7 +263,9 @@ fun ReserveSettingsDialog(
                         Text("キャンセル", fontWeight = FontWeight.Bold)
                     }
 
-                    DialogActionButton(DialogActionRole.Primary, onClick = {
+                    DialogActionButton(
+                        DialogActionRole.Primary,
+                        onClick = {
                             val newSettings = initialSettings.copy(
                                 isEnabled = isEnabled,
                                 priority = priority,
@@ -260,7 +274,8 @@ fun ReserveSettingsDialog(
                                 isEventRelayFollowEnabled = isEventRelay
                             )
                             if (!isSubmitting) onConfirm(newSettings)
-                        }, modifier = Modifier.semantics { if (isSubmitting) disabled() }
+                        },
+                        modifier = Modifier.semantics { if (isSubmitting) disabled() }
                     ) {
                         Text(
                             if (isSubmitting) "処理中…" else if (isNewReservation) "録画予約" else "設定を更新",
@@ -289,6 +304,40 @@ fun ReserveSettingsDialog(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun ReserveSettingRow(label: String, content: @Composable () -> Unit) {
+    val colors = KomorebiTheme.colors
+    var isRowFocused by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = if (isRowFocused) colors.textPrimary.copy(alpha = 0.12f) else colors.textPrimary.copy(alpha = 0.04f),
+                shape = RoundedCornerShape(10.dp)
+            )
+            .border(
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isRowFocused) colors.accent.copy(alpha = 0.85f) else colors.textPrimary.copy(alpha = 0.06f)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            )
+            .onFocusChanged { isRowFocused = it.hasFocus }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = colors.textPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isRowFocused) FontWeight.Bold else FontWeight.Medium
+        )
+        content()
     }
 }
 

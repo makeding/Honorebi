@@ -31,6 +31,10 @@ enum class LauncherTab(
         title = "ビデオ",
         ownsExternalReturnFocus = true,
     ),
+    ON_AIR(
+        title = "放送中",
+        ownsExternalReturnFocus = true,
+    ),
     EPG(
         title = "番組表",
         requiresEpgData = true,
@@ -45,7 +49,7 @@ enum class LauncherTab(
         fun fromTitle(title: String?): LauncherTab? = entries.firstOrNull { it.title == title }
 
         fun visibleTabs(hideAppsTab: Boolean, tif: Boolean = false): List<LauncherTab> =
-            entries.filterNot { (hideAppsTab && it == APPS) || (tif && it == RESERVE) }
+            entries.filterNot { (hideAppsTab && it == APPS) || (tif && (it == RESERVE || it == ON_AIR)) }
     }
 }
 
@@ -161,11 +165,11 @@ internal fun resolveTabReturnFocus(
 
         LauncherTab.LIVE, LauncherTab.VIDEO -> TabFocusAction.DelegateToTabContent()
 
-        LauncherTab.EPG, LauncherTab.RESERVE -> TabFocusAction.FocusTab(tab, tabIndex)
+        LauncherTab.ON_AIR, LauncherTab.EPG, LauncherTab.RESERVE -> TabFocusAction.FocusTab(tab, tabIndex)
     }
 
     FocusReturnTrigger.PLAYER_RETURN -> when (tab) {
-        LauncherTab.LIVE, LauncherTab.VIDEO -> TabFocusAction.DelegateToTabContent()
+        LauncherTab.LIVE, LauncherTab.VIDEO, LauncherTab.ON_AIR -> TabFocusAction.DelegateToTabContent()
 
         LauncherTab.HOME -> {
             if (lastClickedSection != null && lastClickedItemId != null) {
@@ -207,7 +211,7 @@ internal fun resolveTabReturnFocus(
             }
         }
 
-        LauncherTab.LIVE -> TabFocusAction.FocusTab(tab, tabIndex)
+        LauncherTab.LIVE, LauncherTab.ON_AIR -> TabFocusAction.FocusTab(tab, tabIndex)
 
         LauncherTab.VIDEO -> TabFocusAction.DelegateToTabContent()
     }
