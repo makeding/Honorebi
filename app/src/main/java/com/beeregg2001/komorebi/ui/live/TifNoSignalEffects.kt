@@ -41,11 +41,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
@@ -81,40 +83,42 @@ private const val EFFECT_JANK_DT_NANOS = 50_000_000L
 // Shared immutable drawing constants (zero per-frame allocations)
 private val ARIB_GRAY_40 = Color(0xFF666666)
 private val ARIB_GRAY_15 = Color(0xFF262626)
+private val ARIB_WHITE_75 = Color(0xFFBFBFBF)
+private val ARIB_WHITE_100 = Color(0xFFFFFFFF)
 private val ARIB_MAIN_BARS = arrayOf(
-    Color(0xFFBFBFBF), // 75% White
-    Color(0xFFBFBF00), // Yellow
-    Color(0xFF00BFBF), // Cyan
-    Color(0xFF00BF00), // Green
-    Color(0xFFBF00BF), // Magenta
-    Color(0xFFBF0000), // Red
-    Color(0xFF0000BF), // Blue
+    ARIB_WHITE_75,     // 75% White
+    Color(0xFFBFBF00), // 75% Yellow
+    Color(0xFF00BFBF), // 75% Cyan
+    Color(0xFF00BF00), // 75% Green
+    Color(0xFFBF00BF), // 75% Magenta
+    Color(0xFFBF0000), // 75% Red
+    Color(0xFF0000BF), // 75% Blue
 )
-private val ARIB_PLUGE_COLORS = arrayOf(
-    Color(0xFF000000),
-    Color(0xFFFFFFFF),
-    Color(0xFF000000),
-    Color(0xFF060606),
-    Color(0xFF0E0E0E),
-    Color(0xFF1A1A1A),
-    Color(0xFF000000),
+private val ARIB_RAMP_STOPS = arrayOf(
+    0.00f to Color(0xFF000000),
+    0.18f to Color(0xFF000000),
+    0.82f to Color(0xFFFFFFFF),
+    1.00f to Color(0xFFFFFFFF),
 )
-private val ARIB_RAMP_COLORS = listOf(Color(0xFF080808), Color(0xFFEBEBEB))
-private val ARIB_DIM_SCRIM = Color.Black.copy(alpha = 0.22f)
-private val ARIB_SCANLINE_COLOR = Color.Black.copy(alpha = 0.14f)
+private val ARIB_TELOP_OUTLINE_STROKE = Stroke(width = 8f, join = StrokeJoin.Round)
 
 private val STATIC_HUM_COLORS = listOf(
     Color.Transparent,
-    Color.White.copy(alpha = 0.075f),
-    Color.White.copy(alpha = 0.03f),
+    Color.Black.copy(alpha = 0.22f),
+    Color.White.copy(alpha = 0.10f),
     Color.Transparent,
 )
 private val STATIC_VIGNETTE_COLORS = listOf(
     Color.Transparent,
-    Color.Black.copy(alpha = 0.22f),
-    Color.Black.copy(alpha = 0.72f),
+    Color.Black.copy(alpha = 0.16f),
+    Color.Black.copy(alpha = 0.68f),
 )
-private val STATIC_SCANLINE_COLOR = Color.Black.copy(alpha = 0.26f)
+private val STATIC_SCANLINE_COLOR = Color.Black.copy(alpha = 0.34f)
+private val STATIC_OSD_SHADOW = Shadow(
+    color = Color.Black,
+    offset = Offset(3f, 3f),
+    blurRadius = 1f,
+)
 
 private val WAVE_GRID_COLOR = Color(0xFF2DD4BF).copy(alpha = 0.06f)
 private val WAVE_AXIS_COLOR = Color(0xFF2DD4BF).copy(alpha = 0.14f)
@@ -164,6 +168,7 @@ internal fun TifNoSignalEffectSurface(
             TifNoSignalStyle.ARIB_COLOR_BARS -> AribColorBarsEffect(
                 statusText = statusText,
                 inputLabel = inputLabel,
+                showOverlay = showOverlay,
                 paused = paused,
             )
             TifNoSignalStyle.ANALOG_STATIC -> AnalogStaticEffect(
@@ -260,12 +265,13 @@ private fun rememberElapsedSeconds(
 }
 
 // ---------------------------------------------------------------------------
-// 1. ARIB STD-B28 inspired 75% Broadcast Color Bars
+// 1. ARIB STD-B28 Japanese Digital Broadcast Color Bars
 // ---------------------------------------------------------------------------
 @Composable
 private fun AribColorBarsEffect(
     statusText: String,
     inputLabel: String,
+    showOverlay: Boolean,
     paused: Boolean,
 ) {
     var tick by remember { mutableIntStateOf(0) }
@@ -277,17 +283,16 @@ private fun AribColorBarsEffect(
         }
     }
     // Gentle OLED burn-in pixel shift over time (with slight overscan so edges stay seamless)
-    val shiftX = sin(tick * 0.06f) * 8f
-    val shiftY = cos(tick * 0.045f) * 5f
-    val tallyOn = (tick % 2) == 0
+    val shiftX = sin(tick * 0.05f) * 6f
+    val shiftY = cos(tick * 0.04f) * 4f
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Spacer(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = 1.025f
-                    scaleY = 1.025f
+                    scaleX = 1.02f
+                    scaleY = 1.02f
                     translationX = shiftX
                     translationY = shiftY
                 }
@@ -304,16 +309,15 @@ private fun AribColorBarsEffect(
                     val rampY = topH + midH
                     val botY = rampY + rampH
                     val botH = h - botY
-                    val scanStep = 3.dp.toPx().coerceAtLeast(4f)
 
                     val rampBrush = Brush.horizontalGradient(
-                        colors = ARIB_RAMP_COLORS,
+                        colorStops = ARIB_RAMP_STOPS,
                         startX = sideW,
                         endX = sideW + centerW,
                     )
 
                     onDrawBehind {
-                        // Pattern 1: Top 75% color bars with 40% gray side panels
+                        // Pattern 1 (7/12): 40% gray sidebands + 7x 75% color bars
                         drawRect(ARIB_GRAY_40, Offset.Zero, Size(sideW, topH))
                         for (i in ARIB_MAIN_BARS.indices) {
                             val left = sideW + i * barW
@@ -322,91 +326,121 @@ private fun AribColorBarsEffect(
                         }
                         drawRect(ARIB_GRAY_40, Offset(w - sideW, 0f), Size(sideW, topH))
 
-                        // Pattern 2: Middle chroma / 100% white strip
-                        drawRect(Color(0xFF00BFBF), Offset(0f, topH), Size(sideW, midH))
-                        drawRect(Color(0xFF009999), Offset(sideW, topH), Size(barW, midH))
-                        drawRect(Color(0xFFFFFFFF), Offset(sideW + barW, topH), Size(barW * 6f, midH))
-                        drawRect(Color(0xFF0000BF), Offset(w - sideW, topH), Size(sideW, midH))
+                        // Pattern 2 (1/12): 100% Cyan | 100% White (1 bar) | 75% White (6 bars) | 100% Blue
+                        drawRect(Color(0xFF00FFFF), Offset(0f, topH), Size(sideW, midH))
+                        drawRect(ARIB_WHITE_100, Offset(sideW, topH), Size(barW, midH))
+                        drawRect(ARIB_WHITE_75, Offset(sideW + barW, topH), Size(barW * 6f, midH))
+                        drawRect(Color(0xFF0000FF), Offset(w - sideW, topH), Size(sideW, midH))
 
-                        // Pattern 3: Luminance ramp
-                        drawRect(Color(0xFFBFBF00), Offset(0f, rampY), Size(sideW, rampH))
+                        // Pattern 3 (1/12): 100% Yellow | 0%->100% Luminance Ramp | 100% Red
+                        drawRect(Color(0xFFFFFF00), Offset(0f, rampY), Size(sideW, rampH))
                         drawRect(
                             brush = rampBrush,
                             topLeft = Offset(sideW, rampY),
                             size = Size(centerW, rampH),
                         )
-                        drawRect(Color(0xFFBF0000), Offset(w - sideW, rampY), Size(sideW, rampH))
+                        drawRect(Color(0xFFFF0000), Offset(w - sideW, rampY), Size(sideW, rampH))
 
-                        // Pattern 4: Bottom PLUGE & black/white reference blocks
+                        // Pattern 4 (3/12): 15% Gray | Black | 100% White block | Black + subtle PLUGE | 15% Gray
                         drawRect(ARIB_GRAY_15, Offset(0f, botY), Size(sideW, botH))
-                        for (i in ARIB_PLUGE_COLORS.indices) {
-                            val left = sideW + i * barW
-                            val right = if (i == ARIB_PLUGE_COLORS.lastIndex) w - sideW else sideW + (i + 1) * barW
-                            drawRect(ARIB_PLUGE_COLORS[i], Offset(left, botY), Size(right - left, botH))
-                        }
+                        val black1W = barW * 1.5f
+                        val whiteBlockW = barW * 2.0f
+                        val black2X = sideW + black1W + whiteBlockW
+                        val black2W = (w - sideW) - black2X
+                        drawRect(Color.Black, Offset(sideW, botY), Size(black1W, botH))
+                        drawRect(ARIB_WHITE_100, Offset(sideW + black1W, botY), Size(whiteBlockW, botH))
+                        drawRect(Color.Black, Offset(black2X, botY), Size(black2W, botH))
+                        // Subtle PLUGE calibration steps inside right black region
+                        val plugeW = barW * 0.28f
+                        drawRect(Color(0xFF0A0A0A), Offset(black2X + black2W * 0.42f, botY), Size(plugeW, botH))
+                        drawRect(Color(0xFF141414), Offset(black2X + black2W * 0.56f, botY), Size(plugeW, botH))
                         drawRect(ARIB_GRAY_15, Offset(w - sideW, botY), Size(sideW, botH))
-
-                        // Subtle broadcast scanlines + dark-room luminance softening
-                        drawRect(ARIB_DIM_SCRIM)
-                        var y = 0f
-                        while (y < h) {
-                            drawLine(
-                                color = ARIB_SCANLINE_COLOR,
-                                start = Offset(0f, y),
-                                end = Offset(w, y),
-                                strokeWidth = 1.5f,
-                            )
-                            y += scanStep
-                        }
                     }
                 },
         )
 
-        // Upper-center broadcast monitor card (safe above ~110dp bottom preview HUD)
-        val cardShape = RoundedCornerShape(12.dp)
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(bottom = 52.dp)
-                .graphicsLayer {
-                    translationX = -shiftX * 0.5f
-                    translationY = -shiftY * 0.5f
-                }
-                .background(Color(0xEB0B0D12), cardShape)
-                .border(1.5.dp, Color.White.copy(alpha = 0.28f), cardShape)
-                .padding(horizontal = 32.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+        // Classic Japanese digital broadcast outlined telop (top-left, hidden if live OSD is shown)
+        if (!showOverlay) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 152.dp, top = 56.dp)
+                    .graphicsLayer {
+                        translationX = shiftX * 0.6f
+                        translationY = shiftY * 0.6f
+                    },
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(9.dp)
-                        .background(
-                            if (tallyOn) Color(0xFFEF4444) else Color(0xFF7F1D1D),
-                            CircleShape,
-                        ),
+                val telopText = statusText.ifBlank { "信号がありません" }
+                Text(
+                    text = telopText,
+                    style = TextStyle(
+                        color = Color.Black,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                        drawStyle = ARIB_TELOP_OUTLINE_STROKE,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 520.dp),
                 )
                 Text(
-                    text = "NO SIGNAL",
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 4.sp,
+                    text = telopText,
+                    style = TextStyle(
+                        color = Color.White,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 520.dp),
                 )
             }
-            Spacer(modifier = Modifier.height(6.dp))
+        }
+
+        // Subtle broadcast station watermark in top-right 40% gray band
+        Text(
+            text = "KOMOREBI",
+            color = Color.White.copy(alpha = 0.34f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 2.sp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 28.dp, top = 26.dp),
+        )
+
+        // Broadcast station callsign block inside Pattern 4 bottom-right black area
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 150.dp, bottom = 36.dp)
+                .graphicsLayer {
+                    translationX = shiftX * 0.5f
+                    translationY = shiftY * 0.5f
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text(
-                text = "$inputLabel · $statusText",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 14.sp,
+                text = inputLabel.uppercase(Locale.US),
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
+                letterSpacing = 2.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 420.dp),
+                modifier = Modifier.widthIn(max = 280.dp),
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "KOMOREBI DIGITAL TV",
+                color = Color.White.copy(alpha = 0.9f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.5.sp,
+                maxLines = 1,
             )
         }
     }
@@ -415,21 +449,53 @@ private fun AribColorBarsEffect(
 // ---------------------------------------------------------------------------
 // 2. Vintage CRT Analog Static / Snow
 // ---------------------------------------------------------------------------
-private const val STATIC_FRAME_COUNT = 10
-private const val STATIC_TEX_W = 192
-private const val STATIC_TEX_H = 108
+private const val STATIC_FRAME_COUNT = 6
+private const val STATIC_TEX_W = 512
+private const val STATIC_TEX_H = 288
 
 private fun buildStaticFrames(): List<ImageBitmap> {
     val rng = Random(20261123)
     val pixels = IntArray(STATIC_TEX_W * STATIC_TEX_H)
     return List(STATIC_FRAME_COUNT) {
-        for (i in pixels.indices) {
-            // Soft low-contrast vintage phosphor snow (16..138) with subtle cool CRT cast
-            val base = (rng.nextInt(16, 132) + rng.nextInt(16, 132)) ushr 1
-            val spike = if (rng.nextInt(16) == 0) rng.nextInt(-10, 18) else 0
-            val v = (base + spike).coerceIn(14, 146)
-            val b = (v + 4).coerceAtMost(150)
-            pixels[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or b
+        for (y in 0 until STATIC_TEX_H) {
+            // Real NTSC/PAL RF snow has subtle per-scanline luminance jitter and horizontal grain
+            val lineBias = rng.nextInt(-26, 27)
+            val rowOffset = y * STATIC_TEX_W
+            var prev = 110
+            for (x in 0 until STATIC_TEX_W) {
+                val roll = rng.nextInt(100)
+                val raw = when {
+                    roll < 8 -> rng.nextInt(215, 256) // Crisp white RF snow burst
+                    roll < 16 -> rng.nextInt(0, 24)   // Deep black signal dropout
+                    else -> rng.nextInt(20, 212)      // Full-contrast static grain
+                }
+                // Slight horizontal analog bandwidth correlation (stretches snow into fine RF grain)
+                val luma = ((prev * 28 + raw * 72) / 100 + lineBias).coerceIn(4, 250)
+                prev = luma
+
+                // Rare faint NTSC chroma snow sparkles
+                val r: Int
+                val g: Int
+                val b: Int
+                when (rng.nextInt(48)) {
+                    0 -> {
+                        r = (luma + 28).coerceAtMost(255)
+                        g = (luma - 10).coerceAtLeast(0)
+                        b = (luma - 8).coerceAtLeast(0)
+                    }
+                    1 -> {
+                        r = (luma - 10).coerceAtLeast(0)
+                        g = (luma + 14).coerceAtMost(255)
+                        b = (luma + 26).coerceAtMost(255)
+                    }
+                    else -> {
+                        r = luma
+                        g = luma
+                        b = (luma + 4).coerceAtMost(255)
+                    }
+                }
+                pixels[rowOffset + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            }
         }
         Bitmap.createBitmap(pixels, STATIC_TEX_W, STATIC_TEX_H, Bitmap.Config.ARGB_8888).asImageBitmap()
     }
@@ -455,7 +521,7 @@ private fun AnalogStaticEffect(
                         size.width.toInt().coerceAtLeast(1),
                         size.height.toInt().coerceAtLeast(1),
                     )
-                    val humBandH = (size.height * 0.14f).coerceAtLeast(80f)
+                    val humBandH = (size.height * 0.16f).coerceAtLeast(90f)
                     val humBrush = Brush.verticalGradient(
                         colors = STATIC_HUM_COLORS,
                         startY = 0f,
@@ -466,20 +532,48 @@ private fun AnalogStaticEffect(
                         center = Offset(size.width / 2f, size.height / 2f),
                         radius = size.maxDimension * 0.68f,
                     )
-                    val scanStep = 2.5.dp.toPx().coerceAtLeast(4f)
+                    val scanStep = 2.dp.toPx().coerceAtLeast(3f)
 
                     onDrawBehind {
                         val elapsed = elapsedState.value
-                        val frameIdx = ((elapsed * 18f).toInt().coerceAtLeast(0)) % frames.size
-                        drawImage(
-                            image = frames[frameIdx],
-                            dstOffset = IntOffset.Zero,
-                            dstSize = dstSize,
-                            filterQuality = FilterQuality.None,
-                        )
+                        val tick = (elapsed * 24f).toInt().coerceAtLeast(0)
+                        val frameIdx = tick % frames.size
+                        // Flip X/Y across ticks so 6 frames produce 24 non-repeating variations
+                        val flipX = if (((tick / frames.size) and 1) == 1) -1f else 1f
+                        val flipY = if (((tick / (frames.size * 2)) and 1) == 1) -1f else 1f
 
-                        // Slow drifting analog 60Hz hum bar (zero per-frame brush allocation)
-                        val humY = ((elapsed * 0.14f) % 1.3f - 0.15f) * size.height - humBandH * 0.5f
+                        scale(scaleX = flipX, scaleY = flipY, pivot = center) {
+                            drawImage(
+                                image = frames[frameIdx],
+                                dstOffset = IntOffset.Zero,
+                                dstSize = dstSize,
+                                filterQuality = FilterQuality.Low,
+                            )
+                        }
+
+                        // Subtle dark-room luminance clamp so full-contrast snow stays comfortable on TV
+                        drawRect(Color.Black.copy(alpha = 0.24f))
+
+                        // Dynamic horizontal RF interference streaks (1-3 thin bursts per frame)
+                        var hash = tick * 1103515245 + 12345
+                        for (s in 0 until 3) {
+                            hash = hash * 1103515245 + 12345
+                            val sy = ((hash ushr 16) and 0x7FFF) / 32767f * size.height
+                            hash = hash * 1103515245 + 12345
+                            val sx = ((hash ushr 16) and 0x7FFF) / 32767f * size.width * 0.7f
+                            hash = hash * 1103515245 + 12345
+                            val sw = (0.08f + ((hash ushr 16) and 0x7FFF) / 32767f * 0.32f) * size.width
+                            val bright = (s and 1) == 0
+                            drawLine(
+                                color = if (bright) Color.White.copy(alpha = 0.42f) else Color.Black.copy(alpha = 0.55f),
+                                start = Offset(sx, sy),
+                                end = Offset((sx + sw).coerceAtMost(size.width), sy),
+                                strokeWidth = 2f,
+                            )
+                        }
+
+                        // Slow rolling 60Hz analog hum band
+                        val humY = ((elapsed * 0.18f) % 1.35f - 0.18f) * size.height - humBandH * 0.5f
                         translate(top = humY) {
                             drawRect(
                                 brush = humBrush,
@@ -487,14 +581,14 @@ private fun AnalogStaticEffect(
                             )
                         }
 
-                        // CRT scanlines
+                        // Crisp CRT horizontal scanlines
                         var y = 0f
                         while (y < size.height) {
                             drawLine(
                                 color = STATIC_SCANLINE_COLOR,
                                 start = Offset(0f, y),
                                 end = Offset(size.width, y),
-                                strokeWidth = 1.8f,
+                                strokeWidth = 1.5f,
                             )
                             y += scanStep
                         }
@@ -506,41 +600,45 @@ private fun AnalogStaticEffect(
         )
 
         if (!showOverlay) {
-            // Retro CRT phosphor-green OSD (top-left safe area, hidden when live OSD is visible)
-            val osdShape = RoundedCornerShape(6.dp)
+            // Classic CRT TV phosphor-green OSD (bare crisp monospace with hard black shadow, no card box)
             Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 52.dp, top = 44.dp)
+                    .padding(start = 56.dp, top = 46.dp)
                     .graphicsLayer {
                         val elapsed = elapsedState.value
-                        translationX = sin(elapsed * 0.12f) * 14f
+                        translationX = sin(elapsed * 0.12f) * 12f
                         translationY = cos(elapsed * 0.09f) * 8f
-                    }
-                    .background(Color(0x9906120A), osdShape)
-                    .border(1.dp, Color(0xFF4ADE80).copy(alpha = 0.45f), osdShape)
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                    },
             ) {
                 Text(
                     text = inputLabel.uppercase(Locale.US),
-                    color = Color(0xFF4ADE80),
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 2.sp,
+                    style = TextStyle(
+                        color = Color(0xFF38FF62),
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 3.sp,
+                        shadow = STATIC_OSD_SHADOW,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 360.dp),
+                    modifier = Modifier.widthIn(max = 380.dp),
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "NO SIGNAL  //  $statusText",
-                    color = Color(0xFF86EFAC).copy(alpha = 0.9f),
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
+                    text = "NO SIGNAL  $statusText",
+                    style = TextStyle(
+                        color = Color(0xFF38FF62).copy(alpha = 0.92f),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.5.sp,
+                        shadow = STATIC_OSD_SHADOW,
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 420.dp),
+                    modifier = Modifier.widthIn(max = 460.dp),
                 )
             }
         }
