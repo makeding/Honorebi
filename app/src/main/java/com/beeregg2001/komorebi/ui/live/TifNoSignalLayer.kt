@@ -338,15 +338,50 @@ private fun TifNoSignalBounceSurface(
     }
 }
 
+private val DVD_INTERFACE_REGEX = Regex(
+    """(?i)\b(HDMI\s*\d*|e?ARC|DISPLAYPORT|DP\s*\d*|USB-?C|TYPE-?C|VGA|D-?SUB|DVI|AV\s*\d*|RCA|COMPONENT|COMPOSITE|DTV|BS4K|BS|CS|TV)\b"""
+)
+
+internal fun resolveDvdBounceHeadline(inputLabel: String): String {
+    val trimmed = inputLabel.trim()
+    if (trimmed.isEmpty()) return "DVD"
+
+    val match = DVD_INTERFACE_REGEX.find(trimmed)?.groupValues?.getOrNull(1)
+    if (match != null) {
+        val upper = match.uppercase().replace(Regex("""\s+"""), " ").trim()
+        return when {
+            upper == "DISPLAYPORT" -> "DP"
+            upper == "TYPE-C" || upper == "TYPEC" || upper == "USBC" -> "USB-C"
+            upper == "D-SUB" || upper == "DSUB" -> "VGA"
+            upper == "COMPONENT" -> "COMP"
+            upper == "COMPOSITE" || upper == "RCA" -> "AV"
+            upper.startsWith("HDMI") && upper.length > 4 && upper[4] != ' ' -> "HDMI ${upper.substring(4)}"
+            upper.startsWith("DP") && upper.length > 2 && upper[2] != ' ' -> "DP ${upper.substring(2)}"
+            upper.startsWith("AV") && upper.length > 2 && upper[2] != ' ' -> "AV ${upper.substring(2)}"
+            else -> upper
+        }
+    }
+
+    return when {
+        trimmed.contains("地デジ") || trimmed.contains("地上波") -> "DTV"
+        trimmed.contains("コンポーネント") || trimmed.contains("D端子") -> "COMP"
+        trimmed.contains("コンポジット") || trimmed.contains("ビデオ") -> "AV"
+        trimmed.contains("テレビ") || trimmed.contains("チューナー") -> "TV"
+        else -> "DVD"
+    }
+}
+
 @Composable
 private fun DvdBounceLockup(
-    isPassthroughInput: Boolean,
+    @Suppress("UNUSED_PARAMETER") isPassthroughInput: Boolean,
     statusText: String,
     inputLabel: String,
     tintProvider: () -> Color,
     onLogoComposed: (() -> Unit)?,
 ) {
     onLogoComposed?.invoke()
+    val headline = remember(inputLabel) { resolveDvdBounceHeadline(inputLabel) }
+    val showInputSubtitle = inputLabel.isNotBlank() && !inputLabel.trim().equals(headline, ignoreCase = true)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -365,14 +400,16 @@ private fun DvdBounceLockup(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = if (isPassthroughInput) "HDMI" else "TV",
+                text = headline,
                 color = Color.White,
-                fontSize = 38.sp,
+                fontSize = if (headline.length > 5) 32.sp else 38.sp,
                 lineHeight = 40.sp,
                 fontWeight = FontWeight.Black,
                 fontStyle = FontStyle.Italic,
                 letterSpacing = 2.sp,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 196.dp),
             )
             Spacer(
                 modifier = Modifier
@@ -403,15 +440,17 @@ private fun DvdBounceLockup(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 196.dp),
             )
-            Text(
-                text = inputLabel,
-                color = Color.White.copy(alpha = 0.75f),
-                fontSize = 13.sp,
-                lineHeight = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 196.dp),
-            )
+            if (showInputSubtitle) {
+                Text(
+                    text = inputLabel,
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 196.dp),
+                )
+            }
         }
     }
 }

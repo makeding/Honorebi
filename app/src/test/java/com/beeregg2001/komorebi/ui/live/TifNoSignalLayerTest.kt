@@ -210,4 +210,17 @@ class TifNoSignalLayerTest {
             compose.onAllNodes(isFocusable(), useUnmergedTree = true).assertCountEquals(0)
         }
     }
+
+    @Test
+    fun dvdBounceHeadlineExtractsKnownInterfaceOrDefaultsToDvd() {
+        assertEquals("HDMI 1", resolveDvdBounceHeadline("HDMI 1"))
+        assertEquals("HDMI 2", resolveDvdBounceHeadline("HDMI2 (PS5)"))
+        assertEquals("DP", resolveDvdBounceHeadline("DisplayPort"))
+        assertEquals("USB-C", resolveDvdBounceHeadline("Type-C"))
+        assertEquals("AV 1", resolveDvdBounceHeadline("AV1"))
+        assertEquals("DTV", resolveDvdBounceHeadline("地デジ"))
+        assertEquals("DVD", resolveDvdBounceHeadline("PS5"))
+        assertEquals("DVD", resolveDvdBounceHeadline("外部入力"))
+        assertEquals("DVD", resolveDvdBounceHeadline(""))
+    }
 }

@@ -2,6 +2,7 @@ package com.beeregg2001.komorebi.ui.live
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -101,7 +104,7 @@ private val ARIB_RAMP_STOPS = arrayOf(
     0.82f to Color(0xFFFFFFFF),
     1.00f to Color(0xFFFFFFFF),
 )
-private val ARIB_TELOP_OUTLINE_STROKE = Stroke(width = 8f, join = StrokeJoin.Round)
+private val ARIB_TELOP_OUTLINE_STROKE = Stroke(width = 5.5f, join = StrokeJoin.Round)
 
 private val STATIC_HUM_COLORS = listOf(
     Color.Transparent,
@@ -342,7 +345,8 @@ private fun AribBroadcastTelopText(
             style = TextStyle(
                 color = Color.Black,
                 fontSize = fontSizeSp.sp,
-                fontWeight = FontWeight.ExtraBold,
+                lineHeight = (fontSizeSp + 4f).sp,
+                fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
                 drawStyle = ARIB_TELOP_OUTLINE_STROKE,
             ),
@@ -355,7 +359,8 @@ private fun AribBroadcastTelopText(
             style = TextStyle(
                 color = Color.White,
                 fontSize = fontSizeSp.sp,
-                fontWeight = FontWeight.ExtraBold,
+                lineHeight = (fontSizeSp + 4f).sp,
+                fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
             ),
             maxLines = 1,
@@ -423,11 +428,11 @@ private fun AribColorBarsEffect(
         }
 
         Text(
-            text = "KOMOREBI",
+            text = "HonoRebi",
             color = Color.White.copy(alpha = 0.34f),
             fontSize = 16.sp,
             fontWeight = FontWeight.Black,
-            letterSpacing = 2.sp,
+            letterSpacing = 1.5.sp,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(end = 28.dp, top = 26.dp),
@@ -456,7 +461,7 @@ private fun AribColorBarsEffect(
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "KOMOREBI DIGITAL TV",
+                text = "HONOREBI DIGITAL TV",
                 color = Color.White.copy(alpha = 0.9f),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -491,7 +496,7 @@ private fun AribScrollingColorBarsEffect(
     val dateFmt = remember { SimpleDateFormat("yyyy年M月d日(E)", Locale.JAPANESE) }
     val timeFmt = remember { SimpleDateFormat("H:mm", Locale.JAPANESE) }
     val dateObj = remember(nowMillis / 1000L) { Date(nowMillis) }
-    val clockShadow = remember { Shadow(color = Color.Black.copy(alpha = 0.45f), offset = Offset(1.5f, 1.5f), blurRadius = 3f) }
+    val clockShadow = remember { Shadow(color = Color.Black.copy(alpha = 0.24f), offset = Offset(1f, 1f), blurRadius = 2f) }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Spacer(
@@ -530,38 +535,38 @@ private fun AribScrollingColorBarsEffect(
                 },
         )
 
-        // Top-left Japanese broadcast outlined telop (status + input callsign, hidden when live OSD shows)
+        // Top-left Japanese broadcast outlined telop: center-aligned pair like "試験電波発射中 / JOOY-DTV"
         if (!showOverlay) {
             Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 42.dp, top = 34.dp),
-                horizontalAlignment = Alignment.Start,
+                    .padding(start = 28.dp, top = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 AribBroadcastTelopText(
                     text = statusText.ifBlank { "信号がありません" },
-                    fontSizeSp = 26f,
+                    fontSizeSp = 24f,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 AribBroadcastTelopText(
                     text = inputLabel.uppercase(Locale.US),
-                    fontSizeSp = 24f,
+                    fontSizeSp = 22f,
                 )
             }
         }
 
-        // Lower-right broadcast date + time + bold station wordmark (MBS sign-off inspired, clear of preview HUD)
+        // Lower-right broadcast date + time + HonoRebi logo lockup (aligned to MBS broadcast geometry)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 72.dp, bottom = 128.dp),
+                .padding(end = 68.dp, bottom = 84.dp),
             horizontalAlignment = Alignment.End,
         ) {
             Text(
                 text = dateFmt.format(dateObj),
                 style = TextStyle(
                     color = Color.White,
-                    fontSize = 30.sp,
+                    fontSize = 31.sp,
                     fontWeight = FontWeight.Light,
                     letterSpacing = 1.sp,
                     fontFeatureSettings = "tnum",
@@ -569,34 +574,46 @@ private fun AribScrollingColorBarsEffect(
                 ),
                 maxLines = 1,
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
+                modifier = Modifier.widthIn(min = 336.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = timeFmt.format(dateObj),
                     style = TextStyle(
                         color = Color.White,
-                        fontSize = 36.sp,
+                        fontSize = 34.sp,
                         fontWeight = FontWeight.Light,
                         letterSpacing = 1.sp,
                         fontFeatureSettings = "tnum",
                         shadow = clockShadow,
                     ),
                     maxLines = 1,
+                    modifier = Modifier.padding(start = 16.dp),
                 )
-                Text(
-                    text = "KOMOREBI",
-                    style = TextStyle(
-                        color = Color.White,
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 3.sp,
-                        shadow = clockShadow,
-                    ),
-                    maxLines = 1,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.honorebi_mark),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Text(
+                        text = "HonoRebi",
+                        style = TextStyle(
+                            color = Color.White,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp,
+                            shadow = clockShadow,
+                        ),
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
