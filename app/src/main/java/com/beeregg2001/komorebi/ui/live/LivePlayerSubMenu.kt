@@ -241,6 +241,8 @@ fun LiveTopSubMenuUI(
                     .take(12)
             }
 
+            val qualitySubtitle = if (isTifSource) "TIF (ネイティブ)" else effectiveQuality.label
+
             // --- メインタイルメニュー行 ---
             Row(
                 horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
@@ -304,7 +306,7 @@ fun LiveTopSubMenuUI(
 
                     LiveMenuTileItem(
                         title = "画質", icon = Icons.Default.Settings,
-                        subtitle = effectiveQuality.label,
+                        subtitle = qualitySubtitle,
                         onClick = {
                             selectedCategory =
                                 if (selectedCategory == LiveSubMenuCategory.QUALITY) null else LiveSubMenuCategory.QUALITY
@@ -440,7 +442,7 @@ fun LiveTopSubMenuUI(
 
                     LiveMenuTileItem(
                         title = "画質", icon = Icons.Default.HighQuality,
-                        subtitle = effectiveQuality.label,
+                        subtitle = qualitySubtitle,
                         onClick = {
                             selectedCategory =
                                 if (selectedCategory == LiveSubMenuCategory.QUALITY) null else LiveSubMenuCategory.QUALITY
@@ -554,8 +556,36 @@ fun LiveTopSubMenuUI(
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 32.dp, vertical = 8.dp)
                     ) {
+                        if (onTifSourceSelect != null) {
+                            LiveMenuTileItem(
+                                title = "TIF (ネイティブ)",
+                                icon = if (isTifSource) Icons.Default.CheckCircle else Icons.Default.Tv,
+                                subtitle = if (isTifSource) "選択中" else "直接出力",
+                                onClick = {
+                                    onTifSourceSelect()
+                                    selectedCategory = null
+                                    try {
+                                        mainQualityButtonRequester.requestFocus()
+                                    } catch (e: Exception) {
+                                    }
+                                },
+                                width = 160.dp,
+                                height = 100.dp,
+                                modifier = Modifier
+                                    .then(if (isTifSource) Modifier.focusRequester(listFocusRequester) else Modifier)
+                                    .focusProperties {
+                                        up = mainQualityButtonRequester
+                                        down = FocusRequester.Cancel
+                                    },
+                                contentColor = colors.textPrimary
+                            )
+                        }
+
                         effectiveQualities.forEachIndexed { index, quality ->
-                            val isSelected = effectiveQuality.value == quality.value
+                            val isSelected = !isTifSource && effectiveQuality.value == quality.value
+                            val shouldAttachListFocus = isSelected ||
+                                (!isTifSource && index == 0 && effectiveQualities.none { it.value == effectiveQuality.value }) ||
+                                (isTifSource && onTifSourceSelect == null && index == 0)
 
                             LiveMenuTileItem(
                                 title = quality.label,
@@ -573,7 +603,7 @@ fun LiveTopSubMenuUI(
                                 height = 100.dp,
                                 modifier = Modifier
                                     .then(
-                                        if (isSelected || (index == 0 && effectiveQualities.none { it.value == effectiveQuality.value })) Modifier.focusRequester(
+                                        if (shouldAttachListFocus) Modifier.focusRequester(
                                             listFocusRequester
                                         ) else Modifier
                                     )

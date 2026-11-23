@@ -1394,13 +1394,17 @@ fun LivePlayerScreen(
                     )
                 },
                 onQualitySelect = {
-                    if (ps.currentQuality != it) {
-                        val switchedInPlace = ps.currentQuality.isRawMmts && it.isRawMmts &&
+                    val switchingFromTif = isTifChannel
+                    if (switchingFromTif) {
+                        isTifChannel = false
+                    }
+                    if (ps.currentQuality != it || switchingFromTif) {
+                        val switchedInPlace = !switchingFromTif && ps.currentQuality.isRawMmts && it.isRawMmts &&
                             livePlayerViewModel.switchRawMmtsLayer(
                                 quality = it,
                                 mainAudio = ps.currentAudioMode == AudioMode.MAIN
                             )
-                        if (switchedInPlace || !ps.currentQuality.isRawMmts || !it.isRawMmts) {
+                        if (switchedInPlace || switchingFromTif || !ps.currentQuality.isRawMmts || !it.isRawMmts) {
                             ps.currentQuality = it
                             if (!it.isRawMmts) livePlayerViewModel.saveLiveQuality(it.value)
                             if (!switchedInPlace) ps.retryKey++
