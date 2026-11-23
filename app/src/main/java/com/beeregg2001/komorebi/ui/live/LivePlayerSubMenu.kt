@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.AppStrings
+import androidx.activity.compose.BackHandler
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.AudioMode
 import com.beeregg2001.komorebi.data.model.Channel
@@ -48,6 +49,7 @@ import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.player.LivePlayerMenuTileStyle
 import com.beeregg2001.komorebi.ui.player.PlayerMenuTile
+import com.beeregg2001.komorebi.ui.player.PlayerSubMenuAutoDismissMs
 import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 
 enum class LiveSubMenuCategory {
@@ -127,7 +129,8 @@ fun LiveTopSubMenuUI(
     val restoreFocusAfterHdrRemoval = !showHdrTile && hdrTileFocused
     LaunchedEffect(showHdrTile) {
         if (restoreFocusAfterHdrRemoval) {
-            audioButtonRequester.requestFocus()
+            withFrameNanos { }
+            audioButtonRequester.safeRequestFocusWithRetry(TAG)
             hdrTileFocused = false
         }
     }
@@ -157,47 +160,72 @@ fun LiveTopSubMenuUI(
         }
     }
 
+    var pendingReturnCategory by remember { mutableStateOf<LiveSubMenuCategory?>(null) }
+    var interactionTick by remember { mutableIntStateOf(0) }
+    val currentOnCloseMenu by rememberUpdatedState(onCloseMenu)
+
+    LaunchedEffect(interactionTick, selectedCategory) {
+        delay(PlayerSubMenuAutoDismissMs)
+        currentOnCloseMenu()
+    }
+
+    val handleBack = {
+        if (selectedCategory != null) {
+            pendingReturnCategory = selectedCategory
+            selectedCategory = null
+        } else {
+            onCloseMenu()
+        }
+    }
+
+    BackHandler {
+        handleBack()
+    }
+
     LaunchedEffect(isDualDisplayMode) {
-        delay(50)
+        withFrameNanos { }
         val target = if (isDualDisplayMode) quickChannelButtonRequester else audioButtonRequester
         target.safeRequestFocusWithRetry(TAG)
     }
 
     LaunchedEffect(selectedCategory) {
+        withFrameNanos { }
         if (selectedCategory != null) {
-            delay(100)
-            try {
-                listFocusRequester.requestFocus()
-            } catch (e: Exception) {
+            listFocusRequester.safeRequestFocusWithRetry(
+                tag = TAG,
+                maxRetries = 8,
+                delayMillis = 80L,
+                isCurrent = { selectedCategory != null }
+            )
+        } else {
+            val returnTarget = when (pendingReturnCategory) {
+                LiveSubMenuCategory.QUICK_CHANNELS -> quickChannelButtonRequester
+                LiveSubMenuCategory.QUALITY -> mainQualityButtonRequester
+                LiveSubMenuCategory.SOURCE -> mainSourceButtonRequester
+                else -> null
             }
+            pendingReturnCategory = null
+            returnTarget?.safeRequestFocusWithRetry(
+                tag = TAG,
+                maxRetries = 8,
+                delayMillis = 80L,
+                isCurrent = { selectedCategory == null }
+            )
         }
     }
 
     PlayerSubMenuContainer(
         modifier = Modifier
             .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                    interactionTick++
+                }
                 if (keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
                     keyEvent.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE
                 ) {
                     if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
-
-                    if (selectedCategory != null) {
-                        val targetRequester = when (selectedCategory) {
-                            LiveSubMenuCategory.QUICK_CHANNELS -> quickChannelButtonRequester
-                            LiveSubMenuCategory.QUALITY -> mainQualityButtonRequester
-                            LiveSubMenuCategory.SOURCE -> mainSourceButtonRequester
-                            else -> focusRequester
-                        }
-                        selectedCategory = null
-                        try {
-                            targetRequester.requestFocus()
-                        } catch (e: Exception) {
-                        }
-                        true
-                    } else {
-                        onCloseMenu()
-                        true
-                    }
+                    handleBack()
+                    true
                 } else false
             }
     ) {
@@ -563,11 +591,8 @@ fun LiveTopSubMenuUI(
                                 subtitle = if (isTifSource) "選択中" else "直接出力",
                                 onClick = {
                                     onTifSourceSelect()
+                                    pendingReturnCategory = LiveSubMenuCategory.QUALITY
                                     selectedCategory = null
-                                    try {
-                                        mainQualityButtonRequester.requestFocus()
-                                    } catch (e: Exception) {
-                                    }
                                 },
                                 width = 160.dp,
                                 height = 100.dp,
@@ -593,11 +618,8 @@ fun LiveTopSubMenuUI(
                                 subtitle = if (isSelected) "選択中" else "",
                                 onClick = {
                                     onQualitySelect(quality)
+                                    pendingReturnCategory = LiveSubMenuCategory.QUALITY
                                     selectedCategory = null
-                                    try {
-                                        mainQualityButtonRequester.requestFocus()
-                                    } catch (e: Exception) {
-                                    }
                                 },
                                 width = 160.dp,
                                 height = 100.dp,
@@ -673,11 +695,8 @@ fun LiveTopSubMenuUI(
                                 subtitle = if (isSelected) "選択中" else "",
                                 onClick = {
                                     action()
+                                    pendingReturnCategory = LiveSubMenuCategory.SOURCE
                                     selectedCategory = null
-                                    try {
-                                        mainSourceButtonRequester.requestFocus()
-                                    } catch (e: Exception) {
-                                    }
                                 },
                                 width = 160.dp,
                                 height = 100.dp,

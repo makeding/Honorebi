@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.rememberScrollState
 import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 import androidx.compose.material3.Text
@@ -23,6 +24,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -41,6 +44,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import com.beeregg2001.komorebi.common.UserFacingFailure
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.media.SystemMediaSession
 import com.beeregg2001.komorebi.ui.player.PlaybackSourceFeedback
 import com.beeregg2001.komorebi.ui.player.PlaybackSourceRequest
@@ -109,13 +113,50 @@ internal fun SmbPlayerScreen(
         ) 1f else 0f,
         label = "smbControlsSubtitleAvoidance",
     )
+    val mainFocusRequester = remember { FocusRequester() }
     val subMenuFocusRequester = remember { FocusRequester() }
     val controlsFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(showControls, isSubMenuOpen, isModernSettingsOpen, sourceRequest, state.crop.mode) {
-        if (state.crop.mode != PlayerCropMode.HIDDEN) return@LaunchedEffect
-        if (isSubMenuOpen) subMenuFocusRequester.requestFocus()
-        else if (!isModernSettingsOpen && sourceRequest == PlaybackSourceRequest.Ready && showControls) {
-            controlsFocusRequester.requestFocus()
+    val programInfoCloseFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(
+        showControls,
+        isSubMenuOpen,
+        isModernSettingsOpen,
+        isProgramInfoOpen,
+        sourceRequest,
+        state.crop.mode,
+        isPiPMode,
+    ) {
+        if (isPiPMode || state.crop.mode != PlayerCropMode.HIDDEN) return@LaunchedEffect
+        withFrameNanos { }
+        when {
+            isProgramInfoOpen -> programInfoCloseFocusRequester.safeRequestFocusWithRetry(
+                tag = "SmbPlayerScreen",
+                isCurrent = { isProgramInfoOpen && !isPiPMode },
+            )
+            isSubMenuOpen -> subMenuFocusRequester.safeRequestFocusWithRetry(
+                tag = "SmbPlayerScreen",
+                isCurrent = { isSubMenuOpen && !isPiPMode },
+            )
+            !isModernSettingsOpen && sourceRequest == PlaybackSourceRequest.Ready && showControls -> {
+                controlsFocusRequester.safeRequestFocusWithRetry(
+                    tag = "SmbPlayerScreen",
+                    isCurrent = {
+                        !isModernSettingsOpen && !isSubMenuOpen && !isProgramInfoOpen &&
+                            sourceRequest == PlaybackSourceRequest.Ready && showControls &&
+                            state.crop.mode == PlayerCropMode.HIDDEN
+                    },
+                )
+            }
+            !isModernSettingsOpen && sourceRequest == PlaybackSourceRequest.Ready -> {
+                mainFocusRequester.safeRequestFocusWithRetry(
+                    tag = "SmbPlayerScreen",
+                    isCurrent = {
+                        !isModernSettingsOpen && !isSubMenuOpen && !isProgramInfoOpen &&
+                            sourceRequest == PlaybackSourceRequest.Ready && !showControls &&
+                            state.crop.mode == PlayerCropMode.HIDDEN
+                    },
+                )
+            }
         }
     }
     val player = rememberManagedExoPlayer(
@@ -282,7 +323,13 @@ internal fun SmbPlayerScreen(
                             PlayerZoomOrigin.BottomRight -> TransformOrigin(1f, 1f)
                         }
                     }
-                },
+                }
+                .focusRequester(mainFocusRequester)
+                .focusable(
+                    !isPiPMode && !isSubMenuOpen && !isModernSettingsOpen && !isProgramInfoOpen &&
+                        state.crop.mode == PlayerCropMode.HIDDEN &&
+                        sourceRequest == PlaybackSourceRequest.Ready
+                ),
         )
         NativeCaptionOverlay(
             cue = captions.caption.value,
@@ -459,7 +506,9 @@ internal fun SmbPlayerScreen(
                 feedback = {
                     Button(
                         onClick = { isProgramInfoOpen = false },
-                        modifier = Modifier.width(120.dp),
+                        modifier = Modifier
+                            .width(120.dp)
+                            .focusRequester(programInfoCloseFocusRequester),
                     ) { Text("閉じる") }
                 },
             )

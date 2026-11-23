@@ -73,6 +73,7 @@ import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
 import com.beeregg2001.komorebi.ui.player.DanmakuViewHandle
 import com.beeregg2001.komorebi.ui.player.LivePlayerMenuTileStyle
 import com.beeregg2001.komorebi.ui.player.PlayerMenuTile
+import com.beeregg2001.komorebi.ui.player.PlayerSubMenuAutoDismissMs
 import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CancellationException
@@ -453,10 +454,10 @@ fun TifLivePlayerScreen(
         if (!standaloneInput && isMiniListOpen && allChannels.isEmpty()) onMiniListToggle(false)
     }
 
-    // 操作帯は無操作5秒で自動的に隠す。
-    LaunchedEffect(showOverlay, isMiniListOpen, overlayInteractionTick) {
+    // 操作帯は無操作で自動的に隠す（上部タイル表示時は15秒、それ以外は5秒）。
+    LaunchedEffect(showOverlay, isMiniListOpen, useLiveOsd, showProgramDetails, overlayInteractionTick) {
         if (showOverlay && !isMiniListOpen) {
-            delay(5_000L)
+            delay(if (useLiveOsd && !showProgramDetails) PlayerSubMenuAutoDismissMs else 5_000L)
             onShowOverlayChange(false)
         }
     }

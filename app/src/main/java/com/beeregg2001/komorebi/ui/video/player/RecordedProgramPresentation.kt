@@ -17,6 +17,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.data.api.interceptor.BackendApiException
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.player.PlayerChannelStatus
 import com.beeregg2001.komorebi.ui.player.PlayerProgramPanel
@@ -93,7 +94,10 @@ internal fun ProgramInfoOverlay(
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     BackHandler { onClose() }
-    LaunchedEffect(Unit) { requester.requestFocus() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        requester.safeRequestFocusWithRetry("ProgramInfoOverlay")
+    }
     val rows = remember(program, timeFormat) { PlaybackProgramInfoFormatter.format(program, timeFormat) }
     PlayerProgramPanel(
         channelName = program.channel?.name.orEmpty(), logoUrl = presentation.logoUrl,

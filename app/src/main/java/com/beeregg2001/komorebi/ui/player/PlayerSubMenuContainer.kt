@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
+const val PlayerSubMenuAutoDismissMs = 15_000L
+
 /** Common fixed menu surface. Player modes supply their own focus and navigation modifiers. */
 @Composable
 fun PlayerSubMenuContainer(

@@ -738,14 +738,29 @@ fun LivePlayerScreen(
         if (!isMiniListOpen) {
             isMiniPlayerSelectionPending = false
             if (!currentIsManualOverlay && !currentIsSubMenuOpen && !isPiPMode && ps.crop.mode == PlayerCropMode.HIDDEN) {
-                delay(100); mainFocusRequester.safeRequestFocus(TAG)
+                delay(100)
+                mainFocusRequester.safeRequestFocusWithRetry(
+                    tag = TAG,
+                    maxRetries = 6,
+                    delayMillis = 80L,
+                    isCurrent = {
+                        !isMiniListOpen && !currentIsManualOverlay && !currentIsSubMenuOpen &&
+                            !isPiPMode && ps.crop.mode == PlayerCropMode.HIDDEN
+                    }
+                )
             }
         }
     }
 
     LaunchedEffect(isSubMenuOpen) {
         if (isSubMenuOpen && !isPiPMode) {
-            delay(150); subMenuFocusRequester.safeRequestFocus(TAG)
+            delay(100)
+            subMenuFocusRequester.safeRequestFocusWithRetry(
+                tag = TAG,
+                maxRetries = 6,
+                delayMillis = 80L,
+                isCurrent = { isSubMenuOpen && !isPiPMode }
+            )
         } else if (
             !isPiPMode &&
             !ps.isDualDisplayMode &&
@@ -754,7 +769,17 @@ fun LivePlayerScreen(
             !currentIsPinnedOverlay &&
             ps.crop.mode == PlayerCropMode.HIDDEN
         ) {
-            delay(200); mainFocusRequester.safeRequestFocus(TAG)
+            delay(120)
+            mainFocusRequester.safeRequestFocusWithRetry(
+                tag = TAG,
+                maxRetries = 6,
+                delayMillis = 80L,
+                isCurrent = {
+                    !isSubMenuOpen && !isPiPMode && !ps.isDualDisplayMode &&
+                        !currentIsMiniListOpen && !currentIsManualOverlay &&
+                        !currentIsPinnedOverlay && ps.crop.mode == PlayerCropMode.HIDDEN
+                }
+            )
         }
     }
 

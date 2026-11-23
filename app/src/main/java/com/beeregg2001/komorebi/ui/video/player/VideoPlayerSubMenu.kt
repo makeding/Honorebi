@@ -4,6 +4,7 @@ package com.beeregg2001.komorebi.ui.video.player
 
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import androidx.compose.animation.AnimatedContent
 import android.content.Intent
 import android.provider.Settings
@@ -57,6 +58,7 @@ import com.beeregg2001.komorebi.ui.player.HdrToneMapping
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlaybackUiCapabilities
 import com.beeregg2001.komorebi.ui.player.PlayerMenuTile
+import com.beeregg2001.komorebi.ui.player.PlayerSubMenuAutoDismissMs
 import com.beeregg2001.komorebi.ui.player.RecordedPlayerMenuTileStyle
 import com.beeregg2001.komorebi.ui.player.PlayerSubMenuContainer
 import com.beeregg2001.komorebi.ui.subtitle.NativeCaptionLanguage
@@ -158,7 +160,8 @@ fun VideoTopSubMenuUI(
     val restoreFocusAfterHdrRemoval = !showHdrTile && hdrTileFocused
     LaunchedEffect(showHdrTile) {
         if (restoreFocusAfterHdrRemoval) {
-            focusRequester.requestFocus()
+            withFrameNanos { }
+            focusRequester.safeRequestFocusWithRetry("VideoPlayerSubMenu")
             hdrTileFocused = false
         }
     }
@@ -166,15 +169,20 @@ fun VideoTopSubMenuUI(
         it.id == currentSubtitleLanguageId
     } ?: subtitleLanguages.firstOrNull()
 
+    var pendingReturnCategory by remember { mutableStateOf<SubMenuCategory?>(null) }
+    var interactionTick by remember { mutableIntStateOf(0) }
+    val currentOnCloseMenu by rememberUpdatedState(onCloseMenu)
+
+    LaunchedEffect(isVisible, interactionTick, selectedCategory) {
+        if (!isVisible) return@LaunchedEffect
+        delay(PlayerSubMenuAutoDismissMs)
+        currentOnCloseMenu()
+    }
+
     val handleBack = {
         if (selectedCategory != null) {
-            val targetRequester =
-                if (selectedCategory == SubMenuCategory.QUICK_VIDEOS) quickVideoButtonRequester else qualityButtonRequester
+            pendingReturnCategory = selectedCategory
             selectedCategory = null
-            try {
-                targetRequester.requestFocus()
-            } catch (e: Exception) {
-            }
         } else {
             onCloseMenu()
         }
@@ -186,35 +194,45 @@ fun VideoTopSubMenuUI(
 
     LaunchedEffect(isVisible, openQuickVideosInitially) {
         if (!isVisible) return@LaunchedEffect
+        pendingReturnCategory = null
         selectedCategory = if (openQuickVideosInitially && capabilities.quickSelection) SubMenuCategory.QUICK_VIDEOS else null
-        delay(50)
-        try {
-            if (openQuickVideosInitially) {
-                quickVideoListRequester.requestFocus()
-            } else {
-                focusRequester.requestFocus()
-            }
-        } catch (e: Exception) {
-        }
     }
 
-    LaunchedEffect(selectedCategory) {
-        if (selectedCategory == SubMenuCategory.QUALITY || selectedCategory == SubMenuCategory.QUICK_VIDEOS) {
-            delay(100)
-            try {
-                if (selectedCategory == SubMenuCategory.QUALITY) {
-                    qualityListRequester.requestFocus()
-                } else {
-                    quickVideoListRequester.requestFocus()
+    LaunchedEffect(isVisible, selectedCategory) {
+        if (!isVisible) return@LaunchedEffect
+        withFrameNanos { }
+        when (selectedCategory) {
+            SubMenuCategory.QUALITY -> {
+                qualityListRequester.safeRequestFocusWithRetry(
+                    tag = "VideoPlayerSubMenu",
+                    maxRetries = 8,
+                    delayMillis = 80L,
+                    isCurrent = { isVisible && selectedCategory == SubMenuCategory.QUALITY }
+                )
+            }
+            SubMenuCategory.QUICK_VIDEOS -> {
+                quickVideoListRequester.safeRequestFocusWithRetry(
+                    tag = "VideoPlayerSubMenu",
+                    maxRetries = 8,
+                    delayMillis = 80L,
+                    isCurrent = { isVisible && selectedCategory == SubMenuCategory.QUICK_VIDEOS }
+                )
+            }
+            null -> {
+                val targetRequester = when (pendingReturnCategory) {
+                    SubMenuCategory.QUICK_VIDEOS -> quickVideoButtonRequester
+                    SubMenuCategory.QUALITY -> qualityButtonRequester
+                    else -> focusRequester
                 }
-            } catch (e: Exception) {
+                pendingReturnCategory = null
+                targetRequester.safeRequestFocusWithRetry(
+                    tag = "VideoPlayerSubMenu",
+                    maxRetries = 8,
+                    delayMillis = 80L,
+                    isCurrent = { isVisible && selectedCategory == null }
+                )
             }
-        }
-    }
-
-    LaunchedEffect(openQuickVideosInitially) {
-        if (openQuickVideosInitially && capabilities.quickSelection) {
-            selectedCategory = SubMenuCategory.QUICK_VIDEOS
+            else -> Unit
         }
     }
 
@@ -226,6 +244,9 @@ fun VideoTopSubMenuUI(
             }
             .focusProperties { canFocus = isVisible }
             .onPreviewKeyEvent { keyEvent ->
+                if (isVisible && keyEvent.type == KeyEventType.KeyDown) {
+                    interactionTick++
+                }
                 if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK ||
                     keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_ESCAPE
                 ) {
@@ -531,11 +552,8 @@ fun VideoTopSubMenuUI(
                                 subtitle = if (isSelected) "選択中" else "",
                                 onClick = {
                                     onQualitySelect(quality)
+                                    pendingReturnCategory = SubMenuCategory.QUALITY
                                     selectedCategory = null
-                                    try {
-                                        qualityButtonRequester.requestFocus()
-                                    } catch (e: Exception) {
-                                    }
                                 },
                                 width = 160.dp,
                                 height = 100.dp,

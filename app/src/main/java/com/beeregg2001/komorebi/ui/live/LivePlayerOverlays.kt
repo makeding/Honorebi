@@ -2,6 +2,7 @@ package com.beeregg2001.komorebi.ui.live
 
 import com.beeregg2001.komorebi.data.PlayerClockMode
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.ui.components.DialogActionButton
 import com.beeregg2001.komorebi.ui.components.DialogActionRole
@@ -369,9 +371,11 @@ fun LiveErrorDialog(
     val colors = KomorebiTheme.colors
     val retryButtonFocusRequester = remember { FocusRequester() }
     val capabilityButtonFocusRequester = remember { FocusRequester() }
+    BackHandler { onBack() }
     LaunchedEffect(onCheckCapabilities) {
+        withFrameNanos { }
         (if (onCheckCapabilities != null) capabilityButtonFocusRequester else retryButtonFocusRequester)
-            .requestFocus()
+            .safeRequestFocusWithRetry("LiveErrorDialog")
     }
 
     Box(

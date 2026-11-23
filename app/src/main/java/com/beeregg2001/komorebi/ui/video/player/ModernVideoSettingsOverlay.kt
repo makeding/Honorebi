@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.*
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import coil.compose.AsyncImage
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.data.model.AudioMode
@@ -85,22 +86,46 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
     var selectedCategory by remember { mutableStateOf<SubMenuCategory?>(null) }
     val initialFocusRequester = remember { FocusRequester() }
     val qualityListRequester = remember { FocusRequester() }
+    val qualityEnabled = capabilities.quality && availableQualities.isNotEmpty()
+    val initialFocusRow = when {
+        capabilities.audio -> "audio"
+        capabilities.speed -> "speed"
+        capabilities.subtitles -> "subtitles"
+        qualityEnabled -> "quality"
+        capabilities.cmSkip -> "cmSkip"
+        capabilities.comments -> "comments"
+        capabilities.crop -> "crop"
+        else -> "audio"
+    }
 
-    LaunchedEffect(Unit) {
-        delay(150)
-        try {
-            initialFocusRequester.requestFocus()
-        } catch (e: Exception) {
+    val handleBack = {
+        if (selectedCategory != null) {
+            selectedCategory = null
+        } else {
+            onClose()
         }
     }
 
+    BackHandler {
+        handleBack()
+    }
+
     LaunchedEffect(selectedCategory) {
+        withFrameNanos { }
         if (selectedCategory == SubMenuCategory.QUALITY) {
-            delay(100)
-            try {
-                qualityListRequester.requestFocus()
-            } catch (e: Exception) {
-            }
+            qualityListRequester.safeRequestFocusWithRetry(
+                tag = "ModernVideoSettings",
+                maxRetries = 8,
+                delayMillis = 80L,
+                isCurrent = { selectedCategory == SubMenuCategory.QUALITY }
+            )
+        } else {
+            initialFocusRequester.safeRequestFocusWithRetry(
+                tag = "ModernVideoSettings",
+                maxRetries = 8,
+                delayMillis = 80L,
+                isCurrent = { selectedCategory == null }
+            )
         }
     }
 
@@ -108,22 +133,15 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.4f))
-            .onKeyEvent {
-                if (it.type == KeyEventType.KeyDown &&
-                    (it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
-                            it.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE)
+            .onPreviewKeyEvent {
+                val code = it.nativeKeyEvent.keyCode
+                if (code == android.view.KeyEvent.KEYCODE_BACK ||
+                    code == android.view.KeyEvent.KEYCODE_ESCAPE
                 ) {
-                    if (selectedCategory != null) {
-                        selectedCategory = null
-                        try {
-                            initialFocusRequester.requestFocus()
-                        } catch (e: Exception) {
-                        }
-                        true
-                    } else {
-                        onClose()
-                        true
+                    if (it.type == KeyEventType.KeyDown) {
+                        handleBack()
                     }
+                    true
                 } else false
             },
         contentAlignment = Alignment.CenterEnd
@@ -166,7 +184,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             value = if (currentAudioMode == AudioMode.MAIN) "主音声" else "副音声",
                             icon = Icons.Default.Audiotrack,
                             onClick = onAudioToggle,
-                            modifier = Modifier.focusRequester(initialFocusRequester),
+                            modifier = if (initialFocusRow == "audio") Modifier.focusRequester(initialFocusRequester) else Modifier,
                             enabled = capabilities.audio
                         )
                         ModernSettingRow(
@@ -174,6 +192,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             value = "${currentSpeed}x",
                             icon = Icons.Default.Speed,
                             onClick = onSpeedToggle,
+                            modifier = if (initialFocusRow == "speed") Modifier.focusRequester(initialFocusRequester) else Modifier,
                             enabled = capabilities.speed
                         )
                         ModernSettingRow(
@@ -181,6 +200,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             value = if (isSubtitleEnabled) "表示" else "非表示",
                             icon = Icons.Default.Subtitles,
                             onClick = onSubtitleToggle,
+                            modifier = if (initialFocusRow == "subtitles") Modifier.focusRequester(initialFocusRequester) else Modifier,
                             enabled = capabilities.subtitles
                         )
                         ModernSettingRow(
@@ -188,9 +208,10 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             value = currentQuality.label,
                             icon = Icons.Default.HighQuality,
                             onClick = {
-                                if (capabilities.quality) selectedCategory = SubMenuCategory.QUALITY
+                                if (qualityEnabled) selectedCategory = SubMenuCategory.QUALITY
                             },
-                            enabled = capabilities.quality && availableQualities.isNotEmpty()
+                            modifier = if (initialFocusRow == "quality") Modifier.focusRequester(initialFocusRequester) else Modifier,
+                            enabled = qualityEnabled
                         )
                         ModernSettingRow(
                             title = "CMスキップ",
@@ -198,6 +219,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             icon = Icons.Default.FastForward,
                             onClick = onCmSkipModeToggle,
                             highlight = cmSkipMode != CmSkipMode.OFF,
+                            modifier = if (initialFocusRow == "cmSkip") Modifier.focusRequester(initialFocusRequester) else Modifier,
                             enabled = capabilities.cmSkip
                         )
                         ModernSettingRow(
@@ -205,6 +227,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             value = if (isCommentEnabled) "表示" else "非表示",
                             icon = Icons.Default.Chat,
                             onClick = onCommentToggle,
+                            modifier = if (initialFocusRow == "comments") Modifier.focusRequester(initialFocusRequester) else Modifier,
                             enabled = capabilities.comments
                         )
                         ModernSettingRow(
@@ -213,10 +236,13 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             icon = Icons.Default.Crop,
                             onClick = onLCropToggle,
                             highlight = isLCropEnabled,
+                            modifier = if (initialFocusRow == "crop") Modifier.focusRequester(initialFocusRequester) else Modifier,
                             enabled = capabilities.crop
                         )
                     }
                 } else if (category == SubMenuCategory.QUALITY) {
+                    val selectedIndex = availableQualities.indexOfFirst { it.value == currentQuality.value }
+                    val focusTargetIndex = if (selectedIndex >= 0) selectedIndex else 0
                     Column(
                         modifier = Modifier
                             .verticalScroll(rememberScrollState())
@@ -224,7 +250,7 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                             .graphicsLayer { clip = false },
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        availableQualities.forEach { quality ->
+                        availableQualities.forEachIndexed { index, quality ->
                             val isSelected = currentQuality.value == quality.value
                             ModernSettingRow(
                                 title = quality.label,
@@ -233,13 +259,9 @@ fun AnimatedVisibilityScope.ModernVideoSettingsOverlay(
                                 onClick = {
                                     onQualitySelect(quality)
                                     selectedCategory = null
-                                    try {
-                                        initialFocusRequester.requestFocus()
-                                    } catch (e: Exception) {
-                                    }
                                 },
                                 highlight = isSelected,
-                                modifier = if (isSelected) Modifier.focusRequester(
+                                modifier = if (index == focusTargetIndex) Modifier.focusRequester(
                                     qualityListRequester
                                 ) else Modifier
                             )

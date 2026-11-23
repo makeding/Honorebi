@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,6 +46,7 @@ import com.beeregg2001.komorebi.data.api.interceptor.CloudflareAccessUrlConnecti
 import com.beeregg2001.komorebi.util.PlaybackHttpEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import com.beeregg2001.komorebi.common.safeRequestFocus
+import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.player.formatPlayerDurationSeconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -288,10 +290,12 @@ fun SceneSearchOverlay(
     val itemWidthPx = with(density) { 224.dp.toPx() }
     val centerOffset = (-(screenWidthPx / 2) + (itemWidthPx / 2)).toInt()
 
+    BackHandler { onClose() }
+
     LaunchedEffect(targetIndex) {
         listState.scrollToItem(targetIndex, centerOffset)
-        delay(150)
-        focusRequester.safeRequestFocus(TAG)
+        withFrameNanos { }
+        focusRequester.safeRequestFocusWithRetry(TAG, maxRetries = 8, delayMillis = 80L)
     }
 
     Box(
@@ -535,21 +539,23 @@ fun KeyframeGridOverlay(
         floor(focusedIndex * tileInterval).toLong().coerceIn(0L, totalSec)
     }
 
+    BackHandler { onClose() }
+
     fun requestGridFocus(index: Int) {
         val target = index.coerceIn(0, itemCount - 1)
         requestedFocusIndex = target
         focusedIndex = target
         scope.launch {
             gridState.animateScrollToItem((target - 4).coerceAtLeast(0))
-            delay(80)
-            focusRequester.safeRequestFocus(TAG)
+            withFrameNanos { }
+            focusRequester.safeRequestFocusWithRetry(TAG, maxRetries = 6, delayMillis = 60L)
         }
     }
 
     LaunchedEffect(Unit) {
         gridState.scrollToItem((initialIndex - 4).coerceAtLeast(0))
-        delay(150)
-        focusRequester.safeRequestFocus(TAG)
+        withFrameNanos { }
+        focusRequester.safeRequestFocusWithRetry(TAG, maxRetries = 8, delayMillis = 80L)
     }
 
     BoxWithConstraints(
@@ -559,7 +565,7 @@ fun KeyframeGridOverlay(
             .onPreviewKeyEvent {
                 if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (it.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_BACK -> {
+                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
                         onClose()
                         true
                     }
@@ -723,11 +729,13 @@ fun ChapterListOverlay(
     val itemWidthPx = with(density) { 224.dp.toPx() }
     val centerOffset = (-(screenWidthPx / 2) + (itemWidthPx / 2)).toInt()
 
+    BackHandler { onClose() }
+
     LaunchedEffect(targetIndex) {
         if (chapters.isNotEmpty()) {
             listState.scrollToItem(targetIndex, centerOffset)
-            delay(150)
-            focusRequester.safeRequestFocus(TAG)
+            withFrameNanos { }
+            focusRequester.safeRequestFocusWithRetry(TAG, maxRetries = 8, delayMillis = 80L)
         }
     }
 
