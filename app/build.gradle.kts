@@ -147,7 +147,7 @@ android {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
             freeCompilerArgs.addAll(
-                "-Xjvm-default=all",
+                "-jvm-default=no-compatibility",
                 // ↓ この行を追加：TV Material3 の実験的API警告を無視（許可）します
                 "-opt-in=androidx.tv.material3.ExperimentalTvMaterial3Api"
             )

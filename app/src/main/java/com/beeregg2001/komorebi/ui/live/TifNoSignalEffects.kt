@@ -1736,37 +1736,40 @@ private fun NokCallsignEffect(
                 .drawWithCache {
                     val w = size.width
                     val h = size.height
-                    // 1:1 NHK station-ID geometry: slanted diagonal ribbons that curve smoothly
-                    // downward at a concentric rounded elbow near the bottom edge (y ≈ 0.86..1.00).
-                    val slant = w * 0.145f
-                    val elbowStartY = h * 0.855f
-                    val elbowCtrlY = h * 0.945f
-                    val bottomY = h * 1.04f
+                    // Geometry matched to the TV line preview; all ribbon edges share one curve.
+                    val slant = w * 0.162f
+                    val elbowStartY = h * 0.885f
+                    val bottomY = h * 1.01f
 
-                    fun slantedCurvedFillRight(topX: Float, elbowRadiusFactor: Float = 1f): Path {
+                    fun slantedCurvedFillRight(topX: Float): Path {
                         val elbowX = topX - slant * (elbowStartY / h)
-                        val ctrlX = elbowX - slant * 0.068f * elbowRadiusFactor
-                        val endX = ctrlX + w * 0.012f * elbowRadiusFactor
+                        val ctrlX = elbowX - w * 0.006f
+                        val endX = elbowX + w * 0.004f
                         return Path().apply {
-                            moveTo(topX, -h * 0.04f)
-                            lineTo(w * 1.08f, -h * 0.04f)
+                            moveTo(topX, 0f)
+                            lineTo(elbowX, elbowStartY)
+                            cubicTo(
+                                elbowX - slant * 0.063f,
+                                h * 0.948f,
+                                ctrlX, h * 0.982f,
+                                endX, bottomY,
+                            )
                             lineTo(w * 1.08f, bottomY)
-                            lineTo(endX, bottomY)
-                            quadraticTo(ctrlX, elbowCtrlY, elbowX, elbowStartY)
+                            lineTo(w * 1.08f, 0f)
                             close()
                         }
                     }
 
-                    // Layered right-filling curved slanted shapes (exact concentric rounded elbows):
+                    // Layered right-filling shapes:
                     // 1. Deep base (full screen)
                     // 2. Silver-gray highlight edge
-                    val silverLayer = slantedCurvedFillRight(w * 0.195f, elbowRadiusFactor = 1.0f)
+                    val silverLayer = slantedCurvedFillRight(w * 0.1968f)
                     // 3. Left pastel ribbon
-                    val leftRibbonLayer = slantedCurvedFillRight(w * 0.218f, elbowRadiusFactor = 0.96f)
+                    val leftRibbonLayer = slantedCurvedFillRight(w * 0.2183f)
                     // 4. Center rich mid-tone main panel
-                    val mainPanelLayer = slantedCurvedFillRight(w * 0.278f, elbowRadiusFactor = 0.88f)
+                    val mainPanelLayer = slantedCurvedFillRight(w * 0.2768f)
                     // 5. Right pastel ribbon
-                    val rightRibbonLayer = slantedCurvedFillRight(w * 0.935f, elbowRadiusFactor = 0.92f)
+                    val rightRibbonLayer = slantedCurvedFillRight(w * 0.9443f)
 
                     onDrawBehind {
                         drawRect(deepColor)
@@ -1782,7 +1785,7 @@ private fun NokCallsignEffect(
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(bottom = 112.dp)
+                .padding(bottom = 56.dp)
                 .graphicsLayer {
                     translationX = shiftX
                     translationY = shiftY
@@ -1792,7 +1795,7 @@ private fun NokCallsignEffect(
             Text(
                 text = inputLabel.uppercase(Locale.US),
                 color = Color.White,
-                fontSize = 38.sp,
+                fontSize = 50.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 3.sp,
                 maxLines = 1,
@@ -1803,7 +1806,8 @@ private fun NokCallsignEffect(
             Text(
                 text = "HonoRebi",
                 color = Color.White,
-                fontSize = 66.sp,
+                modifier = Modifier.graphicsLayer { scaleX = 0.80f },
+                fontSize = 82.5.sp,
                 lineHeight = 70.sp,
                 fontWeight = FontWeight.Black,
                 fontStyle = FontStyle.Italic,
@@ -1814,7 +1818,7 @@ private fun NokCallsignEffect(
             Text(
                 text = statusText.ifBlank { "ホノレビデジタルテレビジョン" },
                 color = Color.White.copy(alpha = 0.96f),
-                fontSize = 26.sp,
+                fontSize = 36.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 2.5.sp,
                 maxLines = 1,
