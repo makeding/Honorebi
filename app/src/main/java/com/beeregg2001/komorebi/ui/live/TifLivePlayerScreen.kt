@@ -744,8 +744,8 @@ fun TifLivePlayerScreen(
                             false
                         }
                         .onFocusChanged { controlHasFocus = it.hasFocus }
-                        .padding(horizontal = 36.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                        .padding(horizontal = 32.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 ) {
                     PlayerMenuTile("チャンネル一覧", Icons.Default.List, "選局", { onMiniListToggle(true) },
                         LivePlayerMenuTileStyle, Modifier.focusRequester(firstControlFocus), enabled = allChannels.isNotEmpty())

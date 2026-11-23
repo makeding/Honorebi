@@ -572,6 +572,8 @@ class LauncherTabControllerTest {
         // Start focused on VIDEO (the active tab) and rapidly press UP past HOME into the top-right strip.
         compose.onNodeWithTag("launcher-tab-video").requestFocus().assertIsFocused()
         compose.onNodeWithTag("launcher-tab-video").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("launcher-tab-on_air").assertIsFocused()
+        compose.onNodeWithTag("launcher-tab-on_air").performKeyInput { pressKey(Key.DirectionUp) }
         compose.onNodeWithTag("launcher-tab-apps").assertIsFocused()
         compose.onNodeWithTag("launcher-tab-apps").performKeyInput { pressKey(Key.DirectionUp) }
         compose.onNodeWithTag("launcher-tab-live").assertIsFocused()
