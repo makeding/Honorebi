@@ -52,6 +52,14 @@ class MainActivity : ComponentActivity() {
     private var homeIntentVersion by mutableIntStateOf(0)
     var cecHomeAction: (() -> Unit)? = null
     var cecKeyAction: ((KeyEvent) -> Boolean)? = null
+    private val homeKeyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "moe.huggy.tvtweaks.action.HOME") {
+                val cecAction = cecHomeAction
+                if (cecAction != null) cecAction() else homeIntentVersion++
+            }
+        }
+    }
     private var isInOsPip by mutableStateOf(false)
     private var osPipDismissVersion by mutableIntStateOf(0)
     private var osPipEligible = false
@@ -118,6 +126,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_Komorebi)
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(this, homeKeyReceiver,
+            IntentFilter("moe.huggy.tvtweaks.action.HOME"), ContextCompat.RECEIVER_EXPORTED)
 
         val launchedFromDeepLink = savedInstanceState == null && deepLinkDispatcher.dispatch(intent)
 
@@ -176,6 +186,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(homeKeyReceiver)
         runCatching { unregisterReceiver(pipActionReceiver) }
         super.onDestroy()
     }
