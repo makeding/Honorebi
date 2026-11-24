@@ -243,6 +243,15 @@ fun TifLivePlayerScreen(
         mutableStateOf<String?>(null)
     }
     var activeView by remember(isStarted, sessionGeneration) { mutableStateOf<TvView?>(null) }
+    var hdmiBackDown by remember(activeView) { mutableStateOf<android.view.KeyEvent?>(null) }
+    var hdmiBackLong by remember(activeView) { mutableStateOf(false) }
+    LaunchedEffect(hdmiBackDown) {
+        if (hdmiBackDown != null) {
+            kotlinx.coroutines.delay(android.view.ViewConfiguration.getLongPressTimeout().toLong())
+            hdmiBackLong = true
+            onShowOverlayChange(true)
+        }
+    }
 
     LaunchedEffect(context, channel.id, isStarted, retuneGeneration, sessionGeneration) {
         if (!isStarted) {
@@ -343,6 +352,11 @@ fun TifLivePlayerScreen(
     }
 
     val isPassthroughInput = standaloneInput || channel.id.startsWith("tif:input:")
+    val isCecInput = target?.inputId?.let { inputId ->
+        context.getSystemService(TvInputManager::class.java)?.getTvInputInfo(inputId)?.let {
+            it.type == android.media.tv.TvInputInfo.TYPE_HDMI && it.parentId != null
+        }
+    } == true
     val useLiveOsd = usesLiveOsd(channel.id, channel.type)
     var showProgramDetails by remember(channel.id) { mutableStateOf(false) }
     val programScroll = rememberScrollState()
@@ -495,6 +509,37 @@ fun TifLivePlayerScreen(
                 containerWidthDp = with(density) { size.width.toDp().value }
             }
             .onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (hdmiBackDown != null && native.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                    if (event.type == KeyEventType.KeyUp) {
+                        if (!hdmiBackLong && !native.isCanceled) {
+                            activeView?.dispatchKeyEvent(hdmiBackDown!!)
+                            activeView?.dispatchKeyEvent(native)
+                        }
+                        hdmiBackDown = null
+                        hdmiBackLong = false
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                if (!videoOnly && isCecInput && !showOverlay && !isMiniListOpen) {
+                    if (native.keyCode == android.view.KeyEvent.KEYCODE_MENU) {
+                        if (event.type == KeyEventType.KeyUp) onShowOverlayChange(true)
+                        return@onPreviewKeyEvent true
+                    }
+                    if (native.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                        if (event.type == KeyEventType.KeyDown) hdmiBackDown = android.view.KeyEvent(native)
+                        return@onPreviewKeyEvent true
+                    }
+                    if (native.keyCode in setOf(
+                            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+                            android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER,
+                            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
+                        )) {
+                        activeView?.dispatchKeyEvent(native)
+                        return@onPreviewKeyEvent true
+                    }
+                }
                 val isBackKey = event.key == Key.Back ||
                     event.key == Key.Escape ||
                     event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
