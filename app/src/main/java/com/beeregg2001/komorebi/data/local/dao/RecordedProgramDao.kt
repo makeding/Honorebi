@@ -20,11 +20,6 @@ interface RecordedProgramDao {
     @Query("SELECT id FROM recorded_programs")
     suspend fun getAllIds(): List<Int>
 
-    // ★修正 BUG-04: 1000件以上でクラッシュするSQLiteのIN句上限エラーを防ぐため封印
-    @Deprecated("Use deleteByIds with chunked(900) instead. This method crashes with 1000+ items.")
-    @Query("DELETE FROM recorded_programs WHERE id NOT IN (:apiIds)")
-    suspend fun deleteOrphans(apiIds: List<Int>)
-
     @Query("DELETE FROM recorded_programs WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Int>)
 

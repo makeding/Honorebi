@@ -12,11 +12,8 @@ import androidx.paging.cachedIn
 import androidx.paging.filter
 import androidx.paging.map
 import com.beeregg2001.komorebi.data.SettingsRepository
-import com.beeregg2001.komorebi.data.local.dao.ChannelProjection
 import com.beeregg2001.komorebi.data.local.dao.RecordedProgramDao
-import com.beeregg2001.komorebi.data.local.dao.SeriesProjection
 import com.beeregg2001.komorebi.data.mapper.RecordDataMapper
-import com.beeregg2001.komorebi.data.model.ArchivedComment
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.NHKExclusionState
 import com.beeregg2001.komorebi.data.model.RecordedProgram
@@ -594,8 +591,6 @@ class RecordViewModel @Inject constructor(
             }
         }
 
-    fun loadNextPage() {}
-
     private fun loadSearchHistory() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -688,14 +683,6 @@ class RecordViewModel @Inject constructor(
         super.onCleared()
         stopStreamMaintenance()
     }
-
-    suspend fun getArchivedComments(videoId: Int): List<ArchivedComment> {
-        return withContext(Dispatchers.IO) {
-            recordProvider.getArchivedJikkyo(videoId).getOrDefault(emptyList()).sortedBy { it.time }
-        }
-    }
-
-    fun buildSeriesIndex() {}
 
     private fun ensureOnlineChannels(forceReload: Boolean = false) {
         channelIndexRequested = true
@@ -877,67 +864,4 @@ class RecordViewModel @Inject constructor(
         channelIds = series.channelIds,
     )
 
-    private suspend fun buildSeriesAndChannelMaps(
-        seriesList: List<SeriesProjection>,
-        channelsList: List<ChannelProjection>
-    ) {
-        _isSeriesLoading.value = true
-        try {
-            val allChannelMap =
-                mutableMapOf<String, MutableMap<String, Triple<String, String, String>>>()
-            channelsList.forEach { ch ->
-                val type = if (ch.channelType == "GR") "地デジ" else ch.channelType ?: "その他"
-                val channelTypeMap = allChannelMap.getOrPut(type) { mutableMapOf() }
-                if (!channelTypeMap.containsKey(ch.channelId)) {
-                    channelTypeMap[ch.channelId] =
-                        Triple(ch.channelName ?: "", ch.channelId, ch.channelId)
-                }
-            }
-
-            val typePriority = listOf("地デジ", "BS", "BS4K", "CS", "SKY", "その他")
-            val extractNumber = { idStr: String ->
-                Regex("\\d+").find(idStr)?.value?.toIntOrNull() ?: Int.MAX_VALUE
-            }
-            rawGroupedChannels = allChannelMap.entries
-                .sortedBy { (type, _) ->
-                    typePriority.indexOf(type).let { if (it != -1) it else typePriority.size }
-                }
-                .associate { entry ->
-                    entry.key to entry.value.values.sortedWith(
-                        compareBy({ extractNumber(it.third) }, { it.third })
-                    ).map { Pair(it.first, it.second) }
-                }
-            publishVisibleChannels()
-
-            val finalGroupedSeries = mutableMapOf<String, MutableList<SeriesInfo>>()
-
-            seriesList.forEach { proj ->
-                if (proj.programCount >= 2 || proj.isEpisodic) {
-                    val majorGenre = proj.genres?.firstOrNull()?.major ?: "その他"
-                    val seriesInfo = SeriesInfo(
-                        displayTitle = proj.seriesName,
-                        searchKeyword = proj.seriesName,
-                        programCount = proj.programCount,
-                        representativeVideoId = proj.representativeVideoId,
-                        isEpisodic = proj.isEpisodic,
-                        directThumbnailUrl = proj.directThumbnailUrl,
-                        apiThumbnailUrl = proj.apiThumbnailUrl
-                    )
-
-                    val list = finalGroupedSeries.getOrPut(majorGenre) { mutableListOf() }
-                    list.add(seriesInfo)
-                }
-            }
-
-            rawGroupedSeries = finalGroupedSeries.mapValues { entry ->
-                entry.value.sortedBy { it.displayTitle }
-            }.filterValues { it.isNotEmpty() }
-            publishVisibleSeries()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Map Build Error", e)
-        } finally {
-            _isSeriesLoading.value = false
-        }
-    }
 }
