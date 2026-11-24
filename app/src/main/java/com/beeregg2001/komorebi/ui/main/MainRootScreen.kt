@@ -1033,6 +1033,39 @@ fun MainRootScreen(
         }
     }
 
+    val lateNightWatchMode by settingsViewModel.lateNightWatchMode.collectAsState()
+    val spoilerBlurEnabled by settingsViewModel.spoilerBlurEnabled.collectAsState()
+    val jikkyoFestivalAlert by settingsViewModel.jikkyoFestivalAlert.collectAsState()
+    val cmPanicZapEnabled by settingsViewModel.cmPanicZapEnabled.collectAsState()
+    val liveRows by channelViewModel.liveRows.collectAsState()
+    val festivalAlertedAt = remember { mutableMapOf<String, Long>() }
+    var cmPanicReturnChannel by remember { mutableStateOf<com.beeregg2001.komorebi.data.model.Channel?>(null) }
+
+    LaunchedEffect(state.playbackState.livePlayback) {
+        if (state.playbackState.livePlayback == null) {
+            cmPanicReturnChannel = null
+        }
+    }
+
+    LaunchedEffect(jikkyoFestivalAlert, liveRows, state.playbackState.livePlayback?.channel?.id) {
+        if (jikkyoFestivalAlert != "ON" || state.isSettingsOpen) return@LaunchedEffect
+        val nowMillis = System.currentTimeMillis()
+        val alert = com.beeregg2001.komorebi.common.detectJikkyoFestival(
+            rows = liveRows,
+            currentChannelId = state.playbackState.livePlayback?.channel?.id,
+            alertedAtMillis = festivalAlertedAt,
+            nowMillis = nowMillis,
+        )
+        if (alert != null) {
+            festivalAlertedAt[alert.channel.id] = nowMillis
+            state.toastMessage = alert.bannerText
+        }
+    }
+
+    CompositionLocalProvider(
+        com.beeregg2001.komorebi.common.LocalLateNightWatchEnabled provides (lateNightWatchMode == "ON"),
+        com.beeregg2001.komorebi.common.LocalSpoilerBlurEnabled provides (spoilerBlurEnabled == "ON"),
+    ) {
     KomorebiTheme(theme = currentTheme) {
         var showExitDialog by remember { mutableStateOf(false) }
         val isUpgradeTourActive = startupRenderPlan.showMainContent &&
@@ -1233,6 +1266,35 @@ fun MainRootScreen(
                     if (event.type == KeyEventType.KeyUp && consumedOsdActionKeyCode == nativeKeyCode) {
                         consumedOsdActionKeyCode = null
                         return@onPreviewKeyEvent true
+                    }
+                    if (cmPanicZapEnabled == "ON" &&
+                        isLiveFullscreen &&
+                        nativeKeyCode == android.view.KeyEvent.KEYCODE_PROG_YELLOW &&
+                        event.type == KeyEventType.KeyDown &&
+                        event.nativeKeyEvent.repeatCount == 0
+                    ) {
+                        val current = liveChannel
+                        if (current != null) {
+                            val returnTarget = cmPanicReturnChannel
+                            if (returnTarget != null && returnTarget.id != current.id) {
+                                cmPanicReturnChannel = null
+                                state.playbackState.enterLive(returnTarget)
+                                homeViewModel.saveLastChannel(returnTarget)
+                                state.toastMessage = "元のチャンネルへ復帰: ${returnTarget.name}"
+                            } else {
+                                val escape = com.beeregg2001.komorebi.common.pickCmEscapeChannel(tunableChannels, current.id)
+                                if (escape != null) {
+                                    cmPanicReturnChannel = current
+                                    state.playbackState.enterLive(escape)
+                                    homeViewModel.saveLastChannel(escape)
+                                    state.toastMessage = "CM緊急退避 → ${escape.name}（黄ボタンで復帰）"
+                                } else {
+                                    state.toastMessage = "退避先の実況チャンネルが見つかりません"
+                                }
+                            }
+                            consumedOsdActionKeyCode = nativeKeyCode
+                            return@onPreviewKeyEvent true
+                        }
                     }
                     if (channelNumberBuffer.isNotEmpty()) {
                         val isBackKey = nativeKeyCode == android.view.KeyEvent.KEYCODE_BACK ||
@@ -1622,5 +1684,6 @@ fun MainRootScreen(
             }
             }
         }
+    }
     }
 }

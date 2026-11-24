@@ -22,7 +22,9 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.beeregg2001.komorebi.common.LocalSpoilerBlurEnabled
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.maskSpoilerTitle
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.theme.StatusAnalyzingColor
@@ -226,7 +228,11 @@ fun RecordedCard(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = program.title,
+                    text = maskSpoilerTitle(
+                        program.title,
+                        enabled = LocalSpoilerBlurEnabled.current,
+                        isWatched = currentPosition > 5,
+                    ),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,

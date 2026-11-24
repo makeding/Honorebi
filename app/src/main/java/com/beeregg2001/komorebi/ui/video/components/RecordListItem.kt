@@ -25,7 +25,9 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.beeregg2001.komorebi.common.UrlBuilder
+import com.beeregg2001.komorebi.common.LocalSpoilerBlurEnabled
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
+import com.beeregg2001.komorebi.common.maskSpoilerTitle
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.ui.components.isPlayableForBrowse
 import com.beeregg2001.komorebi.ui.components.isRecordingInProgress
@@ -222,7 +224,11 @@ fun RecordListItem(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = program.title,
+                    text = maskSpoilerTitle(
+                        program.title,
+                        enabled = LocalSpoilerBlurEnabled.current,
+                        isWatched = program.playbackPosition > 5.0,
+                    ),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,

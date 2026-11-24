@@ -88,6 +88,18 @@ fun GeneralSettingsContent(
     nhkExclusionLabel: String,
     nhkExclusionR: FocusRequester,
     onEditNHKExclusion: () -> Unit,
+    lateNightWatchMode: String,
+    lateNightWatchR: FocusRequester,
+    onToggleLateNightWatch: () -> Unit,
+    spoilerBlurEnabled: String,
+    spoilerBlurR: FocusRequester,
+    onToggleSpoilerBlur: () -> Unit,
+    jikkyoFestivalAlert: String,
+    jikkyoFestivalR: FocusRequester,
+    onToggleJikkyoFestival: () -> Unit,
+    cmPanicZapEnabled: String,
+    cmPanicZapR: FocusRequester,
+    onToggleCmPanicZap: () -> Unit,
     sidebarR: FocusRequester,
     onClick: (FocusRequester) -> Unit,
 ) {
@@ -149,11 +161,58 @@ fun GeneralSettingsContent(
                 modifier = Modifier.focusRequester(nhkExclusionR).focusProperties {
                     left = sidebarR
                     up = startupChannelR
-                    down = FocusRequester.Cancel
+                    down = lateNightWatchR
                 },
                 focusedContainerColor = Color(0xFFFFE600),
                 focusedContentColor = Color(0xFF0067A8),
                 onClick = { onClick(nhkExclusionR); onEditNHKExclusion() },
+            )
+        }
+
+        SettingsSection("おまけ") {
+            SettingItem(
+                "深夜アニメ監視モード",
+                lateNightWatchMode,
+                Icons.Default.Nightlight,
+                modifier = Modifier.focusRequester(lateNightWatchR).focusProperties {
+                    left = sidebarR
+                    up = nhkExclusionR
+                    down = spoilerBlurR
+                },
+                onClick = { onClick(lateNightWatchR); onToggleLateNightWatch() },
+            )
+            SettingItem(
+                "ネタバレ回避（タイトルぼかし）",
+                spoilerBlurEnabled,
+                Icons.Default.VisibilityOff,
+                modifier = Modifier.focusRequester(spoilerBlurR).focusProperties {
+                    left = sidebarR
+                    up = lateNightWatchR
+                    down = jikkyoFestivalR
+                },
+                onClick = { onClick(spoilerBlurR); onToggleSpoilerBlur() },
+            )
+            SettingItem(
+                "実況勢いお祭り警報",
+                jikkyoFestivalAlert,
+                Icons.Default.NotificationsActive,
+                modifier = Modifier.focusRequester(jikkyoFestivalR).focusProperties {
+                    left = sidebarR
+                    up = spoilerBlurR
+                    down = cmPanicZapR
+                },
+                onClick = { onClick(jikkyoFestivalR); onToggleJikkyoFestival() },
+            )
+            SettingItem(
+                "CM緊急退避（ザッピングパニック）",
+                cmPanicZapEnabled,
+                Icons.Default.Bolt,
+                modifier = Modifier.focusRequester(cmPanicZapR).focusProperties {
+                    left = sidebarR
+                    up = jikkyoFestivalR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(cmPanicZapR); onToggleCmPanicZap() },
             )
         }
     }

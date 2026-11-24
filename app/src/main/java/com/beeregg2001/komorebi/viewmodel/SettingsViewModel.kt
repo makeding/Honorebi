@@ -573,6 +573,26 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "AUTO"
     )
+    val lateNightWatchMode: StateFlow<String> = settingsRepository.lateNightWatchMode.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "OFF"
+    )
+    val spoilerBlurEnabled: StateFlow<String> = settingsRepository.spoilerBlurEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "OFF"
+    )
+    val jikkyoFestivalAlert: StateFlow<String> = settingsRepository.jikkyoFestivalAlert.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "OFF"
+    )
+    val cmPanicZapEnabled: StateFlow<String> = settingsRepository.cmPanicZapEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "OFF"
+    )
 
     val geminiApiKey: StateFlow<String> = settingsRepository.geminiApiKey.stateIn(
         viewModelScope,

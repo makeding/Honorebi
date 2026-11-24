@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.beeregg2001.komorebi.common.LocalLateNightWatchEnabled
+import com.beeregg2001.komorebi.common.lateNightWatchMessage
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -49,12 +51,16 @@ fun PlayerWallClock(
 ) {
     val currentNow by rememberUpdatedState(now)
     val currentSecondaryText by rememberUpdatedState(secondaryText)
+    val lateNightWatchEnabled = LocalLateNightWatchEnabled.current
     fun read(): Pair<String, String> {
         val current = currentNow()
-        return formatPlayerWallClock(current, timeFormat) to currentSecondaryText(current)
+        val secondary = currentSecondaryText(current).ifBlank {
+            if (lateNightWatchEnabled) lateNightWatchMessage(current).orEmpty() else ""
+        }
+        return formatPlayerWallClock(current, timeFormat) to secondary
     }
-    var display by remember(timeFormat, secondaryText) { mutableStateOf(read()) }
-    LaunchedEffect(timeFormat, secondaryText) {
+    var display by remember(timeFormat, secondaryText, lateNightWatchEnabled) { mutableStateOf(read()) }
+    LaunchedEffect(timeFormat, secondaryText, lateNightWatchEnabled) {
         while (true) {
             val latest = read()
             if (latest != display) display = latest

@@ -241,7 +241,7 @@ private fun SettingsMenuScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: startupTab, startupFocusTarget, startupChannel, NHK exclusion
+    // [0] 基本設定: startupTab, startupFocusTarget, startupChannel, NHK exclusion, omake(4)
     // [1] 接続設定
     // [2] 再生設定
     // [3] 録画設定: recordView, addBatch
@@ -255,7 +255,7 @@ private fun SettingsMenuScreen(
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(4) { FocusRequester() },
+            List(8) { FocusRequester() },
             List(8) { FocusRequester() },
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
@@ -640,6 +640,46 @@ private fun SettingsMenuScreen(
                                     com.beeregg2001.komorebi.data.model.NHKExclusionMode.entries.map { it.displayLabel to it.name },
                                     viewModel.nhkExclusionState.value.mode.name,
                                 ) { viewModel.setNHKExclusionMode(com.beeregg2001.komorebi.data.model.NHKExclusionMode.fromPreference(it)) }
+                            },
+                            prefs.lateNightWatchMode,
+                            itemFocusRequesters[0][4],
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.LATE_NIGHT_WATCH_MODE,
+                                        if (prefs.lateNightWatchMode == "ON") "OFF" else "ON"
+                                    )
+                                }
+                            },
+                            prefs.spoilerBlurEnabled,
+                            itemFocusRequesters[0][5],
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.SPOILER_BLUR_ENABLED,
+                                        if (prefs.spoilerBlurEnabled == "ON") "OFF" else "ON"
+                                    )
+                                }
+                            },
+                            prefs.jikkyoFestivalAlert,
+                            itemFocusRequesters[0][6],
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.JIKKYO_FESTIVAL_ALERT,
+                                        if (prefs.jikkyoFestivalAlert == "ON") "OFF" else "ON"
+                                    )
+                                }
+                            },
+                            prefs.cmPanicZapEnabled,
+                            itemFocusRequesters[0][7],
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.CM_PANIC_ZAP_ENABLED,
+                                        if (prefs.cmPanicZapEnabled == "ON") "OFF" else "ON"
+                                    )
+                                }
                             },
                             categoryFocusRequesters[0],
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }

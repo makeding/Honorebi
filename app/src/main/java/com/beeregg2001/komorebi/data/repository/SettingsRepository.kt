@@ -161,6 +161,10 @@ class SettingsRepository @Inject constructor(
 
         val HOME_PICKUP_GENRE = stringPreferencesKey("home_pickup_genre")
         val EXCLUDE_PAID_BROADCASTS = stringPreferencesKey("exclude_paid_broadcasts")
+        val LATE_NIGHT_WATCH_MODE = stringPreferencesKey("late_night_watch_mode")
+        val SPOILER_BLUR_ENABLED = stringPreferencesKey("spoiler_blur_enabled")
+        val JIKKYO_FESTIVAL_ALERT = stringPreferencesKey("jikkyo_festival_alert")
+        val CM_PANIC_ZAP_ENABLED = stringPreferencesKey("cm_panic_zap_enabled")
         val NHK_EXCLUSION_MODE = stringPreferencesKey("nhk_exclusion_mode")
         val NHK_EXCLUSION_EXPIRES_AT = longPreferencesKey("nhk_exclusion_expires_at")
         val HOME_PICKUP_TIME = stringPreferencesKey("home_pickup_time")
@@ -330,6 +334,14 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[HOME_PICKUP_GENRE] ?: "アニメ" }
     val excludePaidBroadcasts: Flow<String> =
         context.dataStore.data.map { it[EXCLUDE_PAID_BROADCASTS] ?: "OFF" }
+    val lateNightWatchMode: Flow<String> =
+        context.dataStore.data.map { it[LATE_NIGHT_WATCH_MODE] ?: "OFF" }
+    val spoilerBlurEnabled: Flow<String> =
+        context.dataStore.data.map { it[SPOILER_BLUR_ENABLED] ?: "OFF" }
+    val jikkyoFestivalAlert: Flow<String> =
+        context.dataStore.data.map { it[JIKKYO_FESTIVAL_ALERT] ?: "OFF" }
+    val cmPanicZapEnabled: Flow<String> =
+        context.dataStore.data.map { it[CM_PANIC_ZAP_ENABLED] ?: "OFF" }
     val nhkExclusionPreferences: Flow<NHKExclusionState> = context.dataStore.data.map {
         NHKExclusionState(
             mode = NHKExclusionMode.fromPreference(it[NHK_EXCLUSION_MODE]),
