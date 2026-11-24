@@ -180,6 +180,8 @@ fun HomeLauncherScreen(
     val tifShowTunerInputs by settingsViewModel.tifShowTunerInputs.collectAsState()
     val tifActive by settingsViewModel.tifIntegrationActive.collectAsState()
     val useTifPicker = supportsTvInput && tifActive
+    val hasInputs = hasVisibleTvInputs(useTifPicker, tifHideEmptyInputs, tifShowTunerInputs)
+    val showInputSource = showInputSourceAction(hasInputs, inputSourceApp != null)
     LaunchedEffect(useTifPicker) {
         if (!useTifPicker) showTvInputs = false
     }
@@ -498,7 +500,7 @@ fun HomeLauncherScreen(
         val topBarEntryRequester = when {
             mediaPillState !is LauncherMediaPillState.None -> returnPlayerFocusRequester
             !showStripActions -> wifiSettingsFocusRequester
-            supportsTvInput || inputSourceApp != null -> inputSourceFocusRequester
+            showInputSource -> inputSourceFocusRequester
             else -> ui.settingsFocusRequester
         }
         val stripDownRequester = if (tabController.isActiveContentReady) {
@@ -773,7 +775,7 @@ fun HomeLauncherScreen(
                 LauncherSystemStrip(
                     timeFormat = timeFormat,
                     mediaPillState = mediaPillState,
-                    showInputSource = useTifPicker || inputSourceApp != null,
+                    showInputSource = showInputSource,
                     networkConnectionStatus = networkConnectionStatus,
                     connectionFeedbackKind = connectionFeedbackState.kind,
                     canTakeFocus = !isEpgJumpingActive && !showUpgradeTour && !showNotificationCenter,
