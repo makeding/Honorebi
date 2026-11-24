@@ -96,8 +96,16 @@ object TifInput {
     fun inputs(context: Context): List<TvInputInfo> {
         val manager = context.getSystemService(TvInputManager::class.java) ?: return emptyList()
         return manager.tvInputList.filterNot { it.isHidden(context) }
-            .sortedBy { label(context, it) }
+            .sortedWith(compareBy<TvInputInfo>(
+                { physicalInputOrder(it.parentId ?: it.id) },
+                { it.parentId ?: it.id },
+                { if (it.parentId == null) 0 else 1 },
+                { it.id },
+            ))
     }
+
+    internal fun physicalInputOrder(inputId: String): Int =
+        inputId.substringAfterLast("/HW", "").toIntOrNull() ?: Int.MAX_VALUE
 
     fun channelId(inputId: String, rowId: Long): String =
         CHANNEL_PREFIX + rowId + ":" + Uri.encode(inputId)

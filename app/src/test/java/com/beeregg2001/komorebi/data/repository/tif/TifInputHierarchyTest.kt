@@ -4,6 +4,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TifInputHierarchyTest {
+    @Test fun hardwareOrderIsNumeric() {
+        assertEquals(listOf("service/HW2", "service/HW3", "service/HW10"),
+            listOf("service/HW10", "service/HW3", "service/HW2")
+                .sortedBy(TifInput::physicalInputOrder))
+    }
     @Test fun singleHdmiChildReplacesItsPortEntry() {
         val port = "com.mediatek.tis/.HdmiInputService/HW2"
         val device = "com.mediatek.tis/.HdmiInputService/HDMI100003"
