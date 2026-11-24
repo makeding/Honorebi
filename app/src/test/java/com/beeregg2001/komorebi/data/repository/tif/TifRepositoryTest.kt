@@ -99,4 +99,10 @@ class TifRepositoryTest {
         assertEquals(TvContract.buildChannelUri(42), target?.channelUri)
         assertNull(TifInput.resolveTarget(context, TifInput.channelId("other/.Input", 42)))
     }
+
+    @Test fun missingListingsPermissionReturnsEmptyEpgInsteadOfThrowing() = runBlocking {
+        shadowOf(context).denyPermissions(TifInput.READ_LISTINGS_PERMISSION)
+
+        assertTrue(TifRepository(context).getEpgPrograms(null, null, null).isEmpty())
+    }
 }

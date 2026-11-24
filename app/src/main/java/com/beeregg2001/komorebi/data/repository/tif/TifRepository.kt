@@ -153,7 +153,10 @@ class TifRepository @Inject constructor(
     private fun readTunerChannels(inputs: List<TvInputInfo>): List<ChannelRow> {
         val available = inputs.filterNot { it.isPassthroughInput }.map { it.id }.toSet()
         if (available.isEmpty()) return emptyList()
-        check(hasListingsPermission()) { "チューナー入力の視聴一覧を取得するにはREAD_TV_LISTINGSの許可が必要です。" }
+        if (!hasListingsPermission()) {
+            Log.w("TifRepository", "READ_TV_LISTINGS未許可のためチューナー一覧を省略します")
+            return emptyList()
+        }
 
         val projection = arrayOf(
             TvContract.Channels._ID,
