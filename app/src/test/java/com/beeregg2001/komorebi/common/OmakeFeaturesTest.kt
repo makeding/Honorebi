@@ -124,8 +124,17 @@ class OmakeFeaturesTest {
             startTime = "2026-11-01T00:00:00+09:00",
             endTime = "2026-11-01T00:30:00+09:00",
             duration = 1800.0,
+            isPartiallyRecorded = false,
             playbackPosition = 0.0,
-            recordedVideo = com.beeregg2001.komorebi.data.model.RecordedVideo(id = 1, status = "Recorded", duration = 1800.0),
+            recordedVideo = com.beeregg2001.komorebi.data.model.RecordedVideo(
+                id = 1,
+                status = "Recorded",
+                filePath = "",
+                containerFormat = "MPEG-TS",
+                videoCodec = "MPEG-2",
+                audioCodec = "AAC",
+                duration = 1800.0,
+            ),
         )
         val p2 = p1.copy(id = 2, title = "視聴済", playbackPosition = 120.0)
         val p3 = p1.copy(id = 3, title = "未視聴2", duration = 3600.0)
@@ -146,8 +155,17 @@ class OmakeFeaturesTest {
             startTime = "2026-04-05T00:00:00+09:00",
             endTime = "2026-04-05T00:30:00+09:00",
             duration = 1800.0,
+            isPartiallyRecorded = false,
             playbackPosition = 0.0,
-            recordedVideo = com.beeregg2001.komorebi.data.model.RecordedVideo(id = 10, status = "Recorded", duration = 1800.0),
+            recordedVideo = com.beeregg2001.komorebi.data.model.RecordedVideo(
+                id = 10,
+                status = "Recorded",
+                filePath = "",
+                containerFormat = "MPEG-TS",
+                videoCodec = "MPEG-2",
+                audioCodec = "AAC",
+                duration = 1800.0,
+            ),
         )
         val recentEp = oldEp.copy(id = 20, title = "今期アニメ 第1話", startTime = "2026-10-10T00:00:00+09:00")
         val grouped = mapOf(

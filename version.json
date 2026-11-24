@@ -1,20 +1,20 @@
 {
-  "versionCode": 38,
-  "versionName": "1.2.3-huggy",
-  "releaseNotes": "Honorebi 1.2.3。L字クロップのフォーカスロックやTIF・HDMI画面の戻る操作、プレイヤー各種オーバーレイ・ホーム／設定のフォーカス不具合を修正しました。あわせて左サイドバー手動折りたたみ、スマホからのスクリーンセーバー画像アップロードとサムネイル選択、無信号画面エフェクト追加・全画面プレビューに対応しました。",
-  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.3-huggy/app-universal-release.apk",
+  "versionCode": 39,
+  "versionName": "1.2.4-huggy",
+  "releaseNotes": "Honorebi 1.2.4。深夜視聴モード、ネタバレ防止ぼかし、実況お祭りアラート、バックグラウンド再生モード、実況ワードカウンター（草・ｷﾀ━）を追加しました。",
+  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.4-huggy/app-universal-release.apk",
   "apkUrls": {
-    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.3-huggy/app-arm64-v8a-release.apk",
-    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.3-huggy/app-armeabi-v7a-release.apk"
+    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.4-huggy/app-arm64-v8a-release.apk",
+    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.4-huggy/app-armeabi-v7a-release.apk"
   },
   "beta": {
-    "versionCode": 38,
-    "versionName": "1.2.3-huggy",
-    "releaseNotes": "Honorebi 1.2.3。L字クロップのフォーカスロックやTIF・HDMI画面の戻る操作、プレイヤー各種オーバーレイ・ホーム／設定のフォーカス不具合を修正しました。あわせて左サイドバー手動折りたたみ、スマホからのスクリーンセーバー画像アップロードとサムネイル選択、無信号画面エフェクト追加・全画面プレビューに対応しました。",
-    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.3-huggy/app-universal-release.apk",
+    "versionCode": 39,
+    "versionName": "1.2.4-huggy",
+    "releaseNotes": "Honorebi 1.2.4。深夜視聴モード、ネタバレ防止ぼかし、実況お祭りアラート、バックグラウンド再生モード、実況ワードカウンター（草・ｷﾀ━）を追加しました。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.4-huggy/app-universal-release.apk",
     "apkUrls": {
-      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.3-huggy/app-arm64-v8a-release.apk",
-      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.3-huggy/app-armeabi-v7a-release.apk"
+      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.4-huggy/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.4-huggy/app-armeabi-v7a-release.apk"
     }
   }
 }
