@@ -10,6 +10,33 @@ enum class DeepTvFeature {
     OS_PIP_AUTO_ENTER,
 }
 
+enum class BackgroundPlaybackMode(
+    val preferenceValue: String,
+    val label: String,
+) {
+    OFF("OFF", "OFF"),
+    PIP("PIP", "ピクチャー・イン・ピクチャー"),
+    AUDIO_ONLY("AUDIO_ONLY", "バックグラウンド音声再生");
+
+    fun next(pipSupported: Boolean): BackgroundPlaybackMode = when (this) {
+        OFF -> if (pipSupported) PIP else AUDIO_ONLY
+        PIP -> AUDIO_ONLY
+        AUDIO_ONLY -> OFF
+    }
+
+    companion object {
+        fun fromPreference(
+            value: String?,
+            legacyOsPipAutoEnter: Boolean,
+        ): BackgroundPlaybackMode = when (value) {
+            OFF.preferenceValue -> OFF
+            PIP.preferenceValue -> PIP
+            AUDIO_ONLY.preferenceValue -> AUDIO_ONLY
+            else -> if (legacyOsPipAutoEnter) PIP else OFF
+        }
+    }
+}
+
 data class DeepTvFeatureSettings(
     val watchNextEnabled: Boolean = true,
     val watchNextNextEpisodeEnabled: Boolean = true,
@@ -18,6 +45,8 @@ data class DeepTvFeatureSettings(
     val remoteShortcutKeysEnabled: Boolean = true,
     val remoteNumberTuningEnabled: Boolean = true,
     val osPipAutoEnterEnabled: Boolean = true,
+    val backgroundPlaybackMode: BackgroundPlaybackMode =
+        if (osPipAutoEnterEnabled) BackgroundPlaybackMode.PIP else BackgroundPlaybackMode.OFF,
 ) {
     fun isEnabled(feature: DeepTvFeature): Boolean = when (feature) {
         DeepTvFeature.WATCH_NEXT -> watchNextEnabled

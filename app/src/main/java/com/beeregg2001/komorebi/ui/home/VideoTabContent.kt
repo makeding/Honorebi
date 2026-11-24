@@ -456,6 +456,19 @@ fun VideoTabContent(
     } else {
         focusedHeroPreview ?: railHeroPreview
     }
+    val gachaRequester = remember { FocusRequester() }
+    val watchedHistoryIds = remember(watchHistory) {
+        watchHistory.mapNotNull { it.program.id.toIntOrNull() }.toSet()
+    }
+    val unwatchedBacklog = remember(recentItems, watchedHistoryIds) {
+        com.beeregg2001.komorebi.common.summarizeUnwatchedBacklog(recentItems, watchedHistoryIds)
+    }
+    val recentSeriesMap = remember(recentItems) {
+        recentItems.groupBy { com.beeregg2001.komorebi.util.TitleNormalizer.extractDisplayTitle(it.title) }
+    }
+    val hasGachaCandidate = remember(recentSeriesMap) {
+        com.beeregg2001.komorebi.common.pickRandomRecentSeasonSeriesProgram(recentSeriesMap) != null
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         VideoCompactHero(
@@ -518,6 +531,7 @@ fun VideoTabContent(
                             homeViewModel.lastVideoBannerFocus = VideoBannerFocus.RECORDINGS
                             focusedHeroPreview = VideoHeroPreview(
                                 title = "録画リスト",
+                                metaLine = unwatchedBacklog?.label.orEmpty(),
                             )
                         },
                     )
@@ -561,7 +575,7 @@ fun VideoTabContent(
                             .then(upToTopBarModifier)
                             .focusProperties {
                                 left = onAirRequester
-                                right = FocusRequester.Cancel
+                                right = if (hasGachaCandidate) gachaRequester else FocusRequester.Cancel
                                 up = upTarget
                                 if (allContentRowsEmpty) down = FocusRequester.Cancel
                             },
@@ -583,6 +597,65 @@ fun VideoTabContent(
                             )
                         },
                     )
+
+                    if (hasGachaCandidate) {
+                        val colors = KomorebiTheme.colors
+                        Surface(
+                            onClick = {
+                                val picked = com.beeregg2001.komorebi.common
+                                    .pickRandomRecentSeasonSeriesProgram(recentSeriesMap)
+                                if (picked != null) {
+                                    onProgramClick(picked.second)
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .focusRequester(gachaRequester)
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        focusedProgramId = null
+                                        lastFocusedCard = null
+                                        homeViewModel.lastVideoCardFocus = null
+                                        focusedHeroPreview = VideoHeroPreview(
+                                            title = "今夜何見る？ガチャ",
+                                            metaLine = "今期・前期シリーズからランダム抽選",
+                                        )
+                                    }
+                                }
+                                .then(downToFirstRowModifier)
+                                .then(upToTopBarModifier)
+                                .focusProperties {
+                                    left = smbRequester
+                                    right = FocusRequester.Cancel
+                                    up = upTarget
+                                    if (allContentRowsEmpty) down = FocusRequester.Cancel
+                                },
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            colors = ClickableSurfaceDefaults.colors(
+                                containerColor = colors.surface.copy(alpha = 0.72f),
+                                contentColor = colors.textPrimary,
+                                focusedContainerColor = colors.textPrimary,
+                                focusedContentColor = if (colors.isDark) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White,
+                            ),
+                            border = ClickableSurfaceDefaults.border(
+                                border = Border(BorderStroke(1.dp, colors.borderSubtle)),
+                                focusedBorder = Border(BorderStroke(TvCardFocusBorderWidth, colors.accent)),
+                            ),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "今夜何見る？",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

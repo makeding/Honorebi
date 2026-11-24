@@ -76,6 +76,7 @@ internal object PlayerFactory {
             .build()
         return ExoPlayer.Builder(context, renderers)
             .setLoadControl(loadControl)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .setLivePlaybackSpeedControl(DefaultLivePlaybackSpeedControl.Builder()
                 .setFallbackMinPlaybackSpeed(1f).setFallbackMaxPlaybackSpeed(1f).build())
             .apply {

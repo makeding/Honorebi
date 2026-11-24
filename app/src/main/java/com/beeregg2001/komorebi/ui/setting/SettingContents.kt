@@ -1032,8 +1032,10 @@ fun CommentSettingsContent(
     max: String,
     layerOrder: String,
     commentEngine: String,
+    commentWordCounter: String,
     onLayer: () -> Unit,
     onEngine: () -> Unit,
+    onToggleWordCounter: () -> Unit,
     onEdit: (String, String) -> Unit,
     onT: () -> Unit,
     defR: FocusRequester,
@@ -1043,6 +1045,7 @@ fun CommentSettingsContent(
     mxR: FocusRequester,
     layerR: FocusRequester,
     engineR: FocusRequester,
+    wordCounterR: FocusRequester,
     sidebarR: FocusRequester,
     onEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onClick: (FocusRequester) -> Unit
@@ -1163,9 +1166,20 @@ fun CommentSettingsContent(
                     .focusRequester(engineR).focusProperties {
                     left = sidebarR
                     up = layerR
-                    down = FocusRequester.Cancel
+                    down = wordCounterR
                 },
                 onClick = { onClick(engineR); onEngine() },
+            )
+            SettingItem(
+                "実況ワードカウンター（草・ｷﾀ━）",
+                commentWordCounter,
+                Icons.Default.BarChart,
+                modifier = Modifier.focusRequester(wordCounterR).focusProperties {
+                    left = sidebarR
+                    up = engineR
+                    down = FocusRequester.Cancel
+                },
+                onClick = { onClick(wordCounterR); onToggleWordCounter() },
             )
         }
     }

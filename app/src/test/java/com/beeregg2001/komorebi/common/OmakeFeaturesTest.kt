@@ -114,4 +114,63 @@ class OmakeFeaturesTest {
         // Within cooldown -> no alert
         assertNull(detectJikkyoFestival(rows, currentChannelId = null, alertedAtMillis = mapOf("gr1" to 90_000L), nowMillis = 100_000L))
     }
+
+    @Test
+    fun summarizeUnwatchedBacklog_sumsOnlyUnwatchedPrograms() {
+        val p1 = com.beeregg2001.komorebi.data.model.RecordedProgram(
+            id = 1,
+            title = "未視聴1",
+            description = "",
+            startTime = "2026-11-01T00:00:00+09:00",
+            endTime = "2026-11-01T00:30:00+09:00",
+            duration = 1800.0,
+            playbackPosition = 0.0,
+            recordedVideo = com.beeregg2001.komorebi.data.model.RecordedVideo(id = 1, status = "Recorded", duration = 1800.0),
+        )
+        val p2 = p1.copy(id = 2, title = "視聴済", playbackPosition = 120.0)
+        val p3 = p1.copy(id = 3, title = "未視聴2", duration = 3600.0)
+
+        val summary = summarizeUnwatchedBacklog(listOf(p1, p2, p3))
+        assertNotNull(summary)
+        assertEquals(2, summary!!.count)
+        assertEquals("未視聴 2本 · 合計 1時間30分", summary.label)
+    }
+
+    @Test
+    fun pickRandomRecentSeasonSeriesProgram_limitsToCurrentAndPreviousQuarter() {
+        val now = java.time.OffsetDateTime.parse("2026-11-24T15:00:00+09:00")
+        val oldEp = com.beeregg2001.komorebi.data.model.RecordedProgram(
+            id = 10,
+            title = "古いアニメ 第1話",
+            description = "",
+            startTime = "2026-04-05T00:00:00+09:00",
+            endTime = "2026-04-05T00:30:00+09:00",
+            duration = 1800.0,
+            playbackPosition = 0.0,
+            recordedVideo = com.beeregg2001.komorebi.data.model.RecordedVideo(id = 10, status = "Recorded", duration = 1800.0),
+        )
+        val recentEp = oldEp.copy(id = 20, title = "今期アニメ 第1話", startTime = "2026-10-10T00:00:00+09:00")
+        val grouped = mapOf(
+            "古いアニメ" to listOf(oldEp),
+            "今期アニメ" to listOf(recentEp),
+        )
+
+        val picked = pickRandomRecentSeasonSeriesProgram(grouped, now = now, random = kotlin.random.Random(0))
+        assertNotNull(picked)
+        assertEquals("今期アニメ", picked!!.first)
+        assertEquals(20, picked.second.id)
+    }
+
+    @Test
+    fun jikkyoWordCounter_countsKusaAndKita() {
+        val counter = JikkyoWordCounter()
+        assertNull(counter.formatSummary())
+        counter.record("草生える")
+        counter.record("ｗｗｗ")
+        counter.record("ｷﾀ━━━━━━(ﾟ∀ﾟ)━━━━━━!!!!")
+        counter.record("普通のコメント")
+        assertEquals(2, counter.kusaCount)
+        assertEquals(1, counter.kitaCount)
+        assertEquals("実況戦績: 草 2回 · ｷﾀ━ 1回", counter.formatSummary())
+    }
 }

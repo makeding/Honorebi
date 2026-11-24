@@ -143,6 +143,7 @@ internal class SystemMediaSessionController(context: Context) {
                     .setId(sessionId)
                     .setSessionActivity(sessionActivity())
                     .build()
+                BackgroundPlaybackService.setActiveSession(session)
                 sessionPlayer.addListener(playerListener)
             } else {
                 activeSession.player.removeListener(playerListener)
@@ -179,6 +180,12 @@ internal class SystemMediaSessionController(context: Context) {
     fun pause() {
         requireMainLooper()
         session?.player?.pause()
+    }
+
+    fun togglePlayPause() {
+        requireMainLooper()
+        val player = session?.player ?: return
+        if (player.playWhenReady) player.pause() else player.play()
     }
 
     fun stop() {
@@ -253,6 +260,7 @@ internal class SystemMediaSessionController(context: Context) {
     )
 
     private fun releaseSession() {
+        BackgroundPlaybackService.setActiveSession(null)
         session?.player?.removeListener(playerListener)
         session?.release()
         session = null

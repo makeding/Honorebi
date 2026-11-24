@@ -600,6 +600,18 @@ fun LivePlayerScreen(
         livePlayerViewModel.setSubtitlesEnabled(isSubtitleEnabled)
     }
 
+    val commentWordCounterSetting by settingsViewModel.commentWordCounter.collectAsState()
+    val commentWordCounterEnabled by rememberUpdatedState(commentWordCounterSetting == "ON")
+    val jikkyoWordCounter = remember { com.beeregg2001.komorebi.common.JikkyoWordCounter() }
+    val currentOnShowToast by rememberUpdatedState(onShowToast)
+    DisposableEffect(Unit) {
+        onDispose {
+            if (commentWordCounterEnabled) {
+                jikkyoWordCounter.formatSummary()?.let { currentOnShowToast(it) }
+            }
+        }
+    }
+
     val runLiveComments = isCommentEnabled && isHeavyUiReady && ps.isPlayerPlaying &&
         !ps.isDualDisplayMode
     LiveDanmakuEffect(
@@ -608,10 +620,16 @@ fun LivePlayerScreen(
         enabled = runLiveComments,
         fontSizeScale = commentFontSizeScale,
         danmakuView = danmakuViewRef,
+        onCommentDisplayed = { text ->
+            if (commentWordCounterEnabled) jikkyoWordCounter.record(text)
+        },
     )
 
     var hasStoppedByLifecycle by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentKeepPlayingInBackground by rememberUpdatedState(
+        com.beeregg2001.komorebi.media.LocalBackgroundAudioPlaybackEnabled.current
+    )
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -626,13 +644,20 @@ fun LivePlayerScreen(
                 recordActionMessage = null
             }
             if (event == Lifecycle.Event.ON_STOP) {
-                Log.w(
-                    TAG,
-                    "Live screen lifecycle ON_STOP: channel=${currentChannelItem.displayChannelId}, " +
-                        "state=${lifecycleOwner.lifecycle.currentState}"
-                )
-                hasStoppedByLifecycle = true
-                livePlayerViewModel.releasePlayers("lifecycle_on_stop")
+                if (currentKeepPlayingInBackground) {
+                    Log.i(
+                        TAG,
+                        "Live screen lifecycle ON_STOP: keeping audio alive in background for channel=${currentChannelItem.displayChannelId}"
+                    )
+                } else {
+                    Log.w(
+                        TAG,
+                        "Live screen lifecycle ON_STOP: channel=${currentChannelItem.displayChannelId}, " +
+                            "state=${lifecycleOwner.lifecycle.currentState}"
+                    )
+                    hasStoppedByLifecycle = true
+                    livePlayerViewModel.releasePlayers("lifecycle_on_stop")
+                }
             } else if (event == Lifecycle.Event.ON_START) {
                 Log.i(
                     TAG,

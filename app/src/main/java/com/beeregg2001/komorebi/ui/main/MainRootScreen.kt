@@ -76,7 +76,8 @@ fun MainRootScreen(
     onRemotePlaybackOpened: () -> Unit = {},
     isInOsPip: Boolean = false,
     osPipDismissVersion: Int = 0,
-    onOsPipEligibilityChanged: (Boolean) -> Unit = {},
+    onOsPipStateChanged: (eligible: Boolean, autoEnter: Boolean, isPlaying: Boolean, canSeek: Boolean) -> Unit = { _, _, _, _ -> },
+    onRegisterPipTransportActions: (togglePlayPause: () -> Unit, seekRelativeMs: (Long) -> Unit) -> Unit = { _, _ -> },
     onInternalActivityLaunch: () -> Unit = {},
     onExitApp: () -> Unit
 ) {
@@ -629,17 +630,31 @@ fun MainRootScreen(
         wakeState = appWakeState,
         playerTimeoutMinutes = playerTimeout,
     )
-    val isOsPipEligible = deepTv.osPipAutoEnterEnabled &&
-        state.playbackState.isPlaybackActive &&
-        (state.playbackState.renderPlaybackTarget is PlaybackTarget.Live ||
-            state.playbackState.renderPlaybackTarget is PlaybackTarget.Recorded) &&
+    var systemPlaybackIsPlaying by remember { mutableStateOf(false) }
+    var systemPlaybackCanSeek by remember { mutableStateOf(false) }
+    val renderTarget = state.playbackState.renderPlaybackTarget
+    val isTifLiveTarget = renderTarget is PlaybackTarget.Live &&
+        renderTarget.channel.id.startsWith("tif:")
+    val isOsPipEligible = state.playbackState.isPlaybackActive &&
+        (renderTarget is PlaybackTarget.Live ||
+            renderTarget is PlaybackTarget.Recorded ||
+            renderTarget is PlaybackTarget.Smb) &&
         !state.isSettingsOpen &&
         !screensaverState.isVisible
-    LaunchedEffect(isOsPipEligible) {
-        onOsPipEligibilityChanged(isOsPipEligible)
+    val osPipAutoEnter = deepTv.backgroundPlaybackMode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP
+    val effectivePipIsPlaying = if (isTifLiveTarget) true else systemPlaybackIsPlaying
+    val backgroundAudioPlaybackEnabled =
+        deepTv.backgroundPlaybackMode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.AUDIO_ONLY &&
+            state.playbackState.isPlaybackActive &&
+            !isTifLiveTarget &&
+            (renderTarget is PlaybackTarget.Live ||
+                renderTarget is PlaybackTarget.Recorded ||
+                renderTarget is PlaybackTarget.Smb)
+    LaunchedEffect(isOsPipEligible, osPipAutoEnter, effectivePipIsPlaying, systemPlaybackCanSeek) {
+        onOsPipStateChanged(isOsPipEligible, osPipAutoEnter, effectivePipIsPlaying, systemPlaybackCanSeek)
     }
     DisposableEffect(Unit) {
-        onDispose { onOsPipEligibilityChanged(false) }
+        onDispose { onOsPipStateChanged(false, false, false, false) }
     }
     LaunchedEffect(osPipDismissVersion) {
         if (osPipDismissVersion > 0) {
@@ -1249,10 +1264,19 @@ fun MainRootScreen(
             remoteContentType = when {
                 state.playbackState.livePlayback != null -> "Live"
                 state.playbackState.recordedPlayback != null -> "Recorded"
+                state.playbackState.renderPlaybackTarget is PlaybackTarget.Smb -> "Smb"
                 else -> "Idle"
             },
             isPlaybackSwitching = state.playbackState.playbackPhase is PlaybackPhase.Switching,
             remoteControlClient = remoteControlViewModel.client,
+            backgroundAudioPlaybackEnabled = backgroundAudioPlaybackEnabled,
+            onSystemPlaybackSnapshotChanged = { isPlaying, canSeek ->
+                systemPlaybackIsPlaying = isPlaying
+                systemPlaybackCanSeek = canSeek
+            },
+            onRegisterTransportActions = { togglePlayPause, seekRelativeMs, _ ->
+                onRegisterPipTransportActions(togglePlayPause, seekRelativeMs)
+            },
         ) {
             val colors = KomorebiTheme.colors
             val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)

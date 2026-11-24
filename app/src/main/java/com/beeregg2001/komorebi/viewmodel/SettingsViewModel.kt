@@ -239,6 +239,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "DFM_HARDWARE"
     )
+    val commentWordCounter: StateFlow<String> = settingsRepository.commentWordCounter.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        "ON"
+    )
     val liveQuality: StateFlow<String> = settingsRepository.liveQuality.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -976,6 +981,11 @@ class SettingsViewModel @Inject constructor(
     fun toggleDeepTvFeature(feature: DeepTvFeature) = viewModelScope.launch(Dispatchers.IO) {
         settingsRepository.toggleDeepTvFeature(feature)
     }
+
+    fun setBackgroundPlaybackMode(mode: com.beeregg2001.komorebi.data.BackgroundPlaybackMode) =
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsRepository.setBackgroundPlaybackMode(mode)
+        }
 
     fun toggleHideAppsTab() {
         viewModelScope.launch(Dispatchers.IO) {

@@ -1,10 +1,16 @@
 package com.beeregg2001.komorebi
 
 import android.app.ActivityManager
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -15,6 +21,8 @@ import android.annotation.SuppressLint
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -45,9 +53,24 @@ class MainActivity : ComponentActivity() {
     private var isInOsPip by mutableStateOf(false)
     private var osPipDismissVersion by mutableIntStateOf(0)
     private var osPipEligible = false
+    private var osPipAutoEnter = false
+    private var osPipIsPlaying = false
+    private var osPipCanSeek = false
+    private var pipTogglePlayPause: (() -> Unit)? = null
+    private var pipSeekRelativeMs: ((Long) -> Unit)? = null
     private var lastInternalLaunchUptime = 0L
     private var stoppedWhileInPip = false
     private var exitingOsPipAwaitingResume = false
+
+    private val pipActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_PIP_PLAY_PAUSE -> pipTogglePlayPause?.invoke()
+                ACTION_PIP_REWIND -> pipSeekRelativeMs?.invoke(-10_000L)
+                ACTION_PIP_FORWARD -> pipSeekRelativeMs?.invoke(10_000L)
+            }
+        }
+    }
 
     private val hasPipFeature: Boolean by lazy {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -95,6 +118,18 @@ class MainActivity : ComponentActivity() {
 
         val launchedFromDeepLink = savedInstanceState == null && deepLinkDispatcher.dispatch(intent)
 
+        val pipFilter = IntentFilter().apply {
+            addAction(ACTION_PIP_PLAY_PAUSE)
+            addAction(ACTION_PIP_REWIND)
+            addAction(ACTION_PIP_FORWARD)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            pipActionReceiver,
+            pipFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 appUpdater.updateState.collect { update ->
@@ -119,11 +154,94 @@ class MainActivity : ComponentActivity() {
                     onRemotePlaybackOpened = ::showRemotePlayback,
                     isInOsPip = isInOsPip,
                     osPipDismissVersion = osPipDismissVersion,
-                    onOsPipEligibilityChanged = { osPipEligible = it },
+                    onOsPipStateChanged = { eligible, autoEnter, isPlaying, canSeek ->
+                        osPipEligible = eligible
+                        osPipAutoEnter = autoEnter
+                        osPipIsPlaying = isPlaying
+                        osPipCanSeek = canSeek
+                        updatePictureInPictureParams()
+                    },
+                    onRegisterPipTransportActions = { togglePlayPause, seekRelativeMs ->
+                        pipTogglePlayPause = togglePlayPause
+                        pipSeekRelativeMs = seekRelativeMs
+                    },
                     onInternalActivityLaunch = { lastInternalLaunchUptime = SystemClock.uptimeMillis() },
                     onExitApp = ::finish
                 )
             }
+        }
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(pipActionReceiver) }
+        super.onDestroy()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun buildPictureInPictureParams(): PictureInPictureParams {
+        val actions = buildList {
+            if (osPipCanSeek) {
+                add(
+                    RemoteAction(
+                        Icon.createWithResource(this@MainActivity, android.R.drawable.ic_media_rew),
+                        "10秒戻す",
+                        "10秒戻す",
+                        PendingIntent.getBroadcast(
+                            this@MainActivity,
+                            REQ_PIP_REWIND,
+                            Intent(ACTION_PIP_REWIND).setPackage(packageName),
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    )
+                )
+            }
+            add(
+                RemoteAction(
+                    Icon.createWithResource(
+                        this@MainActivity,
+                        if (osPipIsPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                    ),
+                    if (osPipIsPlaying) "一時停止" else "再生",
+                    if (osPipIsPlaying) "一時停止" else "再生",
+                    PendingIntent.getBroadcast(
+                        this@MainActivity,
+                        REQ_PIP_PLAY_PAUSE,
+                        Intent(ACTION_PIP_PLAY_PAUSE).setPackage(packageName),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    ),
+                )
+            )
+            if (osPipCanSeek) {
+                add(
+                    RemoteAction(
+                        Icon.createWithResource(this@MainActivity, android.R.drawable.ic_media_ff),
+                        "10秒進む",
+                        "10秒進む",
+                        PendingIntent.getBroadcast(
+                            this@MainActivity,
+                            REQ_PIP_FORWARD,
+                            Intent(ACTION_PIP_FORWARD).setPackage(packageName),
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    )
+                )
+            }
+        }
+        return PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+            .setActions(actions)
+            .apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setAutoEnterEnabled(osPipEligible && osPipAutoEnter && osPipIsPlaying)
+                    setSeamlessResizeEnabled(true)
+                }
+            }
+            .build()
+    }
+
+    private fun updatePictureInPictureParams() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPipFeature) {
+            runCatching { setPictureInPictureParams(buildPictureInPictureParams()) }
         }
     }
 
@@ -142,20 +260,17 @@ class MainActivity : ComponentActivity() {
         }
         val alreadyInPip = isInOsPip ||
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
             OsPipPolicy.shouldEnter(
                 sdkInt = Build.VERSION.SDK_INT,
                 hasPipFeature = hasPipFeature,
-                eligible = osPipEligible,
+                eligible = osPipEligible && osPipAutoEnter && osPipIsPlaying,
                 alreadyInPip = alreadyInPip,
                 msSinceInternalLaunch = msSinceInternalLaunch,
             )
         ) {
             runCatching {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build()
-                enterPictureInPictureMode(params)
+                enterPictureInPictureMode(buildPictureInPictureParams())
             }
         }
     }
@@ -214,5 +329,14 @@ class MainActivity : ComponentActivity() {
         } else {
             deepLinkDispatcher.dispatch(intent)
         }
+    }
+
+    companion object {
+        private const val ACTION_PIP_PLAY_PAUSE = "com.beeregg2001.komorebi.action.PIP_PLAY_PAUSE"
+        private const val ACTION_PIP_REWIND = "com.beeregg2001.komorebi.action.PIP_REWIND"
+        private const val ACTION_PIP_FORWARD = "com.beeregg2001.komorebi.action.PIP_FORWARD"
+        private const val REQ_PIP_PLAY_PAUSE = 4201
+        private const val REQ_PIP_REWIND = 4202
+        private const val REQ_PIP_FORWARD = 4203
     }
 }

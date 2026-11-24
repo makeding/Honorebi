@@ -260,7 +260,7 @@ private fun SettingsMenuScreen(
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
-            List(7) { FocusRequester() },
+            List(8) { FocusRequester() },
             List(3) { FocusRequester() },
             List(4) { FocusRequester() },
             List(13) { FocusRequester() },
@@ -768,6 +768,11 @@ private fun SettingsMenuScreen(
                             itemRs = itemFocusRequesters[9],
                             sidebarR = categoryFocusRequesters[9],
                             onToggleFeature = { viewModel.toggleDeepTvFeature(it) },
+                            onCycleBackgroundPlaybackMode = {
+                                viewModel.setBackgroundPlaybackMode(
+                                    prefs.deepTvFeatures.backgroundPlaybackMode.next(pipSupported)
+                                )
+                            },
                             onToggleEnabled = {
                                 if (!tifSupported) {
                                     toastMessage = "この端末はTV入力（TIF）に対応していません"
@@ -1266,8 +1271,17 @@ private fun SettingsMenuScreen(
                             prefs.commentMaxLines,
                             prefs.subtitleCommentLayer,
                             prefs.commentEngine,
+                            prefs.commentWordCounter,
                             openCommentLayerDialog,
                             openCommentEngineDialog,
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.COMMENT_WORD_COUNTER,
+                                        if (prefs.commentWordCounter == "ON") "OFF" else "ON"
+                                    )
+                                }
+                            },
                             { t, v ->
                                 uiState.activeDialog = SettingDialogState.Input(t, v) {
                                     scope.launch {
@@ -1293,6 +1307,7 @@ private fun SettingsMenuScreen(
                             itemFocusRequesters[5][4],
                             itemFocusRequesters[5][5],
                             itemFocusRequesters[5][6],
+                            itemFocusRequesters[5][7],
                             categoryFocusRequesters[5],
                             onEngineBoundsChanged = onCommentEngineBoundsChanged,
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }

@@ -136,6 +136,7 @@ class SettingsRepository @Inject constructor(
         val COMMENT_MAX_LINES = stringPreferencesKey("comment_max_lines")
         val COMMENT_DEFAULT_DISPLAY = stringPreferencesKey("comment_default_display")
         val COMMENT_ENGINE = stringPreferencesKey("comment_engine")
+        val COMMENT_WORD_COUNTER = stringPreferencesKey("comment_word_counter")
         val LIVE_QUALITY = stringPreferencesKey("live_quality")
         val VIDEO_QUALITY = stringPreferencesKey("video_quality")
         val LIVE_SUBTITLE_DEFAULT = stringPreferencesKey("live_subtitle_default")
@@ -197,6 +198,7 @@ class SettingsRepository @Inject constructor(
         val REMOTE_SHORTCUT_KEYS_ENABLED = booleanPreferencesKey("remote_shortcut_keys_enabled")
         val REMOTE_NUMBER_TUNING_ENABLED = booleanPreferencesKey("remote_number_tuning_enabled")
         val OS_PIP_AUTO_ENTER_ENABLED = booleanPreferencesKey("os_pip_auto_enter_enabled")
+        val BACKGROUND_PLAYBACK_MODE = stringPreferencesKey("background_playback_mode")
 
         val SCREENSAVER_ENABLED = booleanPreferencesKey("screensaver_enabled")
         val SCREENSAVER_TIMEOUT_MINUTES = intPreferencesKey("screensaver_timeout_minutes")
@@ -294,6 +296,8 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[COMMENT_DEFAULT_DISPLAY] ?: "ON" }
     val commentEngine: Flow<String> =
         context.dataStore.data.map { it[COMMENT_ENGINE] ?: "DFM_HARDWARE" }
+    val commentWordCounter: Flow<String> =
+        context.dataStore.data.map { it[COMMENT_WORD_COUNTER] ?: "ON" }
     val liveQuality: Flow<String> = context.dataStore.data.map { it[LIVE_QUALITY] ?: "1080p-60fps" }
     val videoQuality: Flow<String> =
         context.dataStore.data.map { it[VIDEO_QUALITY] ?: "1080p-60fps" }
@@ -406,6 +410,11 @@ class SettingsRepository @Inject constructor(
     private val defaultDeepTvFeatureSettings = DeepTvFeatureSettings()
 
     val deepTvFeatureSettings: Flow<DeepTvFeatureSettings> = context.dataStore.data.map { prefs ->
+        val legacyOsPip = prefs[OS_PIP_AUTO_ENTER_ENABLED] ?: defaultDeepTvFeatureSettings.osPipAutoEnterEnabled
+        val backgroundPlaybackMode = com.beeregg2001.komorebi.data.BackgroundPlaybackMode.fromPreference(
+            value = prefs[BACKGROUND_PLAYBACK_MODE],
+            legacyOsPipAutoEnter = legacyOsPip,
+        )
         DeepTvFeatureSettings(
             watchNextEnabled = prefs[WATCH_NEXT_ENABLED] ?: defaultDeepTvFeatureSettings.watchNextEnabled,
             watchNextNextEpisodeEnabled = prefs[WATCH_NEXT_NEXT_EPISODE_ENABLED] ?: defaultDeepTvFeatureSettings.watchNextNextEpisodeEnabled,
@@ -413,7 +422,8 @@ class SettingsRepository @Inject constructor(
             previewRecordingsEnabled = prefs[PREVIEW_CHANNEL_RECORDINGS_ENABLED] ?: defaultDeepTvFeatureSettings.previewRecordingsEnabled,
             remoteShortcutKeysEnabled = prefs[REMOTE_SHORTCUT_KEYS_ENABLED] ?: defaultDeepTvFeatureSettings.remoteShortcutKeysEnabled,
             remoteNumberTuningEnabled = prefs[REMOTE_NUMBER_TUNING_ENABLED] ?: defaultDeepTvFeatureSettings.remoteNumberTuningEnabled,
-            osPipAutoEnterEnabled = prefs[OS_PIP_AUTO_ENTER_ENABLED] ?: defaultDeepTvFeatureSettings.osPipAutoEnterEnabled,
+            osPipAutoEnterEnabled = backgroundPlaybackMode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP,
+            backgroundPlaybackMode = backgroundPlaybackMode,
         )
     }
 
@@ -433,6 +443,21 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { settings ->
             val current = settings[key] ?: defaultValue
             settings[key] = !current
+            if (feature == DeepTvFeature.OS_PIP_AUTO_ENTER) {
+                settings[BACKGROUND_PLAYBACK_MODE] = if (!current) {
+                    com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP.preferenceValue
+                } else {
+                    com.beeregg2001.komorebi.data.BackgroundPlaybackMode.OFF.preferenceValue
+                }
+            }
+        }
+    }
+
+    suspend fun setBackgroundPlaybackMode(mode: com.beeregg2001.komorebi.data.BackgroundPlaybackMode) {
+        context.dataStore.edit { settings ->
+            settings[BACKGROUND_PLAYBACK_MODE] = mode.preferenceValue
+            settings[OS_PIP_AUTO_ENTER_ENABLED] =
+                (mode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP)
         }
     }
     val screensaverEnabled: Flow<Boolean> =

@@ -66,6 +66,7 @@ fun DeepTvIntegrationSettingsContent(
     itemRs: List<FocusRequester>,
     sidebarR: FocusRequester,
     onToggleFeature: (DeepTvFeature) -> Unit = {},
+    onCycleBackgroundPlaybackMode: () -> Unit = {},
     onToggleEnabled: () -> Unit,
     onToggleHideEmpty: () -> Unit,
     onToggleShowTuners: () -> Unit,
@@ -86,7 +87,7 @@ fun DeepTvIntegrationSettingsContent(
         add(DeepTvItemIndex.PREVIEW_RECORDINGS)
         add(DeepTvItemIndex.REMOTE_KEYS)
         add(DeepTvItemIndex.NUMBER_TUNING)
-        if (pipSupported) add(DeepTvItemIndex.OS_PIP)
+        add(DeepTvItemIndex.OS_PIP)
         if (!lockedByMainSystem) add(DeepTvItemIndex.TIF_TOGGLE)
         add(DeepTvItemIndex.CAST_ACCESS)
         if (expanded) {
@@ -218,23 +219,33 @@ fun DeepTvIntegrationSettingsContent(
             SectionNote("リモコンの「番組表」「録画」「テレビ」ボタンでの直接移動や、数字ボタン（リモコン番号 1〜12 / 3桁チャンネル番号）でのダイレクト選局を有効にします。")
         }
 
-        SettingsSection("ピクチャー・イン・ピクチャー") {
+        SettingsSection("バックグラウンド再生・PiP") {
+            val effectiveMode = if (!pipSupported && features.backgroundPlaybackMode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP) {
+                com.beeregg2001.komorebi.data.BackgroundPlaybackMode.OFF
+            } else {
+                features.backgroundPlaybackMode
+            }
             SettingItem(
-                title = "ホーム移動時にピクチャー・イン・ピクチャーへ自動移行",
-                value = when {
-                    !pipSupported -> "非対応"
-                    features.osPipAutoEnterEnabled -> "ON"
-                    else -> "OFF"
-                },
+                title = "バックグラウンド・画面オフ時の再生動作",
+                value = effectiveMode.label,
                 icon = Icons.Default.PictureInPictureAlt,
-                enabled = pipSupported,
+                enabled = true,
                 modifier = itemModifier(DeepTvItemIndex.OS_PIP),
                 onClick = {
                     onClick(itemRs[DeepTvItemIndex.OS_PIP])
-                    onToggleFeature(DeepTvFeature.OS_PIP_AUTO_ENTER)
+                    onCycleBackgroundPlaybackMode()
                 },
             )
-            SectionNote("ライブや録画の再生中にリモコンのホームボタンを押した際、OS標準の小窓（PiP）で再生を継続します。")
+            SectionNote(
+                when (effectiveMode) {
+                    com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP ->
+                        "再生中にホーム移動するとOS標準の小窓（PiP）で再生を継続します。小窓を閉じると再生を停止します。"
+                    com.beeregg2001.komorebi.data.BackgroundPlaybackMode.AUDIO_ONLY ->
+                        "他のアプリ操作中や画面オフ時も音声のみ再生を継続します（通知・ロック画面から操作可能）。※TIF外部入力は非対応です。"
+                    com.beeregg2001.komorebi.data.BackgroundPlaybackMode.OFF ->
+                        "ホーム移動や画面オフ時に再生を停止します。"
+                }
+            )
         }
 
         SettingsSection("外部入力・内蔵チューナー（TIF）") {

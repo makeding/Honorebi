@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 
 internal val LocalSystemMediaSessionController = compositionLocalOf<SystemMediaSessionController?> { null }
 internal val LocalSystemMediaSessionEpoch = compositionLocalOf<Long?> { null }
+val LocalBackgroundAudioPlaybackEnabled = compositionLocalOf { false }
 
 internal fun shouldDispatchRemoteTransport(
     command: HonomiRemoteCommand,
@@ -50,6 +51,13 @@ fun RootSystemMediaSessionHost(
     remoteContentType: String,
     isPlaybackSwitching: Boolean,
     remoteControlClient: HonomiRemoteControlClient,
+    backgroundAudioPlaybackEnabled: Boolean = false,
+    onSystemPlaybackSnapshotChanged: ((isPlaying: Boolean, canSeek: Boolean) -> Unit)? = null,
+    onRegisterTransportActions: ((
+        togglePlayPause: () -> Unit,
+        seekRelativeMs: (Long) -> Unit,
+        stop: () -> Unit,
+    ) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current.applicationContext
@@ -57,15 +65,30 @@ fun RootSystemMediaSessionHost(
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val currentContentType by rememberUpdatedState(remoteContentType)
     val currentPlaybackSwitching by rememberUpdatedState(isPlaybackSwitching)
+    val currentBackgroundAudioEnabled by rememberUpdatedState(backgroundAudioPlaybackEnabled)
+    val currentPlaybackEpoch by rememberUpdatedState(playbackSessionEpoch)
+    val currentSnapshotCallback by rememberUpdatedState(onSystemPlaybackSnapshotChanged)
 
     fun sendCurrentState() {
         val state = controller.playbackState()
+        val isPlaying = state?.isPlaying ?: false
+        val canSeek = !currentPlaybackSwitching &&
+            (currentContentType == "Recorded" || currentContentType == "Smb") &&
+            state?.canSeek == true
+        currentSnapshotCallback?.invoke(isPlaying, canSeek)
+        BackgroundPlaybackService.sync(
+            context = context,
+            active = currentBackgroundAudioEnabled && currentPlaybackEpoch != null,
+            title = state?.title.orEmpty(),
+            subtitle = state?.subtitle.orEmpty(),
+            isPlaying = isPlaying,
+        )
         remoteControlClient.sendState(
             contentType = if (state == null) "Idle" else currentContentType,
             title = state?.title,
             subtitle = state?.subtitle,
             artworkUrl = state?.artworkUrl,
-            isPlaying = state?.isPlaying ?: false,
+            isPlaying = isPlaying,
             isBuffering = currentPlaybackSwitching || state?.isBuffering == true,
             positionSeconds = state?.positionSeconds,
             durationSeconds = state?.durationSeconds,
@@ -75,6 +98,25 @@ fun RootSystemMediaSessionHost(
             chapters = state?.chapters ?: emptyList(),
             cmSkipMode = state?.cmSkipMode,
         )
+    }
+
+    DisposableEffect(controller) {
+        BackgroundPlaybackService.onTogglePlayPauseRequested = { controller.togglePlayPause() }
+        BackgroundPlaybackService.onStopRequested = { controller.stop() }
+        onRegisterTransportActions?.invoke(
+            { controller.togglePlayPause() },
+            { deltaMs -> controller.seekRelative(deltaMs) },
+            { controller.stop() },
+        )
+        onDispose {
+            BackgroundPlaybackService.onTogglePlayPauseRequested = null
+            BackgroundPlaybackService.onStopRequested = null
+            BackgroundPlaybackService.sync(context, active = false)
+        }
+    }
+
+    LaunchedEffect(backgroundAudioPlaybackEnabled, playbackSessionEpoch) {
+        sendCurrentState()
     }
 
     LaunchedEffect(controller, remoteControlClient) {
@@ -143,6 +185,7 @@ fun RootSystemMediaSessionHost(
     CompositionLocalProvider(
         LocalSystemMediaSessionController provides controller,
         LocalSystemMediaSessionEpoch provides playbackSessionEpoch,
+        LocalBackgroundAudioPlaybackEnabled provides backgroundAudioPlaybackEnabled,
         content = content,
     )
 }

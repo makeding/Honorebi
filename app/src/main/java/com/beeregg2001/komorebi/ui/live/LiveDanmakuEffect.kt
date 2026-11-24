@@ -25,11 +25,13 @@ internal fun LiveDanmakuEffect(
     enabled: Boolean,
     fontSizeScale: Float,
     danmakuView: MutableState<DanmakuViewHandle?>,
+    onCommentDisplayed: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val density = remember(context) { context.resources.displayMetrics.density }
     val currentEnabled by rememberUpdatedState(enabled)
     val currentFontSizeScale by rememberUpdatedState(fontSizeScale)
+    val currentOnCommentDisplayed by rememberUpdatedState(onCommentDisplayed)
 
     LaunchedEffect(sessionToken) {
         danmakuView.value?.ifActive { it.clearAll() }
@@ -57,6 +59,7 @@ internal fun LiveDanmakuEffect(
             }
             danmakuView.value?.ifActive { controller ->
                 if (!controller.isPrepared) return@ifActive
+                currentOnCommentDisplayed?.invoke(comment.text)
                 controller.addDanmaku(
                     jikkyoDanmaku(
                         comment.text, comment.color, comment.size, danmakuType,

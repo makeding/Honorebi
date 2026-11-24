@@ -550,6 +550,10 @@ fun rememberManagedExoPlayer(
         applyAudioSelectionAndMatrix(vs.currentAudioMode, exoPlayer)
     }
 
+    val currentKeepPlayingInBackground by rememberUpdatedState(
+        com.beeregg2001.komorebi.media.LocalBackgroundAudioPlaybackEnabled.current
+    )
+
     DisposableEffect(lifecycleOwner, playerRuntime) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -559,9 +563,11 @@ fun rememberManagedExoPlayer(
                     }
                 }
                 Lifecycle.Event.ON_STOP -> {
-                    recoveryLifecycleGate.onStop()
-                    playerRuntime.pause()
                     currentOnStopOrDispose.value(exoPlayer)
+                    if (!currentKeepPlayingInBackground) {
+                        recoveryLifecycleGate.onStop()
+                        playerRuntime.pause()
+                    }
                 }
                 else -> Unit
             }
