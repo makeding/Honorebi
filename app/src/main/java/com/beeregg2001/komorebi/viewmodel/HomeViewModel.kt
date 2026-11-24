@@ -221,10 +221,14 @@ class HomeViewModel @Inject constructor(
                 emit(emptyList())
             }
             emit(withContext(Dispatchers.IO) {
-                entities.filter { entity ->
-                    !exclusion.isActive || recordProvider.getRecordedProgram(entity.id).getOrNull()
-                        ?.let { !nhkExclusionRepository.isExcluded(it) } == true
-                }.map { KonomiDataMapper.toUiModel(it) }
+                entities.mapNotNull { entity ->
+                    val recordedProgram = recordProvider.getRecordedProgram(entity.id).getOrNull()
+                    if (exclusion.isActive && (recordedProgram == null || nhkExclusionRepository.isExcluded(recordedProgram))) {
+                        null
+                    } else {
+                        KonomiDataMapper.toUiModel(entity).copy(channel = recordedProgram?.channel)
+                    }
+                }
             })
             lastWatchHistoryExclusionActive = exclusion.isActive
             _isWatchHistoryReady.value = true

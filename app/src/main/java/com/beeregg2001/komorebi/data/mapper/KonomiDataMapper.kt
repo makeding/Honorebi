@@ -104,6 +104,7 @@ object KonomiDataMapper {
             duration = calcDuration,
             isPartiallyRecorded = false,
             playbackPosition = uiHistory.playback_position,
+            channel = uiHistory.channel,
             recordedVideo = RecordedVideo(
                 id = uiHistory.videoId ?: programId,
                 status = "Recorded",

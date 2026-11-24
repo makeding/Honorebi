@@ -67,7 +67,8 @@ data class KonomiHistoryProgram(
     val tileRows: Int = 1,
     val tileInterval: Double = 10.0,
     val tileWidth: Int = 320,
-    val tileHeight: Int = 180
+    val tileHeight: Int = 180,
+    val channel: RecordedChannel? = null
 )
 
 data class KonomiProgram(
