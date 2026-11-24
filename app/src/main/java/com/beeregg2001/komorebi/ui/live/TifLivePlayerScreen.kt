@@ -354,9 +354,39 @@ fun TifLivePlayerScreen(
     val isPassthroughInput = standaloneInput || channel.id.startsWith("tif:input:")
     val isCecInput = target?.inputId?.let { inputId ->
         context.getSystemService(TvInputManager::class.java)?.getTvInputInfo(inputId)?.let {
-            it.type == android.media.tv.TvInputInfo.TYPE_HDMI && it.parentId != null
+            usesMediaTekCec(it.serviceInfo.packageName, it.type == android.media.tv.TvInputInfo.TYPE_HDMI, it.parentId)
         }
     } == true
+    val cecActivity = context as? com.beeregg2001.komorebi.MainActivity
+    DisposableEffect(cecActivity, isCecInput, activeView, showOverlay, isMiniListOpen) {
+        if (isCecInput && !showOverlay && !isMiniListOpen) {
+            cecActivity?.cecKeyAction = { key ->
+                if (key.keyCode in setOf(
+                        android.view.KeyEvent.KEYCODE_BACK, android.view.KeyEvent.KEYCODE_MENU,
+                        android.view.KeyEvent.KEYCODE_TV_INPUT, android.view.KeyEvent.KEYCODE_VOLUME_UP,
+                        android.view.KeyEvent.KEYCODE_VOLUME_DOWN, android.view.KeyEvent.KEYCODE_VOLUME_MUTE,
+                        android.view.KeyEvent.KEYCODE_POWER,
+                    )) false else {
+                    activeView?.dispatchKeyEvent(key)
+                    true
+                }
+            }
+            cecActivity?.cecHomeAction = {
+                val now = android.os.SystemClock.uptimeMillis()
+                activeView?.dispatchKeyEvent(android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_HOME, 0))
+                activeView?.dispatchKeyEvent(android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_HOME, 0))
+            }
+        }
+        onDispose {
+            cecActivity?.cecHomeAction = null
+            cecActivity?.cecKeyAction = null
+        }
+    }
+    LaunchedEffect(isCecInput, channel.id) {
+        if (isCecInput && !videoOnly) android.widget.Toast.makeText(
+            context, "CEC モード：戻る長押しでメニュー", android.widget.Toast.LENGTH_LONG
+        ).show()
+    }
     val useLiveOsd = usesLiveOsd(channel.id, channel.type)
     var showProgramDetails by remember(channel.id) { mutableStateOf(false) }
     val programScroll = rememberScrollState()
@@ -522,6 +552,10 @@ fun TifLivePlayerScreen(
                     return@onPreviewKeyEvent true
                 }
                 if (!videoOnly && isCecInput && !showOverlay && !isMiniListOpen) {
+                    if (native.keyCode == android.view.KeyEvent.KEYCODE_TV_INPUT) {
+                        if (event.type == KeyEventType.KeyUp) onMiniListToggle(true)
+                        return@onPreviewKeyEvent true
+                    }
                     if (native.keyCode == android.view.KeyEvent.KEYCODE_MENU) {
                         if (event.type == KeyEventType.KeyUp) onShowOverlayChange(true)
                         return@onPreviewKeyEvent true
@@ -530,11 +564,9 @@ fun TifLivePlayerScreen(
                         if (event.type == KeyEventType.KeyDown) hdmiBackDown = android.view.KeyEvent(native)
                         return@onPreviewKeyEvent true
                     }
-                    if (native.keyCode in setOf(
-                            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-                            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
-                            android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER,
-                            android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
+                    if (native.keyCode !in setOf(
+                            android.view.KeyEvent.KEYCODE_VOLUME_UP, android.view.KeyEvent.KEYCODE_VOLUME_DOWN,
+                            android.view.KeyEvent.KEYCODE_VOLUME_MUTE, android.view.KeyEvent.KEYCODE_POWER,
                         )) {
                         activeView?.dispatchKeyEvent(native)
                         return@onPreviewKeyEvent true

@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deepLinkDispatcher: DeepLinkDispatcher
 
     private var homeIntentVersion by mutableIntStateOf(0)
+    var cecHomeAction: (() -> Unit)? = null
+    var cecKeyAction: ((KeyEvent) -> Boolean)? = null
     private var isInOsPip by mutableStateOf(false)
     private var osPipDismissVersion by mutableIntStateOf(0)
     private var osPipEligible = false
@@ -78,6 +80,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (cecKeyAction?.invoke(event) == true) return true
         if (event.action == KeyEvent.ACTION_DOWN && !event.isScreensaverMediaKey()) {
             ScreensaverInteractionTracker.onUserInteraction()
         }
@@ -325,7 +328,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME)) {
-            homeIntentVersion++
+            val cecAction = cecHomeAction
+            if (cecAction != null) cecAction() else homeIntentVersion++
         } else {
             deepLinkDispatcher.dispatch(intent)
         }
