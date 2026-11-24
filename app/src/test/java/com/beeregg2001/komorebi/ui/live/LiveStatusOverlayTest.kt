@@ -58,7 +58,7 @@ class LiveStatusOverlayTest {
             composeRule.runOnIdle { mode.value = selected }
             for (present in listOf(news, null, program(null), program(emptyList()), program(listOf(Genre("スポーツ", "スポーツニュース"))))) {
                 composeRule.runOnIdle { channel.value = channel.value.copy(programPresent = present, programFollowing = news) }
-                val show = selected == PlayerClockMode.ALWAYS_ON || (selected == PlayerClockMode.ONLY_NEWS && present == news)
+                val show = selected == PlayerClockMode.ALWAYS_ON || (selected == PlayerClockMode.EXCEPT_NEWS && present != news)
                 if (show) composeRule.onNodeWithText("19:00").assertIsDisplayed()
                 else composeRule.onNodeWithText("19:00").assertDoesNotExist()
                 if (present != null) {

@@ -26,13 +26,13 @@ class PlayerClockModeTest {
         assertEquals(PlayerClockMode.ALWAYS_ON, SettingsRepository(context).playerClockMode.first())
     }
 
-    @Test fun onlyNewsRequiresCurrentMajorGenre() {
+    @Test fun exceptNewsHidesOnlyCurrentNewsMajorGenre() {
         for (genres in listOf(null, emptyList(), listOf("スポーツ"))) {
             assertTrue(PlayerClockMode.ALWAYS_ON.showsCurrentTime(genres))
-            assertFalse(PlayerClockMode.ONLY_NEWS.showsCurrentTime(genres))
+            assertTrue(PlayerClockMode.EXCEPT_NEWS.showsCurrentTime(genres))
             assertFalse(PlayerClockMode.ALWAYS_OFF.showsCurrentTime(genres))
         }
-        assertTrue(PlayerClockMode.ONLY_NEWS.showsCurrentTime(listOf("情報・ワイドショー", "ニュース・報道")))
+        assertFalse(PlayerClockMode.EXCEPT_NEWS.showsCurrentTime(listOf("情報・ワイドショー", "ニュース・報道")))
         assertFalse(PlayerClockMode.ALWAYS_OFF.showsCurrentTime(listOf("ニュース・報道")))
     }
 }
