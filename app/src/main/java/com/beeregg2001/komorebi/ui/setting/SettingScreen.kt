@@ -241,13 +241,13 @@ private fun SettingsMenuScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: startupTab, startupFocusTarget, startupChannel, excludePaid, NHK exclusion
+    // [0] 基本設定: startupTab, startupFocusTarget, startupChannel, NHK exclusion
     // [1] 接続設定
     // [2] 再生設定
     // [3] 録画設定: recordView, addBatch
     // [4] 番組表設定: column, hour, font
     // [5] コメント設定
-    // [6] ホーム設定: genre, time
+    // [6] ホーム設定: genre, time, excludePaid
     // [7] ランチャー設定
     // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
     // [9] TV統合: Watch Next (0..1), プレビューチャンネル (2..3), リモコン (4..5), OS PiP (6), TIF (7..9)
@@ -255,13 +255,13 @@ private fun SettingsMenuScreen(
     // [11] アプリ情報
     val itemFocusRequesters = remember {
         listOf(
-            List(5) { FocusRequester() },
+            List(4) { FocusRequester() },
             List(8) { FocusRequester() },
             List(12) { FocusRequester() },
             List(2) { FocusRequester() },
             List(4) { FocusRequester() },
             List(7) { FocusRequester() },
-            List(2) { FocusRequester() },
+            List(3) { FocusRequester() },
             List(4) { FocusRequester() },
             List(13) { FocusRequester() },
             List(DeepTvItemIndex.COUNT) { FocusRequester() },
@@ -590,7 +590,6 @@ private fun SettingsMenuScreen(
                                 else -> flatChannels.find { it.id == prefs.startupChannel }?.name
                                     ?: prefs.startupChannel
                             },
-                            prefs.excludePaid,
                             itemFocusRequesters[0][0],
                             itemFocusRequesters[0][1],
                             itemFocusRequesters[0][2],
@@ -633,17 +632,8 @@ private fun SettingsMenuScreen(
                                     prefs.startupChannel
                                 ) { viewModel.updateStartupChannel(it) }
                             },
-                            itemFocusRequesters[0][3],
-                            {
-                                scope.launch {
-                                    repository.saveString(
-                                        SettingsRepository.EXCLUDE_PAID_BROADCASTS,
-                                        if (prefs.excludePaid == "ON") "OFF" else "ON"
-                                    )
-                                }
-                            },
                             viewModel.nhkExclusionState.collectAsState().value.mode.displayLabel,
-                            itemFocusRequesters[0][4],
+                            itemFocusRequesters[0][3],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "N〇K除外モード",
@@ -763,7 +753,6 @@ private fun SettingsMenuScreen(
                             prefs.liveSubtitleDefault,
                             prefs.videoSubtitleDefault,
                             prefs.subtitleFont,
-                            prefs.subtitleCommentLayer,
                             prefs.audioOutputMode,
                             playerUiMode,
                             autoCmSkip,
@@ -776,7 +765,6 @@ private fun SettingsMenuScreen(
                             itemFocusRequesters[2][3],
                             itemFocusRequesters[2][10],
                             itemFocusRequesters[2][4],
-                            itemFocusRequesters[2][5],
                             itemFocusRequesters[2][6],
                             itemFocusRequesters[2][7],
                             itemFocusRequesters[2][8],
@@ -861,9 +849,6 @@ private fun SettingsMenuScreen(
                                         )
                                     }
                                 }
-                            },
-                            {
-                                openCommentLayerDialog()
                             },
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -969,8 +954,11 @@ private fun SettingsMenuScreen(
                         6 -> HomeDisplaySettingsContent(
                             prefs.pickupGenre,
                             prefs.pickupTime,
+                            prefs.excludePaid,
+                            prefs.backendType != "TIF",
                             itemFocusRequesters[6][0],
                             itemFocusRequesters[6][1],
+                            itemFocusRequesters[6][2],
                             categoryFocusRequesters[6],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1011,6 +999,14 @@ private fun SettingsMenuScreen(
                                             it
                                         )
                                     }
+                                }
+                            },
+                            {
+                                scope.launch {
+                                    repository.saveString(
+                                        SettingsRepository.EXCLUDE_PAID_BROADCASTS,
+                                        if (prefs.excludePaid == "ON") "OFF" else "ON"
+                                    )
                                 }
                             },
                         ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6 }

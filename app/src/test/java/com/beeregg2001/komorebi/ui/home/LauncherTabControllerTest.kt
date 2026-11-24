@@ -281,6 +281,10 @@ class LauncherTabControllerTest {
         )
         assertEquals(
             TabFocusAction.DelegateToTabContent(),
+            resolveTabReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS, LauncherTab.LIVE, 1, null, null),
+        )
+        assertEquals(
+            TabFocusAction.DelegateToTabContent(),
             resolveTabReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS, LauncherTab.VIDEO, 3, null, null),
         )
         assertEquals(

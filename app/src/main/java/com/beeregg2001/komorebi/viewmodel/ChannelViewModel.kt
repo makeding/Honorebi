@@ -78,6 +78,20 @@ class ChannelViewModel @Inject constructor(
 
     val channelLogoUrls: StateFlow<Map<String, String>> = channelLogoCache.channelLogoUrls
 
+    private val _selectedLiveGenreId = MutableStateFlow<String?>(null)
+    val selectedLiveGenreId: StateFlow<String?> = _selectedLiveGenreId.asStateFlow()
+
+    private val _lastFocusedLiveChannelId = MutableStateFlow<String?>(null)
+    val lastFocusedLiveChannelId: StateFlow<String?> = _lastFocusedLiveChannelId.asStateFlow()
+
+    fun selectLiveGenre(genreId: String?) {
+        _selectedLiveGenreId.value = genreId
+    }
+
+    fun setLastFocusedLiveChannelId(channelId: String) {
+        _lastFocusedLiveChannelId.value = channelId
+    }
+
     fun setPollingPaused(paused: Boolean) {
         if (isPollingPaused != paused) {
             isPollingPaused = paused

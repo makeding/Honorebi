@@ -83,6 +83,8 @@ fun LiveContent(
     timeFormat: String = "24H",
     aiFocusReturnTick: Int = 0,
     onAiReturnConsumed: () -> Unit = {},
+    overlayReturnFocusTick: Int = 0,
+    onOverlayReturnConsumed: () -> Unit = {},
     onContentReady: () -> Unit = {},
     topBarFocusRequester: FocusRequester? = null,
     onScrolledChanged: (Boolean) -> Unit = {},
@@ -110,7 +112,13 @@ fun LiveContent(
     val showDanmakuHeat = backendType != "EDCB"
     val upEdgeRequester = topBarFocusRequester ?: topNavFocusRequester
 
-    var selectedGenreId by remember { mutableStateOf<String?>(null) }
+    val selectedGenreId by channelViewModel.selectedLiveGenreId.collectAsState()
+    val savedFocusedChannelId by channelViewModel.lastFocusedLiveChannelId.collectAsState()
+    val effectiveTargetChannelId = if (isReturningFromPlayer) {
+        lastFocusedChannelId ?: savedFocusedChannelId
+    } else {
+        savedFocusedChannelId ?: lastFocusedChannelId
+    }
     var focusedChannel by remember { mutableStateOf<UiChannelState?>(null) }
     var contentEntryReady by remember { mutableStateOf(false) }
     var lastFocusedChipRequester by remember(liveRows) { mutableStateOf(activeChipFocusRequester) }
@@ -121,9 +129,9 @@ fun LiveContent(
         }
     }
 
-    LaunchedEffect(liveRows) {
+    LaunchedEffect(liveRows, selectedGenreId) {
         if (selectedGenreId != null && liveRows.none { it.genreId == selectedGenreId }) {
-            selectedGenreId = null
+            channelViewModel.selectLiveGenre(null)
         }
         channelViewModel.prefetchChannelLogoUrls(liveRows.flatMap { it.channels }.map { it.channel })
     }
@@ -180,15 +188,27 @@ fun LiveContent(
         }
     }
 
-    LaunchedEffect(isReturningFromPlayer, aiFocusReturnTick, visibleRows, liveRows, contentEntryReady) {
-        if ((isReturningFromPlayer || aiFocusReturnTick > 0) &&
+    LaunchedEffect(
+        isReturningFromPlayer,
+        aiFocusReturnTick,
+        overlayReturnFocusTick,
+        visibleRows,
+        liveRows,
+        contentEntryReady,
+        effectiveTargetChannelId,
+    ) {
+        if ((isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0) &&
             liveRows.isNotEmpty() && contentEntryReady
         ) {
             val fallback = if (isReturningFromPlayer) topNavFocusRequester else contentFirstItemRequester
             fun consumeReturn() {
-                if (isReturningFromPlayer) onReturnFocusConsumed() else onAiReturnConsumed()
+                when {
+                    isReturningFromPlayer -> onReturnFocusConsumed()
+                    overlayReturnFocusTick > 0 -> onOverlayReturnConsumed()
+                    else -> onAiReturnConsumed()
+                }
             }
-            val targetId = lastFocusedChannelId
+            val targetId = effectiveTargetChannelId
             if (targetId != null) {
                 val flatIdx = findFlatChunkIndex(visibleRows, targetId)
                 if (flatIdx != -1) {
@@ -202,7 +222,7 @@ fun LiveContent(
                     }
                 } else if (selectedGenreId != null && findFlatChunkIndex(liveRows, targetId) != -1) {
                     // 対象チャンネルが現在のジャンル絞り込み外にある場合は「すべて」へ戻して再探索する
-                    selectedGenreId = null
+                    channelViewModel.selectLiveGenre(null)
                 } else {
                     if (fallback.safeRequestFocusWithRetry("LiveNavFallback")) consumeReturn()
                 }
@@ -253,7 +273,7 @@ fun LiveContent(
                             leftEdgeRequester = topNavFocusRequester,
                             downEdgeRequester = if (hasVisibleChannels) null else contentFirstItemRequester,
                             onSelectGenre = { genreId ->
-                                selectedGenreId = genreId
+                                channelViewModel.selectLiveGenre(genreId)
                             },
                             onChipFocused = { requester ->
                                 lastFocusedChipRequester = requester
@@ -333,7 +353,7 @@ fun LiveContent(
                             ) {
                                 chunk.forEachIndexed { colIdx, uiState ->
                                     val isFirstCard = isFirstRow && colIdx == 0
-                                    val isTarget = uiState.channel.id == lastFocusedChannelId
+                                    val isTarget = uiState.channel.id == effectiveTargetChannelId
                                     val isRightEdge = colIdx == chunk.lastIndex
                                     val cachedLogoUrl = channelLogoUrls.logoUrlFor(uiState.channel)
                                     val nextRowLastCardRequester = if (nextChunk != null && colIdx >= nextChunk.third) {
@@ -354,6 +374,7 @@ fun LiveContent(
                                         onClick = { onChannelClick(uiState.channel) },
                                         onFocused = {
                                             focusedChannel = uiState
+                                            channelViewModel.setLastFocusedLiveChannelId(uiState.channel.id)
                                             onFocusChannelChange(uiState.channel.id)
                                         },
                                         modifier = Modifier

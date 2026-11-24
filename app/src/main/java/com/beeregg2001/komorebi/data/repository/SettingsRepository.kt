@@ -329,7 +329,7 @@ class SettingsRepository @Inject constructor(
     val homePickupGenre: Flow<String> =
         context.dataStore.data.map { it[HOME_PICKUP_GENRE] ?: "アニメ" }
     val excludePaidBroadcasts: Flow<String> =
-        context.dataStore.data.map { it[EXCLUDE_PAID_BROADCASTS] ?: "ON" }
+        context.dataStore.data.map { it[EXCLUDE_PAID_BROADCASTS] ?: "OFF" }
     val nhkExclusionPreferences: Flow<NHKExclusionState> = context.dataStore.data.map {
         NHKExclusionState(
             mode = NHKExclusionMode.fromPreference(it[NHK_EXCLUSION_MODE]),

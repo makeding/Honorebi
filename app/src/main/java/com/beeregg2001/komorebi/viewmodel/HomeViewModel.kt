@@ -256,7 +256,7 @@ class HomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "アニメ")
 
     val excludePaidBroadcasts = settingsRepository.excludePaidBroadcasts
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "ON")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "OFF")
 
     val pickupTimeSetting = settingsRepository.homePickupTime
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "自動")
@@ -307,9 +307,9 @@ class HomeViewModel @Inject constructor(
         genrePickupJob?.cancel()
         genrePickupJob = viewModelScope.launch(Dispatchers.Default) {
             val backend = settingsRepository.backendType.first()
-            val genre = pickupGenreLabel.value
-            val timeSetting = pickupTimeSetting.value
-            val isExcludePaid = backend != "TIF" && excludePaidBroadcasts.value == "ON"
+            val genre = settingsRepository.homePickupGenre.first()
+            val timeSetting = settingsRepository.homePickupTime.first()
+            val isExcludePaid = backend != "TIF" && settingsRepository.excludePaidBroadcasts.first() == "ON"
 
             val now = OffsetDateTime.now()
             val startSearch = now.minusHours(1)

@@ -149,8 +149,11 @@ class MainRootState {
     fun returnToCurrentTabFromModule(hideAppsTab: Boolean = false) {
         val visibleCount = getVisibleTabs(hideAppsTab).size
         currentTabIndex = if (visibleCount > 0) currentTabIndex.coerceIn(0, visibleCount - 1) else 0
-        playbackState.resetPlayback()
-        launcherHomeFocusTick++
+        val wasPlaybackActive = playbackState.isPlaybackActive
+        playbackState.resetPlayback(returningFromPlayer = wasPlaybackActive)
+        if (!wasPlaybackActive) {
+            launcherHomeFocusTick++
+        }
         triggerHomeBack = false
     }
 

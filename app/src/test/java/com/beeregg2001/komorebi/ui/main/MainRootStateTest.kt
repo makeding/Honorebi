@@ -294,7 +294,7 @@ class MainRootStateTest {
     }
 
     @Test
-    fun returnToCurrentTabFromModule_preservesCurrentTabWhileClearingPlayback() {
+    fun returnToCurrentTabFromModule_preservesCurrentTabAndRestoresFocusFromPlayback() {
         val state = MainRootState()
         val videoIndex = state.getVisibleTabs().indexOf("ビデオ")
         state.currentTabIndex = videoIndex
@@ -305,6 +305,23 @@ class MainRootStateTest {
 
         assertEquals(videoIndex, state.currentTabIndex)
         assertEquals(PlaybackTarget.None, state.playbackState.playbackTarget)
+        assertTrue(state.playbackState.isReturningFromPlayer)
+        assertEquals(previousFocusTick, state.launcherHomeFocusTick)
+        assertFalse(state.triggerHomeBack)
+    }
+
+    @Test
+    fun returnToCurrentTabFromModule_withoutActivePlaybackBumpsLauncherHomeFocusTick() {
+        val state = MainRootState()
+        val liveIndex = state.getVisibleTabs().indexOf("ライブ")
+        state.currentTabIndex = liveIndex
+        state.isSettingsOpen = true
+        val previousFocusTick = state.launcherHomeFocusTick
+
+        state.returnToCurrentTabFromModule()
+
+        assertEquals(liveIndex, state.currentTabIndex)
+        assertFalse(state.playbackState.isReturningFromPlayer)
         assertEquals(previousFocusTick + 1, state.launcherHomeFocusTick)
         assertFalse(state.triggerHomeBack)
     }

@@ -195,11 +195,13 @@ class PlaybackSessionState {
     fun enterMiniPlayer(): Boolean {
         if (!isPlaybackActive) return false
         isMiniPlayerMode = true
+        isReturningFromPlayer = true
         return true
     }
 
     fun exitMiniPlayer() {
         isMiniPlayerMode = false
+        isReturningFromPlayer = false
     }
 
     /** One ordered back action for every playback surface. */
@@ -304,7 +306,7 @@ class PlaybackSessionState {
         showPlayerControls = false
     }
 
-    fun resetPlayback() {
+    fun resetPlayback(returningFromPlayer: Boolean = false) {
         invalidatePlaybackOpenIntents()
         endPlaybackSession()
         initialPlaybackPositionMs = 0L
@@ -317,7 +319,7 @@ class PlaybackSessionState {
         isPlayerSubMenuOpen = false
         isPlayerSceneSearchOpen = false
         showPlayerControls = true
-        isReturningFromPlayer = false
+        isReturningFromPlayer = returningFromPlayer
     }
 
     /** The token fence is always published before UI state exposes its target. */

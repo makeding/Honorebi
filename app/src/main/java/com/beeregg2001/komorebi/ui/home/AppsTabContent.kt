@@ -109,6 +109,7 @@ fun AppsTabContent(
         hiddenLauncherApps.filterNot { homeViewModel.isPinnedSystemApp(it) }
     }
     val hideAppLabels by settingsViewModel.hideLauncherAppLabels.collectAsState()
+    val launcherAppColumns by settingsViewModel.launcherAppColumns.collectAsState()
     var editingAppId by remember { mutableStateOf<String?>(null) }
     var actionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
     var hiddenActionMenuApp by remember { mutableStateOf<LauncherApp?>(null) }
@@ -280,14 +281,15 @@ fun AppsTabContent(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            val columnCount = calculateAppGridColumns(
-                maxWidth,
-                AppsTabLayout.cardWidth,
-                AppsTabLayout.horizontalSpacing,
-            )
+            val columnCount = launcherAppColumns.toIntOrNull()?.coerceIn(4, 7)
+                ?: calculateAppGridColumns(
+                    maxWidth,
+                    AppsTabLayout.cardWidth,
+                    AppsTabLayout.horizontalSpacing,
+                )
             val cellWidth =
                 ((maxWidth - AppsTabLayout.horizontalSpacing * (columnCount - 1)) / columnCount)
-                    .coerceAtLeast(AppsTabLayout.cardWidth)
+                    .coerceAtLeast(100.dp)
             val totalEntries = catalogApps.size
 
             // 表示領域に整数行が収まるよう行高を調整する。こうしないと

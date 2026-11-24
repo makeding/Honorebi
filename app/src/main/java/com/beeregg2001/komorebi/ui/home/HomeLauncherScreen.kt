@@ -408,6 +408,13 @@ fun HomeLauncherScreen(
         }
     }
 
+    var localOverlayReturnTick by remember { mutableIntStateOf(0) }
+    val combinedOverlayReturnTick = overlayReturnFocusTick + localOverlayReturnTick
+    val consumeOverlayReturn: () -> Unit = {
+        localOverlayReturnTick = 0
+        onOverlayReturnConsumed()
+    }
+
     HomeOverlayReturnFocusEffect(
         isFullScreen = isFullScreenMode,
         returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0,
@@ -418,7 +425,11 @@ fun HomeLauncherScreen(
                 focusMemory.remember(tabController.selectedIndex)
             }
         },
-        onRestore = { applyReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS) },
+        onRestore = {
+            if (applyReturnFocus(FocusReturnTrigger.OVERLAY_DISMISS) is TabFocusAction.DelegateToTabContent) {
+                localOverlayReturnTick++
+            }
+        },
     )
 
     LaunchedEffect(triggerBack) {
@@ -625,6 +636,8 @@ fun HomeLauncherScreen(
                                 timeFormat = timeFormat,
                                 aiFocusReturnTick = if (isCurrentSnapshot) aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed,
+                                overlayReturnFocusTick = if (isCurrentSnapshot) combinedOverlayReturnTick else 0,
+                                onOverlayReturnConsumed = consumeOverlayReturn,
                                 onContentReady = snapshotReady,
                                 onScrolledChanged = { isContentScrolled = it },
                             )
@@ -666,8 +679,8 @@ fun HomeLauncherScreen(
                                 isNetworkAvailable = networkConnectionStatus.isAvailable,
                                 aiFocusReturnTick = if (isCurrentSnapshot) aiFocusReturnTick else 0,
                                 onAiReturnConsumed = onAiReturnConsumed,
-                                overlayReturnFocusTick = if (isCurrentSnapshot) overlayReturnFocusTick else 0,
-                                onOverlayReturnConsumed = onOverlayReturnConsumed,
+                                overlayReturnFocusTick = if (isCurrentSnapshot) combinedOverlayReturnTick else 0,
+                                onOverlayReturnConsumed = consumeOverlayReturn,
                                 onContentReady = snapshotReady,
                                 onScrolledChanged = { isContentScrolled = it },
                             )

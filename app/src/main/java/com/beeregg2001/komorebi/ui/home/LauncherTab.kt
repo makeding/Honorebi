@@ -211,8 +211,8 @@ internal fun resolveTabReturnFocus(
             }
         }
 
-        LauncherTab.LIVE, LauncherTab.ON_AIR -> TabFocusAction.FocusTab(tab, tabIndex)
+        LauncherTab.ON_AIR -> TabFocusAction.FocusTab(tab, tabIndex)
 
-        LauncherTab.VIDEO -> TabFocusAction.DelegateToTabContent()
+        LauncherTab.LIVE, LauncherTab.VIDEO -> TabFocusAction.DelegateToTabContent()
     }
 }

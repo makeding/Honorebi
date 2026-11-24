@@ -126,6 +126,21 @@ class PlaybackSessionStateTest {
     }
 
     @Test
+    fun enterMiniPlayer_marksReturningFromPlayerAndExitClearsIt() {
+        val state = PlaybackSessionState()
+        state.enterLive(channel())
+        assertFalse(state.isReturningFromPlayer)
+
+        assertTrue(state.enterMiniPlayer())
+        assertTrue(state.isMiniPlayerMode)
+        assertTrue(state.isReturningFromPlayer)
+
+        state.exitMiniPlayer()
+        assertFalse(state.isMiniPlayerMode)
+        assertFalse(state.isReturningFromPlayer)
+    }
+
+    @Test
     fun resetPlayback_onlyResetsPlaybackOwnedState() {
         val state = PlaybackSessionState()
         state.enterLive(channel())

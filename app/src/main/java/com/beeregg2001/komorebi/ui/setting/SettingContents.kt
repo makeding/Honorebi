@@ -79,15 +79,12 @@ fun GeneralSettingsContent(
     startupTab: String,
     startupFocusTargetLabel: String,
     startupChannelName: String,
-    excludePaid: String,
     startupTabR: FocusRequester,
     startupFocusTargetR: FocusRequester,
     startupChannelR: FocusRequester,
     onEditStartupTab: () -> Unit,
     onEditStartupFocusTarget: () -> Unit,
     onEditStartupChannel: () -> Unit,
-    exPaidR: FocusRequester,
-    onToggleExcludePaid: () -> Unit,
     nhkExclusionLabel: String,
     nhkExclusionR: FocusRequester,
     onEditNHKExclusion: () -> Unit,
@@ -138,7 +135,7 @@ fun GeneralSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = startupFocusTargetR
-                        down = exPaidR
+                        down = nhkExclusionR
                     },
                 onClick = { onClick(startupChannelR); onEditStartupChannel() }
             )
@@ -146,24 +143,12 @@ fun GeneralSettingsContent(
 
         SettingsSection("視聴") {
             SettingItem(
-                AppStrings.SETTINGS_ITEM_EXCLUDE_PAID,
-                excludePaid,
-                Icons.Default.Lock,
-                modifier = Modifier
-                    .focusRequester(exPaidR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = startupChannelR
-                        down = nhkExclusionR
-                    },
-                onClick = { onClick(exPaidR); onToggleExcludePaid() })
-            SettingItem(
                 "N〇K除外モード",
                 nhkExclusionLabel,
                 Icons.Default.Block,
                 modifier = Modifier.focusRequester(nhkExclusionR).focusProperties {
                     left = sidebarR
-                    up = exPaidR
+                    up = startupChannelR
                     down = FocusRequester.Cancel
                 },
                 focusedContainerColor = Color(0xFFFFE600),
@@ -268,7 +253,6 @@ fun PlaybackSettingsContent(
     liveSub: String,
     videoSub: String,
     subtitleFont: String,
-    layerOrder: String,
     audioMode: String,
     uiMode: String,
     autoCmSkip: String,
@@ -281,7 +265,6 @@ fun PlaybackSettingsContent(
     videoSubR: FocusRequester,
     subtitleFontR: FocusRequester,
     audioR: FocusRequester,
-    layerR: FocusRequester,
     uiModeR: FocusRequester,
     autoCmSkipR: FocusRequester,
     preferOriginalR: FocusRequester,
@@ -293,7 +276,6 @@ fun PlaybackSettingsContent(
     onVideoSub: () -> Unit,
     onSubtitleFont: () -> Unit,
     onAudioMode: () -> Unit,
-    onLayer: () -> Unit,
     onUiMode: () -> Unit,
     onAutoCmSkip: () -> Unit,
     onPreferOriginalMpegTs: () -> Unit,
@@ -397,23 +379,9 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = subtitleFontR
-                        down = layerR
-                    },
-                onClick = { onClick(audioR); onAudioMode() })
-        }
-        SettingsSection(AppStrings.SETTINGS_SECTION_COMMENT_LAYER) {
-            SettingItem(
-                AppStrings.SETTINGS_ITEM_SUBTITLE_COMMENT_LAYER,
-                if (layerOrder == "CommentOnTop") AppStrings.DIALOG_LAYER_COMMENT_TOP else AppStrings.DIALOG_LAYER_SUBTITLE_TOP,
-                Icons.Default.Layers,
-                modifier = Modifier
-                    .focusRequester(layerR)
-                    .focusProperties {
-                        left = sidebarR
-                        up = audioR
                         down = uiModeR
                     },
-                onClick = { onClick(layerR); onLayer() })
+                onClick = { onClick(audioR); onAudioMode() })
         }
 
         SettingsSection("プレイヤー操作・UI設定") {
@@ -425,7 +393,7 @@ fun PlaybackSettingsContent(
                     .focusRequester(uiModeR)
                     .focusProperties {
                         left = sidebarR
-                        up = layerR
+                        up = audioR
                         down = autoCmSkipR
                     },
                 onClick = { onClick(uiModeR); onUiMode() }
@@ -528,11 +496,15 @@ fun EpgSettingsContent(
 fun HomeDisplaySettingsContent(
     genre: String,
     pickupTime: String,
+    excludePaid: String,
+    showExcludePaid: Boolean,
     genreR: FocusRequester,
     timeR: FocusRequester,
+    exPaidR: FocusRequester,
     sidebarR: FocusRequester,
     onG: () -> Unit,
     onTime: () -> Unit,
+    onToggleExcludePaid: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -564,9 +536,23 @@ fun HomeDisplaySettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = genreR
-                        down = FocusRequester.Cancel
+                        down = if (showExcludePaid) exPaidR else FocusRequester.Cancel
                     },
                 onClick = { onClick(timeR); onTime() })
+            if (showExcludePaid) {
+                SettingItem(
+                    AppStrings.SETTINGS_ITEM_EXCLUDE_PAID,
+                    excludePaid,
+                    Icons.Default.Lock,
+                    modifier = Modifier
+                        .focusRequester(exPaidR)
+                        .focusProperties {
+                            left = sidebarR
+                            up = timeR
+                            down = FocusRequester.Cancel
+                        },
+                    onClick = { onClick(exPaidR); onToggleExcludePaid() })
+            }
         }
     }
 }
