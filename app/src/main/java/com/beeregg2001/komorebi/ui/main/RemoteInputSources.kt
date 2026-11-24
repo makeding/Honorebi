@@ -21,11 +21,13 @@ internal suspend fun remoteInputs(context: Context, hideEmpty: Boolean, showTune
     val permitted = context.checkSelfPermission(TifInput.READ_LISTINGS_PERMISSION) == PackageManager.PERMISSION_GRANTED
     val tuners = if (showTuners && permitted) repository.tunerInputChoices(inputs) else emptyMap()
     val ports = repository.passthroughChannels(inputs).associateBy { it.id }
+    val visiblePassthroughIds = ports.keys
     val channels = ports.toMutableMap()
     val manager = context.getSystemService(TvInputManager::class.java)
     val json = JsonArray()
     for (input in inputs) {
         val choices = tuners[input.id].orEmpty()
+        if (input.isPassthroughInput && TifInput.passthroughId(input.id) !in visiblePassthroughIds) continue
         if (!input.isPassthroughInput && !showRemoteTuner(showTuners, permitted, hideEmpty, choices.size)) continue
         val id = if (input.isPassthroughInput) TifInput.passthroughId(input.id) else input.id
         choices.forEach { channels[it.id] = it }

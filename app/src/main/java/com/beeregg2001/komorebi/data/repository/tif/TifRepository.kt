@@ -50,6 +50,37 @@ object TifInput {
 
     data class TuneTarget(val inputId: String, val channelUri: Uri)
 
+    internal data class PassthroughRelation(
+        val inputId: String,
+        val parentInputId: String?,
+        val isHdmi: Boolean,
+    )
+
+    /** A single nested HDMI source replaces its otherwise duplicate physical-port entry. */
+    internal fun visiblePassthroughIds(relations: List<PassthroughRelation>): Set<String> {
+        val hdmiIds = relations.filter { it.isHdmi }.mapTo(mutableSetOf()) { it.inputId }
+        val singleChildParents = relations
+            .filter { it.isHdmi && it.parentInputId != null && it.parentInputId in hdmiIds }
+            .groupBy { it.parentInputId }
+            .filterValues { it.size == 1 }
+            .keys
+        return relations.asSequence()
+            .filterNot { it.isHdmi && it.inputId in singleChildParents }
+            .mapTo(mutableSetOf()) { it.inputId }
+    }
+
+    internal fun visiblePassthroughInputs(infos: List<TvInputInfo>): List<TvInputInfo> {
+        val inputs = infos.filter { it.isPassthroughInput }
+        val visibleIds = visiblePassthroughIds(inputs.map { info ->
+            PassthroughRelation(
+                inputId = info.id,
+                parentInputId = info.parentId,
+                isHdmi = info.type == TvInputInfo.TYPE_HDMI,
+            )
+        })
+        return inputs.filter { it.id in visibleIds }
+    }
+
     /** OSが公開する入力ラベルを使う。独自ラベル管理は持たない。 */
     fun label(context: Context, info: TvInputInfo): String =
         info.loadCustomLabel(context)?.toString()
@@ -409,7 +440,7 @@ class TifRepository @Inject constructor(
 
     /** 入力ラベルが重複しても、表示の先頭で外部入力を区別する。 */
     internal fun passthroughChannels(infos: List<TvInputInfo>): List<Channel> {
-        val inputs = infos.filter { it.isPassthroughInput }
+        val inputs = TifInput.visiblePassthroughInputs(infos)
         val byLabel = inputs.groupBy { TifInput.label(context, it) }
         return inputs.map { info ->
             val label = TifInput.label(context, info)
