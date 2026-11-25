@@ -748,8 +748,37 @@ fun DefaultHomeGuideDialog(
 
                 var tvTweaksInstallStatus by remember { mutableStateOf<String?>(null) }
                 var isInstallingTvTweaks by remember { mutableStateOf(false) }
+                var availableTvTweaksUpdate by remember { mutableStateOf<String?>(null) }
                 val tvTweaksScope = rememberCoroutineScope()
                 val tvTweaksContext = androidx.compose.ui.platform.LocalContext.current
+                val installedTvTweaksVersionCode = remember(tvTweaksContext) {
+                    runCatching {
+                        val info = tvTweaksContext.packageManager.getPackageInfo("moe.huggy.tvtweaks", 0)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                            info.longVersionCode
+                        } else {
+                            @Suppress("DEPRECATION")
+                            info.versionCode.toLong()
+                        }
+                    }.getOrNull()
+                }
+                LaunchedEffect(environment, installedTvTweaksVersionCode) {
+                    if (environment != HomeEnvironment.GOOGLE_TV || installedTvTweaksVersionCode == null) return@LaunchedEffect
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            val jsonText = java.net.URL("https://huggy.moe/downloads/tvtweaks/latest.json").readText()
+                            val json = org.json.JSONObject(jsonText)
+                            val remoteCode = json.optLong("versionCode", 0L)
+                            val remoteName = json.optString("versionName", "")
+                            if (remoteCode > installedTvTweaksVersionCode && remoteName.isNotBlank()) {
+                                availableTvTweaksUpdate = remoteName
+                                if (tvTweaksInstallStatus == null) {
+                                    tvTweaksInstallStatus = "TVTweaks の新しいバージョン (v$remoteName) があります"
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (tvTweaksInstallStatus != null) {
                     Text(
@@ -766,8 +795,25 @@ fun DefaultHomeGuideDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                 ) {
                     if (environment == HomeEnvironment.GOOGLE_TV) {
+                        if (installedTvTweaksVersionCode != null) {
+                            DialogActionButton(
+                                DialogActionRole.Primary,
+                                onClick = {
+                                    val launchIntent = tvTweaksContext.packageManager
+                                        .getLeanbackLaunchIntentForPackage("moe.huggy.tvtweaks")
+                                        ?: tvTweaksContext.packageManager
+                                            .getLaunchIntentForPackage("moe.huggy.tvtweaks")
+                                    if (launchIntent != null) {
+                                        launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        runCatching { tvTweaksContext.startActivity(launchIntent) }
+                                    } else {
+                                        tvTweaksInstallStatus = "TVTweaks を起動できませんでした"
+                                    }
+                                },
+                            ) { Text("TVTweaks を開く") }
+                        }
                         DialogActionButton(
-                            DialogActionRole.Primary,
+                            if (installedTvTweaksVersionCode != null) DialogActionRole.Secondary else DialogActionRole.Primary,
                             onClick = {
                                 if (isInstallingTvTweaks) return@DialogActionButton
                                 isInstallingTvTweaks = true
@@ -839,7 +885,16 @@ fun DefaultHomeGuideDialog(
                                     }
                                 }
                             },
-                        ) { Text(if (isInstallingTvTweaks) "ダウンロード中…" else "TVTweaks を直接インストール") }
+                        ) {
+                            Text(
+                                when {
+                                    isInstallingTvTweaks -> "ダウンロード中…"
+                                    availableTvTweaksUpdate != null -> "TVTweaks を更新 (v$availableTvTweaksUpdate)"
+                                    installedTvTweaksVersionCode != null -> "TVTweaks を再インストール"
+                                    else -> "TVTweaks を直接インストール"
+                                },
+                            )
+                        }
                     }
                     DialogActionButton(
                         DialogActionRole.Secondary,
