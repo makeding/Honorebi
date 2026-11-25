@@ -559,6 +559,8 @@ internal fun RecordedPlayerMenus(
     isSubMenuOpen: Boolean,
     onCloseModernSettings: () -> Unit,
     onCloseSubMenu: () -> Unit,
+    onPiPRequested: () -> Unit = {},
+    onScreenOff: () -> Unit = {},
     isModern: Boolean,
 ) {
     AnimatedVisibility(
@@ -629,7 +631,9 @@ internal fun RecordedPlayerMenus(
             onKeyframeGridToggle = onOpenKeyframeGrid,
             openQuickVideosInitially = openQuickVideosInitially,
             isVisible = isSubMenuOpen,
-            onCloseMenu = onCloseSubMenu
+            onCloseMenu = onCloseSubMenu,
+            onPiPRequested = onPiPRequested,
+            onScreenOff = onScreenOff,
         )
     }
 

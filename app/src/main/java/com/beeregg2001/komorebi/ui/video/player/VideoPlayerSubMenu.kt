@@ -107,6 +107,8 @@ fun VideoTopSubMenuUI(
     openQuickVideosInitially: Boolean = false,
     isVisible: Boolean = true,
     onCloseMenu: () -> Unit,
+    onPiPRequested: () -> Unit = {},
+    onScreenOff: () -> Unit = {},
     capabilities: PlaybackUiCapabilities = PlaybackUiCapabilities.Recorded,
 ) {
     val colors = KomorebiTheme.colors
@@ -469,6 +471,28 @@ fun VideoTopSubMenuUI(
                         },
                         enabled = dataBroadcastingEnabled,
                     )
+                VideoMenuTileItem(
+                    title = "PiP",
+                    icon = Icons.Default.PictureInPictureAlt,
+                    subtitle = "小画面",
+                    onClick = {
+                        onCloseMenu()
+                        onPiPRequested()
+                    },
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = colors.textPrimary,
+                )
+                VideoMenuTileItem(
+                    title = "画面オフ",
+                    icon = Icons.Default.VisibilityOff,
+                    subtitle = "音声のみ",
+                    onClick = {
+                        onCloseMenu()
+                        onScreenOff()
+                    },
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = colors.textPrimary,
+                )
                 if (displaySettingsIntent != null) {
                     VideoMenuTileItem(
                         title = "画質設定",

@@ -83,6 +83,7 @@ internal fun SmbPlayerScreen(
     settingsViewModel: SettingsViewModel,
 ) {
     val state = rememberVideoPlayerState()
+    var isScreenOff by remember { mutableStateOf(false) }
     val fence = remember(metadata.stableId) {
         RecordedPlaybackFence(token = null, isCurrent = { true }, identity = metadata.stableId)
     }
@@ -442,6 +443,8 @@ internal fun SmbPlayerScreen(
             onVideoSelect = {},
             isVisible = isSubMenuOpen,
             onCloseMenu = { onSubMenuToggle(false) },
+            onPiPRequested = onPiPRequested,
+            onScreenOff = { isScreenOff = true },
             capabilities = PlaybackUiCapabilities.Smb,
         )
         AnimatedVisibility(
@@ -534,6 +537,11 @@ internal fun SmbPlayerScreen(
                     player.playWhenReady = true
                 },
                 onBack = onBackPressed,
+            )
+        }
+        if (isScreenOff && !isPiPMode) {
+            com.beeregg2001.komorebi.ui.player.PlayerScreenOffOverlay(
+                onDismiss = { isScreenOff = false },
             )
         }
     }

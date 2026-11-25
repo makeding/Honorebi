@@ -104,6 +104,8 @@ fun LiveTopSubMenuUI(
     onCommentToggle: () -> Unit,
     onLCropToggle: () -> Unit,
     onCloseMenu: () -> Unit,
+    onPiPRequested: () -> Unit = {},
+    onScreenOff: () -> Unit = {},
     availableQualities: List<StreamQuality> = StreamQuality.DEFAULT_QUALITIES,
     onTifSourceSelect: (() -> Unit)? = null,
     isTifSource: Boolean = false,
@@ -501,6 +503,28 @@ fun LiveTopSubMenuUI(
                     )
                 }
 
+                LiveMenuTileItem(
+                    title = "PiP",
+                    icon = Icons.Default.PictureInPictureAlt,
+                    subtitle = "小画面",
+                    onClick = {
+                        onCloseMenu()
+                        onPiPRequested()
+                    },
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = colors.textPrimary,
+                )
+                LiveMenuTileItem(
+                    title = "画面オフ",
+                    icon = Icons.Default.VisibilityOff,
+                    subtitle = "音声のみ",
+                    onClick = {
+                        onCloseMenu()
+                        onScreenOff()
+                    },
+                    modifier = Modifier.focusProperties { down = FocusRequester.Cancel },
+                    contentColor = colors.textPrimary,
+                )
                 if (displaySettingsIntent != null) {
                     LiveMenuTileItem(
                         title = "画質設定",

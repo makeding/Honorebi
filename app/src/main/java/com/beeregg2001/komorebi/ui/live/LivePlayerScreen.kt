@@ -117,6 +117,7 @@ fun LivePlayerScreen(
     val scope = rememberCoroutineScope()
 
     val ps = rememberLivePlayerState(uiContext)
+    var isScreenOff by remember { mutableStateOf(false) }
     val channelBrowserOpenTrace = remember { ChannelBrowserOpenTrace() }
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
@@ -1502,7 +1503,15 @@ fun LivePlayerScreen(
                 },
                 onCloseMenu = {
                     onSubMenuToggle(false)
-                }
+                },
+                onPiPRequested = onPiPRequested,
+                onScreenOff = { isScreenOff = true },
+            )
+        }
+
+        if (isScreenOff && !isPiPMode) {
+            com.beeregg2001.komorebi.ui.player.PlayerScreenOffOverlay(
+                onDismiss = { isScreenOff = false },
             )
         }
 

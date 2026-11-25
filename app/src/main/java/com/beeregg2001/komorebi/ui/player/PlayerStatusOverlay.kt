@@ -116,3 +116,48 @@ fun PlayerChannelStatus(
         PlayerChannelLogo(logoUrl, channelName, shouldCropLogo, Modifier.size(56.dp, 32.dp))
     }
 }
+
+/** Full-screen black overlay for audio-only playback; any key or click wakes the screen. */
+@Composable
+fun PlayerScreenOffOverlay(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    var showHint by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+        delay(3000)
+        showHint = false
+    }
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .androidx.compose.ui.focus.focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                    onDismiss()
+                }
+                true
+            }
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showHint,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
+        ) {
+            Text(
+                "画面オフ中（いずれかのキーで復帰）",
+                color = Color.White.copy(alpha = 0.45f),
+                fontSize = 14.sp,
+            )
+        }
+    }
+}

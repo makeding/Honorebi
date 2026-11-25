@@ -164,6 +164,7 @@ internal fun RecordedPlayerScreen(
     val scope = rememberCoroutineScope()
 
     var currentProgram by remember(initialProgram) { mutableStateOf(initialProgram) }
+    var isScreenOff by remember { mutableStateOf(false) }
     val fetchedDetail by videoPlayerViewModel.programDetail.collectAsState()
 
     val tiledThumbnailUrl by videoPlayerViewModel.tiledThumbnailUrl.collectAsState()
@@ -2001,7 +2002,15 @@ internal fun RecordedPlayerScreen(
                 isSubMenuOpen = isSubMenuOpen,
                 onCloseModernSettings = { ui.isModernSettingsOpen = false },
                 onCloseSubMenu = { onSubMenuToggle(false) },
+                onPiPRequested = onPiPRequested,
+                onScreenOff = { isScreenOff = true },
                 isModern = isModern
+            )
+        }
+
+        if (isScreenOff && !isPiPMode) {
+            com.beeregg2001.komorebi.ui.player.PlayerScreenOffOverlay(
+                onDismiss = { isScreenOff = false },
             )
         }
 
