@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -1692,12 +1694,21 @@ fun MainRootScreen(
                         if (usePlayerSaver) window?.setDimAmount(0f)
                         onDispose { window?.setDimAmount(previousDim) }
                     }
+                    val screensaverFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                    LaunchedEffect(Unit) {
+                        screensaverFocusRequester.requestFocus()
+                    }
                     androidx.compose.foundation.layout.Box(
-                        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-                            com.beeregg2001.komorebi.ui.screensaver.handleScreensaverKey(
-                                event.nativeKeyEvent, screensaverState::dismiss,
-                            ) { key -> context.getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(key) }
-                        }.clickable { screensaverState.dismiss() }
+                        Modifier
+                            .fillMaxSize()
+                            .focusRequester(screensaverFocusRequester)
+                            .focusable()
+                            .onPreviewKeyEvent { event ->
+                                com.beeregg2001.komorebi.ui.screensaver.handleScreensaverKey(
+                                    event.nativeKeyEvent, screensaverState::dismiss,
+                                ) { key -> context.getSystemService(android.media.AudioManager::class.java).dispatchMediaKeyEvent(key) }
+                            }
+                            .clickable { screensaverState.dismiss() }
                     ) {
                         if (usePlayerSaver) {
                             com.beeregg2001.komorebi.ui.screensaver.PlayerScreensaverContent(
