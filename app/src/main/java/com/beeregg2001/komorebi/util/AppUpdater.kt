@@ -239,17 +239,38 @@ class AppUpdater @Inject constructor(
         return installPreferences.getInt("session_id", -1) >= 0
     }
 
+    private var lastConfirmationIntent: Intent? = null
+    private var relaunchedSessionId: Int = -1
+
     /** Called only by the resumed activity, so a background download never steals the screen. */
     fun launchInstallConfirmation(activity: android.app.Activity) {
         val waiting = _updateState.value as? UpdateState.AwaitingInstallConfirmation ?: return
         val sessionId = installPreferences.getInt("session_id", -1)
+        lastConfirmationIntent = waiting.intent
         try {
             activity.startActivity(waiting.intent)
-            installPreferences.edit().remove("confirmation").commit()
             _updateState.value = UpdateState.Installing
         } catch (e: Exception) {
             Log.e("AppUpdater", "Install confirmation failed", e)
+            lastConfirmationIntent = null
             failConfirmation(sessionId, "確認画面を開けませんでした")
+        }
+    }
+
+    /**
+     * If the user was sent to "Install unknown apps" settings and returned without the system
+     * installer re-opening or reporting a result, re-surface the confirmation prompt.
+     */
+    fun onHostResumed() {
+        if (_updateState.value !is UpdateState.Installing) return
+        val sessionId = installPreferences.getInt("session_id", -1)
+        if (sessionId < 0) return
+        val sessionStillOpen = runCatching {
+            context.packageManager.packageInstaller.getSessionInfo(sessionId) != null
+        }.getOrDefault(false)
+        val intent = lastConfirmationIntent
+        if (sessionStillOpen && intent != null) {
+            _updateState.value = UpdateState.AwaitingInstallConfirmation(intent)
         }
     }
 

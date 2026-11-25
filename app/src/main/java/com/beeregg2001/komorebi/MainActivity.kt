@@ -333,6 +333,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         exitingOsPipAwaitingResume = false
         stoppedWhileInPip = false
+        appUpdater.onHostResumed()
     }
 
     override fun onStop() {
