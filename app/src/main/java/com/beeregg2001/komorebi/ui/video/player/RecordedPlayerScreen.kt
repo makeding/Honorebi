@@ -707,6 +707,13 @@ internal fun RecordedPlayerScreen(
     com.beeregg2001.komorebi.ui.screensaver.TrackPlayerIdle(exoPlayer, currentProgram.title, currentProgram.channel?.name.orEmpty())
 
 
+    LaunchedEffect(exoPlayer, isScreenOff) {
+        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, isScreenOff)
+            .build()
+    }
+
     LaunchedEffect(exoPlayer, videoPlaybackSpeedStr) {
         val saved = videoPlaybackSpeedStr.toFloatOrNull()?.takeIf { it in PLAYBACK_SPEEDS } ?: 1.0f
         vs.currentSpeed = saved

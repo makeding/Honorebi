@@ -1509,6 +1509,13 @@ fun LivePlayerScreen(
             )
         }
 
+        LaunchedEffect(player, isScreenOff) {
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, isScreenOff)
+                .build()
+        }
+
         if (isScreenOff && !isPiPMode) {
             com.beeregg2001.komorebi.ui.player.PlayerScreenOffOverlay(
                 onDismiss = { isScreenOff = false },

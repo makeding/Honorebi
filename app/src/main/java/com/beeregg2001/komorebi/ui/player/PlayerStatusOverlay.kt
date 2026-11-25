@@ -123,11 +123,20 @@ fun PlayerScreenOffOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val isFirstTime = remember(context) {
+        val prefs = context.getSharedPreferences("komorebi_player_hints", android.content.Context.MODE_PRIVATE)
+        val seen = prefs.getBoolean("screen_off_hint_seen", false)
+        if (!seen) {
+            prefs.edit().putBoolean("screen_off_hint_seen", true).apply()
+        }
+        !seen
+    }
     var showHint by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
-        delay(3000)
+        delay(if (isFirstTime) 6000L else 3000L)
         showHint = false
     }
     Box(
@@ -153,11 +162,25 @@ fun PlayerScreenOffOverlay(
             enter = androidx.compose.animation.fadeIn(),
             exit = androidx.compose.animation.fadeOut(),
         ) {
-            Text(
-                "画面オフ中（いずれかのキーで復帰）",
-                color = Color.White.copy(alpha = 0.45f),
-                fontSize = 14.sp,
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 48.dp),
+            ) {
+                Text(
+                    "画面オフ中（いずれかのキーで復帰）",
+                    color = Color.White.copy(alpha = 0.45f),
+                    fontSize = 14.sp,
+                )
+                if (isFirstTime) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "※システムの制限により画面を完全に消灯できないため、テレビ側の設定に「スマートバックライト調整」や「自動調光」などがある場合は有効にすることをおすすめします。",
+                        color = Color.White.copy(alpha = 0.35f),
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
         }
     }
 }

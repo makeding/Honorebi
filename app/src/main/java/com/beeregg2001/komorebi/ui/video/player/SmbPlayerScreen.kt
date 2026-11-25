@@ -253,6 +253,13 @@ internal fun SmbPlayerScreen(
         durationMs = durationMs,
     )
     LaunchedEffect(showControls) { if (!showControls) state.directionalSeek.cancel() }
+    LaunchedEffect(player, isScreenOff) {
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, isScreenOff)
+            .build()
+    }
+
     BackHandler(enabled = isPiPMode) {}
     BackHandler(enabled = !isPiPMode && sourceRequest != PlaybackSourceRequest.Ready) {
         onBackPressed()
