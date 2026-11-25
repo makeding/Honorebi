@@ -264,12 +264,13 @@ class AppUpdater @Inject constructor(
     fun onHostResumed() {
         if (_updateState.value !is UpdateState.Installing) return
         val sessionId = installPreferences.getInt("session_id", -1)
-        if (sessionId < 0) return
+        if (sessionId < 0 || sessionId == relaunchedSessionId) return
         val sessionStillOpen = runCatching {
             context.packageManager.packageInstaller.getSessionInfo(sessionId) != null
         }.getOrDefault(false)
         val intent = lastConfirmationIntent
         if (sessionStillOpen && intent != null) {
+            relaunchedSessionId = sessionId
             _updateState.value = UpdateState.AwaitingInstallConfirmation(intent)
         }
     }

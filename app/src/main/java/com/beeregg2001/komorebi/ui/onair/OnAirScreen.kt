@@ -180,8 +180,12 @@ fun OnAirScreen(
     val vScroll = rememberScrollState()
     var freshEntryPrepared by remember(viewModel) { mutableStateOf(isReturningFromPlayer) }
 
-    val initialDay = remember(byWeekday, state.selectedWeekday) {
-        val preferred = state.selectedWeekday
+    val initialDay = remember(byWeekday, state.selectedWeekday, timeFormat) {
+        val preferred = if (timeFormat == ProgramTimeFormatter.TWENTY_EIGHT_HOUR && nowJst.hour < 4) {
+            (state.selectedWeekday + 6) % 7
+        } else {
+            state.selectedWeekday
+        }
         if (byWeekday.getOrNull(preferred)?.isNotEmpty() == true) preferred
         else byWeekday.indexOfFirst { it.isNotEmpty() }
     }
@@ -436,22 +440,24 @@ fun OnAirScreen(
             label = "onair-list-detail",
         ) { detailContent ->
             if (detailContent != null) {
-                OnAirDetail(
-                    series = state.series.first { it.id == detailContent.seriesId },
-                    detail = detailContent,
-                    state = state,
-                    viewModel = viewModel,
-                    ip = konomiIp, port = konomiPort,
-                    timeFormat = timeFormat,
-                    returnCell = returnCell,
-                    waitingForPlayerReturn = isReturningFromPlayer,
-                    onRestored = { returnCell = null; onReturnFocusConsumed() },
-                    onProgram = onProgramClick,
-                    onBack = ::closeDetail,
-                    leftNavFocusRequester = leftNavFocusRequester,
-                    entryFocusRequester = initialFocusRequester,
-                    modifier = Modifier.fillMaxSize().testTag("onair-details"),
-                )
+                key(detailContent.seriesId) {
+                    OnAirDetail(
+                        series = state.series.first { it.id == detailContent.seriesId },
+                        detail = detailContent,
+                        state = state,
+                        viewModel = viewModel,
+                        ip = konomiIp, port = konomiPort,
+                        timeFormat = timeFormat,
+                        returnCell = returnCell,
+                        waitingForPlayerReturn = isReturningFromPlayer,
+                        onRestored = { returnCell = null; onReturnFocusConsumed() },
+                        onProgram = onProgramClick,
+                        onBack = ::closeDetail,
+                        leftNavFocusRequester = leftNavFocusRequester,
+                        entryFocusRequester = initialFocusRequester,
+                        modifier = Modifier.fillMaxSize().testTag("onair-details"),
+                    )
+                }
             } else {
                 Column(Modifier.fillMaxSize()) {
                     val isLoading = state.listStatus == OnAirLoadState.Loading || state.listStatus == OnAirLoadState.Idle
