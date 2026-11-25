@@ -21,7 +21,7 @@ object LauncherEnvironmentDetector {
     private const val ANDROID_TV_LAUNCHER = "com.google.android.leanbacklauncher"
     private const val CHROMECAST_SHELL = "com.google.android.apps.mediashell"
 
-    const val TV_TWEAKS_URL = "https://tvtweaks.huggy.moe"
+    const val TV_TWEAKS_URL = "https://huggy.moe/p/tvtweaks/"
 
     fun detect(context: Context): HomeEnvironment {
         val pm = context.packageManager

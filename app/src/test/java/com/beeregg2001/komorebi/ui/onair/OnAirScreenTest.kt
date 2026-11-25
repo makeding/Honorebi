@@ -204,6 +204,27 @@ class OnAirScreenTest {
         assertEquals(headerAfter.left, stationAfter.left, .1f)
     }
 
+    @Test
+    fun groupOnAirSeriesByWeekdayShiftsAndSorts28H() {
+        val list = listOf(
+            OnAirSeries(1, "火曜20:30", emptyList(), emptyList(), 0, 0, 0, 1, "20:30", ""),
+            OnAirSeries(2, "水曜00:00", emptyList(), emptyList(), 0, 0, 0, 2, "00:00", ""),
+            OnAirSeries(3, "水曜00:30", emptyList(), emptyList(), 0, 0, 0, 2, "00:30", ""),
+            OnAirSeries(4, "水曜04:00", emptyList(), emptyList(), 0, 0, 0, 2, "04:00", ""),
+            OnAirSeries(5, "水曜22:00", emptyList(), emptyList(), 0, 0, 0, 2, "22:00", ""),
+            OnAirSeries(6, "月曜01:00", emptyList(), emptyList(), 0, 0, 0, 0, "01:00", ""),
+        )
+        val grouped28H = groupOnAirSeriesByWeekday(list, "28H")
+        assertEquals(listOf(1, 2, 3), grouped28H[1].map { it.id })
+        assertEquals(listOf(4, 5), grouped28H[2].map { it.id })
+        assertEquals(listOf(6), grouped28H[6].map { it.id })
+
+        val grouped24H = groupOnAirSeriesByWeekday(list, "24H")
+        assertEquals(listOf(6), grouped24H[0].map { it.id })
+        assertEquals(listOf(1), grouped24H[1].map { it.id })
+        assertEquals(listOf(2, 3, 4, 5), grouped24H[2].map { it.id })
+    }
+
     private fun androidx.compose.ui.test.SemanticsNodeInteraction.confirm() =
         requestFocus().performKeyInput { keyDown(Key.DirectionCenter); keyUp(Key.DirectionCenter) }
 

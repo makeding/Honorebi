@@ -524,7 +524,8 @@ private fun SeriesSummaryPanel(
     val jpSummary = summary?.bangumiSubjectSummary?.takeIf(String::isNotBlank)
         ?: summary?.description?.takeIf(String::isNotBlank)
     val poster = summary?.bangumiSubjectImageUrl?.takeIf(String::isNotBlank)
-    val weekdayName = listOf("月", "火", "水", "木", "金", "土", "日").getOrElse(series.weekday) { "" }
+    val weekdayName = listOf("月", "火", "水", "木", "金", "土", "日")
+        .getOrElse(displayBroadcastWeekday(series.weekday, series.broadcastTime, timeFormat)) { "" }
 
     Surface(
         onClick = onToggleExpanded,

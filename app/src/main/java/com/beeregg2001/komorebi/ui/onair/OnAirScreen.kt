@@ -173,8 +173,8 @@ fun OnAirScreen(
     val expanded = state.expanded?.takeIf { detail -> state.series.any { it.id == detail.seriesId } }
 
     // HonomiTV と同じ週間グリッド: 曜日ごとの縦リストを横に並べ、全体をまとめて縦横スクロールする。
-    val byWeekday = remember(state.series) {
-        (0..6).map { day -> state.series.filter { it.weekday == day } }
+    val byWeekday = remember(state.series, timeFormat) {
+        groupOnAirSeriesByWeekday(state.series, timeFormat)
     }
     val hScroll = rememberScrollState()
     val vScroll = rememberScrollState()
@@ -997,3 +997,44 @@ private fun thumbnailUrl(ip: String, port: String, id: Int): String =
 internal fun displayBroadcastTime(value: String, format: String): String = runCatching {
     ProgramTimeFormatter.formatTime(LocalTime.parse(value), format)
 }.getOrDefault(value.ifBlank { "時刻未登録" })
+
+internal fun displayBroadcastWeekday(
+    weekday: Int,
+    broadcastTime: String,
+    timeFormat: String,
+): Int {
+    if (timeFormat != ProgramTimeFormatter.TWENTY_EIGHT_HOUR) return weekday
+    val parsed = runCatching { LocalTime.parse(broadcastTime) }.getOrNull() ?: return weekday
+    return if (parsed.hour < 4) (weekday + 6) % 7 else weekday
+}
+
+internal fun groupOnAirSeriesByWeekday(
+    series: List<OnAirSeries>,
+    timeFormat: String,
+): List<List<OnAirSeries>> {
+    val is28Hour = timeFormat == ProgramTimeFormatter.TWENTY_EIGHT_HOUR
+    val grouped = List(7) { mutableListOf<Pair<Int, OnAirSeries>>() }
+    series.forEach { item ->
+        val parsed = runCatching { LocalTime.parse(item.broadcastTime) }.getOrNull()
+        val isLateNightShift = is28Hour && parsed != null && parsed.hour < 4
+        val displayDay = displayBroadcastWeekday(item.weekday, item.broadcastTime, timeFormat)
+        val sortMinutes = when {
+            parsed == null -> Int.MAX_VALUE
+            isLateNightShift -> (parsed.hour + 24) * 60 + parsed.minute
+            else -> parsed.hour * 60 + parsed.minute
+        }
+        if (displayDay in 0..6) {
+            grouped[displayDay].add(sortMinutes to item)
+        }
+    }
+    return grouped.map { dayItems ->
+        dayItems.sortedWith(
+            compareBy<Pair<Int, OnAirSeries>>(
+                { it.first },
+                { it.second.broadcastTime },
+                { it.second.title },
+                { it.second.id },
+            ),
+        ).map { it.second }
+    }
+}
