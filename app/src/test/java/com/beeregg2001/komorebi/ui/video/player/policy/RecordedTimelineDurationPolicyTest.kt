@@ -55,6 +55,20 @@ class RecordedTimelineDurationPolicyTest {
     }
 
     @Test
+    fun rawMmts_returnsZeroBeforeNativeDurationIsKnownEvenWithResumePosition() {
+        assertEquals(
+            0L,
+            resolveCompletedRecordingTimelineDurationMs(
+                usesNativeMmtDuration = true,
+                konomiReportedDurationMs = 3_600_000L,
+                nativePlayerDurationMs = 0L,
+                playbackPositionMs = 421_482L,
+                bufferedPositionMs = 423_274L,
+            )
+        )
+    }
+
+    @Test
     fun rawMmts_resumePositionCannotDriveAutomationBeforeNativeDurationIsKnown() {
         assertEquals(
             0L,

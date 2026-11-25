@@ -12,12 +12,18 @@ fun resolveCompletedRecordingTimelineDurationMs(
     nativePlayerDurationMs: Long,
     playbackPositionMs: Long,
     bufferedPositionMs: Long,
-): Long = maxOf(
-    if (usesNativeMmtDuration) 0L else konomiReportedDurationMs,
-    nativePlayerDurationMs,
-    playbackPositionMs,
-    bufferedPositionMs,
-).coerceAtLeast(0L)
+): Long {
+    val baseDurationMs = maxOf(
+        if (usesNativeMmtDuration) 0L else konomiReportedDurationMs,
+        nativePlayerDurationMs,
+    ).coerceAtLeast(0L)
+    if (baseDurationMs <= 0L) return 0L
+    return maxOf(
+        baseDurationMs,
+        playbackPositionMs,
+        bufferedPositionMs,
+    )
+}
 
 /**
  * Resolves the duration that may drive automatic end-of-playback behavior.
