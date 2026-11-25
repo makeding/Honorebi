@@ -51,12 +51,26 @@ object LauncherEnvironmentDetector {
         else -> HomeEnvironment.UNKNOWN
     }
 
+    private const val PREFS_NAME = "komorebi_launcher"
+    private const val KEY_TV_TWEAKS_HOME_ACTIVE = "tvtweaks_home_active"
+
+    fun markTvTweaksHomeActive(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_TV_TWEAKS_HOME_ACTIVE, true)
+            .apply()
+    }
+
+    fun isTvTweaksHomeActive(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_TV_TWEAKS_HOME_ACTIVE, false)
+
     fun isDefaultHome(context: Context): Boolean {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         val resolved = runCatching {
             context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
         }.getOrNull()
-        return resolved?.activityInfo?.packageName == context.packageName
+        return resolved?.activityInfo?.packageName == context.packageName || isTvTweaksHomeActive(context)
     }
 
     /** Opens the system Home-app picker. Returns false when the OEM hides/removes the screen. */

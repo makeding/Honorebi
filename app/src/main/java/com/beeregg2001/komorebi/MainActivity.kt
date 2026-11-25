@@ -50,13 +50,22 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deepLinkDispatcher: DeepLinkDispatcher
 
     private var homeIntentVersion by mutableIntStateOf(0)
+    private var settingsIntentVersion by mutableIntStateOf(0)
     var cecHomeAction: (() -> Unit)? = null
+    var cecSettingsAction: (() -> Unit)? = null
     var cecKeyAction: ((KeyEvent) -> Boolean)? = null
     private val homeKeyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "moe.huggy.tvtweaks.action.HOME") {
-                val cecAction = cecHomeAction
-                if (cecAction != null) cecAction() else homeIntentVersion++
+            when (intent?.action) {
+                "moe.huggy.tvtweaks.action.HOME" -> {
+                    context?.let(com.beeregg2001.komorebi.ui.setting.LauncherEnvironmentDetector::markTvTweaksHomeActive)
+                    val cecAction = cecHomeAction
+                    if (cecAction != null) cecAction() else homeIntentVersion++
+                }
+                "moe.huggy.tvtweaks.action.SETTINGS" -> {
+                    val cecAction = cecSettingsAction
+                    if (cecAction != null) cecAction() else settingsIntentVersion++
+                }
             }
         }
     }
@@ -126,8 +135,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_Komorebi)
         super.onCreate(savedInstanceState)
+        val tvTweaksFilter = IntentFilter().apply {
+            addAction("moe.huggy.tvtweaks.action.HOME")
+            addAction("moe.huggy.tvtweaks.action.SETTINGS")
+        }
         ContextCompat.registerReceiver(this, homeKeyReceiver,
-            IntentFilter("moe.huggy.tvtweaks.action.HOME"), ContextCompat.RECEIVER_EXPORTED)
+            tvTweaksFilter, ContextCompat.RECEIVER_EXPORTED)
 
         val launchedFromDeepLink = savedInstanceState == null && deepLinkDispatcher.dispatch(intent)
 
@@ -162,6 +175,7 @@ class MainActivity : ComponentActivity() {
                     homeViewModel = homeViewModel,
                     recordViewModel = recordViewModel,
                     homeIntentVersion = homeIntentVersion,
+                    settingsIntentVersion = settingsIntentVersion,
                     launchedFromDeepLink = launchedFromDeepLink,
                     deepLinkRequests = deepLinkDispatcher.requests,
                     onRemotePlaybackOpened = ::showRemotePlayback,

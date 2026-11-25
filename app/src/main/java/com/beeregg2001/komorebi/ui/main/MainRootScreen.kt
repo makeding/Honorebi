@@ -71,6 +71,7 @@ fun MainRootScreen(
     remoteControlViewModel: RemoteControlViewModel = hiltViewModel(),
     notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
     homeIntentVersion: Int = 0,
+    settingsIntentVersion: Int = 0,
     launchedFromDeepLink: Boolean = false,
     deepLinkRequests: Flow<PlaybackOpenRequest> = emptyFlow(),
     onRemotePlaybackOpened: () -> Unit = {},
@@ -837,6 +838,12 @@ fun MainRootScreen(
                 settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
             }
             returnToLauncherHome()
+        }
+    }
+
+    LaunchedEffect(settingsIntentVersion) {
+        if (settingsIntentVersion > 0) {
+            state.isSettingsOpen = true
         }
     }
 
