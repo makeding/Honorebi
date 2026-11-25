@@ -117,6 +117,14 @@ fun PlayerChannelStatus(
     }
 }
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+
 /** Full-screen black overlay for audio-only playback; any key or click wakes the screen. */
 @Composable
 fun PlayerScreenOffOverlay(
@@ -124,7 +132,7 @@ fun PlayerScreenOffOverlay(
     modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusRequester = remember { FocusRequester() }
     val isFirstTime = remember(context) {
         val prefs = context.getSharedPreferences("komorebi_player_hints", android.content.Context.MODE_PRIVATE)
         val seen = prefs.getBoolean("screen_off_hint_seen", false)
@@ -143,10 +151,10 @@ fun PlayerScreenOffOverlay(
         modifier
             .fillMaxSize()
             .background(Color.Black)
-            .androidx.compose.ui.focus.focusRequester(focusRequester)
+            .focusRequester(focusRequester)
             .focusable()
             .onPreviewKeyEvent { event ->
-                if (event.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) {
+                if (event.type == KeyEventType.KeyDown) {
                     onDismiss()
                 }
                 true

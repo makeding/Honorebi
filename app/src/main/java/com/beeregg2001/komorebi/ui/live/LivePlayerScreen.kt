@@ -1509,11 +1509,13 @@ fun LivePlayerScreen(
             )
         }
 
-        LaunchedEffect(player, isScreenOff) {
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, isScreenOff)
-                .build()
+        LaunchedEffect(mainPlayer, isScreenOff) {
+            mainPlayer?.let { player ->
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, isScreenOff)
+                    .build()
+            }
         }
 
         if (isScreenOff && !isPiPMode) {
