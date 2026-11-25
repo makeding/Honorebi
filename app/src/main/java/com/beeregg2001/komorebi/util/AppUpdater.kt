@@ -250,6 +250,12 @@ class AppUpdater @Inject constructor(
         try {
             activity.startActivity(waiting.intent)
             _updateState.value = UpdateState.Installing
+            runCatching {
+                context.sendBroadcast(
+                    Intent("moe.huggy.tvtweaks.action.OTA_UPDATING")
+                        .putExtra("package_name", context.packageName),
+                )
+            }
         } catch (e: Exception) {
             Log.e("AppUpdater", "Install confirmation failed", e)
             lastConfirmationIntent = null

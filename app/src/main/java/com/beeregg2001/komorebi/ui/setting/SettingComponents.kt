@@ -746,12 +746,101 @@ fun DefaultHomeGuideDialog(
                     }
                 }
 
+                var tvTweaksInstallStatus by remember { mutableStateOf<String?>(null) }
+                var isInstallingTvTweaks by remember { mutableStateOf(false) }
+                val tvTweaksScope = rememberCoroutineScope()
+                val tvTweaksContext = androidx.compose.ui.platform.LocalContext.current
+
+                if (tvTweaksInstallStatus != null) {
+                    Text(
+                        tvTweaksInstallStatus!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp, bottom = 2.dp),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                 ) {
+                    if (environment == HomeEnvironment.GOOGLE_TV) {
+                        DialogActionButton(
+                            DialogActionRole.Primary,
+                            onClick = {
+                                if (isInstallingTvTweaks) return@DialogActionButton
+                                isInstallingTvTweaks = true
+                                tvTweaksInstallStatus = "TVTweaks をダウンロード中…"
+                                tvTweaksScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    val result = runCatching {
+                                        val apkUrl = runCatching {
+                                            val jsonText = java.net.URL("https://huggy.moe/downloads/tvtweaks/latest.json").readText()
+                                            org.json.JSONObject(jsonText).optString("apkUrl")
+                                                .ifBlank { "https://huggy.moe/downloads/tvtweaks/tvtweaks-release-0.1.0.apk" }
+                                        }.getOrDefault("https://huggy.moe/downloads/tvtweaks/tvtweaks-release-0.1.0.apk")
+
+                                        val installer = tvTweaksContext.packageManager.packageInstaller
+                                        val params = android.content.pm.PackageInstaller.SessionParams(
+                                            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL,
+                                        )
+                                        val sessionId = installer.createSession(params)
+                                        installer.openSession(sessionId).use { session ->
+                                            java.net.URL(apkUrl).openStream().use { input ->
+                                                session.openWrite("tvtweaks.apk", 0, -1).use { out ->
+                                                    input.copyTo(out)
+                                                    session.fsync(out)
+                                                }
+                                            }
+                                            val action = "com.beeregg2001.komorebi.TVTWEAKS_INSTALL"
+                                            val receiver = object : android.content.BroadcastReceiver() {
+                                                override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
+                                                    if (intent?.action != action) return
+                                                    val status = intent.getIntExtra(
+                                                        android.content.pm.PackageInstaller.EXTRA_STATUS,
+                                                        android.content.pm.PackageInstaller.STATUS_FAILURE,
+                                                    )
+                                                    if (status == android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                                                        @Suppress("DEPRECATION")
+                                                        val confirm = intent.getParcelableExtra<android.content.Intent>(android.content.Intent.EXTRA_INTENT)
+                                                        if (confirm != null) {
+                                                            confirm.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                            runCatching { tvTweaksContext.startActivity(confirm) }
+                                                        }
+                                                    } else {
+                                                        runCatching { tvTweaksContext.unregisterReceiver(this) }
+                                                        isInstallingTvTweaks = false
+                                                        tvTweaksInstallStatus = if (status == android.content.pm.PackageInstaller.STATUS_SUCCESS) {
+                                                            "TVTweaks のインストールが完了しました"
+                                                        } else {
+                                                            "インストールに失敗しました ($status)"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            androidx.core.content.ContextCompat.registerReceiver(
+                                                tvTweaksContext,
+                                                receiver,
+                                                android.content.IntentFilter(action),
+                                                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+                                            )
+                                            val pi = android.app.PendingIntent.getBroadcast(
+                                                tvTweaksContext,
+                                                sessionId,
+                                                android.content.Intent(action).setPackage(tvTweaksContext.packageName),
+                                                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
+                                            )
+                                            session.commit(pi.intentSender)
+                                        }
+                                    }
+                                    if (result.isFailure) {
+                                        isInstallingTvTweaks = false
+                                        tvTweaksInstallStatus = "ダウンロードに失敗しました: ${result.exceptionOrNull()?.message}"
+                                    }
+                                }
+                            },
+                        ) { Text(if (isInstallingTvTweaks) "ダウンロード中…" else "TVTweaks を直接インストール") }
+                    }
                     DialogActionButton(
                         DialogActionRole.Secondary,
                         onDismiss,
