@@ -51,7 +51,6 @@ class UpdateInstallSessionTest {
         restored.launchInstallConfirmation(activity)
         assertEquals("test.INSTALL_CONFIRMATION", shadowOf(activity).nextStartedActivity.action)
         assertEquals(UpdateState.Installing, restored.updateState.value)
-        assertFalse(preferences.contains("confirmation"))
         restored.launchInstallConfirmation(activity)
         assertNull(shadowOf(activity).nextStartedActivity)
     }

@@ -102,7 +102,8 @@ class RecordedPlayerLayoutTest {
         }
         for (selected in com.beeregg2001.komorebi.data.PlayerClockMode.entries) {
             composeRule.runOnIdle { mode.value = selected }
-            if (selected == com.beeregg2001.komorebi.data.PlayerClockMode.ALWAYS_ON)
+            if (selected == com.beeregg2001.komorebi.data.PlayerClockMode.ALWAYS_ON ||
+                selected == com.beeregg2001.komorebi.data.PlayerClockMode.EXCEPT_NEWS)
                 composeRule.onNodeWithTag("smb-wall-clock").assertIsDisplayed()
             else composeRule.onNodeWithTag("smb-wall-clock").assertDoesNotExist()
         }

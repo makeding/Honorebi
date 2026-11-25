@@ -1,20 +1,20 @@
 {
-  "versionCode": 40,
-  "versionName": "1.2.5-huggy",
-  "releaseNotes": "Honorebi 1.2.5。READ_TV_LISTINGS権限がない場合のクラッシュ修正、無信号・未接続入力の自動非表示、MediaTek HDMI CEC制御・長押し戻る操作、視聴履歴のチャンネル情報補完などに対応しました。",
-  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.5-huggy/app-universal-release.apk",
+  "versionCode": 41,
+  "versionName": "1.2.6-huggy",
+  "releaseNotes": "Honorebi 1.2.6。画面オフ再生・PiP対応、録画タイムライン長計算の修正、スクリーンセーバー操作性改善、放送中シリーズの曜日判定改善、TVTweaksインストール連携、アップデータの安定化を行いました。",
+  "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.6-huggy/app-universal-release.apk",
   "apkUrls": {
-    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.5-huggy/app-arm64-v8a-release.apk",
-    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.5-huggy/app-armeabi-v7a-release.apk"
+    "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.6-huggy/app-arm64-v8a-release.apk",
+    "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.6-huggy/app-armeabi-v7a-release.apk"
   },
   "beta": {
-    "versionCode": 40,
-    "versionName": "1.2.5-huggy",
-    "releaseNotes": "Honorebi 1.2.5。READ_TV_LISTINGS権限がない場合のクラッシュ修正、無信号・未接続入力の自動非表示、MediaTek HDMI CEC制御・長押し戻る操作、視聴履歴のチャンネル情報補完などに対応しました。",
-    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.5-huggy/app-universal-release.apk",
+    "versionCode": 41,
+    "versionName": "1.2.6-huggy",
+    "releaseNotes": "Honorebi 1.2.6。画面オフ再生・PiP対応、録画タイムライン長計算の修正、スクリーンセーバー操作性改善、放送中シリーズの曜日判定改善、TVTweaksインストール連携、アップデータの安定化を行いました。",
+    "apkUrl": "https://github.com/makeding/Honorebi/releases/download/v1.2.6-huggy/app-universal-release.apk",
     "apkUrls": {
-      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.5-huggy/app-arm64-v8a-release.apk",
-      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.5-huggy/app-armeabi-v7a-release.apk"
+      "arm64-v8a": "https://github.com/makeding/Honorebi/releases/download/v1.2.6-huggy/app-arm64-v8a-release.apk",
+      "armeabi-v7a": "https://github.com/makeding/Honorebi/releases/download/v1.2.6-huggy/app-armeabi-v7a-release.apk"
     }
   }
 }
