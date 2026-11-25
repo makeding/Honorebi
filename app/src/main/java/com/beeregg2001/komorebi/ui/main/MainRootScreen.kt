@@ -1692,7 +1692,29 @@ fun MainRootScreen(
                         val window = (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
                         val previousDim = window?.attributes?.dimAmount ?: 0f
                         if (usePlayerSaver) window?.setDimAmount(0f)
-                        onDispose { window?.setDimAmount(previousDim) }
+                        val originalCallback = window?.callback
+                        if (window != null && originalCallback != null) {
+                            window.callback = object : android.view.Window.Callback by originalCallback {
+                                override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                                    if (com.beeregg2001.komorebi.ui.screensaver.handleScreensaverKey(
+                                            event, screensaverState::dismiss,
+                                        ) { key ->
+                                            context.getSystemService(android.media.AudioManager::class.java)
+                                                .dispatchMediaKeyEvent(key)
+                                        }
+                                    ) {
+                                        return true
+                                    }
+                                    return originalCallback.dispatchKeyEvent(event)
+                                }
+                            }
+                        }
+                        onDispose {
+                            if (window != null && originalCallback != null && window.callback !== originalCallback) {
+                                window.callback = originalCallback
+                            }
+                            window?.setDimAmount(previousDim)
+                        }
                     }
                     val screensaverFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
                     LaunchedEffect(Unit) {

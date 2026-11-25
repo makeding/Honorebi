@@ -141,6 +141,30 @@ fun PlayerScreenOffOverlay(
         !seen
     }
     var showHint by remember { mutableStateOf(true) }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    DisposableEffect(context) {
+        var ctx: android.content.Context? = context
+        while (ctx is android.content.ContextWrapper && ctx !is android.app.Activity) {
+            ctx = ctx.baseContext
+        }
+        val window = (ctx as? android.app.Activity)?.window
+        val originalCallback = window?.callback
+        if (window != null && originalCallback != null) {
+            window.callback = object : android.view.Window.Callback by originalCallback {
+                override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                    if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                        currentOnDismiss()
+                    }
+                    return true
+                }
+            }
+        }
+        onDispose {
+            if (window != null && originalCallback != null && window.callback !== originalCallback) {
+                window.callback = originalCallback
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
         delay(if (isFirstTime) 6000L else 3000L)
