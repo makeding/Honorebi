@@ -176,6 +176,7 @@ fun HomeContents(
                     .padding(start = TvContentPaddingStart, end = TvContentPaddingEnd),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                val isHomeLoading by homeViewModel.isLoading.collectAsState()
                 QuickResumeHeroCard(
                     watchHistory = watchHistory,
                     recentRecordings = recentRecordings,
@@ -183,6 +184,7 @@ fun HomeContents(
                     hotChannels = hotChannels,
                     groupedChannels = groupedChannels,
                     timeFormat = timeFormat,
+                    isLoading = isHomeLoading,
                     onHistoryClick = {
                         clearLastClickedSection()
                         onHistoryClick(it)

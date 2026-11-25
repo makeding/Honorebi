@@ -118,6 +118,7 @@ fun QuickResumeHeroCard(
     hotChannels: List<UiChannelState>,
     groupedChannels: Map<String, List<Channel>>,
     timeFormat: String,
+    isLoading: Boolean = false,
     onHistoryClick: (KonomiHistoryProgram) -> Unit,
     onChannelClick: (Channel) -> Unit,
     onNavigateToTab: (String) -> Unit,
@@ -132,6 +133,7 @@ fun QuickResumeHeroCard(
         hotChannels,
         groupedChannels,
         timeFormat,
+        isLoading,
     ) {
         val allChannels = groupedChannels.values.flatten()
         val firstHistory = watchHistory.firstOrNull()
@@ -191,7 +193,7 @@ fun QuickResumeHeroCard(
                 )
             }
 
-            firstHot != null -> {
+            !isLoading && firstHot != null -> {
                 QuickResumeTarget.Live(
                     channel = firstHot.channel,
                     programTitle = firstHot.programTitle.ifBlank { firstHot.name },
