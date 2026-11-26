@@ -22,6 +22,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+const val STANDBY_AUTO_RESUME_THRESHOLD_MS = 60_000L
+
+fun shouldAutoResumeAfterStandby(standbyDurationMs: Long): Boolean =
+    standbyDurationMs in 0L..STANDBY_AUTO_RESUME_THRESHOLD_MS
+
 /** Shared boundary for idle, network snapshots, and backend recovery. */
 @Stable
 internal class AppWakeState {

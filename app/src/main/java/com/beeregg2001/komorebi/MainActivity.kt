@@ -13,7 +13,9 @@ import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import android.util.Rational
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
             when (intent?.action) {
                 "moe.huggy.tvtweaks.action.HOME" -> {
                     context?.let(com.beeregg2001.komorebi.ui.setting.LauncherEnvironmentDetector::markTvTweaksHomeActive)
+                    if (shouldSuppressStandbyHomeIntent("tvtweaks.HOME")) return
                     val cecAction = cecHomeAction
                     if (cecAction != null) cecAction() else homeIntentVersion++
                 }
@@ -69,6 +72,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    private val powerManager: PowerManager? by lazy {
+        getSystemService(PowerManager::class.java)
+    }
+    private var stoppedDuringStandby = false
+    private var pendingStandbyWakeHomeGraceUntilUptimeMs = 0L
     private var isInOsPip by mutableStateOf(false)
     private var osPipDismissVersion by mutableIntStateOf(0)
     private var osPipEligible = false
@@ -329,8 +337,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun shouldSuppressStandbyHomeIntent(source: String): Boolean {
+        if (powerManager?.isInteractive == false) {
+            Log.i(TAG, "Suppressing $source while non-interactive")
+            return true
+        }
+        if (stoppedDuringStandby) {
+            stoppedDuringStandby = false
+            pendingStandbyWakeHomeGraceUntilUptimeMs = 0L
+            Log.i(TAG, "Suppressing $source right after standby")
+            return true
+        }
+        val now = SystemClock.uptimeMillis()
+        if (pendingStandbyWakeHomeGraceUntilUptimeMs > now) {
+            pendingStandbyWakeHomeGraceUntilUptimeMs = 0L
+            Log.i(TAG, "Suppressing wake-up $source within grace window")
+            return true
+        }
+        return false
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (powerManager?.isInteractive == false) {
+            stoppedDuringStandby = true
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        if (stoppedDuringStandby) {
+            stoppedDuringStandby = false
+            pendingStandbyWakeHomeGraceUntilUptimeMs = SystemClock.uptimeMillis() + WAKE_HOME_INTENT_GRACE_MS
+        }
         exitingOsPipAwaitingResume = false
         stoppedWhileInPip = false
         appUpdater.onHostResumed()
@@ -338,6 +377,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        if (powerManager?.isInteractive == false) {
+            stoppedDuringStandby = true
+        }
         if (isInOsPip) {
             stoppedWhileInPip = true
         } else if (exitingOsPipAwaitingResume) {
@@ -354,6 +396,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            if (shouldSuppressStandbyHomeIntent("onNewIntent.HOME")) return
             val cecAction = cecHomeAction
             if (cecAction != null) cecAction() else homeIntentVersion++
         } else {
@@ -362,6 +405,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val TAG = "MainActivity"
+        private const val WAKE_HOME_INTENT_GRACE_MS = 3_000L
         private const val ACTION_PIP_PLAY_PAUSE = "com.beeregg2001.komorebi.action.PIP_PLAY_PAUSE"
         private const val ACTION_PIP_REWIND = "com.beeregg2001.komorebi.action.PIP_REWIND"
         private const val ACTION_PIP_FORWARD = "com.beeregg2001.komorebi.action.PIP_FORWARD"

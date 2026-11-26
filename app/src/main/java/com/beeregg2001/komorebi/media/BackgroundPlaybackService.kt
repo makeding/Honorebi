@@ -39,12 +39,14 @@ class BackgroundPlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                Log.i(TAG, "onStartCommand action=${intent.action}")
                 onStopRequested?.invoke()
                 stopForegroundCompat()
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_TOGGLE_PLAY_PAUSE -> {
+                Log.i(TAG, "onStartCommand action=${intent.action}")
                 onTogglePlayPauseRequested?.invoke()
                 return START_STICKY
             }
@@ -134,7 +136,6 @@ class BackgroundPlaybackService : Service() {
             .setContentTitle(title.ifBlank { getString(R.string.app_name) })
             .setContentText(subtitle.ifBlank { "バックグラウンド再生中" })
             .setContentIntent(contentPendingIntent)
-            .setDeleteIntent(stopPendingIntent)
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

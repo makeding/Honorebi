@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -177,6 +178,7 @@ fun rememberManagedExoPlayer(
         PlayerErrorRecovery.UseDefault
     },
     onStopOrDispose: (ExoPlayer) -> Unit,
+    onPausedAfterStandby: () -> Unit = {},
     settingsViewModel: SettingsViewModel,
 ): ExoPlayer {
     val context = LocalContext.current
@@ -258,6 +260,7 @@ fun rememberManagedExoPlayer(
     val currentOnStreamSessionExpired = rememberUpdatedState(onStreamSessionExpired)
     val currentOnPlayerErrorRecovery = rememberUpdatedState(onPlayerErrorRecovery)
     val currentOnStopOrDispose = rememberUpdatedState(onStopOrDispose)
+    val currentOnPausedAfterStandby = rememberUpdatedState(onPausedAfterStandby)
     LaunchedEffect(captionFence, subtitleResetSerial) {
         captionFence.reset()
         captionDecoder.reset(subtitleLanguageId)
@@ -556,17 +559,50 @@ fun rememberManagedExoPlayer(
     )
     val isDeviceInteractive = com.beeregg2001.komorebi.media.LocalDeviceInteractive.current
     val powerManager = remember(context) { context.getSystemService(PowerManager::class.java) }
+    val standbyStartedElapsedMsRef = remember(playerRuntime) { AtomicLong(-1L) }
+    val wasPlayingBeforeStandbyRef = remember(playerRuntime) { AtomicBoolean(false) }
 
     fun pauseForStandby(reason: String) {
-        Log.i(TAG, "Pausing ExoPlayer for standby: reason=$reason, playWhenReady=${exoPlayer.playWhenReady}")
+        if (standbyStartedElapsedMsRef.compareAndSet(-1L, SystemClock.elapsedRealtime())) {
+            wasPlayingBeforeStandbyRef.set(exoPlayer.playWhenReady)
+        }
+        Log.i(
+            TAG,
+            "Pausing ExoPlayer for standby: reason=$reason, playWhenReady=${exoPlayer.playWhenReady}, " +
+                "wasPlaying=${wasPlayingBeforeStandbyRef.get()}",
+        )
         currentOnStopOrDispose.value(exoPlayer)
         recoveryLifecycleGate.onStop()
         playerRuntime.pause()
     }
 
+    fun handleStandbyWake(reason: String) {
+        if (powerManager?.isInteractive == false ||
+            !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        ) {
+            return
+        }
+        val startedAt = standbyStartedElapsedMsRef.getAndSet(-1L)
+        if (startedAt < 0L) return
+        val wasPlaying = wasPlayingBeforeStandbyRef.getAndSet(false)
+        val durationMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+        if (wasPlaying && com.beeregg2001.komorebi.ui.main.shouldAutoResumeAfterStandby(durationMs)) {
+            Log.i(TAG, "Auto-resuming ExoPlayer after short standby (${durationMs}ms, reason=$reason)")
+            exoPlayer.play()
+        } else {
+            Log.i(
+                TAG,
+                "Keeping ExoPlayer paused after standby (${durationMs}ms, wasPlaying=$wasPlaying, reason=$reason)",
+            )
+            if (wasPlaying) currentOnPausedAfterStandby.value()
+        }
+    }
+
     LaunchedEffect(playerRuntime, isDeviceInteractive) {
         if (!isDeviceInteractive) {
             pauseForStandby("screen_off standby")
+        } else {
+            handleStandbyWake("screen_on")
         }
     }
 
@@ -577,6 +613,10 @@ fun rememberManagedExoPlayer(
                     if (recordedPlaybackFence.accepts() && recoveryLifecycleGate.onStart()) {
                         playerRuntime.reprepare(playWhenReady = true)
                     }
+                    handleStandbyWake("ON_START")
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    handleStandbyWake("ON_RESUME")
                 }
                 Lifecycle.Event.ON_PAUSE -> {
                     if (powerManager?.isInteractive == false) {
@@ -584,11 +624,14 @@ fun rememberManagedExoPlayer(
                     }
                 }
                 Lifecycle.Event.ON_STOP -> {
-                    currentOnStopOrDispose.value(exoPlayer)
-                    val keepPlaying = currentKeepPlayingInBackground && (powerManager?.isInteractive != false)
-                    if (!keepPlaying) {
-                        recoveryLifecycleGate.onStop()
-                        playerRuntime.pause()
+                    if (powerManager?.isInteractive == false) {
+                        pauseForStandby("ON_STOP standby")
+                    } else {
+                        currentOnStopOrDispose.value(exoPlayer)
+                        if (!currentKeepPlayingInBackground) {
+                            recoveryLifecycleGate.onStop()
+                            playerRuntime.pause()
+                        }
                     }
                 }
                 else -> Unit

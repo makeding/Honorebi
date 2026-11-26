@@ -815,6 +815,7 @@ fun MainRootScreen(
     }
 
     val returnToLauncherHome = {
+        android.util.Log.i("MainRootScreen", "returnToLauncherHome called: isPlaybackActive=${state.playbackState.isPlaybackActive}")
         val hasActiveModule = state.hasActiveModuleOrOverlay()
         val preservedTabIndex = state.currentTabIndex
 

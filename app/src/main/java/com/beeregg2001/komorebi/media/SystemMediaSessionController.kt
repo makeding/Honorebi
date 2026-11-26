@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Looper
+import android.os.PowerManager
 import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -136,6 +137,9 @@ internal class SystemMediaSessionController(context: Context) {
                 onStop = onStop,
                 hasPrevious = hasPrevious,
                 hasNext = hasNext,
+                isDeviceInteractive = {
+                    appContext.getSystemService(PowerManager::class.java)?.isInteractive != false
+                },
             )
             val activeSession = session
             if (activeSession == null) {

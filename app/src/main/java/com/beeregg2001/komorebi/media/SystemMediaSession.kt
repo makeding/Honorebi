@@ -194,7 +194,8 @@ internal class SystemSessionPlayer(
     internal val canSeekRelative: Boolean,
     private val onStop: () -> Unit,
     private val hasPrevious: Boolean,
-    private val hasNext: Boolean
+    private val hasNext: Boolean,
+    private val isDeviceInteractive: () -> Boolean = { true },
 ) : ForwardingPlayer(player) {
 
     internal fun seekRelative(deltaMilliseconds: Long) = onSeekRelative(deltaMilliseconds)
@@ -234,6 +235,15 @@ internal class SystemSessionPlayer(
     override fun seekToNext() = onNext()
 
     override fun stop() {
+        val interactive = isDeviceInteractive()
+        android.util.Log.i(
+            "SystemMediaSession",
+            "SystemSessionPlayer.stop() called: interactive=$interactive, playWhenReady=$playWhenReady",
+        )
+        if (!interactive) {
+            pause()
+            return
+        }
         super.stop()
         onStop()
     }

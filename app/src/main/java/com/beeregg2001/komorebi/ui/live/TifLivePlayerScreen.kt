@@ -8,6 +8,7 @@ import android.media.tv.TvView
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -67,6 +68,7 @@ import com.beeregg2001.komorebi.data.TifNoSignalStyle
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.repository.tif.TifInput
 import com.beeregg2001.komorebi.ui.home.DigitalClock
+import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 import com.beeregg2001.komorebi.ui.screensaver.PlayerIdleSession
 import com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -141,6 +143,7 @@ fun TifLivePlayerScreen(
     onShowOverlayChange: (Boolean) -> Unit,
     initialCaptions: Boolean,
     videoOnly: Boolean = false,
+    pausedExternal: Boolean = false,
     externalCommentsEnabled: Boolean = true,
     standaloneInput: Boolean = false,
     timeFormat: String = "24H",
@@ -168,11 +171,14 @@ fun TifLivePlayerScreen(
     val powerManager = remember(context) { context.getSystemService(PowerManager::class.java) }
     val systemSleepAllowed by ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
     val playerIdleOwner = remember { Any() }
+    var standbyStartedElapsedMs by remember(lifecycleOwner) { mutableStateOf<Long?>(null) }
+    var isPausedAfterStandby by remember(lifecycleOwner) { mutableStateOf(false) }
     var isStarted by remember(lifecycleOwner) {
         mutableStateOf(
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
                 powerManager?.isInteractive != false &&
-                isDeviceInteractive
+                isDeviceInteractive &&
+                !pausedExternal
         )
     }
     DisposableEffect(playerIdleOwner, isStarted) {
@@ -189,25 +195,55 @@ fun TifLivePlayerScreen(
     var sessionGeneration by remember(lifecycleOwner) { mutableIntStateOf(0) }
     var activeViewForLifecycle by remember { mutableStateOf<TvView?>(null) }
 
-    fun stopTifForLifecycle() {
+    fun stopTifForLifecycle(isStandby: Boolean = false) {
+        if (isStandby && standbyStartedElapsedMs == null) {
+            standbyStartedElapsedMs = SystemClock.elapsedRealtime()
+        }
         activeViewForLifecycle?.reset()
         activeViewForLifecycle = null
         isStarted = false
     }
 
     fun startTifIfEligible() {
+        if (pausedExternal) return
         if (!isStarted &&
             powerManager?.isInteractive != false &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         ) {
+            val startedAt = standbyStartedElapsedMs
+            standbyStartedElapsedMs = null
+            if (!videoOnly && startedAt != null) {
+                val durationMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                if (!com.beeregg2001.komorebi.ui.main.shouldAutoResumeAfterStandby(durationMs)) {
+                    isPausedAfterStandby = true
+                    onShowOverlayChange(true)
+                    return
+                }
+            }
+            isPausedAfterStandby = false
             sessionGeneration++
             isStarted = true
         }
     }
 
+    LaunchedEffect(channel.id) {
+        if (isPausedAfterStandby) {
+            isPausedAfterStandby = false
+            startTifIfEligible()
+        }
+    }
+
+    LaunchedEffect(pausedExternal) {
+        if (pausedExternal) {
+            if (isStarted) stopTifForLifecycle(isStandby = false)
+        } else if (isDeviceInteractive) {
+            startTifIfEligible()
+        }
+    }
+
     LaunchedEffect(isDeviceInteractive) {
         if (!isDeviceInteractive) {
-            if (isStarted) stopTifForLifecycle()
+            if (isStarted) stopTifForLifecycle(isStandby = true)
         } else {
             startTifIfEligible()
         }
@@ -218,11 +254,11 @@ fun TifLivePlayerScreen(
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     if (powerManager?.isInteractive == false) {
-                        stopTifForLifecycle()
+                        stopTifForLifecycle(isStandby = true)
                     }
                 }
                 Lifecycle.Event.ON_STOP -> {
-                    stopTifForLifecycle()
+                    stopTifForLifecycle(isStandby = powerManager?.isInteractive == false)
                 }
                 Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> {
                     startTifIfEligible()
@@ -655,6 +691,19 @@ fun TifLivePlayerScreen(
                 val isOkKey = event.key == Key.DirectionCenter ||
                     event.key == Key.Enter ||
                     event.key == Key.NumPadEnter
+                if (!videoOnly && isPausedAfterStandby && !isMiniListOpen && !controlHasFocus &&
+                    (isOkKey ||
+                        native.keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
+                        native.keyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                ) {
+                    if (event.type == KeyEventType.KeyUp && native.repeatCount == 0) {
+                        isPausedAfterStandby = false
+                        standbyStartedElapsedMs = null
+                        sessionGeneration++
+                        isStarted = true
+                    }
+                    return@onPreviewKeyEvent true
+                }
                 if (isOkKey && event.type == KeyEventType.KeyUp && consumeNextOkKeyUp) {
                     consumeNextOkKeyUp = false
                     return@onPreviewKeyEvent true
@@ -704,17 +753,26 @@ fun TifLivePlayerScreen(
             .focusable(!videoOnly)
     ) {
         if (target == null) {
-            TifStatusBanner(
-                text = when {
-                    context.getSystemService(TvInputManager::class.java) == null ->
-                        "この端末はテレビ入力（TIF）に対応していません。"
-                    !isStarted -> "バックグラウンドのためTV入力を停止しています"
-                    !resolutionComplete -> "TV入力を確認しています…"
-                    resolveError != null -> resolveError.orEmpty()
-                    else -> "TV入力またはチャンネルが見つかりません。TV入力設定をご確認ください。"
-                },
-                modifier = Modifier.align(Alignment.Center),
-            )
+            if (videoOnly && pausedExternal) {
+                // Hosted inside LivePlayerScreen, which draws the paused notice.
+            } else if (isPausedAfterStandby) {
+                PlaybackLoadingNotice(
+                    message = "一時停止中（決定キーで再開）",
+                    loading = false,
+                )
+            } else {
+                TifStatusBanner(
+                    text = when {
+                        context.getSystemService(TvInputManager::class.java) == null ->
+                            "この端末はテレビ入力（TIF）に対応していません。"
+                        !isStarted -> "バックグラウンドのためTV入力を停止しています"
+                        !resolutionComplete -> "TV入力を確認しています…"
+                        resolveError != null -> resolveError.orEmpty()
+                        else -> "TV入力またはチャンネルが見つかりません。TV入力設定をご確認ください。"
+                    },
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
         } else {
             val tuneTarget = requireNotNull(target)
             val latestChannel by rememberUpdatedState(channel)

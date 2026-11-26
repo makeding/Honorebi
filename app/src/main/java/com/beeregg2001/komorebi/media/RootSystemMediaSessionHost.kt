@@ -68,6 +68,7 @@ fun RootSystemMediaSessionHost(
     val currentContentType by rememberUpdatedState(remoteContentType)
     val currentPlaybackSwitching by rememberUpdatedState(isPlaybackSwitching)
     val currentBackgroundAudioEnabled by rememberUpdatedState(backgroundAudioPlaybackEnabled)
+    val currentIsDeviceInteractive by rememberUpdatedState(isDeviceInteractive)
     val currentPlaybackEpoch by rememberUpdatedState(playbackSessionEpoch)
     val currentSnapshotCallback by rememberUpdatedState(onSystemPlaybackSnapshotChanged)
 
@@ -104,7 +105,9 @@ fun RootSystemMediaSessionHost(
 
     DisposableEffect(controller) {
         BackgroundPlaybackService.onTogglePlayPauseRequested = { controller.togglePlayPause() }
-        BackgroundPlaybackService.onStopRequested = { controller.stop() }
+        BackgroundPlaybackService.onStopRequested = {
+            if (currentIsDeviceInteractive) controller.stop()
+        }
         onRegisterTransportActions?.invoke(
             { controller.togglePlayPause() },
             { deltaMs -> controller.seekRelative(deltaMs) },

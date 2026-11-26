@@ -695,7 +695,8 @@ internal fun RecordedPlayerScreen(
                 playbackPositionMs = posMs
                 videoPlayerViewModel.updateWatchHistory(currentProgram, posMs / 1000.0)
             }
-        }
+        },
+        onPausedAfterStandby = { onShowControlsChange(true) },
     )
 
     RecordedTsRecovery(

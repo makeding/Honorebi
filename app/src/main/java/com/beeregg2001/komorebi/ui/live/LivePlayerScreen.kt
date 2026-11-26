@@ -6,6 +6,7 @@ import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -126,6 +127,8 @@ fun LivePlayerScreen(
         com.beeregg2001.komorebi.media.LocalBackgroundAudioPlaybackEnabled.current
     )
     var hasStoppedByLifecycle by remember { mutableStateOf(false) }
+    var isPausedAfterStandby by remember { mutableStateOf(false) }
+    var standbyStartedElapsedMs by remember { mutableStateOf<Long?>(null) }
     val channelBrowserOpenTrace = remember { ChannelBrowserOpenTrace() }
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
@@ -535,11 +538,27 @@ fun LivePlayerScreen(
         livePlayerViewModel.onDeviceNetworkChanged(isNetworkAvailable)
     }
 
-    fun stopLiveForLifecycle(reason: String) {
+    fun stopLiveForLifecycle(reason: String, isStandby: Boolean = false) {
+        if (isStandby && standbyStartedElapsedMs == null) {
+            standbyStartedElapsedMs = SystemClock.elapsedRealtime()
+        }
         if (!hasStoppedByLifecycle) {
             hasStoppedByLifecycle = true
             livePlayerViewModel.releasePlayers(reason)
         }
+    }
+
+    fun resumeLiveNow(reason: String) {
+        Log.i(
+            TAG,
+            "Live screen resuming ($reason): channel=${currentChannelItem.displayChannelId}"
+        )
+        isPausedAfterStandby = false
+        hasStoppedByLifecycle = false
+        standbyStartedElapsedMs = null
+        ps.retryKey++
+        if (ps.isDualDisplayMode) livePlayerViewModel.retryDual(uiContext)
+        channelViewModel.fetchChannels()
     }
 
     fun resumeLiveIfStopped(reason: String) {
@@ -547,21 +566,30 @@ fun LivePlayerScreen(
             powerManager?.isInteractive != false &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         ) {
-            Log.i(
-                TAG,
-                "Live screen resuming ($reason): channel=${currentChannelItem.displayChannelId}"
-            )
-            hasStoppedByLifecycle = false
-            ps.retryKey++
-            if (ps.isDualDisplayMode) livePlayerViewModel.retryDual(uiContext)
-            channelViewModel.fetchChannels()
+            val startedAt = standbyStartedElapsedMs
+            standbyStartedElapsedMs = null
+            if (startedAt != null) {
+                val durationMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                if (!com.beeregg2001.komorebi.ui.main.shouldAutoResumeAfterStandby(durationMs)) {
+                    Log.i(
+                        TAG,
+                        "Live screen staying paused after long standby (${durationMs}ms, reason=$reason): channel=${currentChannelItem.displayChannelId}"
+                    )
+                    hasStoppedByLifecycle = false
+                    isPausedAfterStandby = true
+                    onShowOverlayChange(true)
+                    channelViewModel.fetchChannels()
+                    return
+                }
+            }
+            resumeLiveNow(reason)
         }
     }
 
     LaunchedEffect(isDeviceInteractive) {
         if (!isDeviceInteractive) {
             isScreenOff = false
-            stopLiveForLifecycle("screen_off_standby")
+            stopLiveForLifecycle("screen_off_standby", isStandby = true)
         } else {
             resumeLiveIfStopped("screen_on")
         }
@@ -579,6 +607,9 @@ fun LivePlayerScreen(
     ) {
         if (powerManager?.isInteractive == false || !isDeviceInteractive) {
             hasStoppedByLifecycle = true
+            return@LaunchedEffect
+        }
+        if (isPausedAfterStandby) {
             return@LaunchedEffect
         }
         if (isTifChannel) {
@@ -688,16 +719,17 @@ fun LivePlayerScreen(
                         TAG,
                         "Live screen lifecycle ON_PAUSE standby: releasing players for channel=${currentChannelItem.displayChannelId}"
                     )
-                    stopLiveForLifecycle("lifecycle_on_pause_standby")
+                    stopLiveForLifecycle("lifecycle_on_pause_standby", isStandby = true)
                 }
             } else if (event == Lifecycle.Event.ON_STOP) {
-                if (currentKeepPlayingInBackground && powerManager?.isInteractive != false) {
+                val isStandby = powerManager?.isInteractive == false
+                if (currentKeepPlayingInBackground && !isStandby) {
                     Log.i(
                         TAG,
                         "Live screen lifecycle ON_STOP: keeping audio alive in background for channel=${currentChannelItem.displayChannelId}"
                     )
                 } else {
-                    val reason = if (powerManager?.isInteractive == false) {
+                    val reason = if (isStandby) {
                         "lifecycle_on_stop_standby"
                     } else {
                         "lifecycle_on_stop"
@@ -707,7 +739,7 @@ fun LivePlayerScreen(
                         "Live screen lifecycle ON_STOP: reason=$reason, channel=${currentChannelItem.displayChannelId}, " +
                             "state=${lifecycleOwner.lifecycle.currentState}"
                     )
-                    stopLiveForLifecycle(reason)
+                    stopLiveForLifecycle(reason, isStandby = isStandby)
                 }
             } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
                 Log.i(
@@ -723,6 +755,7 @@ fun LivePlayerScreen(
     }
 
     LaunchedEffect(currentChannelItem.id) {
+        isPausedAfterStandby = false
         chasePlaybackFence.invalidate()
         chaseLookupJob?.cancel()
         chaseLookupJob = null
@@ -901,6 +934,22 @@ fun LivePlayerScreen(
                 ) {
                     return@onKeyEvent true
                 }
+                val resumeKeyCode = keyEvent.nativeKeyEvent.keyCode
+                if (isPausedAfterStandby &&
+                    !isMiniListOpen &&
+                    !isSubMenuOpen &&
+                    ps.crop.mode == PlayerCropMode.HIDDEN &&
+                    (resumeKeyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                        resumeKeyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                        resumeKeyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                        resumeKeyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
+                        resumeKeyCode == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                ) {
+                    if (keyEvent.type == KeyEventType.KeyUp && keyEvent.nativeKeyEvent.repeatCount == 0) {
+                        resumeLiveNow("user_resume_key")
+                    }
+                    return@onKeyEvent true
+                }
                 ps.handleKeyEvent(
                     keyEvent = keyEvent,
                     isSubMenuOpen = isSubMenuOpen,
@@ -1027,6 +1076,7 @@ fun LivePlayerScreen(
                         onChannelSelect = onChannelSelect, onChannelPlaybackCommitted = onChannelPlaybackCommitted,
                         showOverlay = false, onShowOverlayChange = onShowOverlayChange,
                         initialCaptions = isSubtitleEnabled, videoOnly = true,
+                        pausedExternal = isPausedAfterStandby,
                         externalCommentsEnabled = isCommentEnabled, onExit = onBackPressed,
                     )
                 }
@@ -1160,6 +1210,7 @@ fun LivePlayerScreen(
 
         androidx.compose.animation.AnimatedVisibility(
             visible = !isTifChannel && !isPiPMode && !ps.isDualDisplayMode && ps.playerError == null &&
+                !isPausedAfterStandby &&
                 (mainLoadingPresentation.isVisible || isChannelSwitchDebouncing),
             enter = fadeIn(),
             exit = fadeOut(),
@@ -1167,6 +1218,17 @@ fun LivePlayerScreen(
             PlaybackLoadingNotice(
                 message = if (isChannelSwitchDebouncing) currentChannelItem.name else mainLoadingPresentation.message,
                 loading = !isChannelSwitchDebouncing,
+            )
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isPiPMode && !ps.isDualDisplayMode && isPausedAfterStandby && ps.playerError == null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            PlaybackLoadingNotice(
+                message = "一時停止中（決定キーで再開）",
+                loading = false,
             )
         }
 

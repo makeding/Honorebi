@@ -208,6 +208,7 @@ internal fun SmbPlayerScreen(
         onStopOrDispose = { stoppedPlayer ->
             positionMs = currentPositionMs(stoppedPlayer, positionMs)
         },
+        onPausedAfterStandby = { onShowControlsChange(true) },
         settingsViewModel = settingsViewModel,
     )
     com.beeregg2001.komorebi.ui.screensaver.TrackPlayerIdle(player, metadata.title, metadata.location)

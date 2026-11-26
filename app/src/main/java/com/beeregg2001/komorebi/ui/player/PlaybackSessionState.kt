@@ -285,6 +285,10 @@ class PlaybackSessionState {
     }
 
     fun leavePlayback(returningFromPlayer: Boolean = true) {
+        android.util.Log.i(
+            "PlaybackSessionState",
+            "leavePlayback(returningFromPlayer=$returningFromPlayer) target=${playbackTarget::class.simpleName}",
+        )
         invalidatePlaybackOpenIntents()
         endPlaybackSession()
         isMiniPlayerMode = false
@@ -307,6 +311,10 @@ class PlaybackSessionState {
     }
 
     fun resetPlayback(returningFromPlayer: Boolean = false) {
+        android.util.Log.i(
+            "PlaybackSessionState",
+            "resetPlayback(returningFromPlayer=$returningFromPlayer) target=${playbackTarget::class.simpleName}",
+        )
         invalidatePlaybackOpenIntents()
         endPlaybackSession()
         initialPlaybackPositionMs = 0L
