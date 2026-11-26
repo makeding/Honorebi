@@ -20,8 +20,9 @@ class RecordedDirectionalSeekTest {
         key, repeat, 0, 0, 0, flags,
     )
     private fun send(gesture: RecordedDirectionalSeek, event: KeyEvent,
-                     commits: MutableList<Long>, duration: Long = 1_800_000L) =
-        gesture.handle(event, 120_000L, duration, 10_000L, commits::add)
+                     commits: MutableList<Long>, position: Long = 120_000L,
+                     duration: Long = 1_800_000L) =
+        gesture.handle(event, position, duration, 10_000L, commits::add)
 
     @Test fun shortPressPreviewsImmediatelyAndCommitsOnceOnRelease() {
         val gesture = RecordedDirectionalSeek()
@@ -63,10 +64,8 @@ class RecordedDirectionalSeekTest {
         var previous = gesture.previewPositionMs!!
         for ((time, expectedStep) in listOf(
             1400L to 10_000L, 1650L to 10_000L, 1900L to 10_000L,
-            2150L to 30_000L, 2400L to 30_000L, 2650L to 30_000L, 2900L to 30_000L,
-            3150L to 60_000L, 3400L to 60_000L, 3650L to 60_000L, 3900L to 60_000L,
-            4150L to 120_000L, 4400L to 120_000L, 4650L to 120_000L, 4900L to 120_000L,
-            5150L to 300_000L,
+            2150L to 60_000L, 2400L to 60_000L, 2650L to 60_000L, 2900L to 60_000L,
+            3150L to 300_000L, 3400L to 300_000L, 3650L to 300_000L, 3900L to 300_000L,
         )) {
             gesture.advance(time - 1L, 7_200_000L)
             assertEquals(previous, gesture.previewPositionMs)
@@ -133,7 +132,7 @@ class RecordedDirectionalSeekTest {
         val gesture = RecordedDirectionalSeek()
         val commits = mutableListOf<Long>()
         send(gesture, event(left), commits, position = eightHoursMs, duration = eightHoursMs)
-        gesture.advance(10_000L, eightHoursMs)
+        gesture.advance(1000L + 10_000L, eightHoursMs)
         assertEquals(0L, gesture.previewPositionMs)
     }
 

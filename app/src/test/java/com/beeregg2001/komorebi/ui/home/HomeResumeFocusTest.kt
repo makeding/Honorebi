@@ -108,7 +108,9 @@ class HomeResumeFocusTest {
 
     @Test fun returnUsesLatestVisibleTabsAndHonorsPlayerOwnership() {
         val hideApps = mutableStateOf(false)
-        val selected = mutableIntStateOf(3)
+        val visibleVideoIndex = visibleHomeTabs(false).indexOf("ビデオ")
+        val hiddenVideoIndex = visibleHomeTabs(true).indexOf("ビデオ")
+        val selected = mutableIntStateOf(visibleVideoIndex)
         val returning = mutableStateOf(false)
         val destinations = mutableListOf<Pair<Int, String>>()
         compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
@@ -125,11 +127,11 @@ class HomeResumeFocusTest {
         compose.runOnIdle {
             owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
             hideApps.value = true
-            selected.intValue = 2
+            selected.intValue = hiddenVideoIndex
         }
         compose.waitForIdle()
         compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
-        compose.runOnIdle { assertEquals(listOf(2 to "ビデオ"), destinations) }
+        compose.runOnIdle { assertEquals(listOf(hiddenVideoIndex to "ビデオ"), destinations) }
         compose.runOnIdle {
             destinations.clear()
             owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
@@ -141,7 +143,9 @@ class HomeResumeFocusTest {
     }
 
     @Test fun backFromContentAndTabsReturnsDirectlyToCurrentConfiguredDefault() {
-        val ui = HomeLauncherState(HOME_TAB_TITLES.indexOf("ビデオ"))
+        val videoIndex = HOME_TAB_TITLES.indexOf("ビデオ")
+        val liveIndex = HOME_TAB_TITLES.indexOf("ライブ")
+        val ui = HomeLauncherState(videoIndex)
         val selected = mutableIntStateOf(ui.selectedTabIndex)
         val memory = FocusMemory()
         val defaultTitle = mutableStateOf("ビデオ")
@@ -180,32 +184,32 @@ class HomeResumeFocusTest {
                 Box(Modifier.size(1.dp).focusRequester(ui.safeHouseRequester).focusable())
             }
         }
-        compose.onNodeWithTag("tab-3").requestFocus()
+        compose.onNodeWithTag("tab-$videoIndex").requestFocus()
         compose.onNodeWithTag("video-card").requestFocus()
         compose.runOnIdle { ui.topNavHasFocus = false }
         compose.onNodeWithTag("video-card").performKeyInput { pressKey(Key.Back) }
-        compose.onNodeWithTag("tab-3").assertIsFocused()
-        compose.runOnIdle { assertEquals(3, selected.intValue) }
+        compose.onNodeWithTag("tab-$videoIndex").assertIsFocused()
+        compose.runOnIdle { assertEquals(videoIndex, selected.intValue) }
         compose.runOnIdle { focusedTabs.clear() }
-        compose.onNodeWithTag("tab-3").performKeyInput { pressKey(Key.Back) }
+        compose.onNodeWithTag("tab-$videoIndex").performKeyInput { pressKey(Key.Back) }
         compose.waitForIdle()
-        compose.onNodeWithTag("tab-3").assertIsFocused()
+        compose.onNodeWithTag("tab-$videoIndex").assertIsFocused()
         compose.runOnIdle {
-            assertEquals(3, selected.intValue)
-            assertEquals(3, ui.selectedTabIndex)
-            assertEquals(listOf(3), focusedTabs)
+            assertEquals(videoIndex, selected.intValue)
+            assertEquals(videoIndex, ui.selectedTabIndex)
+            assertEquals(listOf(videoIndex), focusedTabs)
         }
         compose.onNodeWithTag("tab-0").requestFocus()
         compose.runOnIdle { focusedTabs.clear() }
         compose.onNodeWithTag("tab-0").performKeyInput { pressKey(Key.Back) }
-        compose.onNodeWithTag("tab-3").assertIsFocused()
-        compose.runOnIdle { assertEquals(listOf(3), focusedTabs) }
+        compose.onNodeWithTag("tab-$videoIndex").assertIsFocused()
+        compose.runOnIdle { assertEquals(listOf(videoIndex), focusedTabs) }
         compose.runOnIdle { defaultTitle.value = "ライブ" }
-        compose.onNodeWithTag("tab-3").performKeyInput { pressKey(Key.Back) }
-        compose.onNodeWithTag("tab-1").assertIsFocused()
-        compose.onNodeWithTag("tab-1").performKeyInput { pressKey(Key.Back) }
-        compose.onNodeWithTag("tab-1").assertIsFocused()
-        compose.runOnIdle { assertEquals(1, selected.intValue) }
+        compose.onNodeWithTag("tab-$videoIndex").performKeyInput { pressKey(Key.Back) }
+        compose.onNodeWithTag("tab-$liveIndex").assertIsFocused()
+        compose.onNodeWithTag("tab-$liveIndex").performKeyInput { pressKey(Key.Back) }
+        compose.onNodeWithTag("tab-$liveIndex").assertIsFocused()
+        compose.runOnIdle { assertEquals(liveIndex, selected.intValue) }
     }
 
     @Test fun resumeSkipsRestoreWhenPendingHomeIntentIsSetAndResumesNormallyOtherwise() {

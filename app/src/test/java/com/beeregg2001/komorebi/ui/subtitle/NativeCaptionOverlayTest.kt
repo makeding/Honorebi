@@ -90,6 +90,8 @@ class NativeCaptionOverlayTest {
         ptsMs = ptsMs,
         durationMs = durationMs,
         clearScreen = false,
+        planeWidth = 960,
+        planeHeight = 540,
         images = listOf(NativeCaptionImage(0, 0, 100, 50, Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888))),
     )
 
