@@ -601,16 +601,17 @@ fun ConditionEditDialog(
                             ) {
                                 items(relatedReserves.size) { index ->
                                     val reserve = relatedReserves[index]
-                                    val start = runCatching {
-                                        OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
-                                    }.getOrNull()
-                                    val end = runCatching {
-                                        OffsetDateTime.parse(reserve.program.endTime).toDeviceTime()
-                                    }.getOrNull()
-
-                                    val timeStr = if (start != null && end != null)
-                                        ProgramTimeFormatter.formatRange(start, end, timeFormat, "MM/dd(E)", " ～ ")
-                                    else "時間不明"
+                                    val timeStr = remember(reserve.program.startTime, reserve.program.endTime, timeFormat) {
+                                        val start = runCatching {
+                                            OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
+                                        }.getOrNull()
+                                        val end = runCatching {
+                                            OffsetDateTime.parse(reserve.program.endTime).toDeviceTime()
+                                        }.getOrNull()
+                                        if (start != null && end != null)
+                                            ProgramTimeFormatter.formatRange(start, end, timeFormat, "MM/dd(E)", " ～ ")
+                                        else "時間不明"
+                                    }
 
                                     Surface(
                                         onClick = { onReserveItemClick(reserve) },

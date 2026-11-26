@@ -490,14 +490,10 @@ fun UpcomingReserveCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
-    val start = OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
-
-    val startFormat = remember(start, timeFormat) {
-        ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd")
-    }
-
-    val displayTime = remember(start, timeFormat) {
-        ProgramTimeFormatter.formatTime(start.toLocalTime(), timeFormat)
+    val (startFormat, displayTime) = remember(reserve.program.startTime, timeFormat) {
+        val start = OffsetDateTime.parse(reserve.program.startTime).toDeviceTime()
+        ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd") to
+            ProgramTimeFormatter.formatTime(start.toLocalTime(), timeFormat)
     }
 
     val shape = RoundedCornerShape(TvCardRadiusGrid)
@@ -580,9 +576,8 @@ fun GenrePickupCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
-    val start = OffsetDateTime.parse(program.start_time).toDeviceTime()
-
-    val startFormat = remember(start, timeFormat) {
+    val startFormat = remember(program.start_time, timeFormat) {
+        val start = OffsetDateTime.parse(program.start_time).toDeviceTime()
         ProgramTimeFormatter.formatDateTime(start, timeFormat, "MM/dd")
     }
 

@@ -62,8 +62,11 @@ import kotlinx.coroutines.delay
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+internal val screensaverClockFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val screensaverDateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.JAPANESE)
+
 internal fun screensaverDate(now: LocalDateTime): String =
-    now.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", Locale.JAPANESE))
+    now.format(screensaverDateFormat)
 
 // Draw in the full surface so the feather cannot be clipped to text or row bounds.
 @Composable
@@ -151,7 +154,7 @@ fun ScreensaverContent(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                now.format(screensaverClockFormat),
                 color = Color.White,
                 fontSize = 72.sp,
                 fontWeight = FontWeight.Light,

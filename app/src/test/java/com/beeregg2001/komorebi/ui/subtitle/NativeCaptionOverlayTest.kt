@@ -3,10 +3,12 @@ package com.beeregg2001.komorebi.ui.subtitle
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Rect
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.TreeMap
 
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, sdk = [28])
@@ -82,5 +84,36 @@ class NativeCaptionOverlayTest {
         val regions = listOf(region(100, 850))
         assertEquals(listOf(0f), offsets(regions, emptyList()))
         assertEquals(listOf(0f), offsets(regions, listOf(Rect(200f, 850f, 300f, 950f))))
+    }
+
+    private fun testCue(ptsMs: Long, durationMs: Long): NativeCaptionCue = NativeCaptionCue(
+        ptsMs = ptsMs,
+        durationMs = durationMs,
+        clearScreen = false,
+        images = listOf(NativeCaptionImage(0, 0, 100, 50, Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888))),
+    )
+
+    @Test fun `live caption scheduler sleeps indefinitely when empty or paused`() {
+        val timeline = TreeMap<Long, NativeCaptionCue>()
+        assertNull(nextLiveCaptionUpdateDelayMs(timeline, positionMs = 1_000L, clockRunning = true))
+
+        timeline[500L] = testCue(ptsMs = 500L, durationMs = 2_000L)
+        assertNull(nextLiveCaptionUpdateDelayMs(timeline, positionMs = 1_000L, clockRunning = false))
+    }
+
+    @Test fun `live caption scheduler waits indefinitely for indefinite cue with no next cue`() {
+        val timeline = TreeMap<Long, NativeCaptionCue>().apply {
+            put(500L, testCue(ptsMs = 500L, durationMs = -1L))
+        }
+        assertNull(nextLiveCaptionUpdateDelayMs(timeline, positionMs = 1_000L, clockRunning = true))
+    }
+
+    @Test fun `live caption scheduler picks minimum clamped delay between expiry and next cue`() {
+        val timeline = TreeMap<Long, NativeCaptionCue>().apply {
+            put(1_000L, testCue(ptsMs = 1_000L, durationMs = 3_000L)) // expires at 4_000
+            put(2_400L, testCue(ptsMs = 2_400L, durationMs = 1_000L)) // next cue at 2_400
+        }
+        assertEquals(1_000L, nextLiveCaptionUpdateDelayMs(timeline, positionMs = 1_000L, clockRunning = true))
+        assertEquals(400L, nextLiveCaptionUpdateDelayMs(timeline, positionMs = 2_000L, clockRunning = true))
     }
 }

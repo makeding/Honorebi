@@ -154,6 +154,11 @@ android {
         }
     }
 }
+
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose_compiler_config.conf"))
+}
+
 configurations.configureEach {
     resolutionStrategy {
         // Jellyfin decoder 等の推移依存も、同じローカルパッチ版へ揃える。

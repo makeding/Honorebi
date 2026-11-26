@@ -134,7 +134,7 @@ fun RecordedCard(
                         .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
                         .size(coil.size.Size(300, 168))
                         .allowRgb565(true)
-                        .crossfade(true)
+                        .crossfade(false)
                         .memoryCacheKey(thumbnailCacheKey)
                         .diskCacheKey(thumbnailCacheKey)
                         .memoryCachePolicy(CachePolicy.ENABLED)

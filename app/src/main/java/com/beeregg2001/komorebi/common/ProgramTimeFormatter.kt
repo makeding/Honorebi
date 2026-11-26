@@ -9,6 +9,7 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /** Display-only formatting for broadcast schedule times. It never changes stored timestamps. */
 object ProgramTimeFormatter {
@@ -18,6 +19,12 @@ object ProgramTimeFormatter {
 
     private val twelveHourFormatter = DateTimeFormatter.ofPattern("a h:mm", Locale.JAPANESE)
     private val twentyFourHourFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.JAPANESE)
+    private val dateFormatterCache = ConcurrentHashMap<String, DateTimeFormatter>()
+
+    private fun dateFormatter(pattern: String): DateTimeFormatter =
+        dateFormatterCache[pattern] ?: DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE).also {
+            dateFormatterCache.putIfAbsent(pattern, it)
+        }
 
     data class DisplayDateTime(val date: LocalDate, val time: String)
 
@@ -25,7 +32,9 @@ object ProgramTimeFormatter {
         TWELVE_HOUR -> time.format(twelveHourFormatter)
         TWENTY_EIGHT_HOUR -> {
             val displayHour = time.hour + if (time.hour < 4) 24 else 0
-            "%02d:%02d".format(Locale.ROOT, displayHour, time.minute)
+            val h = if (displayHour < 10) "0$displayHour" else "$displayHour"
+            val m = if (time.minute < 10) "0${time.minute}" else "${time.minute}"
+            "$h:$m"
         }
         else -> time.format(twentyFourHourFormatter)
     }
@@ -47,7 +56,7 @@ object ProgramTimeFormatter {
         separator: String = " ",
     ): String {
         val display = displayDateTime(value, format)
-        val date = display.date.format(DateTimeFormatter.ofPattern(datePattern, Locale.JAPANESE))
+        val date = display.date.format(dateFormatter(datePattern))
         return "$date$separator${display.time}"
     }
 
@@ -60,13 +69,13 @@ object ProgramTimeFormatter {
         includeEndDateOnCrossDate: Boolean = true,
     ): String {
         val startDisplay = displayDateTime(start, format)
-        val startDate = startDisplay.date.format(DateTimeFormatter.ofPattern(datePattern, Locale.JAPANESE))
+        val startDate = startDisplay.date.format(dateFormatter(datePattern))
         val startText = "$startDate ${startDisplay.time}"
         if (end == null) return startText
 
         val endDisplay = displayDateTime(end, format)
         val endText = if (includeEndDateOnCrossDate && endDisplay.date != startDisplay.date) {
-            val endDate = endDisplay.date.format(DateTimeFormatter.ofPattern(datePattern, Locale.JAPANESE))
+            val endDate = endDisplay.date.format(dateFormatter(datePattern))
             "$endDate ${endDisplay.time}"
         } else {
             endDisplay.time

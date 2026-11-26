@@ -272,7 +272,7 @@ fun LivePlayerScreen(
     )
     val dualCaptionCue = rememberNativeCaptionCue(
         events = dualCaptionEvents,
-        enabled = isSubtitleEnabled,
+        enabled = ps.isDualDisplayMode && isSubtitleEnabled,
         resetKey = dualSessionToken to currentSubtitleLanguageId,
         clockRunning = isDualPlaying,
         positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
@@ -286,7 +286,7 @@ fun LivePlayerScreen(
     )
     val dualSuperimposeCue = rememberNativeCaptionCue(
         events = dualSuperimposeEvents,
-        enabled = true,
+        enabled = ps.isDualDisplayMode,
         resetKey = dualSessionToken,
         clockRunning = isDualPlaying,
         positionMsProvider = { dualPlayer?.currentPosition ?: 0L }
@@ -318,7 +318,6 @@ fun LivePlayerScreen(
     }
     val mainStatus by livePlayerViewModel.mainSseStatus.collectAsState()
     val mainDetail by livePlayerViewModel.mainSseDetail.collectAsState()
-    val mainSignal by livePlayerViewModel.mainSignalInfo.collectAsState()
     val dualStatus by livePlayerViewModel.dualSseStatus.collectAsState()
     val dualDetail by livePlayerViewModel.dualSseDetail.collectAsState()
 
@@ -402,11 +401,10 @@ fun LivePlayerScreen(
         }
     }
 
-    LaunchedEffect(mainError, mainStatus, mainDetail, mainSignal) {
+    LaunchedEffect(mainError, mainStatus, mainDetail) {
         ps.playerError = mainError
         ps.sseStatus = mainStatus
         ps.sseDetail = mainDetail
-        ps.signalInfo = mainSignal
     }
 
     LaunchedEffect(dualStatus, dualDetail) {
@@ -1232,12 +1230,23 @@ fun LivePlayerScreen(
             )
         }
 
+        val isSignalInfoOverlayVisible =
+            !isPiPMode && !ps.isDualDisplayMode && ps.isSignalInfoVisible && ps.playerError == null && !isUiVisible
+        DisposableEffect(livePlayerViewModel, isSignalInfoOverlayVisible) {
+            livePlayerViewModel.setSignalInfoEnabled(isSignalInfoOverlayVisible)
+            onDispose {
+                if (isSignalInfoOverlayVisible) {
+                    livePlayerViewModel.setSignalInfoEnabled(false)
+                }
+            }
+        }
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPiPMode && !ps.isDualDisplayMode && ps.isSignalInfoVisible && ps.playerError == null && !isUiVisible,
+            visible = isSignalInfoOverlayVisible,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
-            SignalInfoOverlay(ps.signalInfo)
+            val signalInfo by livePlayerViewModel.mainSignalInfo.collectAsState()
+            SignalInfoOverlay(signalInfo)
         }
 
         androidx.compose.animation.AnimatedVisibility(

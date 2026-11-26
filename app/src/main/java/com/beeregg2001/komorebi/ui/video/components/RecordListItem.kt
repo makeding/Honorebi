@@ -104,7 +104,7 @@ fun RecordListItem(
             .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
             .size(180, 100)
             .allowRgb565(true)
-            .crossfade(true)
+            .crossfade(false)
             .memoryCacheKey(thumbnailCacheKey)
             .diskCacheKey(thumbnailCacheKey)
             .memoryCachePolicy(CachePolicy.ENABLED)

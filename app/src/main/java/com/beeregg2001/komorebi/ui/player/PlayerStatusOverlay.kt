@@ -33,6 +33,7 @@ import kotlinx.coroutines.delay
 
 private val wallClock12HourFormat = DateTimeFormatter.ofPattern("a h:mm", Locale.JAPANESE)
 private val wallClock24HourFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.JAPANESE)
+private val wallClockMonthDaySpaceFormat = DateTimeFormatter.ofPattern("M/d ", Locale.JAPANESE)
 
 fun formatPlayerWallClock(now: ZonedDateTime, timeFormat: String): String =
     now.format(if (timeFormat == "12H") wallClock12HourFormat else wallClock24HourFormat)
@@ -41,7 +42,7 @@ fun formatPlayerEndTime(now: ZonedDateTime, end: ZonedDateTime, timeFormat: Stri
     val day = when (end.toLocalDate()) {
         now.toLocalDate() -> ""
         now.toLocalDate().plusDays(1) -> "翌日 "
-        else -> end.format(DateTimeFormatter.ofPattern("M/d "))
+        else -> end.format(wallClockMonthDaySpaceFormat)
     }
     return "$day${formatPlayerWallClock(end, timeFormat)} 終了予定"
 }

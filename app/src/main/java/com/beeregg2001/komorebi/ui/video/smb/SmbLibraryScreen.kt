@@ -62,6 +62,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+private val smbLastModifiedFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
+
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -866,12 +868,15 @@ fun BoxScope.SmbFileDetailOverlay(isOpen: Boolean, item: SmbItem?, onClose: () -
                         label = "サイズ",
                         value = formatFileSize(item.size)
                     )
-                    val date =
-                        Instant.ofEpochMilli(item.lastModified).atZone(ZoneId.systemDefault())
+                    val lastModifiedText = remember(item.lastModified) {
+                        Instant.ofEpochMilli(item.lastModified)
+                            .atZone(ZoneId.systemDefault())
                             .toLocalDateTime()
+                            .format(smbLastModifiedFormat)
+                    }
                     DetailRow(
                         label = "更新日時",
-                        value = date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"))
+                        value = lastModifiedText
                     )
                 }
             }

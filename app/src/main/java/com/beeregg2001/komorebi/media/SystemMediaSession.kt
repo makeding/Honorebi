@@ -3,10 +3,13 @@ package com.beeregg2001.komorebi.media
 import androidx.compose.runtime.LaunchedEffect
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.media.MediaMetadata as PlatformMediaMetadata
 import android.media.session.MediaSession as PlatformMediaSession
 import android.media.session.PlaybackState
 import android.net.Uri
+import android.os.Build
+import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -163,11 +166,14 @@ fun IdleSystemMediaSession(
     }
 }
 
+private val artworkByteCache = LruCache<String, ByteArray>(8)
+
 private fun String?.toArtworkUriOrNull(): Uri? =
     this?.trim()?.takeIf { it.isNotEmpty() }?.let(Uri::parse)
 
 private suspend fun loadArtworkData(context: Context, artworkUrl: String?): ByteArray? {
     val url = artworkUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    artworkByteCache.get(url)?.let { return it }
     val result = context.imageLoader.execute(
         ImageRequest.Builder(context)
             .data(url)
@@ -176,10 +182,23 @@ private suspend fun loadArtworkData(context: Context, artworkUrl: String?): Byte
             .build()
     ) as? SuccessResult ?: return null
     return withContext(Dispatchers.Default) {
-        val bitmap = result.drawable.toBitmap(config = Bitmap.Config.ARGB_8888)
-        ByteArrayOutputStream().use { output ->
-            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) return@withContext null
-            output.toByteArray()
+        val drawable = result.drawable
+        val existingBitmap = (drawable as? BitmapDrawable)?.bitmap?.takeIf {
+            !it.isRecycled && (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || it.config != Bitmap.Config.HARDWARE)
+        }
+        val ownedBitmap = existingBitmap == null
+        val bitmap = existingBitmap ?: drawable.toBitmap(config = Bitmap.Config.ARGB_8888)
+        try {
+            ByteArrayOutputStream().use { output ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)) return@withContext null
+                output.toByteArray().also { bytes ->
+                    if (bytes.isNotEmpty()) artworkByteCache.put(url, bytes)
+                }
+            }
+        } finally {
+            if (ownedBitmap && !bitmap.isRecycled) {
+                bitmap.recycle()
+            }
         }
     }
 }

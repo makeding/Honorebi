@@ -14,7 +14,6 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 /** Transparent surface: the already paused player remains the background. */
 @Composable
@@ -37,7 +36,7 @@ fun PlayerScreensaverContent(title: String, subtitle: String = "", modifier: Mod
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                now.format(screensaverClockFormat),
                 color = Color.White, fontSize = if (compact) 88.sp else 112.sp,
                 lineHeight = if (compact) 100.sp else 124.sp,
                 fontWeight = FontWeight.Light, maxLines = 1,

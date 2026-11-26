@@ -63,6 +63,11 @@ private fun formatChannel(program: RecordedProgram): String? {
         .ifEmpty { null }
 }
 
+private val broadcastStart12HourFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd(E) a h:mm", Locale.JAPANESE)
+private val broadcastStart24HourFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd(E) HH:mm", Locale.JAPANESE)
+private val broadcastEndTime12HourFormat = DateTimeFormatter.ofPattern("a h:mm", Locale.JAPANESE)
+private val broadcastEndTime24HourFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.JAPANESE)
+
 internal fun formatBroadcastTime(
     startTime: String,
     endTime: String,
@@ -73,14 +78,18 @@ internal fun formatBroadcastTime(
     if (timeFormat == "28H") {
         return ProgramTimeFormatter.formatRange(startTime, endTime, timeFormat, "yyyy/MM/dd(E)", zoneId, includeEndDateOnCrossDate = includeEndDateOnCrossDate)
     }
+    val is12Hour = timeFormat == "12H"
+    val startFormatter = if (is12Hour) broadcastStart12HourFormat else broadcastStart24HourFormat
     val start = parseDateTime(startTime, zoneId) ?: return null
-    val startPattern = if (timeFormat == "12H") "yyyy/MM/dd(E) a h:mm" else "yyyy/MM/dd(E) HH:mm"
-    val formattedStart = DateTimeFormatter.ofPattern(startPattern, Locale.JAPANESE).format(start)
+    val formattedStart = startFormatter.format(start)
     val end = parseDateTime(endTime, zoneId) ?: return formattedStart
     val crossesDate = java.time.LocalDate.from(start) != java.time.LocalDate.from(end)
-    val endPattern = (if (includeEndDateOnCrossDate && crossesDate) "yyyy/MM/dd(E) " else "") +
-        (if (timeFormat == "12H") "a h:mm" else "HH:mm")
-    return "$formattedStart - ${DateTimeFormatter.ofPattern(endPattern, Locale.JAPANESE).format(end)}"
+    val endFormatter = when {
+        includeEndDateOnCrossDate && crossesDate -> startFormatter
+        is12Hour -> broadcastEndTime12HourFormat
+        else -> broadcastEndTime24HourFormat
+    }
+    return "$formattedStart - ${endFormatter.format(end)}"
 }
 
 private fun parseDateTime(value: String, zoneId: ZoneId): java.time.temporal.TemporalAccessor? =

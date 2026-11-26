@@ -45,4 +45,24 @@ class TileSheetBitmapDecoderTest {
             "decodedBytes=$decodedBytes exceeds budget"
         }
     }
+
+    @Test
+    fun deviceBudgetScalesDownForLowAndMidRamTvs() {
+        assertEquals(
+            TileSheetBitmapDecoder.LOW_RAM_MAX_BITMAP_BYTES,
+            TileSheetBitmapDecoder.budgetBytesForTotalRam(2_000_000_000L, isLowRamDevice = false),
+        )
+        assertEquals(
+            TileSheetBitmapDecoder.LOW_RAM_MAX_BITMAP_BYTES,
+            TileSheetBitmapDecoder.budgetBytesForTotalRam(4_000_000_000L, isLowRamDevice = true),
+        )
+        assertEquals(
+            TileSheetBitmapDecoder.MID_RAM_MAX_BITMAP_BYTES,
+            TileSheetBitmapDecoder.budgetBytesForTotalRam(3_000_000_000L, isLowRamDevice = false),
+        )
+        assertEquals(
+            TileSheetBitmapDecoder.MAX_BITMAP_BYTES,
+            TileSheetBitmapDecoder.budgetBytesForTotalRam(4_000_000_000L, isLowRamDevice = false),
+        )
+    }
 }

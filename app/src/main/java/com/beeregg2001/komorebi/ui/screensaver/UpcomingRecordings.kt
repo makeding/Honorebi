@@ -39,6 +39,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.delay
@@ -48,6 +49,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+
+private val upcomingStartFormat = DateTimeFormatter.ofPattern("M/d (EEE) HH:mm", Locale.JAPANESE)
 
 data class UpcomingRecording(
     val startsAt: Instant,
@@ -210,7 +213,7 @@ internal fun UpcomingRecordingsPanel(
             is UpcomingRecordingsState.Content -> {
                 renderedState.recordings.forEach { recording ->
                     val local = recording.startsAt.atZone(ZoneId.systemDefault())
-                    val start = local.format(DateTimeFormatter.ofPattern("M/d (EEE) HH:mm", java.util.Locale.JAPANESE))
+                    val start = local.format(upcomingStartFormat)
                     Column(Modifier.height(54.dp)) {
                         Text(
                             "$start  ${recording.channelName}",

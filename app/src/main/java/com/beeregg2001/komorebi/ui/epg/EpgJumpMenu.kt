@@ -272,12 +272,23 @@ private fun TimeLabelCell(hour: Int, height: Dp, timeFormat: String) {
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
+private val epgHeaderDateFormat = DateTimeFormatter.ofPattern("M/d", Locale.JAPANESE)
+private val epgHeaderDowFormat = DateTimeFormatter.ofPattern("(E)", Locale.JAPANESE)
+
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun HeaderCell(date: OffsetDateTime, width: Dp) {
     val colors = KomorebiTheme.colors
-    val localDate = date.toDeviceTime()
-    val isSunday = localDate.dayOfWeek.value == 7
-    val isSaturday = localDate.dayOfWeek.value == 6
+    val (dateText, dowText, dowColorType) = remember(date) {
+        val localDate = date.toDeviceTime()
+        Triple(
+            localDate.format(epgHeaderDateFormat),
+            localDate.format(epgHeaderDowFormat),
+            localDate.dayOfWeek.value,
+        )
+    }
+    val isSunday = dowColorType == 7
+    val isSaturday = dowColorType == 6
     Column(
         modifier = Modifier
             .width(width)
@@ -286,13 +297,13 @@ fun HeaderCell(date: OffsetDateTime, width: Dp) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = localDate.format(DateTimeFormatter.ofPattern("M/d", Locale.JAPANESE)),
+            text = dateText,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = colors.textPrimary
         )
         Text(
-            text = localDate.format(DateTimeFormatter.ofPattern("(E)", Locale.JAPANESE)),
+            text = dowText,
             fontSize = 10.sp,
             color = when {
                 isSunday -> Color(0xFFFF5252); isSaturday -> Color(0xFF448AFF); else -> colors.textSecondary

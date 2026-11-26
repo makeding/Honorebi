@@ -152,6 +152,15 @@ internal class DanmakuEngine(
 
     fun pendingCount(): Int = pending.size
 
+    fun earliestPendingShowTimeMs(): Long? {
+        var minTime: Long? = null
+        for (i in 0 until pending.size) {
+            val showTime = pending[i].item.showTimeMs
+            if (minTime == null || showTime < minTime) minTime = showTime
+        }
+        return minTime
+    }
+
     fun forEachActive(block: (ActiveItem<Any?>) -> Unit) {
         for (i in 0 until active.size) {
             block(active[i])

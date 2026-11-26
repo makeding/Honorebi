@@ -121,7 +121,6 @@ fun NavigationLinkButton(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
             modifier = Modifier
                 .height(40.dp)
-                .graphicsLayer { clip = false }
                 .focusProperties {
                     left = leftEdgeFocusRequester
                     right = FocusRequester.Cancel

@@ -1,5 +1,7 @@
 package com.beeregg2001.komorebi.ui.video.player
 
+import android.app.ActivityManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
@@ -22,6 +24,22 @@ internal object TileSheetBitmapDecoder {
      * メモリの少ない 32bit TV (3GB クラス) でも保持できる大きさに抑える。
      */
     const val MAX_BITMAP_BYTES = 64L * 1024L * 1024L
+    const val LOW_RAM_MAX_BITMAP_BYTES = 16L * 1024L * 1024L
+    const val MID_RAM_MAX_BITMAP_BYTES = 32L * 1024L * 1024L
+
+    fun budgetBytesForTotalRam(totalRamBytes: Long, isLowRamDevice: Boolean): Long = when {
+        isLowRamDevice || totalRamBytes in 1L..2_500_000_000L -> LOW_RAM_MAX_BITMAP_BYTES
+        totalRamBytes in 1L..3_500_000_000L -> MID_RAM_MAX_BITMAP_BYTES
+        else -> MAX_BITMAP_BYTES
+    }
+
+    fun budgetBytesForDevice(context: Context): Long {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            ?: return LOW_RAM_MAX_BITMAP_BYTES
+        val memInfo = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(memInfo)
+        return budgetBytesForTotalRam(memInfo.totalMem, am.isLowRamDevice)
+    }
 
     data class Decoded(val bitmap: Bitmap, val sampleSize: Int)
 

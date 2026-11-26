@@ -125,7 +125,7 @@ fun RecordDetailPanel(
                         .placeholder(com.beeregg2001.komorebi.R.drawable.dark_image)
                         .error(com.beeregg2001.komorebi.R.drawable.dark_image)
                         .fallback(com.beeregg2001.komorebi.R.drawable.dark_image)
-                        .crossfade(true)
+                        .crossfade(false)
                         .memoryCacheKey(thumbnailCacheKey)
                         .diskCacheKey(thumbnailCacheKey)
                         .memoryCachePolicy(CachePolicy.ENABLED)

@@ -56,7 +56,7 @@ fun SeriesThumbnailCollage(
                     .networkCachePolicy(
                         if (allowNetworkImages) CachePolicy.ENABLED else CachePolicy.DISABLED
                     )
-                    .crossfade(true)
+                    .crossfade(false)
                     .build()
             }
             AsyncImage(

@@ -102,6 +102,9 @@ internal fun formatNotificationBadgeCount(count: Int): String =
     if (count > 9) "9+" else count.coerceAtLeast(0).toString()
 
 @RequiresApi(Build.VERSION_CODES.O)
+private val stripClock12HourFormat = DateTimeFormatter.ofPattern("a h:mm", Locale.JAPANESE)
+private val stripClock24HourFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.JAPANESE)
+
 @Composable
 fun DigitalClock(timeFormat: String, modifier: Modifier = Modifier) {
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
@@ -112,8 +115,7 @@ fun DigitalClock(timeFormat: String, modifier: Modifier = Modifier) {
         }
     }
 
-    val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
-    val formattedTime = currentTime.format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+    val formattedTime = currentTime.format(if (timeFormat == "12H") stripClock12HourFormat else stripClock24HourFormat)
 
     Text(
         text = formattedTime,

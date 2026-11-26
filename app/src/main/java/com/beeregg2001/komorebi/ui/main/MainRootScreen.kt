@@ -560,13 +560,6 @@ fun MainRootScreen(
         }
     }
 
-    var currentTime by remember { mutableStateOf(LocalTime.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = LocalTime.now(); delay(60000)
-        }
-    }
-
     val detailFocusRequester = remember { FocusRequester() }
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
@@ -622,10 +615,7 @@ fun MainRootScreen(
     val systemSleepAllowed by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
     val usePlayerSaver = pausedPlayback != null && playerStyle == "PLAYER"
     com.beeregg2001.komorebi.ui.screensaver.EndedPlaybackScreenHold(endedHoldMinutes, appWakeState)
-    val screensaverInterval by settingsViewModel.screensaverIntervalSeconds.collectAsState()
-    val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
     val screensaverImages by settingsViewModel.screensaverImageUris.collectAsState()
-    val screensaverShowUpcoming by settingsViewModel.screensaverShowUpcoming.collectAsState()
     val screensaverState = rememberInAppScreensaverState(
         enabled = screensaverEnabled,
         timeoutMinutes = screensaverTimeout,
@@ -1063,8 +1053,6 @@ fun MainRootScreen(
     val spoilerBlurEnabled by settingsViewModel.spoilerBlurEnabled.collectAsState()
     val jikkyoFestivalAlert by settingsViewModel.jikkyoFestivalAlert.collectAsState()
     val cmPanicZapEnabled by settingsViewModel.cmPanicZapEnabled.collectAsState()
-    val liveRows by channelViewModel.liveRows.collectAsState()
-    val festivalAlertedAt = remember { mutableMapOf<String, Long>() }
     var cmPanicReturnChannel by remember { mutableStateOf<com.beeregg2001.komorebi.data.model.Channel?>(null) }
 
     LaunchedEffect(state.playbackState.livePlayback) {
@@ -1073,20 +1061,12 @@ fun MainRootScreen(
         }
     }
 
-    LaunchedEffect(jikkyoFestivalAlert, liveRows, state.playbackState.livePlayback?.channel?.id) {
-        if (jikkyoFestivalAlert != "ON" || state.isSettingsOpen) return@LaunchedEffect
-        val nowMillis = System.currentTimeMillis()
-        val alert = com.beeregg2001.komorebi.common.detectJikkyoFestival(
-            rows = liveRows,
-            currentChannelId = state.playbackState.livePlayback?.channel?.id,
-            alertedAtMillis = festivalAlertedAt,
-            nowMillis = nowMillis,
-        )
-        if (alert != null) {
-            festivalAlertedAt[alert.channel.id] = nowMillis
-            state.toastMessage = alert.bannerText
-        }
-    }
+    JikkyoFestivalAlertEffect(
+        enabled = jikkyoFestivalAlert == "ON" && !state.isSettingsOpen,
+        channelViewModel = channelViewModel,
+        currentChannelId = state.playbackState.livePlayback?.channel?.id,
+        onAlert = { state.toastMessage = it },
+    )
 
     CompositionLocalProvider(
         com.beeregg2001.komorebi.common.LocalLateNightWatchEnabled provides (lateNightWatchMode == "ON"),
@@ -1291,7 +1271,6 @@ fun MainRootScreen(
             },
         ) {
             val colors = KomorebiTheme.colors
-            val backgroundBrush = getSeasonalBackgroundBrush(KomorebiTheme.theme, currentTime)
 
             Box(
             modifier = Modifier
@@ -1424,8 +1403,13 @@ fun MainRootScreen(
                     false
                 }
                 .background(colors.background)
-                .background(backgroundBrush)
         ) {
+            if (!state.playbackState.isPlaybackActive) {
+                SeasonalBackgroundOverlay(
+                    theme = KomorebiTheme.theme,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             if (startupRenderPlan.showSeasonalDecor) {
                 SeasonalDecor(
                     season = themeSeason,
@@ -1678,6 +1662,9 @@ fun MainRootScreen(
                     .zIndex(5f),
             )
             if (!isInOsPip && appWakeState.isAwake && screensaverState.isVisible && (screensaverImages.isNotEmpty() || pausedPlayback != null)) {
+                val screensaverInterval by settingsViewModel.screensaverIntervalSeconds.collectAsState()
+                val screensaverTransition by settingsViewModel.screensaverTransition.collectAsState()
+                val screensaverShowUpcoming by settingsViewModel.screensaverShowUpcoming.collectAsState()
                 val upcoming = com.beeregg2001.komorebi.ui.screensaver.rememberUpcomingRecordings(
                     enabled = screensaverShowUpcoming && !usePlayerSaver,
                     visible = true,
@@ -1752,5 +1739,47 @@ fun MainRootScreen(
             }
         }
     }
+    }
+}
+
+@Composable
+private fun SeasonalBackgroundOverlay(
+    theme: AppTheme,
+    modifier: Modifier = Modifier,
+) {
+    var currentTime by remember { mutableStateOf(LocalTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentTime = LocalTime.now()
+            delay(60_000L)
+        }
+    }
+    val backgroundBrush = getSeasonalBackgroundBrush(theme, currentTime)
+    Box(modifier = modifier.background(backgroundBrush))
+}
+
+@Composable
+private fun JikkyoFestivalAlertEffect(
+    enabled: Boolean,
+    channelViewModel: ChannelViewModel,
+    currentChannelId: String?,
+    onAlert: (String) -> Unit,
+) {
+    if (!enabled) return
+    val liveRows by channelViewModel.liveRows.collectAsState()
+    val alertedAt = remember { mutableMapOf<String, Long>() }
+    val currentOnAlert by rememberUpdatedState(onAlert)
+    LaunchedEffect(liveRows, currentChannelId) {
+        val nowMillis = System.currentTimeMillis()
+        val alert = com.beeregg2001.komorebi.common.detectJikkyoFestival(
+            rows = liveRows,
+            currentChannelId = currentChannelId,
+            alertedAtMillis = alertedAt,
+            nowMillis = nowMillis,
+        )
+        if (alert != null) {
+            alertedAt[alert.channel.id] = nowMillis
+            currentOnAlert(alert.bannerText)
+        }
     }
 }

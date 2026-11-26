@@ -15,14 +15,36 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.TreeMap
 
 private const val UNKNOWN_DURATION_MS = 5_000L
-private const val TIMELINE_TICK_MS = 33L
-private const val PAUSED_TIMELINE_TICK_MS = 100L
+private const val MAX_LIVE_CAPTION_RECHECK_MS = 1_000L
 private const val MAX_TIMELINE_CUES = 12
+
+internal fun nextLiveCaptionUpdateDelayMs(
+    timeline: TreeMap<Long, NativeCaptionCue>,
+    positionMs: Long,
+    clockRunning: Boolean,
+): Long? {
+    if (!clockRunning) return null
+    val currentEntry = timeline.floorEntry(positionMs)
+    val currentCue = currentEntry?.value
+    val expiryMs = currentCue
+        ?.takeUnless { it.clearScreen || it.images.isEmpty() || it.durationMs == -1L }
+        ?.let { cue -> cue.ptsMs + if (cue.durationMs > 0L) cue.durationMs else UNKNOWN_DURATION_MS }
+        ?.takeIf { it > positionMs }
+    val nextCueMs = timeline.higherKey(positionMs)
+    val nextBoundaryMs = when {
+        expiryMs != null && nextCueMs != null -> minOf(expiryMs, nextCueMs)
+        expiryMs != null -> expiryMs
+        else -> nextCueMs
+    } ?: return null
+    return (nextBoundaryMs - positionMs).coerceIn(1L, MAX_LIVE_CAPTION_RECHECK_MS)
+}
 
 internal fun captionAvoidanceRegions(image: NativeCaptionImage): List<NativeCaptionRegion> =
     image.regions.ifEmpty {
@@ -39,16 +61,22 @@ fun rememberNativeCaptionCue(
 ): MutableState<NativeCaptionCue?> {
     val cueState = remember { mutableStateOf<NativeCaptionCue?>(null) }
     val timeline = remember { TreeMap<Long, NativeCaptionCue>() }
+    val invalidations = remember { Channel<Unit>(Channel.CONFLATED) }
     val currentClockRunning = rememberUpdatedState(clockRunning)
     val currentPositionMsProvider = rememberUpdatedState(positionMsProvider)
     LaunchedEffect(resetKey) {
         timeline.clear()
         cueState.value = null
+        invalidations.trySend(Unit)
+    }
+    LaunchedEffect(clockRunning, resetKey) {
+        invalidations.trySend(Unit)
     }
     LaunchedEffect(events, enabled, resetKey) {
         if (!enabled) {
             timeline.clear()
             cueState.value = null
+            invalidations.trySend(Unit)
             return@LaunchedEffect
         }
         events.collect { cue ->
@@ -56,10 +84,12 @@ fun rememberNativeCaptionCue(
                 NativeCaptionCue.TIMELINE_COMMAND_RESET -> {
                     timeline.clear()
                     cueState.value = null
+                    invalidations.trySend(Unit)
                     return@collect
                 }
                 NativeCaptionCue.TIMELINE_COMMAND_REPLACE_FROM -> {
                     timeline.tailMap(cue.ptsMs, true).clear()
+                    invalidations.trySend(Unit)
                     return@collect
                 }
             }
@@ -67,10 +97,15 @@ fun rememberNativeCaptionCue(
             while (timeline.size > MAX_TIMELINE_CUES) {
                 timeline.pollFirstEntry()
             }
+            invalidations.trySend(Unit)
         }
     }
     LaunchedEffect(enabled, resetKey) {
-        while (enabled) {
+        if (!enabled) {
+            cueState.value = null
+            return@LaunchedEffect
+        }
+        while (isActive) {
             val positionMs = currentPositionMsProvider.value().coerceAtLeast(0L)
             val currentEntry = timeline.floorEntry(positionMs)
             val cue = currentEntry?.value
@@ -84,7 +119,12 @@ fun rememberNativeCaptionCue(
             if (currentEntry != null) {
                 timeline.headMap(currentEntry.key, false).clear()
             }
-            delay(if (currentClockRunning.value) TIMELINE_TICK_MS else PAUSED_TIMELINE_TICK_MS)
+            val delayMs = nextLiveCaptionUpdateDelayMs(timeline, positionMs, currentClockRunning.value)
+            if (delayMs == null) {
+                invalidations.receive()
+            } else {
+                withTimeoutOrNull(delayMs) { invalidations.receive() }
+            }
         }
     }
     return cueState

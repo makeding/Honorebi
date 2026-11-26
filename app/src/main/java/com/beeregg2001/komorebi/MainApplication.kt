@@ -58,7 +58,7 @@ class MainApplication : Application(), Configuration.Provider, ImageLoaderFactor
                     .maxSizeBytes(IMAGE_DISK_CACHE_SIZE_BYTES)
                     .build()
             }
-            .crossfade(true)
+            .crossfade(false)
             .build()
     }
 

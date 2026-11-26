@@ -185,8 +185,11 @@ class TileSheetLoader(
                     )
                 }
 
-                // シートは録画長に応じて非常に大きくなるため、共通ポリシーで等比縮小 + RGB_565 デコードする。
-                val decoded = TileSheetBitmapDecoder.decode(file)
+                // シートは録画長に応じて非常に大きくなるため、端末RAMに応じた上限ポリシーで等比縮小 + RGB_565 デコードする。
+                val decoded = TileSheetBitmapDecoder.decode(
+                    file = file,
+                    maxBytes = TileSheetBitmapDecoder.budgetBytesForDevice(context),
+                )
 
                 if (decoded != null) {
                     fullSheetBitmap = decoded.bitmap

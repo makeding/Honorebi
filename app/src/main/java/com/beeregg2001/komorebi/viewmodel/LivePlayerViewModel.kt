@@ -4,8 +4,9 @@ package com.beeregg2001.komorebi.ui.live
 
 import android.content.Context
 import android.net.ConnectivityManager
-import android.os.SystemClock
 import android.os.Build
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
@@ -194,6 +195,9 @@ class LivePlayerViewModel @Inject constructor(
 
     private val _mainSignalInfo = MutableStateFlow(SignalMetadata())
     val mainSignalInfo: StateFlow<SignalMetadata> = _mainSignalInfo.asStateFlow()
+
+    @Volatile
+    private var signalInfoEnabled = false
 
     private val _dualSseStatus = MutableStateFlow("Standby")
     val dualSseStatus: StateFlow<String> = _dualSseStatus.asStateFlow()
@@ -1539,6 +1543,59 @@ class LivePlayerViewModel @Inject constructor(
         if (run.installEventSource(connection)) connection.start()
     }
 
+    fun setSignalInfoEnabled(enabled: Boolean) {
+        signalInfoEnabled = enabled
+        if (enabled) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                sampleMainSignalInfo()?.let { _mainSignalInfo.value = it }
+            } else {
+                viewModelScope.launch(Dispatchers.Main) {
+                    sampleMainSignalInfo()?.let { _mainSignalInfo.value = it }
+                }
+            }
+        }
+    }
+
+    private fun sampleMainSignalInfo(): SignalMetadata? {
+        val player = _mainPlayer.value ?: return null
+        val vFormat = player.videoFormat
+        val aFormat = player.audioFormat
+        val vCounters = player.videoDecoderCounters
+        val bitrateText = if (vFormat != null && vFormat.bitrate > 0) String.format(
+            "%.2f Mbps",
+            vFormat.bitrate / 1000000f
+        ) else {
+            if (vCounters != null) String.format(
+                "%.2f Mbps",
+                (vCounters.renderedOutputBufferCount % 50) / 10f + 12.0f
+            ) else "-"
+        }
+        val audioMime = aFormat?.sampleMimeType ?: ""
+        val audioCodecName = when {
+            audioMime.contains("mp4a-latm", true) -> "AAC-LATM"
+            audioMime.contains("mpeg-l2", true) -> "MPEG2 Audio"
+            audioMime.contains("ac3", true) -> "Dolby Digital"
+            else -> audioMime.replace("audio/", "").uppercase()
+        }
+        return SignalMetadata(
+            videoRes = if (vFormat != null) "${vFormat.width} x ${vFormat.height}" else "-",
+            verticalFreq = if (vFormat != null && vFormat.frameRate > 0) String.format(
+                "%.2f Hz",
+                vFormat.frameRate
+            ) else "-",
+            videoCodec = vFormat?.sampleMimeType?.replace("video/", "")?.uppercase() ?: "-",
+            videoBitrate = bitrateText,
+            audioCodec = audioCodecName,
+            audioChannels = if (aFormat != null) "${if (aFormat.channelCount == 6) "5.1" else aFormat.channelCount.toString()}.0ch" else "-",
+            audioSampleRate = if (aFormat != null) "${aFormat.sampleRate / 1000} kHz" else "-",
+            bufferDuration = String.format(
+                "%.1f 秒",
+                (player.bufferedPosition - player.currentPosition).coerceAtLeast(0L) / 1000f
+            ),
+            droppedFrames = vCounters?.droppedBufferCount?.toString() ?: "0"
+        )
+    }
+
     private fun startSignalPolling() {
         signalPollJob?.cancel()
         signalPollJob = viewModelScope.launch(Dispatchers.Main) {
@@ -1561,42 +1618,8 @@ class LivePlayerViewModel @Inject constructor(
                         dualAutoRetryCount = 0
                     }
                 }
-                _mainPlayer.value?.let { player ->
-                    val vFormat = player.videoFormat
-                    val aFormat = player.audioFormat
-                    val vCounters = player.videoDecoderCounters
-                    val bitrateText = if (vFormat != null && vFormat.bitrate > 0) String.format(
-                        "%.2f Mbps",
-                        vFormat.bitrate / 1000000f
-                    ) else {
-                        if (vCounters != null) String.format(
-                            "%.2f Mbps",
-                            (vCounters.renderedOutputBufferCount % 50) / 10f + 12.0f
-                        ) else "-"
-                    }
-                    val audioMime = aFormat?.sampleMimeType ?: ""
-                    val audioCodecName = when {
-                        audioMime.contains("mp4a-latm", true) -> "AAC-LATM"
-                        audioMime.contains("mpeg-l2", true) -> "MPEG2 Audio"
-                        audioMime.contains("ac3", true) -> "Dolby Digital"
-                        else -> audioMime.replace("audio/", "").uppercase()
-                    }
-                    _mainSignalInfo.value = SignalMetadata(
-                        videoRes = if (vFormat != null) "${vFormat.width} x ${vFormat.height}" else "-",
-                        verticalFreq = if (vFormat != null && vFormat.frameRate > 0) String.format(
-                            "%.2f Hz",
-                            vFormat.frameRate
-                        ) else "-",
-                        videoCodec = vFormat?.sampleMimeType?.replace("video/", "")?.uppercase()
-                            ?: "-", videoBitrate = bitrateText, audioCodec = audioCodecName,
-                        audioChannels = if (aFormat != null) "${if (aFormat.channelCount == 6) "5.1" else aFormat.channelCount.toString()}.0ch" else "-",
-                        audioSampleRate = if (aFormat != null) "${aFormat.sampleRate / 1000} kHz" else "-",
-                        bufferDuration = String.format(
-                            "%.1f 秒",
-                            (player.bufferedPosition - player.currentPosition).coerceAtLeast(0L) / 1000f
-                        ),
-                        droppedFrames = vCounters?.droppedBufferCount?.toString() ?: "0"
-                    )
+                if (signalInfoEnabled) {
+                    sampleMainSignalInfo()?.let { _mainSignalInfo.value = it }
                 }
                 delay(1000)
             }

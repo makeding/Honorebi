@@ -1172,14 +1172,17 @@ private fun NotificationDrawerFooterButton(
     }
 }
 
+private val notification12HourFormat = DateTimeFormatter.ofPattern("a h:mm", Locale.JAPANESE)
+private val notification24HourFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.JAPANESE)
+
 @RequiresApi(Build.VERSION_CODES.O)
 internal fun formatNotificationTimestamp(postTimeMs: Long, timeFormat: String): String {
     if (postTimeMs <= 0L) return ""
-    val pattern = if (timeFormat == "12H") "a h:mm" else "HH:mm"
+    val formatter = if (timeFormat == "12H") notification12HourFormat else notification24HourFormat
     return runCatching {
         Instant.ofEpochMilli(postTimeMs)
             .atZone(ZoneId.systemDefault())
-            .format(DateTimeFormatter.ofPattern(pattern, Locale.JAPANESE))
+            .format(formatter)
     }.getOrDefault("")
 }
 

@@ -158,4 +158,17 @@ class DanmakuEngineTest {
         assertEquals(0, engine.activeCount())
         assertFalse(engine.hasWork())
     }
+
+    @Test
+    fun earliestPendingShowTimeReturnsMinimumOrNullWhenEmpty() {
+        val engine = DanmakuEngine()
+        assertEquals(null, engine.earliestPendingShowTimeMs())
+
+        engine.enqueue(DanmakuItem("later", -1, 40f, showTimeMs = 2_500L))
+        engine.enqueue(DanmakuItem("sooner", -1, 40f, showTimeMs = 1_200L))
+        assertEquals(1_200L, engine.earliestPendingShowTimeMs())
+
+        engine.clearAll()
+        assertEquals(null, engine.earliestPendingShowTimeMs())
+    }
 }

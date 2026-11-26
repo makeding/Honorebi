@@ -76,7 +76,7 @@ internal fun drawDanmakuText(canvas: Canvas, text: String, x: Float, y: Float, s
 internal fun drawDanmakuTile(canvas: Canvas, text: String, x: Int, y: Int, stroke: Paint, fill: Paint) =
     drawDanmakuText(canvas, text, 1f - x, 1f - y, stroke, fill)
 
-private val BUCKET_WIDTHS = intArrayOf(128, 256, TILE_WIDTH + 2)
+private val BUCKET_WIDTHS = intArrayOf(128, 256, 384, TILE_WIDTH + 2)
 
 private const val VERT_SHADER = """#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -151,6 +151,7 @@ internal class GlDanmakuSurfaceView(
     private var surfaceReady = false
     private var running = false
     private var frameLoopActive = false
+    private var pendingWakeScheduled = false
     private var surfaceCleared = true
     private var useGl = false
     private var surfaceWidth = 1920
@@ -166,7 +167,9 @@ internal class GlDanmakuSurfaceView(
     private var uViewportLoc = -1
     private var uAtlasLoc = -1
     private var atlasTexId = 0
-    private var vboId = 0
+    private val vboIds = IntArray(2)
+    private val vaoIds = IntArray(2)
+    private var vboIndex = 0
 
     private val vertexArray = FloatArray(MAX_ATLAS_QUADS * 6 * 5)
     private val vertexBuffer: FloatBuffer = ByteBuffer
@@ -192,6 +195,11 @@ internal class GlDanmakuSurfaceView(
         color = Color.WHITE
     }
 
+    private val pendingWakeRunnable = Runnable {
+        pendingWakeScheduled = false
+        maybeStartFrameLoop()
+    }
+
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!surfaceReady || !running || released.get()) {
@@ -199,14 +207,7 @@ internal class GlDanmakuSurfaceView(
                 return
             }
             stepAndRender(frameTimeNanos)
-            if (surfaceReady && running && !released.get() && engine.hasWork()) {
-                choreographer?.postFrameCallback(this)
-            } else {
-                frameLoopActive = false
-                if (surfaceReady && !surfaceCleared && !engine.hasWork()) {
-                    drawCurrentFrame()
-                }
-            }
+            scheduleNextFrameOrSleep()
         }
     }
 
@@ -330,6 +331,8 @@ internal class GlDanmakuSurfaceView(
             engine.setViewport(surfaceWidth, surfaceHeight)
             if (surfaceReady && useGl) {
                 GLES30.glViewport(0, 0, surfaceWidth, surfaceHeight)
+                GLES30.glUseProgram(program)
+                GLES30.glUniform2f(uViewportLoc, surfaceWidth.toFloat(), surfaceHeight.toFloat())
                 drawCurrentFrame()
             }
         }
@@ -374,14 +377,54 @@ internal class GlDanmakuSurfaceView(
     private fun maybeStartFrameLoop() {
         if (!surfaceReady || !running || frameLoopActive || released.get()) return
         if (!engine.hasWork()) return
-        frameLoopActive = true
-        choreographer?.postFrameCallback(frameCallback)
+        if (engine.activeCount() > 0) {
+            renderHandler.removeCallbacks(pendingWakeRunnable)
+            pendingWakeScheduled = false
+            frameLoopActive = true
+            choreographer?.postFrameCallback(frameCallback)
+        } else {
+            scheduleNextFrameOrSleep()
+        }
+    }
+
+    private fun scheduleNextFrameOrSleep() {
+        if (!surfaceReady || !running || released.get()) {
+            stopFrameLoop()
+            return
+        }
+        if (engine.activeCount() > 0) {
+            renderHandler.removeCallbacks(pendingWakeRunnable)
+            pendingWakeScheduled = false
+            frameLoopActive = true
+            choreographer?.postFrameCallback(frameCallback)
+            return
+        }
+        frameLoopActive = false
+        if (!surfaceCleared) {
+            drawCurrentFrame()
+        }
+        val earliest = engine.earliestPendingShowTimeMs() ?: return
+        val delayMs = (earliest - clock.positionMs()).coerceAtLeast(0L)
+        if (delayMs == 0L) {
+            renderHandler.removeCallbacks(pendingWakeRunnable)
+            pendingWakeScheduled = false
+            frameLoopActive = true
+            choreographer?.postFrameCallback(frameCallback)
+        } else {
+            renderHandler.removeCallbacks(pendingWakeRunnable)
+            pendingWakeScheduled = true
+            renderHandler.postDelayed(pendingWakeRunnable, delayMs)
+        }
     }
 
     private fun stopFrameLoop() {
         if (frameLoopActive) {
             choreographer?.removeFrameCallback(frameCallback)
             frameLoopActive = false
+        }
+        if (pendingWakeScheduled) {
+            renderHandler.removeCallbacks(pendingWakeRunnable)
+            pendingWakeScheduled = false
         }
     }
 
@@ -397,7 +440,9 @@ internal class GlDanmakuSurfaceView(
             },
             onExpired = ::recyclePayload,
         )
-        drawCurrentFrame()
+        if (engine.activeCount() > 0 || !surfaceCleared) {
+            drawCurrentFrame()
+        }
         if (useGl && System.nanoTime() - startedNs < 4_000_000L) {
             engine.prebuildNext(
                 measureItem = ::measureItem,
@@ -425,6 +470,8 @@ internal class GlDanmakuSurfaceView(
         fillPaint.textSize = effectiveSize
         fillPaint.color = item.textColor
         val slots = ArrayList<AtlasSlot>()
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, atlasTexId)
         val w = widthPx.toInt()
         val h = heightPx.toInt()
         var y = 0
@@ -445,7 +492,6 @@ internal class GlDanmakuSurfaceView(
                 val bitmap = normalBuckets[bucketIdx]!!
                 canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
                 drawDanmakuTile(canvas, item.text, x, y, strokePaint, fillPaint)
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, atlasTexId)
                 GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, slot.x, slot.y, bitmap)
                 x += tileW
             }
@@ -516,28 +562,17 @@ internal class GlDanmakuSurfaceView(
         }
 
         if (quadCount > 0) {
-            GLES30.glUseProgram(program)
-            GLES30.glUniform2f(uViewportLoc, surfaceWidth.toFloat(), surfaceHeight.toFloat())
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, atlasTexId)
-            GLES30.glUniform1i(uAtlasLoc, 0)
-
             vertexBuffer.clear()
             vertexBuffer.put(vertexArray, 0, idx)
             vertexBuffer.flip()
 
-            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
+            val bufIdx = vboIndex
+            vboIndex = bufIdx xor 1
+            GLES30.glBindVertexArray(vaoIds[bufIdx])
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboIds[bufIdx])
             GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, idx * 4, vertexBuffer)
-
-            val stride = 5 * 4
-            GLES30.glEnableVertexAttribArray(0)
-            GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, stride, 0)
-            GLES30.glEnableVertexAttribArray(1)
-            GLES30.glVertexAttribPointer(1, 2, GLES30.GL_FLOAT, false, stride, 2 * 4)
-            GLES30.glEnableVertexAttribArray(2)
-            GLES30.glVertexAttribPointer(2, 1, GLES30.GL_FLOAT, false, stride, 4 * 4)
-
             GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, quadCount * 6)
+            GLES30.glBindVertexArray(0)
         }
 
         EGL14.eglSwapBuffers(eglDisplay, eglSurface)
@@ -690,11 +725,29 @@ internal class GlDanmakuSurfaceView(
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glTexStorage2D(GLES30.GL_TEXTURE_2D, 1, GLES30.GL_RGBA8, ATLAS_WIDTH, ATLAS_HEIGHT)
 
-        val vbo = IntArray(1)
-        GLES30.glGenBuffers(1, vbo, 0)
-        vboId = vbo[0]
-        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
-        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, MAX_ATLAS_QUADS * 6 * 5 * 4, null, GLES30.GL_STREAM_DRAW)
+        GLES30.glGenVertexArrays(2, vaoIds, 0)
+        GLES30.glGenBuffers(2, vboIds, 0)
+        val stride = 5 * 4
+        val bufferSizeBytes = MAX_ATLAS_QUADS * 6 * stride
+        for (i in 0..1) {
+            GLES30.glBindVertexArray(vaoIds[i])
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboIds[i])
+            GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, bufferSizeBytes, null, GLES30.GL_STREAM_DRAW)
+            GLES30.glEnableVertexAttribArray(0)
+            GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, stride, 0)
+            GLES30.glEnableVertexAttribArray(1)
+            GLES30.glVertexAttribPointer(1, 2, GLES30.GL_FLOAT, false, stride, 2 * 4)
+            GLES30.glEnableVertexAttribArray(2)
+            GLES30.glVertexAttribPointer(2, 1, GLES30.GL_FLOAT, false, stride, 4 * 4)
+        }
+        GLES30.glBindVertexArray(0)
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
+
+        GLES30.glUseProgram(program)
+        GLES30.glUniform2f(uViewportLoc, surfaceWidth.toFloat(), surfaceHeight.toFloat())
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, atlasTexId)
+        GLES30.glUniform1i(uAtlasLoc, 0)
 
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE_MINUS_SRC_ALPHA)
@@ -745,10 +798,16 @@ internal class GlDanmakuSurfaceView(
                     GLES30.glDeleteTextures(1, intArrayOf(atlasTexId), 0)
                     atlasTexId = 0
                 }
-                if (vboId != 0) {
-                    GLES30.glDeleteBuffers(1, intArrayOf(vboId), 0)
-                    vboId = 0
+                GLES30.glBindVertexArray(0)
+                if (vaoIds[0] != 0 || vaoIds[1] != 0) {
+                    GLES30.glDeleteVertexArrays(2, vaoIds, 0)
+                    vaoIds.fill(0)
                 }
+                if (vboIds[0] != 0 || vboIds[1] != 0) {
+                    GLES30.glDeleteBuffers(2, vboIds, 0)
+                    vboIds.fill(0)
+                }
+                vboIndex = 0
                 if (program != 0) {
                     GLES30.glDeleteProgram(program)
                     program = 0

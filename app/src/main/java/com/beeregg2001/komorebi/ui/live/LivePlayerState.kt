@@ -50,7 +50,6 @@ class LivePlayerState(
 
     var playerError by mutableStateOf<String?>(null)
     var isPlayerPlaying by mutableStateOf(false)
-    var signalInfo by mutableStateOf(SignalMetadata())
     var sseStatus by mutableStateOf("Standby")
     var sseDetail by mutableStateOf(AppStrings.SSE_CONNECTING)
     var dualSseStatus by mutableStateOf("Standby")
