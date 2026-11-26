@@ -207,4 +207,34 @@ class HomeResumeFocusTest {
         compose.onNodeWithTag("tab-1").assertIsFocused()
         compose.runOnIdle { assertEquals(1, selected.intValue) }
     }
+
+    @Test fun resumeSkipsRestoreWhenPendingHomeIntentIsSetAndResumesNormallyOtherwise() {
+        val pendingHomeIntent = mutableStateOf(true)
+        var restores = 0
+        compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        compose.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                HomeResumeFocusEffect {
+                    if (!pendingHomeIntent.value) {
+                        restores++
+                    }
+                }
+            }
+        }
+
+        // Resuming from external app via physical Home button -> ON_RESUME restoration is suppressed.
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE) }
+        compose.waitForIdle()
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(0, restores) }
+
+        // Normal resume without pending Home intent -> restoration fires normally.
+        compose.runOnIdle { pendingHomeIntent.value = false }
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE) }
+        compose.waitForIdle()
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME) }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, restores) }
+    }
 }

@@ -277,7 +277,7 @@ object AppStrings {
 
     // ★追加: 起動時のチャンネル設定
     const val SETTINGS_ITEM_STARTUP_TAB = "起動時のデフォルトタブ"
-    const val SETTINGS_ITEM_STARTUP_FOCUS_TARGET = "起動時のフォーカス位置"
+    const val SETTINGS_ITEM_STARTUP_FOCUS_TARGET = "起動・ホーム押下時のフォーカス位置"
     const val SETTINGS_ITEM_STARTUP_CHANNEL = "起動時に再生するチャンネル"
     const val SETTINGS_VALUE_STARTUP_OFF = "設定しない (タブ設定を優先)"
     const val SETTINGS_VALUE_STARTUP_LAST = "前回最後に視聴したチャンネル"

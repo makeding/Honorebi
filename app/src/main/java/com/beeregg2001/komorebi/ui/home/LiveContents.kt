@@ -86,6 +86,7 @@ fun LiveContent(
     overlayReturnFocusTick: Int = 0,
     onOverlayReturnConsumed: () -> Unit = {},
     onContentReady: () -> Unit = {},
+    contentTopRequestId: Long = 0L,
     topBarFocusRequester: FocusRequester? = null,
     onScrolledChanged: (Boolean) -> Unit = {},
     settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -99,6 +100,13 @@ fun LiveContent(
 
     val imageLoader = rememberChannelLogoImageLoader()
     val listState = rememberLazyListState()
+    LaunchedEffect(contentTopRequestId) {
+        if (contentTopRequestId > 0L &&
+            (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)
+        ) {
+            listState.scrollToItem(0)
+        }
+    }
     val isScrolled by remember {
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
     }

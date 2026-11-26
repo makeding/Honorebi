@@ -126,6 +126,12 @@ fun HomeContents(
     LaunchedEffect(focusMemory.requestId, availableSections, headerCount) {
         val request = focusMemory.request ?: return@LaunchedEffect
         if (request.tab != tabIndex) return@LaunchedEffect
+        if (request.contentTop) {
+            if (lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 0) {
+                lazyListState.scrollToItem(0)
+            }
+            return@LaunchedEffect
+        }
         val section = request.section ?: return@LaunchedEffect
         if (section == "shortcuts") {
             lazyListState.scrollToItem(0)

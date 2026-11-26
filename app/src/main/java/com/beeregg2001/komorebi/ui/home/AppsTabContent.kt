@@ -161,6 +161,12 @@ fun AppsTabContent(
     LaunchedEffect(focusMemory.requestId, catalogApps) {
         val request = focusMemory.request ?: return@LaunchedEffect
         if (request.tab != tabIndex) return@LaunchedEffect
+        if (request.contentTop) {
+            if (gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0) {
+                gridState.scrollToItem(0)
+            }
+            return@LaunchedEffect
+        }
         if (request.section != "apps") return@LaunchedEffect
         val index = catalogApps.indexOfFirst { it.stableId == request.itemId }
             .takeIf { it >= 0 } ?: 0

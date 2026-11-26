@@ -67,6 +67,7 @@ fun MainRootBackground(
     notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
     showUpgradeTour: Boolean = false,
     spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
+    hasPendingHomeIntent: () -> Boolean = { false },
 ) {
     val scope = rememberCoroutineScope()
     val onAirInitialFocusRequester = remember { FocusRequester() }
@@ -259,6 +260,11 @@ fun MainRootBackground(
                         startupFocusTarget = state.startupSettings?.startupFocusTarget
                             ?: com.beeregg2001.komorebi.data.StartupFocusTarget.SIDEBAR,
                         launcherHomeFocusTick = state.launcherHomeFocusTick,
+                        isLauncherHomeFocusPending = state.hasPendingLauncherHomeFocus,
+                        onLauncherHomeFocusConsumed = {
+                            state.consumeLauncherHomeFocus(state.launcherHomeFocusTick)
+                        },
+                        hasPendingHomeIntent = hasPendingHomeIntent,
                         onTabChange = { state.currentTabIndex = it },
                         selectedChannel = state.playbackState.livePlayback?.channel,
                         onChannelClick = { channel ->

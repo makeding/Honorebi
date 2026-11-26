@@ -170,6 +170,7 @@ fun VideoTabContent(
     overlayReturnFocusTick: Int = 0,
     onOverlayReturnConsumed: () -> Unit = {},
     onContentReady: () -> Unit = {},
+    contentTopRequestId: Long = 0L,
     onShowSmbLibrary: () -> Unit = {},
     onShowOnAir: () -> Unit = {},
     topBarFocusRequester: FocusRequester? = null,
@@ -179,6 +180,13 @@ fun VideoTabContent(
     val coroutineScope = rememberCoroutineScope()
 
     val listState = rememberLazyListState()
+    LaunchedEffect(contentTopRequestId) {
+        if (contentTopRequestId > 0L &&
+            (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)
+        ) {
+            listState.scrollToItem(0)
+        }
+    }
     val isScrolled by remember {
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
     }

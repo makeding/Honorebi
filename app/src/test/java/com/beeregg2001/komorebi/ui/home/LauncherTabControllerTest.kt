@@ -610,4 +610,21 @@ class LauncherTabControllerTest {
             assertEquals(0L, controller.generation)
         }
     }
+
+    @Test
+    fun immediateSelectCommitsAlreadySelectedCoalescingTabWithoutWaiting() {
+        val controller = LauncherTabController(initialTab = LauncherTab.VIDEO)
+        assertTrue(controller.markContentReady(controller.generation))
+
+        controller.selectTab(LauncherTab.HOME)
+        assertEquals(LauncherTab.HOME, controller.selectedTab)
+        assertEquals(LauncherTab.VIDEO, controller.activeTab)
+        assertEquals(LauncherTabPhase.COALESCING, controller.phase)
+
+        controller.selectTab(LauncherTab.HOME, immediate = true)
+        assertEquals(LauncherTab.HOME, controller.selectedTab)
+        assertEquals(LauncherTab.HOME, controller.activeTab)
+        assertEquals(LauncherTabPhase.MOUNTING, controller.phase)
+        assertEquals(1L, controller.generation)
+    }
 }

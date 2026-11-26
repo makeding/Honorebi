@@ -51,7 +51,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var appUpdater: AppUpdater
     @Inject lateinit var deepLinkDispatcher: DeepLinkDispatcher
 
-    private var homeIntentVersion by mutableIntStateOf(0)
+    private val homeIntentVersionState = mutableIntStateOf(0)
+    private var homeIntentVersion by homeIntentVersionState
     private var settingsIntentVersion by mutableIntStateOf(0)
     var cecHomeAction: (() -> Unit)? = null
     var cecSettingsAction: (() -> Unit)? = null
@@ -183,6 +184,7 @@ class MainActivity : ComponentActivity() {
                     homeViewModel = homeViewModel,
                     recordViewModel = recordViewModel,
                     homeIntentVersion = homeIntentVersion,
+                    latestHomeIntentVersion = { homeIntentVersionState.intValue },
                     settingsIntentVersion = settingsIntentVersion,
                     launchedFromDeepLink = launchedFromDeepLink,
                     deepLinkRequests = deepLinkDispatcher.requests,

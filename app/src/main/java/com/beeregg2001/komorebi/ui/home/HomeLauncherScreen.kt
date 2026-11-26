@@ -84,6 +84,9 @@ fun HomeLauncherScreen(
     initialTabIndex: Int = 0,
     startupFocusTarget: StartupFocusTarget = StartupFocusTarget.SIDEBAR,
     launcherHomeFocusTick: Int = 0,
+    isLauncherHomeFocusPending: Boolean = launcherHomeFocusTick > 0,
+    onLauncherHomeFocusConsumed: () -> Unit = {},
+    hasPendingHomeIntent: () -> Boolean = { false },
     selectedProgram: RecordedProgram?,
     onProgramSelected: (RecordedProgram?) -> Unit,
     epgSelectedProgram: EpgProgram?,
@@ -216,11 +219,12 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(initialTabIndex) {
+    LaunchedEffect(initialTabIndex, isLauncherHomeFocusPending) {
+        if (isLauncherHomeFocusPending) return@LaunchedEffect
         val target = visibleTabs.getOrNull(initialTabIndex.coerceIn(0, (visibleTabs.size - 1).coerceAtLeast(0)))
             ?: LauncherTab.HOME
-        if (target != tabController.selectedTab) {
-            tabController.selectTab(target)
+        if (target != tabController.selectedTab || target != tabController.activeTab) {
+            tabController.selectTab(target, immediate = true)
         }
     }
 
@@ -242,7 +246,9 @@ fun HomeLauncherScreen(
     var isEnteringContentFromRail by remember { mutableStateOf(false) }
     var stripHasFocus by remember { mutableStateOf(false) }
     var suppressInitialRailExpand by remember {
-        mutableStateOf(startupFocusTarget == StartupFocusTarget.SIDEBAR)
+        mutableStateOf(
+            (if (isLauncherHomeFocusPending) currentStartupFocusTarget else startupFocusTarget) == StartupFocusTarget.SIDEBAR
+        )
     }
 
     LaunchedEffect(isFullScreenMode) {
@@ -316,7 +322,7 @@ fun HomeLauncherScreen(
     }
 
     HomeResumeFocusEffect {
-        if (!isFullScreenMode && !isReturningFromPlayer) {
+        if (!isFullScreenMode && !isReturningFromPlayer && !hasPendingHomeIntent() && !isLauncherHomeFocusPending) {
             applyReturnFocus(FocusReturnTrigger.ACTIVITY_RESUME)
         }
     }
@@ -344,14 +350,18 @@ fun HomeLauncherScreen(
         }
     }
 
-    LaunchedEffect(launcherHomeFocusTick) {
-        if (launcherHomeFocusTick > 0) {
+    LaunchedEffect(launcherHomeFocusTick, isLauncherHomeFocusPending) {
+        if (launcherHomeFocusTick > 0 && isLauncherHomeFocusPending) {
             val targetTab = visibleTabs.getOrNull(initialTabIndex.coerceIn(0, (visibleTabs.size - 1).coerceAtLeast(0)))
                 ?: LauncherTab.HOME
-            if (targetTab != tabController.selectedTab) {
-                tabController.selectTab(targetTab, immediate = true)
-            }
+            ui.safeHouseRequester.safeRequestFocus("HomeKey_SafeHouse")
+            pendingEnterContentTab = null
+            isEnteringContentFromRail = false
+            tabController.selectTab(targetTab, immediate = true)
             val targetIndex = tabController.selectedIndex
+            ui.selectedTabIndex = targetIndex
+            syncedActiveTab = tabController.activeTab
+            homeViewModel.clearFocusMemory()
             if (currentStartupFocusTarget == StartupFocusTarget.CONTENT) {
                 suppressInitialRailExpand = false
                 focusMemory.requestContent(targetIndex)
@@ -359,6 +369,7 @@ fun HomeLauncherScreen(
                 suppressInitialRailExpand = true
                 focusMemory.remember(targetIndex)
             }
+            onLauncherHomeFocusConsumed()
         }
     }
 
@@ -419,7 +430,7 @@ fun HomeLauncherScreen(
 
     HomeOverlayReturnFocusEffect(
         isFullScreen = isFullScreenMode,
-        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0,
+        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0 || isLauncherHomeFocusPending,
         onInitialEntry = {
             if (startupFocusTarget == StartupFocusTarget.CONTENT) {
                 focusMemory.requestContent(tabController.selectedIndex)
@@ -528,6 +539,10 @@ fun HomeLauncherScreen(
                     val snapshotTabIndex = visibleTabs.indexOf(snapshot.tab).coerceAtLeast(0)
                     val snapshotTabRequester = tabController.tabRequester(snapshot.tab)
                     val snapshotContentRequester = tabController.contentRequester(snapshot.tab)
+                    val snapshotContentTopRequestId = focusMemory.request
+                        ?.takeIf { it.contentTop && it.tab == snapshotTabIndex }
+                        ?.id
+                        ?: 0L
                     val snapshotReady: () -> Unit = remember(snapshot.generation) {
                         {
                             if (tabController.markContentReady(snapshot.generation)) {
@@ -545,7 +560,7 @@ fun HomeLauncherScreen(
                                     !showTvInputs &&
                                     !showNotificationCenter &&
                                     !showUpgradeTour &&
-                                    (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null)
+                                    (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null || focusMemory.request?.contentTop == true)
                             },
                     ) {
                         val openOnAirTab: () -> Unit = {
@@ -641,6 +656,7 @@ fun HomeLauncherScreen(
                                 overlayReturnFocusTick = if (isCurrentSnapshot) combinedOverlayReturnTick else 0,
                                 onOverlayReturnConsumed = consumeOverlayReturn,
                                 onContentReady = snapshotReady,
+                                contentTopRequestId = snapshotContentTopRequestId,
                                 onScrolledChanged = { isContentScrolled = it },
                             )
 
@@ -684,6 +700,7 @@ fun HomeLauncherScreen(
                                 overlayReturnFocusTick = if (isCurrentSnapshot) combinedOverlayReturnTick else 0,
                                 onOverlayReturnConsumed = consumeOverlayReturn,
                                 onContentReady = snapshotReady,
+                                contentTopRequestId = snapshotContentTopRequestId,
                                 onScrolledChanged = { isContentScrolled = it },
                             )
 

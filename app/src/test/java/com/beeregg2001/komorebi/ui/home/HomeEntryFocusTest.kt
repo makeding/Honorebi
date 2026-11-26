@@ -109,6 +109,49 @@ class HomeEntryFocusTest {
         compose.onNodeWithTag("card").assertIsFocused()
     }
 
+    @Test fun homeOverlayDismissWithReturnInProgressSkipsRestoreThenAllowsLaterOverlayRestore() {
+        val fullScreen = mutableStateOf(true)
+        val returnInProgress = mutableStateOf(true)
+        var initialEntries = 0
+        var restores = 0
+        val tab = FocusRequester()
+        val card = FocusRequester()
+        compose.setContent {
+            HomeOverlayReturnFocusEffect(
+                isFullScreen = fullScreen.value,
+                returnInProgress = returnInProgress.value,
+                onInitialEntry = { initialEntries++ },
+                onRestore = {
+                    restores++
+                    tab.requestFocus()
+                },
+            )
+            Row {
+                Box(Modifier.size(48.dp).testTag("tab").focusRequester(tab).focusable())
+                Box(Modifier.size(48.dp).testTag("card").focusRequester(card).focusable())
+            }
+        }
+        compose.onNodeWithTag("card").requestFocus().assertIsFocused()
+
+        // Home press closes overlay while returnInProgress is true -> onRestore must be skipped.
+        compose.runOnIdle { fullScreen.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(0, initialEntries)
+            assertEquals(0, restores)
+        }
+        compose.onNodeWithTag("card").assertIsFocused()
+
+        // Clear Home return flag, then open & dismiss a normal overlay -> onRestore fires normally.
+        compose.runOnIdle { returnInProgress.value = false }
+        compose.runOnIdle { fullScreen.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle { fullScreen.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(1, restores) }
+        compose.onNodeWithTag("tab").assertIsFocused()
+    }
+
     @Test fun backCanReturnToSameTabRepeatedlyAndContentIsDistinct() {
         val memory = FocusMemory()
         val tab = FocusRequester()

@@ -39,6 +39,7 @@ import com.beeregg2001.komorebi.ui.theme.getSeasonalBackgroundBrush
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -73,6 +74,7 @@ fun MainRootScreen(
     remoteControlViewModel: RemoteControlViewModel = hiltViewModel(),
     notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
     homeIntentVersion: Int = 0,
+    latestHomeIntentVersion: () -> Int = { homeIntentVersion },
     settingsIntentVersion: Int = 0,
     launchedFromDeepLink: Boolean = false,
     deepLinkRequests: Flow<PlaybackOpenRequest> = emptyFlow(),
@@ -823,8 +825,17 @@ fun MainRootScreen(
         clearRootOverlays()
     }
 
+    var handledHomeIntentVersion by remember { mutableIntStateOf(homeIntentVersion) }
+
+    LaunchedEffect(Unit) {
+        settingsViewModel.startupFocusTarget.drop(1).collect { updated ->
+            state.startupSettings = state.startupSettings?.copy(startupFocusTarget = updated)
+        }
+    }
+
     LaunchedEffect(homeIntentVersion) {
         if (homeIntentVersion > 0) {
+            handledHomeIntentVersion = homeIntentVersion
             if (isUpgradeTourControllingSettings) {
                 isUpgradeTourControllingSettings = false
                 isManualUpgradeTourOpen = false
@@ -1473,6 +1484,7 @@ fun MainRootScreen(
                         notificationCenterViewModel = notificationCenterViewModel,
                         showUpgradeTour = isUpgradeTourActive,
                         spotlightTargets = spotlightTargets,
+                        hasPendingHomeIntent = { latestHomeIntentVersion() != handledHomeIntentVersion },
                     )
 
                     if (state.playbackState.isPlaybackActive) {

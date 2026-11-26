@@ -327,6 +327,29 @@ class MainRootStateTest {
     }
 
     @Test
+    fun launcherHomeFocusPendingTracksResetAndReturnTicksUntilConsumed() {
+        val state = MainRootState()
+        assertFalse(state.hasPendingLauncherHomeFocus)
+
+        state.resetForLauncherHome()
+        assertTrue(state.hasPendingLauncherHomeFocus)
+        state.consumeLauncherHomeFocus(state.launcherHomeFocusTick)
+        assertFalse(state.hasPendingLauncherHomeFocus)
+
+        // Returning from active playback delegates to player-return focus and does not mark pending Home focus.
+        state.playbackState.enterLive(channel())
+        state.returnToCurrentTabFromModule()
+        assertFalse(state.hasPendingLauncherHomeFocus)
+
+        // Returning from a non-playback overlay/settings marks pending Home focus until consumed.
+        state.isSettingsOpen = true
+        state.returnToCurrentTabFromModule()
+        assertTrue(state.hasPendingLauncherHomeFocus)
+        state.consumeLauncherHomeFocus(state.launcherHomeFocusTick)
+        assertFalse(state.hasPendingLauncherHomeFocus)
+    }
+
+    @Test
     fun closeSettings_preservesReadyHomeStateAndCurrentTab() {
         val state = MainRootState()
         val epgIndex = state.getVisibleTabs().indexOf("番組表")

@@ -59,6 +59,17 @@ class MainRootState {
 
     var aiFocusReturnTick by mutableIntStateOf(0)
     var launcherHomeFocusTick by mutableIntStateOf(0)
+    var handledLauncherHomeFocusTick by mutableIntStateOf(0)
+        private set
+
+    val hasPendingLauncherHomeFocus: Boolean
+        get() = launcherHomeFocusTick > handledLauncherHomeFocusTick
+
+    fun consumeLauncherHomeFocus(tick: Int) {
+        if (tick > handledLauncherHomeFocusTick) {
+            handledLauncherHomeFocusTick = tick
+        }
+    }
     var overlayReturnFocusTick by mutableIntStateOf(0)
 
     // 各種オーバーレイの開閉状態

@@ -107,9 +107,17 @@ internal fun HomeEntryFocusEffect(
             return@LaunchedEffect
         }
         val requester = if (request.contentTop) contentRequester(request.tab) else tabRequester(request.tab)
-        val focused = requester?.safeRequestFocusWithRetry("HomeFocus_Entry") ?: false
+        val focused = requester?.safeRequestFocusWithRetry(
+            tag = "HomeFocus_Entry",
+            maxRetries = 8,
+            delayMillis = 40L,
+            isCurrent = { memory.request?.id == request.id },
+        ) ?: false
         if (!focused && request.contentTop) {
-            tabRequester(request.tab)?.safeRequestFocusWithRetry("HomeFocus_EntryFallback")
+            tabRequester(request.tab)?.safeRequestFocusWithRetry(
+                tag = "HomeFocus_EntryFallback",
+                isCurrent = { memory.request?.id == request.id },
+            )
         }
         memory.consume(request.id)
     }
