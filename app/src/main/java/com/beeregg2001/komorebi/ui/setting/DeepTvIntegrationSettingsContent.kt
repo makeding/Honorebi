@@ -226,7 +226,7 @@ fun DeepTvIntegrationSettingsContent(
                 features.backgroundPlaybackMode
             }
             SettingItem(
-                title = "バックグラウンド・画面オフ時の再生動作",
+                title = "バックグラウンド再生動作",
                 value = effectiveMode.label,
                 icon = Icons.Default.PictureInPictureAlt,
                 enabled = true,
@@ -241,9 +241,9 @@ fun DeepTvIntegrationSettingsContent(
                     com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP ->
                         "再生中にホーム移動するとOS標準の小窓（PiP）で再生を継続します。小窓を閉じると再生を停止します。"
                     com.beeregg2001.komorebi.data.BackgroundPlaybackMode.AUDIO_ONLY ->
-                        "他のアプリ操作中や画面オフ時も音声のみ再生を継続します（通知・ロック画面から操作可能）。※TIF外部入力は非対応です。"
+                        "他のアプリ操作中やホーム画面でも音声のみ再生を継続します（本体スタンバイ・電源オフ時は停止）。※TIF外部入力は非対応です。"
                     com.beeregg2001.komorebi.data.BackgroundPlaybackMode.OFF ->
-                        "ホーム移動や画面オフ時に再生を停止します。"
+                        "ホーム移動や本体スタンバイ時に再生を停止します。"
                 }
             )
         }

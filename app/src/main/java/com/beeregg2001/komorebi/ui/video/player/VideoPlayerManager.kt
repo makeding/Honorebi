@@ -2,6 +2,7 @@
 
 package com.beeregg2001.komorebi.ui.video.player
 
+import android.os.PowerManager
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -553,6 +554,21 @@ fun rememberManagedExoPlayer(
     val currentKeepPlayingInBackground by rememberUpdatedState(
         com.beeregg2001.komorebi.media.LocalBackgroundAudioPlaybackEnabled.current
     )
+    val isDeviceInteractive = com.beeregg2001.komorebi.media.LocalDeviceInteractive.current
+    val powerManager = remember(context) { context.getSystemService(PowerManager::class.java) }
+
+    fun pauseForStandby(reason: String) {
+        Log.i(TAG, "Pausing ExoPlayer for standby: reason=$reason, playWhenReady=${exoPlayer.playWhenReady}")
+        currentOnStopOrDispose.value(exoPlayer)
+        recoveryLifecycleGate.onStop()
+        playerRuntime.pause()
+    }
+
+    LaunchedEffect(playerRuntime, isDeviceInteractive) {
+        if (!isDeviceInteractive) {
+            pauseForStandby("screen_off standby")
+        }
+    }
 
     DisposableEffect(lifecycleOwner, playerRuntime) {
         val observer = LifecycleEventObserver { _, event ->
@@ -562,9 +578,15 @@ fun rememberManagedExoPlayer(
                         playerRuntime.reprepare(playWhenReady = true)
                     }
                 }
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (powerManager?.isInteractive == false) {
+                        pauseForStandby("ON_PAUSE standby")
+                    }
+                }
                 Lifecycle.Event.ON_STOP -> {
                     currentOnStopOrDispose.value(exoPlayer)
-                    if (!currentKeepPlayingInBackground) {
+                    val keepPlaying = currentKeepPlayingInBackground && (powerManager?.isInteractive != false)
+                    if (!keepPlaying) {
                         recoveryLifecycleGate.onStop()
                         playerRuntime.pause()
                     }

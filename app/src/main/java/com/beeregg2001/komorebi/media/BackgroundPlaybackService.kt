@@ -88,7 +88,7 @@ class BackgroundPlaybackService : Service() {
             "バックグラウンド再生",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "バックグラウンドおよび画面オフ時の音声再生コントロール"
+            description = "バックグラウンド再生コントロール"
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)
@@ -184,6 +184,15 @@ class BackgroundPlaybackService : Service() {
         private var isRunning: Boolean = false
 
         @Volatile
+        private var lastTitle: String? = null
+
+        @Volatile
+        private var lastSubtitle: String? = null
+
+        @Volatile
+        private var lastIsPlaying: Boolean? = null
+
+        @Volatile
         var onStopRequested: (() -> Unit)? = null
 
         @Volatile
@@ -202,6 +211,9 @@ class BackgroundPlaybackService : Service() {
         ) {
             val appContext = context.applicationContext
             if (!active) {
+                lastTitle = null
+                lastSubtitle = null
+                lastIsPlaying = null
                 if (isRunning) {
                     isRunning = false
                     runCatching {
@@ -210,7 +222,17 @@ class BackgroundPlaybackService : Service() {
                 }
                 return
             }
+            if (isRunning &&
+                lastTitle == title &&
+                lastSubtitle == subtitle &&
+                lastIsPlaying == isPlaying
+            ) {
+                return
+            }
             isRunning = true
+            lastTitle = title
+            lastSubtitle = subtitle
+            lastIsPlaying = isPlaying
             val intent = Intent(appContext, BackgroundPlaybackService::class.java).apply {
                 action = ACTION_SYNC
                 putExtra(EXTRA_TITLE, title)
@@ -221,6 +243,9 @@ class BackgroundPlaybackService : Service() {
                 ContextCompat.startForegroundService(appContext, intent)
             }.onFailure { e ->
                 isRunning = false
+                lastTitle = null
+                lastSubtitle = null
+                lastIsPlaying = null
                 Log.w(TAG, "Unable to start BackgroundPlaybackService", e)
             }
         }

@@ -7,6 +7,7 @@ import android.media.tv.TvTrackInfo
 import android.media.tv.TvView
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -163,10 +164,16 @@ fun TifLivePlayerScreen(
         remoteControlViewModel.client.reportInputSignal(channel.id, "Loading", null)
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isDeviceInteractive = com.beeregg2001.komorebi.media.LocalDeviceInteractive.current
+    val powerManager = remember(context) { context.getSystemService(PowerManager::class.java) }
     val systemSleepAllowed by ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
     val playerIdleOwner = remember { Any() }
     var isStarted by remember(lifecycleOwner) {
-        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                powerManager?.isInteractive != false &&
+                isDeviceInteractive
+        )
     }
     DisposableEffect(playerIdleOwner, isStarted) {
         ScreensaverInteractionTracker.updatePlayer(
@@ -181,17 +188,44 @@ fun TifLivePlayerScreen(
     // 世代はSTART毎に変え、停止直後に再開した場合も旧セッションを再使用しない。
     var sessionGeneration by remember(lifecycleOwner) { mutableIntStateOf(0) }
     var activeViewForLifecycle by remember { mutableStateOf<TvView?>(null) }
+
+    fun stopTifForLifecycle() {
+        activeViewForLifecycle?.reset()
+        activeViewForLifecycle = null
+        isStarted = false
+    }
+
+    fun startTifIfEligible() {
+        if (!isStarted &&
+            powerManager?.isInteractive != false &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        ) {
+            sessionGeneration++
+            isStarted = true
+        }
+    }
+
+    LaunchedEffect(isDeviceInteractive) {
+        if (!isDeviceInteractive) {
+            if (isStarted) stopTifForLifecycle()
+        } else {
+            startTifIfEligible()
+        }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    activeViewForLifecycle?.reset()
-                    activeViewForLifecycle = null
-                    isStarted = false
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (powerManager?.isInteractive == false) {
+                        stopTifForLifecycle()
+                    }
                 }
-                Lifecycle.Event.ON_START -> {
-                    sessionGeneration++
-                    isStarted = true
+                Lifecycle.Event.ON_STOP -> {
+                    stopTifForLifecycle()
+                }
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> {
+                    startTifIfEligible()
                 }
                 else -> Unit
             }
@@ -365,7 +399,8 @@ fun TifLivePlayerScreen(
                         android.view.KeyEvent.KEYCODE_BACK, android.view.KeyEvent.KEYCODE_MENU,
                         android.view.KeyEvent.KEYCODE_TV_INPUT, android.view.KeyEvent.KEYCODE_VOLUME_UP,
                         android.view.KeyEvent.KEYCODE_VOLUME_DOWN, android.view.KeyEvent.KEYCODE_VOLUME_MUTE,
-                        android.view.KeyEvent.KEYCODE_POWER,
+                        android.view.KeyEvent.KEYCODE_POWER, android.view.KeyEvent.KEYCODE_SLEEP,
+                        android.view.KeyEvent.KEYCODE_SOFT_SLEEP, android.view.KeyEvent.KEYCODE_TV_POWER,
                     )) false else {
                     activeView?.dispatchKeyEvent(key)
                     true
@@ -567,6 +602,8 @@ fun TifLivePlayerScreen(
                     if (native.keyCode !in setOf(
                             android.view.KeyEvent.KEYCODE_VOLUME_UP, android.view.KeyEvent.KEYCODE_VOLUME_DOWN,
                             android.view.KeyEvent.KEYCODE_VOLUME_MUTE, android.view.KeyEvent.KEYCODE_POWER,
+                            android.view.KeyEvent.KEYCODE_SLEEP, android.view.KeyEvent.KEYCODE_SOFT_SLEEP,
+                            android.view.KeyEvent.KEYCODE_TV_POWER,
                         )) {
                         activeView?.dispatchKeyEvent(native)
                         return@onPreviewKeyEvent true

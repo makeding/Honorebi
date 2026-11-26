@@ -299,6 +299,11 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "OFF"
     )
+    val recordedSeekStepSeconds: StateFlow<Int> = settingsRepository.recordedSeekStepSeconds.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        30
+    )
     val preferOriginalMpegTs: StateFlow<String> = settingsRepository.preferOriginalMpegTs.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

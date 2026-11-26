@@ -27,6 +27,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 internal class AppWakeState {
     var isAwake by mutableStateOf(false)
         internal set
+    var isInteractive by mutableStateOf(true)
+        internal set
     var generation by mutableIntStateOf(0)
         internal set
     var sessionStartedAtMillis by mutableLongStateOf(0L)
@@ -46,6 +48,7 @@ internal fun rememberAppWakeState(onAwakeChanged: (Boolean) -> Unit = {}): AppWa
         var wasAwake = false
 
         fun update() {
+            state.isInteractive = interactive
             val next = resumed && interactive
             if (next && !state.isAwake) {
                 if (wasAwake) state.generation++
@@ -74,11 +77,17 @@ internal fun rememberAppWakeState(onAwakeChanged: (Boolean) -> Unit = {}): AppWa
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
+                Lifecycle.Event.ON_START -> {
+                    interactive = powerManager.isInteractive
+                }
                 Lifecycle.Event.ON_RESUME -> {
                     resumed = true
                     interactive = powerManager.isInteractive
                 }
-                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> resumed = false
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> {
+                    resumed = false
+                    interactive = powerManager.isInteractive
+                }
                 else -> return@LifecycleEventObserver
             }
             update()

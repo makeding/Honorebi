@@ -315,6 +315,7 @@ fun PlaybackSettingsContent(
     audioMode: String,
     uiMode: String,
     autoCmSkip: String,
+    seekStepSeconds: Int,
     preferOriginalMpegTs: String,
     mirakurunDual: String,
     availableQualities: List<StreamQuality>,
@@ -326,6 +327,7 @@ fun PlaybackSettingsContent(
     audioR: FocusRequester,
     uiModeR: FocusRequester,
     autoCmSkipR: FocusRequester,
+    seekStepR: FocusRequester,
     preferOriginalR: FocusRequester,
     mirakurunDualR: FocusRequester,
     sidebarR: FocusRequester,
@@ -337,6 +339,7 @@ fun PlaybackSettingsContent(
     onAudioMode: () -> Unit,
     onUiMode: () -> Unit,
     onAutoCmSkip: () -> Unit,
+    onSeekStep: () -> Unit,
     onPreferOriginalMpegTs: () -> Unit,
     onToggleMirakurunDual: () -> Unit,
     onClick: (FocusRequester) -> Unit
@@ -471,9 +474,23 @@ fun PlaybackSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = uiModeR
-                        down = mirakurunDualR
+                        down = seekStepR
                     },
                 onClick = { onClick(autoCmSkipR); onAutoCmSkip() }
+            )
+
+            SettingItem(
+                title = "早送り・巻き戻し（1回）",
+                value = "${seekStepSeconds}秒",
+                icon = Icons.Default.FastForward,
+                modifier = Modifier
+                    .focusRequester(seekStepR)
+                    .focusProperties {
+                        left = sidebarR
+                        up = autoCmSkipR
+                        down = mirakurunDualR
+                    },
+                onClick = { onClick(seekStepR); onSeekStep() }
             )
         }
 
@@ -484,7 +501,7 @@ fun PlaybackSettingsContent(
                 icon = Icons.Default.VerticalSplit,
                 modifier = Modifier.focusRequester(mirakurunDualR).focusProperties {
                     left = sidebarR
-                    up = autoCmSkipR
+                    up = seekStepR
                     down = FocusRequester.Cancel
                 },
                 onClick = { onClick(mirakurunDualR); onToggleMirakurunDual() }

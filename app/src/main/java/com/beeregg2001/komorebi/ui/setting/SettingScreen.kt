@@ -160,6 +160,8 @@ private fun SettingsMenuScreen(
     val receiveBetaUpdates by viewModel.receiveBetaUpdates.collectAsState()
     val playerUiMode by viewModel.playerUiMode.collectAsState()
     val autoCmSkip by viewModel.autoCmSkip.collectAsState()
+    val recordedSeekStepSeconds by viewModel.recordedSeekStepSeconds.collectAsState()
+    val seekStepFocusRequester = remember { FocusRequester() }
     val preferOriginalMpegTs by viewModel.preferOriginalMpegTs.collectAsState()
     val availableQualities by viewModel.availableQualities.collectAsState()
     val honomiSession by viewModel.honomiSession.collectAsState()
@@ -801,6 +803,7 @@ private fun SettingsMenuScreen(
                             prefs.audioOutputMode,
                             playerUiMode,
                             autoCmSkip,
+                            recordedSeekStepSeconds,
                             preferOriginalMpegTs,
                             prefs.labAllowMirakurunDual,
                             availableQualities,
@@ -812,6 +815,7 @@ private fun SettingsMenuScreen(
                             itemFocusRequesters[2][4],
                             itemFocusRequesters[2][6],
                             itemFocusRequesters[2][7],
+                            seekStepFocusRequester,
                             itemFocusRequesters[2][8],
                             itemFocusRequesters[2][11],
                             categoryFocusRequesters[2],
@@ -925,6 +929,25 @@ private fun SettingsMenuScreen(
                                     scope.launch {
                                         repository.saveString(
                                             SettingsRepository.AUTO_CM_SKIP,
+                                            it
+                                        )
+                                    }
+                                }
+                            },
+                            {
+                                uiState.activeDialog = SettingDialogState.Selection(
+                                    "早送り・巻き戻し（1回）",
+                                    listOf(
+                                        "5秒" to "5",
+                                        "10秒" to "10",
+                                        "15秒" to "15",
+                                        "30秒" to "30"
+                                    ),
+                                    recordedSeekStepSeconds.toString()
+                                ) {
+                                    scope.launch {
+                                        repository.saveString(
+                                            SettingsRepository.RECORDED_SEEK_STEP_SECONDS,
                                             it
                                         )
                                     }

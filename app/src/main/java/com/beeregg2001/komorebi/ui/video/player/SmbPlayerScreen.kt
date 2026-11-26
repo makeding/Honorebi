@@ -84,6 +84,10 @@ internal fun SmbPlayerScreen(
 ) {
     val state = rememberVideoPlayerState()
     var isScreenOff by remember { mutableStateOf(false) }
+    val isDeviceInteractive = com.beeregg2001.komorebi.media.LocalDeviceInteractive.current
+    LaunchedEffect(isDeviceInteractive) {
+        if (!isDeviceInteractive) isScreenOff = false
+    }
     val fence = remember(metadata.stableId) {
         RecordedPlaybackFence(token = null, isCurrent = { true }, identity = metadata.stableId)
     }

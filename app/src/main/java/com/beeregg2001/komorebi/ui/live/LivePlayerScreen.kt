@@ -5,6 +5,7 @@ package com.beeregg2001.komorebi.ui.live
 import com.beeregg2001.komorebi.ui.player.PlaybackLoadingNotice
 
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -118,6 +119,13 @@ fun LivePlayerScreen(
 
     val ps = rememberLivePlayerState(uiContext)
     var isScreenOff by remember { mutableStateOf(false) }
+    val isDeviceInteractive = com.beeregg2001.komorebi.media.LocalDeviceInteractive.current
+    val powerManager = remember(uiContext) { uiContext.getSystemService(PowerManager::class.java) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentKeepPlayingInBackground by rememberUpdatedState(
+        com.beeregg2001.komorebi.media.LocalBackgroundAudioPlaybackEnabled.current
+    )
+    var hasStoppedByLifecycle by remember { mutableStateOf(false) }
     val channelBrowserOpenTrace = remember { ChannelBrowserOpenTrace() }
 
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
@@ -527,6 +535,38 @@ fun LivePlayerScreen(
         livePlayerViewModel.onDeviceNetworkChanged(isNetworkAvailable)
     }
 
+    fun stopLiveForLifecycle(reason: String) {
+        if (!hasStoppedByLifecycle) {
+            hasStoppedByLifecycle = true
+            livePlayerViewModel.releasePlayers(reason)
+        }
+    }
+
+    fun resumeLiveIfStopped(reason: String) {
+        if (hasStoppedByLifecycle &&
+            powerManager?.isInteractive != false &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        ) {
+            Log.i(
+                TAG,
+                "Live screen resuming ($reason): channel=${currentChannelItem.displayChannelId}"
+            )
+            hasStoppedByLifecycle = false
+            ps.retryKey++
+            if (ps.isDualDisplayMode) livePlayerViewModel.retryDual(uiContext)
+            channelViewModel.fetchChannels()
+        }
+    }
+
+    LaunchedEffect(isDeviceInteractive) {
+        if (!isDeviceInteractive) {
+            isScreenOff = false
+            stopLiveForLifecycle("screen_off_standby")
+        } else {
+            resumeLiveIfStopped("screen_on")
+        }
+    }
+
     LaunchedEffect(
         currentChannelItem.id,
         ps.currentStreamSource,
@@ -537,6 +577,10 @@ fun LivePlayerScreen(
         isQualitiesLoaded,
         isTifChannel,
     ) {
+        if (powerManager?.isInteractive == false || !isDeviceInteractive) {
+            hasStoppedByLifecycle = true
+            return@LaunchedEffect
+        }
         if (isTifChannel) {
             livePlayerViewModel.releasePlayers("tif_source_selected")
             return@LaunchedEffect
@@ -626,12 +670,6 @@ fun LivePlayerScreen(
         },
     )
 
-    var hasStoppedByLifecycle by remember { mutableStateOf(false) }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val currentKeepPlayingInBackground by rememberUpdatedState(
-        com.beeregg2001.komorebi.media.LocalBackgroundAudioPlaybackEnabled.current
-    )
-
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
@@ -644,33 +682,40 @@ fun LivePlayerScreen(
                 isRecordActionPending = false
                 recordActionMessage = null
             }
-            if (event == Lifecycle.Event.ON_STOP) {
-                if (currentKeepPlayingInBackground) {
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                if (powerManager?.isInteractive == false) {
+                    Log.i(
+                        TAG,
+                        "Live screen lifecycle ON_PAUSE standby: releasing players for channel=${currentChannelItem.displayChannelId}"
+                    )
+                    stopLiveForLifecycle("lifecycle_on_pause_standby")
+                }
+            } else if (event == Lifecycle.Event.ON_STOP) {
+                if (currentKeepPlayingInBackground && powerManager?.isInteractive != false) {
                     Log.i(
                         TAG,
                         "Live screen lifecycle ON_STOP: keeping audio alive in background for channel=${currentChannelItem.displayChannelId}"
                     )
                 } else {
+                    val reason = if (powerManager?.isInteractive == false) {
+                        "lifecycle_on_stop_standby"
+                    } else {
+                        "lifecycle_on_stop"
+                    }
                     Log.w(
                         TAG,
-                        "Live screen lifecycle ON_STOP: channel=${currentChannelItem.displayChannelId}, " +
+                        "Live screen lifecycle ON_STOP: reason=$reason, channel=${currentChannelItem.displayChannelId}, " +
                             "state=${lifecycleOwner.lifecycle.currentState}"
                     )
-                    hasStoppedByLifecycle = true
-                    livePlayerViewModel.releasePlayers("lifecycle_on_stop")
+                    stopLiveForLifecycle(reason)
                 }
-            } else if (event == Lifecycle.Event.ON_START) {
+            } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
                 Log.i(
                     TAG,
-                    "Live screen lifecycle ON_START: channel=${currentChannelItem.displayChannelId}, " +
+                    "Live screen lifecycle ${event.name}: channel=${currentChannelItem.displayChannelId}, " +
                         "wasStopped=$hasStoppedByLifecycle"
                 )
-                if (hasStoppedByLifecycle) {
-                    hasStoppedByLifecycle = false
-                    ps.retryKey++
-                    if (ps.isDualDisplayMode) livePlayerViewModel.retryDual(uiContext)
-                    channelViewModel.fetchChannels()
-                }
+                resumeLiveIfStopped(event.name)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

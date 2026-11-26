@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 internal val LocalSystemMediaSessionController = compositionLocalOf<SystemMediaSessionController?> { null }
 internal val LocalSystemMediaSessionEpoch = compositionLocalOf<Long?> { null }
 val LocalBackgroundAudioPlaybackEnabled = compositionLocalOf { false }
+val LocalDeviceInteractive = compositionLocalOf { true }
 
 internal fun shouldDispatchRemoteTransport(
     command: HonomiRemoteCommand,
@@ -52,6 +53,7 @@ fun RootSystemMediaSessionHost(
     isPlaybackSwitching: Boolean,
     remoteControlClient: HonomiRemoteControlClient,
     backgroundAudioPlaybackEnabled: Boolean = false,
+    isDeviceInteractive: Boolean = true,
     onSystemPlaybackSnapshotChanged: ((isPlaying: Boolean, canSeek: Boolean) -> Unit)? = null,
     onRegisterTransportActions: ((
         togglePlayPause: () -> Unit,
@@ -186,6 +188,7 @@ fun RootSystemMediaSessionHost(
         LocalSystemMediaSessionController provides controller,
         LocalSystemMediaSessionEpoch provides playbackSessionEpoch,
         LocalBackgroundAudioPlaybackEnabled provides backgroundAudioPlaybackEnabled,
+        LocalDeviceInteractive provides isDeviceInteractive,
         content = content,
     )
 }

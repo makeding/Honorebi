@@ -132,6 +132,30 @@ class InAppScreensaverStateTest {
         compose.runOnIdle { assertEquals(1, appWakeState.generation) }
     }
 
+    @Test fun appWakeInteractiveTracksPowerManagerAcrossPauseAndStartWithoutScreenBroadcast() {
+        start()
+        compose.runOnIdle { assertTrue(appWakeState.isInteractive) }
+
+        compose.runOnIdle {
+            shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(false)
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        }
+        compose.runOnIdle {
+            assertFalse(appWakeState.isInteractive)
+            assertFalse(appWakeState.isAwake)
+        }
+
+        compose.runOnIdle {
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+            shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(true)
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        }
+        compose.runOnIdle {
+            assertTrue(appWakeState.isInteractive)
+            assertFalse(appWakeState.isAwake)
+        }
+    }
+
     @Test fun pausedPlayerUsesItsOwnLongerDeadlineAndResumeCancelsIt() {
         val player = Any()
         try {

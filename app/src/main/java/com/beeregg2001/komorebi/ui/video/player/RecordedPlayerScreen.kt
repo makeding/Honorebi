@@ -165,6 +165,10 @@ internal fun RecordedPlayerScreen(
 
     var currentProgram by remember(initialProgram) { mutableStateOf(initialProgram) }
     var isScreenOff by remember { mutableStateOf(false) }
+    val isDeviceInteractive = com.beeregg2001.komorebi.media.LocalDeviceInteractive.current
+    LaunchedEffect(isDeviceInteractive) {
+        if (!isDeviceInteractive) isScreenOff = false
+    }
     val fetchedDetail by videoPlayerViewModel.programDetail.collectAsState()
 
     val tiledThumbnailUrl by videoPlayerViewModel.tiledThumbnailUrl.collectAsState()
@@ -309,6 +313,8 @@ internal fun RecordedPlayerScreen(
 
     val autoCmSkipStr by settingsViewModel.autoCmSkip.collectAsState()
     val cmSkipMode = CmSkipMode.fromPreference(autoCmSkipStr)
+    val recordedSeekStepSeconds by settingsViewModel.recordedSeekStepSeconds.collectAsState()
+    SideEffect { vs.quickSeekStepMs = recordedSeekStepSeconds * 1_000L }
 
     LaunchedEffect(
         availableQualities,
@@ -1434,8 +1440,10 @@ internal fun RecordedPlayerScreen(
         currentSessionId,
         isNetworkAvailable,
         isWaitingForNetworkRecovery,
+        isDeviceInteractive,
     ) {
         if (
+            isDeviceInteractive &&
             isNetworkAvailable &&
             !isWaitingForNetworkRecovery &&
             !vs.currentQuality.isRawMmts &&

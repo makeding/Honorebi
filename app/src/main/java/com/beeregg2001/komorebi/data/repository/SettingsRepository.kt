@@ -150,6 +150,7 @@ class SettingsRepository @Inject constructor(
 
         val PLAYER_UI_MODE = stringPreferencesKey("player_ui_mode")
         val AUTO_CM_SKIP = stringPreferencesKey("auto_cm_skip")
+        val RECORDED_SEEK_STEP_SECONDS = stringPreferencesKey("recorded_seek_step_seconds")
         val PREFER_ORIGINAL_MPEG_TS = stringPreferencesKey("prefer_original_mpeg_ts")
 
         val LAB_ANNICT_INTEGRATION = stringPreferencesKey("lab_annict_integration")
@@ -319,6 +320,14 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[SMB_SUBTITLE_ENABLED] ?: "OFF" }
     val playerUiMode: Flow<String> = context.dataStore.data.map { it[PLAYER_UI_MODE] ?: "CLASSIC" }
     val autoCmSkip: Flow<String> = context.dataStore.data.map { normalizeCmSkipMode(it[AUTO_CM_SKIP]) }
+    val recordedSeekStepSeconds: Flow<Int> = context.dataStore.data.map {
+        when (it[RECORDED_SEEK_STEP_SECONDS]) {
+            "5" -> 5
+            "10" -> 10
+            "15" -> 15
+            else -> 30
+        }
+    }
     val preferOriginalMpegTs: Flow<String> =
         context.dataStore.data.map { it[PREFER_ORIGINAL_MPEG_TS] ?: "OFF" }
     val labAnnictIntegration: Flow<String> =

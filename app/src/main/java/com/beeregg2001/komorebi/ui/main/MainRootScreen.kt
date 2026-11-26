@@ -648,6 +648,7 @@ fun MainRootScreen(
     val effectivePipIsPlaying = if (isTifLiveTarget) true else systemPlaybackIsPlaying
     val backgroundAudioPlaybackEnabled =
         deepTv.backgroundPlaybackMode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.AUDIO_ONLY &&
+            appWakeState.isInteractive &&
             state.playbackState.isPlaybackActive &&
             !isTifLiveTarget &&
             (renderTarget is PlaybackTarget.Live ||
@@ -1279,6 +1280,7 @@ fun MainRootScreen(
             isPlaybackSwitching = state.playbackState.playbackPhase is PlaybackPhase.Switching,
             remoteControlClient = remoteControlViewModel.client,
             backgroundAudioPlaybackEnabled = backgroundAudioPlaybackEnabled,
+            isDeviceInteractive = appWakeState.isInteractive,
             onSystemPlaybackSnapshotChanged = { isPlaying, canSeek ->
                 systemPlaybackIsPlaying = isPlaying
                 systemPlaybackCanSeek = canSeek

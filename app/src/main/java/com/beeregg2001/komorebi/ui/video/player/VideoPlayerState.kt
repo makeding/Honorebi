@@ -92,6 +92,7 @@ class VideoPlayerState {
 
     var lastInteractionTime by mutableLongStateOf(0L)
     var isSeekBarFocused by mutableStateOf(false)
+    var quickSeekStepMs by mutableLongStateOf(30_000L)
     var manualCmSkipPromptSuppressed by mutableStateOf(false)
     var manualCmSkipPromptRestartUntilMs by mutableLongStateOf(0L)
     var manualCmSkipPromptInteractionSequence by mutableIntStateOf(0)
@@ -282,7 +283,7 @@ class VideoPlayerState {
                 keyEvent.nativeKeyEvent,
                 pendingSeekPositionMs ?: getCurrentPositionMs(),
                 totalDurationMs,
-                if (isSeekBarFocused) 10_000L else 30_000L,
+                if (isSeekBarFocused) 10_000L else quickSeekStepMs,
                 performSeek,
             )
             if (directionalSeek.isHolding || isActionUp) triggerSeekingPreview()

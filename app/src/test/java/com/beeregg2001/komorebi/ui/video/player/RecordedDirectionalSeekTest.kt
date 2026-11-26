@@ -128,6 +128,15 @@ class RecordedDirectionalSeekTest {
         assertNull(gesture.previewPositionMs)
     }
 
+    @Test fun eightHourVideoReachesStartWithinTenSeconds() {
+        val eightHoursMs = 8 * 3_600_000L
+        val gesture = RecordedDirectionalSeek()
+        val commits = mutableListOf<Long>()
+        send(gesture, event(left), commits, position = eightHoursMs, duration = eightHoursMs)
+        gesture.advance(10_000L, eightHoursMs)
+        assertEquals(0L, gesture.previewPositionMs)
+    }
+
     @Test fun rootRoutesTrackQuickSeekAndNavigationAndCancelsBeforeOtherActions() {
         val state = VideoPlayerState()
         val commits = mutableListOf<Long>()

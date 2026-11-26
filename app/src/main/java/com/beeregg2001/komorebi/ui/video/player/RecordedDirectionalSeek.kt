@@ -68,7 +68,8 @@ internal class RecordedDirectionalSeek {
             val tierEnd = if (index == HOLD_STEPS_MS.lastIndex) elapsedMs else
                 minOf(elapsedMs, (index + 1) * 1_000L - 1L)
             val jumps = (jumpCountThrough(tierEnd) - jumpCountThrough(tierStart - 1L)).coerceAtLeast(0L)
-            distanceMs += jumps * maxOf(initialStepMs, step)
+            val tierStep = if (index == HOLD_STEPS_MS.lastIndex) maxOf(step, durationMs / MAX_CRUISE_TICKS) else step
+            distanceMs += jumps * maxOf(initialStepMs, tierStep)
         }
         previewPositionMs = if (activeKey == KeyEvent.KEYCODE_DPAD_RIGHT) {
             anchorPositionMs + distanceMs.coerceAtMost((durationMs - anchorPositionMs).coerceAtLeast(0L))
@@ -81,7 +82,9 @@ internal class RecordedDirectionalSeek {
         if (elapsedMs < 400L) 0L else (elapsedMs - 400L) / 250L + 1L
 
     private companion object {
-        val HOLD_STEPS_MS = longArrayOf(10_000L, 30_000L, 60_000L, 120_000L, 300_000L)
+        // 0-1s: 10s (fine tap), 1-2s: 60s (ramp), 2s+: adaptive cruise (<= 10s end-to-end).
+        val HOLD_STEPS_MS = longArrayOf(10_000L, 60_000L, 300_000L)
+        const val MAX_CRUISE_TICKS = 32L
     }
 }
 
