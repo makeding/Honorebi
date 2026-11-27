@@ -44,7 +44,13 @@ import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToLong
+
+enum class B60InputSource(val wireValue: String) {
+    ON_AIR("onair"),
+    RECORDED("recorded")
+}
 
 private const val TAG = "DataBroadcastingWebView"
 private const val WEB_ORIGIN = "https://appassets.androidplatform.net"
@@ -55,6 +61,7 @@ private const val NTP_UNIX_EPOCH_OFFSET_SECONDS = 2_208_988_800L
 
 private class B60JavascriptBridge(
     private val currentMediaTimeSeconds: () -> Double,
+    private val inputSource: () -> String,
     private val onStatus: (String) -> Unit,
     private val onMediaPlane: (B60MediaPlane?) -> Unit,
     private val onBlankModeChanged: (Boolean) -> Unit,
@@ -64,6 +71,9 @@ private class B60JavascriptBridge(
 
     @JavascriptInterface
     fun currentMediaTimeSeconds(): Double = currentMediaTimeSeconds.invoke()
+
+    @JavascriptInterface
+    fun inputSource(): String = inputSource.invoke()
 
     @JavascriptInterface
     fun onStatus(value: String) {
@@ -120,6 +130,7 @@ private class B60JavascriptBridge(
 fun DataBroadcastingWebViewOverlay(
     store: B60DataBroadcastingStore,
     channel: Channel,
+    inputSource: B60InputSource,
     currentMediaTimeSeconds: () -> Double,
     remoteCommand: DataBroadcastingRemoteCommand?,
     onRemoteCommandConsumed: (Long) -> Unit,
@@ -135,6 +146,8 @@ fun DataBroadcastingWebViewOverlay(
     var rendererGeneration by remember { mutableIntStateOf(0) }
     val latestCurrentMediaTimeSeconds by rememberUpdatedState(currentMediaTimeSeconds)
     val cachedCurrentMediaTimeMillis = remember { AtomicLong(0L) }
+    val cachedInputSource = remember { AtomicReference(inputSource.wireValue) }
+    cachedInputSource.set(inputSource.wireValue)
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -175,6 +188,7 @@ fun DataBroadcastingWebViewOverlay(
                         currentMediaTimeSeconds = {
                             cachedCurrentMediaTimeMillis.get() / 1000.0
                         },
+                        inputSource = { cachedInputSource.get() },
                         onStatus = onStatus,
                         onMediaPlane = onMediaPlane,
                         onBlankModeChanged = onBlankModeChanged,

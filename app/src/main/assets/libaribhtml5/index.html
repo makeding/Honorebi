@@ -79,6 +79,11 @@
         viewport,
         mediaPlaneAdapter,
         broadcastBaseUrl: '/data-broadcast/',
+        supportedMedia: ['6', '7'],
+        getInputSource() {
+          const source = window.ARIBNative?.inputSource?.();
+          return source === 'onair' || source === 'recorded' ? source : null;
+        },
         allowExternalNetwork: false,
         getDeviceIdentifier: async () => null,
         systemInformation: receiverSystemInformation,

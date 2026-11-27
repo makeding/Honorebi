@@ -63,6 +63,7 @@ import com.beeregg2001.komorebi.ui.player.B60_INITIAL_MEDIA_PLANE
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
+import com.beeregg2001.komorebi.ui.player.B60InputSource
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
 import com.beeregg2001.komorebi.ui.player.DanmakuEngineMode
 import com.beeregg2001.komorebi.ui.player.DanmakuOverlay
@@ -1006,6 +1007,7 @@ fun LivePlayerScreen(
                 DataBroadcastingWebViewOverlay(
                     store = livePlayerViewModel.dataBroadcastingStore,
                     channel = currentChannelItem,
+                    inputSource = B60InputSource.ON_AIR,
                     currentMediaTimeSeconds = {
                         (mainPlayer?.currentPosition ?: 0L).coerceAtLeast(0L) / 1000.0
                     },

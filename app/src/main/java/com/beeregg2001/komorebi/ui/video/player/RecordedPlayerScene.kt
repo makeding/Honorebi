@@ -57,6 +57,7 @@ import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
+import com.beeregg2001.komorebi.ui.player.B60InputSource
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.player.b60MediaPlane
@@ -101,6 +102,7 @@ internal fun BoxScope.RecordedMediaSurface(
         DataBroadcastingWebViewOverlay(
             store = dataBroadcastingStore,
             channel = dataBroadcastingChannel,
+            inputSource = B60InputSource.RECORDED,
             currentMediaTimeSeconds = {
                 exoPlayer.currentPosition.coerceAtLeast(0L) / 1_000.0
             },
