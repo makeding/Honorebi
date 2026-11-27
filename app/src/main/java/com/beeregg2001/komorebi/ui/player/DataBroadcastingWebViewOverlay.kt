@@ -117,7 +117,8 @@ private class B60JavascriptBridge(
             Log.d(
                 TAG,
                 "B60 media plane: visible=${plane.visible} ${plane.width}x${plane.height} " +
-                    "@ ${plane.x},${plane.y} / ${plane.screenWidth}x${plane.screenHeight}"
+                    "@ ${plane.x},${plane.y} / ${plane.screenWidth}x${plane.screenHeight}" +
+                    if (!plane.visible) " raw=$value" else ""
             )
             mainHandler.post {
                 onMediaPlane.invoke(plane)
@@ -291,6 +292,10 @@ fun DataBroadcastingWebViewOverlay(
                 lastCaptionTagsKey = status.generation to status.captionComponentTags
                 lastClockSentAtMs = System.currentTimeMillis()
                 val payload = buildStartPayload(status, latestChannel)
+                Log.d(
+                    TAG,
+                    "B60 start: entry=${status.entryPath} captionTags=${status.captionComponentTags}"
+                )
                 webView.evaluateJavascript(
                     "window.KomorebiB60?.start?.(${JSONObject.quote(payload.toString())})",
                     null
@@ -576,22 +581,14 @@ private fun createRuntimeBootstrap(basePath: String): String {
   }
   function scanBroadcastObjects(root) {
     if (!root) return;
-    if (root.nodeType === 1 && root.matches && root.matches('object')) {
-      scheduleBroadcastObject(root);
+    if (root.nodeType === 1 && root.matches && root.matches('object[type="video/x-arib2-broadcast"]')) {
+      replaceBroadcastObject(root);
     }
     if (!root.querySelectorAll) return;
-    var objects = root.querySelectorAll('object');
+    var objects = root.querySelectorAll('object[type="video/x-arib2-broadcast"]');
     for (var index = 0; index < objects.length; index += 1) {
-      scheduleBroadcastObject(objects[index]);
+      replaceBroadcastObject(objects[index]);
     }
-  }
-  function scheduleBroadcastObject(object) {
-    if (!object || scheduledObjects.has(object)) return;
-    scheduledObjects.add(object);
-    setTimeout(function () {
-      scheduledObjects.delete(object);
-      replaceBroadcastObject(object);
-    }, 0);
   }
   function observeBroadcastObjects() {
     scanBroadcastObjects(document);
