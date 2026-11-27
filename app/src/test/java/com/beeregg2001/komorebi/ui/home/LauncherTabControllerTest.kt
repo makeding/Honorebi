@@ -654,22 +654,31 @@ class LauncherTabControllerTest {
     }
 
     @Test
-    fun bottomBoundaryDownAdvancesOnBottomRowOnly() {
+    fun bottomBoundaryDownAdvancesOnBottomRowOnlyAndDebouncesArrival() {
         var nextTabCalls = 0
+        var fakeNowMs = 1_000L
         compose.setContent {
             Column {
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("non-bottom-item")
-                        .bottomBoundaryDown(isBottom = false, onNextTab = { nextTabCalls++ })
+                        .bottomBoundaryDown(
+                            isBottom = false,
+                            onNextTab = { nextTabCalls++ },
+                            nowMs = { fakeNowMs },
+                        )
                         .focusable(),
                 )
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("bottom-item")
-                        .bottomBoundaryDown(isBottom = true, onNextTab = { nextTabCalls++ })
+                        .bottomBoundaryDown(
+                            isBottom = true,
+                            onNextTab = { nextTabCalls++ },
+                            nowMs = { fakeNowMs },
+                        )
                         .focusable(),
                 )
             }
@@ -681,7 +690,13 @@ class LauncherTabControllerTest {
         compose.onNodeWithTag("bottom-item").assertIsFocused()
         assertEquals(0, nextTabCalls)
 
-        // Bottom item intercepts DirectionDown and invokes onNextTab.
+        // Pressing DirectionDown immediately after landing on the bottom row is debounced.
+        fakeNowMs += 100L
+        compose.onNodeWithTag("bottom-item").performKeyInput { pressKey(Key.DirectionDown) }
+        assertEquals(0, nextTabCalls)
+
+        // After the debounce window elapses, a fresh DirectionDown press invokes onNextTab.
+        fakeNowMs += BOTTOM_TAB_SWITCH_DEBOUNCE_MS
         compose.onNodeWithTag("bottom-item").performKeyInput { pressKey(Key.DirectionDown) }
         assertEquals(1, nextTabCalls)
     }

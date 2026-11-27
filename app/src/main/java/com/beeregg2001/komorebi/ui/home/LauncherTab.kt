@@ -1,41 +1,81 @@
 package com.beeregg2001.komorebi.ui.home
 
+import android.os.SystemClock
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 
+internal const val BOTTOM_TAB_SWITCH_DEBOUNCE_MS = 300L
+
 /**
  * Intercepts D-pad Down at the bottom-most row of a launcher tab's content.
  *
  * When [isBottom] is true, focus cannot escape downward to unrelated chrome; if [onNextTab] is
- * provided, a fresh (non-repeating) Down press seamlessly advances to the next visible tab.
+ * provided, a deliberate (non-repeating, debounced) Down press seamlessly advances to the next
+ * visible tab. Holding Down to scroll to the bottom is debounced so it stops at the bottom row
+ * instead of overshooting into the next tab.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 internal fun Modifier.bottomBoundaryDown(
     isBottom: Boolean,
     onNextTab: (() -> Unit)?,
+    debounceMs: Long = BOTTOM_TAB_SWITCH_DEBOUNCE_MS,
+    nowMs: () -> Long = { SystemClock.uptimeMillis() },
 ): Modifier {
     if (!isBottom) return this
     return this
         .focusProperties { down = FocusRequester.Cancel }
         .then(
             if (onNextTab != null) {
-                Modifier.onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown &&
-                        event.key == Key.DirectionDown &&
-                        event.nativeKeyEvent.repeatCount == 0
-                    ) {
-                        onNextTab()
-                        true
-                    } else {
-                        false
-                    }
+                composed {
+                    var focusedAtMs by remember { mutableLongStateOf(0L) }
+                    var lastRepeatDownAtMs by remember { mutableLongStateOf(0L) }
+                    var lastTriggeredAtMs by remember { mutableLongStateOf(0L) }
+                    val latestOnNextTab by rememberUpdatedState(onNextTab)
+                    val latestNowMs by rememberUpdatedState(nowMs)
+
+                    Modifier
+                        .onFocusChanged { state ->
+                            if (state.isFocused) {
+                                focusedAtMs = latestNowMs()
+                            }
+                        }
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                val now = latestNowMs()
+                                if (event.nativeKeyEvent.repeatCount > 0) {
+                                    lastRepeatDownAtMs = now
+                                    return@onPreviewKeyEvent true
+                                }
+                                val sinceFocus = now - focusedAtMs
+                                val sinceRepeat = now - lastRepeatDownAtMs
+                                val sinceTrigger = now - lastTriggeredAtMs
+                                if (sinceFocus < debounceMs ||
+                                    sinceRepeat < debounceMs ||
+                                    sinceTrigger < debounceMs
+                                ) {
+                                    return@onPreviewKeyEvent true
+                                }
+                                lastTriggeredAtMs = now
+                                latestOnNextTab()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                 }
             } else {
                 Modifier
