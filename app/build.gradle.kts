@@ -165,6 +165,7 @@ android {
         }
         create("releaseFast") {
             initWith(getByName("release"))
+            isDebuggable = true
             isMinifyEnabled = false
             isShrinkResources = false
             matchingFallbacks += listOf("release")
