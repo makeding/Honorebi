@@ -585,6 +585,12 @@ internal fun ColumnScope.SettingCategoryContentHost(
                     }
                 }
             },
+            onTogglePreloadB24 = {
+                val next = !prefs.dataBroadcasting.preloadB24InBackground
+                scope.launch {
+                    repository.setDataBroadcastingPreloadB24(next)
+                }
+            },
             onResetStorage = {
                 controller.activeDialog = SettingDialogState.ConfirmClear(
                     title = "データ放送の保存データをリセット",

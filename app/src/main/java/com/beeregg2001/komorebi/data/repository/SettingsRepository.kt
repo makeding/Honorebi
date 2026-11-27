@@ -232,6 +232,8 @@ class SettingsRepository @Inject constructor(
             stringPreferencesKey("data_broadcasting_prefecture_code")
         val DATA_BROADCASTING_VIRTUAL_REMOTE_MODE =
             stringPreferencesKey("data_broadcasting_virtual_remote_mode")
+        val DATA_BROADCASTING_PRELOAD_B24 =
+            booleanPreferencesKey("data_broadcasting_preload_b24")
     }
 
     val isInitialized: Flow<Boolean> = context.dataStore.data
@@ -491,7 +493,14 @@ class SettingsRepository @Inject constructor(
             virtualRemoteMode = DataBroadcastingVirtualRemoteMode.fromPreference(
                 prefs[DATA_BROADCASTING_VIRTUAL_REMOTE_MODE]
             ),
+            preloadB24InBackground = prefs[DATA_BROADCASTING_PRELOAD_B24] ?: true,
         )
+    }
+
+    suspend fun setDataBroadcastingPreloadB24(enabled: Boolean) {
+        context.dataStore.edit { settings ->
+            settings[DATA_BROADCASTING_PRELOAD_B24] = enabled
+        }
     }
 
     suspend fun setDataBroadcastingAllowExternalNetwork(enabled: Boolean) {

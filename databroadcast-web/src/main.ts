@@ -6,6 +6,7 @@ import DecoderWorker from './worker?worker';
 (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
 
 interface ARIBNativeBridge {
+  isDebug?: () => boolean;
   allowExternalNetwork?: () => boolean;
   receiverInfoJson?: () => string;
   onStatus?: (value: string) => void;
@@ -25,6 +26,7 @@ declare global {
     ARIBNative?: ARIBNativeBridge;
     HonorebiB24?: {
       start: (json: string) => boolean;
+      setUserVisible: (visible: boolean) => boolean;
       pushChunkBase64: (base64: string) => boolean;
       stop: () => boolean;
     };
@@ -74,13 +76,24 @@ const viewport = document.querySelector<HTMLDivElement>('#viewport')!;
 const container = document.querySelector<HTMLDivElement>('#bml-container')!;
 const statusEl = document.querySelector<HTMLDivElement>('#status')!;
 
+// Silence verbose web-bml console chatter in release builds to avoid WebView IPC overhead.
+if (!window.ARIBNative?.isDebug?.()) {
+  console.log = () => {};
+  console.debug = () => {};
+  console.info = () => {};
+}
+
 let bmlBrowser: BMLBrowser | null = null;
 let worker: Worker | null = null;
 let videoResizeObserver: ResizeObserver | null = null;
 let bmlWidth = 960;
 let bmlHeight = 540;
+let userVisible = true;
 let isInvisible = false;
 let hasLoadedOnce = false;
+let hasShownVisiblePage = false;
+let autoEnterTimer: number | null = null;
+let visibleSettleTimer: number | null = null;
 let lastPlaneJson = '';
 let lastStatusText = 'データ放送を受信中…';
 let dataPort: MessagePort | null = null;
@@ -142,10 +155,9 @@ function updateScale(): void {
   container.style.setProperty('--bml-scale-y', `${scale}`);
 }
 
-function reportMediaPlane(): void {
-  if (!bmlBrowser || isInvisible) return;
-  const videoEl = bmlBrowser.getVideoElement();
-  if (!videoEl) {
+function reportMediaPlaneFromRect(rect: DOMRect | { left: number; top: number; width: number; height: number } | null): void {
+  if (!bmlBrowser || isInvisible || !userVisible) return;
+  if (!rect) {
     if (lastPlaneJson !== '') {
       lastPlaneJson = '';
       window.ARIBNative?.onMediaPlaneUnmounted?.('no-video-element');
@@ -153,7 +165,6 @@ function reportMediaPlane(): void {
     return;
   }
   const vpRect = viewport.getBoundingClientRect();
-  const rect = videoEl.getBoundingClientRect();
   if (vpRect.width <= 0 || vpRect.height <= 0) return;
 
   const visible = rect.width > 1 && rect.height > 1;
@@ -171,6 +182,12 @@ function reportMediaPlane(): void {
     lastPlaneJson = serialized;
     window.ARIBNative?.onMediaPlane?.(serialized);
   }
+}
+
+function reportMediaPlane(): void {
+  if (!bmlBrowser || isInvisible) return;
+  const videoEl = bmlBrowser.getVideoElement();
+  reportMediaPlaneFromRect(videoEl ? videoEl.getBoundingClientRect() : null);
 }
 
 function observeVideoElement(): void {
@@ -219,7 +236,47 @@ function readGreg(): string[] {
   return new Array<string>(64).fill('');
 }
 
+function clearTimers(): void {
+  if (autoEnterTimer !== null) {
+    clearTimeout(autoEnterTimer);
+    autoEnterTimer = null;
+  }
+  if (visibleSettleTimer !== null) {
+    clearTimeout(visibleSettleTimer);
+    visibleSettleTimer = null;
+  }
+}
+
+function scheduleVisibleSettle(browser: BMLBrowser): void {
+  if (visibleSettleTimer !== null) clearTimeout(visibleSettleTimer);
+  // Startup BML often flashes visible for ~50ms before its onload sets invisible=true.
+  // Wait 350ms of continuous visibility before hiding the loading pill and committing visible state.
+  visibleSettleTimer = window.setTimeout(() => {
+    visibleSettleTimer = null;
+    if (bmlBrowser !== browser || isInvisible) return;
+    hasShownVisiblePage = true;
+    statusEl.classList.add('ready');
+    if (userVisible) {
+      window.ARIBNative?.onBlankModeChanged?.(false);
+      observeVideoElement();
+    }
+  }, 350);
+}
+
+function scheduleAutoEnterData(browser: BMLBrowser, delayMs: number): void {
+  if (!userVisible) return;
+  if (autoEnterTimer !== null) clearTimeout(autoEnterTimer);
+  autoEnterTimer = window.setTimeout(() => {
+    autoEnterTimer = null;
+    if (bmlBrowser === browser && userVisible && isInvisible && !hasShownVisiblePage) {
+      browser.content.processKeyDown(AribKeyCode.DataButton);
+      browser.content.processKeyUp(AribKeyCode.DataButton);
+    }
+  }, delayMs);
+}
+
 function destroySession(): void {
+  clearTimers();
   videoResizeObserver?.disconnect();
   videoResizeObserver = null;
   if (worker) {
@@ -240,6 +297,7 @@ function destroySession(): void {
   lastPlaneJson = '';
   isInvisible = false;
   hasLoadedOnce = false;
+  hasShownVisiblePage = false;
 }
 
 function startSession(config: {
@@ -247,8 +305,10 @@ function startSession(config: {
   networkId?: number | null;
   transportStreamId?: number | null;
   rawTs?: boolean;
+  userVisible?: boolean;
 }): boolean {
   destroySession();
+  userVisible = config.userVisible !== false;
   syncReceiverInfoToLocalStorage();
 
   statusEl.classList.remove('ready');
@@ -370,19 +430,69 @@ function startSession(config: {
     bmlWidth = event.detail.resolution.width || 960;
     bmlHeight = event.detail.resolution.height || 540;
     updateScale();
-    statusEl.classList.add('ready');
-    observeVideoElement();
+    if (!isInvisible) {
+      scheduleVisibleSettle(browser);
+    } else if (!hasShownVisiblePage) {
+      scheduleAutoEnterData(browser, 1500);
+    }
   });
 
   browser.addEventListener('invisible', (event) => {
     isInvisible = Boolean(event.detail);
     container.classList.toggle('invisible', isInvisible);
-    window.ARIBNative?.onBlankModeChanged?.(isInvisible);
     if (isInvisible) {
+      if (visibleSettleTimer !== null) {
+        clearTimeout(visibleSettleTimer);
+        visibleSettleTimer = null;
+      }
       lastPlaneJson = '';
-      window.ARIBNative?.onMediaPlaneUnmounted?.('invisible');
+      if (userVisible) {
+        window.ARIBNative?.onMediaPlaneUnmounted?.('invisible');
+      }
+      if (hasShownVisiblePage && userVisible) {
+        window.ARIBNative?.onBlankModeChanged?.(true);
+      } else if (!hasShownVisiblePage && hasLoadedOnce) {
+        scheduleAutoEnterData(browser, 1500);
+      }
     } else {
-      observeVideoElement();
+      if (autoEnterTimer !== null) {
+        clearTimeout(autoEnterTimer);
+        autoEnterTimer = null;
+      }
+      hasShownVisiblePage = true;
+      statusEl.classList.add('ready');
+      if (userVisible) {
+        window.ARIBNative?.onBlankModeChanged?.(false);
+        observeVideoElement();
+      }
+    }
+  });
+
+  browser.addEventListener('videochanged', (event) => {
+    if (!isInvisible) {
+      const rect = event.detail.boundingRect;
+      const vpRect = viewport.getBoundingClientRect();
+      // A non-fullscreen video cutout means the BML layout is genuinely rendered.
+      const isCutout =
+        vpRect.width > 0 &&
+        vpRect.height > 0 &&
+        rect.width > 1 &&
+        rect.height > 1 &&
+        (rect.width < vpRect.width * 0.96 || rect.height < vpRect.height * 0.96);
+      if (isCutout) {
+        if (visibleSettleTimer !== null) {
+          clearTimeout(visibleSettleTimer);
+          visibleSettleTimer = null;
+        }
+        hasShownVisiblePage = true;
+        statusEl.classList.add('ready');
+        if (userVisible) {
+          window.ARIBNative?.onBlankModeChanged?.(false);
+        }
+      }
+      if (userVisible) {
+        reportMediaPlaneFromRect(rect);
+      }
     }
   });
 
@@ -441,6 +551,35 @@ window.addEventListener('message', (event: MessageEvent) => {
 window.HonorebiB24 = {
   start(json: string) {
     return startSession(JSON.parse(json));
+  },
+  setUserVisible(visible: boolean) {
+    const next = Boolean(visible);
+    if (userVisible === next) return true;
+    userVisible = next;
+    lastPlaneJson = '';
+    if (!userVisible) {
+      if (autoEnterTimer !== null) {
+        clearTimeout(autoEnterTimer);
+        autoEnterTimer = null;
+      }
+      return true;
+    }
+    const browser = bmlBrowser;
+    if (!browser) return true;
+    if (!isInvisible && hasShownVisiblePage) {
+      statusEl.classList.add('ready');
+      window.ARIBNative?.onBlankModeChanged?.(false);
+      observeVideoElement();
+    } else if (isInvisible && hasLoadedOnce) {
+      statusEl.classList.remove('ready');
+      setStatus('データ放送を読み込み中…', '');
+      browser.content.processKeyDown(AribKeyCode.DataButton);
+      browser.content.processKeyUp(AribKeyCode.DataButton);
+    } else {
+      statusEl.classList.remove('ready');
+      setStatus('データ放送を受信中…', '');
+    }
+    return true;
   },
   pushChunkBase64(base64: string) {
     return forwardChunkBase64(base64);

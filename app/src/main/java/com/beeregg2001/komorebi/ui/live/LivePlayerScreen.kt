@@ -375,6 +375,30 @@ fun LivePlayerScreen(
     val b24ApiQuality = remember(availableQualities, currentChannelItem.id, currentLiveQualityStr, ps.currentStreamSource) {
         liveSlotQuality(availableQualities, currentChannelItem, currentLiveQualityStr, ps.currentStreamSource).value
     }
+    var isB24PreloadReady by remember(currentChannelItem.id, b24ApiQuality) { mutableStateOf(false) }
+    LaunchedEffect(
+        currentChannelItem.id,
+        b24ApiQuality,
+        isB24Channel,
+        dataBroadcastingSettings.preloadB24InBackground,
+        mainRuntimeState.playbackState,
+        isPiPMode,
+        ps.isDualDisplayMode,
+    ) {
+        if (!isB24Channel ||
+            !dataBroadcastingSettings.preloadB24InBackground ||
+            isPiPMode ||
+            ps.isDualDisplayMode
+        ) {
+            isB24PreloadReady = false
+            return@LaunchedEffect
+        }
+        if (isB24PreloadReady) return@LaunchedEffect
+        if (mainRuntimeState.playbackState == Player.STATE_READY) {
+            delay(5_000L)
+            isB24PreloadReady = true
+        }
+    }
     val dispatchDataBroadcastingRemoteKey: (String) -> Unit = { key ->
         dataBroadcastingRemoteSequence += 1L
         dataBroadcastingRemoteCommand = DataBroadcastingRemoteCommand(
@@ -1026,61 +1050,70 @@ fun LivePlayerScreen(
                 onRetryDual = { livePlayerViewModel.retryDual(uiContext); mainFocusRequester.safeRequestFocus(TAG) }
             )
         } else {
-            if (isDataBroadcastingActive) {
-                if (isB60Channel) {
-                    DataBroadcastingWebViewOverlay(
-                        store = livePlayerViewModel.dataBroadcastingStore,
-                        channel = currentChannelItem,
-                        inputSource = B60InputSource.ON_AIR,
-                        currentMediaTimeSeconds = {
-                            (mainPlayer?.currentPosition ?: 0L).coerceAtLeast(0L) / 1000.0
-                        },
-                        remoteCommand = dataBroadcastingRemoteCommand,
-                        onRemoteCommandConsumed = { consumedId ->
-                            if (dataBroadcastingRemoteCommand?.id == consumedId) {
-                                dataBroadcastingRemoteCommand = null
-                            }
-                        },
-                        onStatus = { status -> Log.d(TAG, "B60: $status") },
-                        onMediaPlane = { dataBroadcastingMediaPlane = it },
-                        onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
-                        onApplicationExited = exitLocalDataBroadcasting,
-                        settings = dataBroadcastingSettings,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .alpha(if (isDataBroadcastingBlank) 0f else 1f)
-                            .zIndex(1f)
-                    )
-                } else if (isB24Channel) {
-                    B24DataBroadcastingWebViewOverlay(
-                        httpClient = livePlayerViewModel.dataBroadcastingHttpClient,
-                        konomiBaseUrl = konomiBaseUrl,
-                        channel = currentChannelItem,
-                        apiQuality = b24ApiQuality,
-                        remoteCommand = dataBroadcastingRemoteCommand,
-                        onRemoteCommandConsumed = { consumedId ->
-                            if (dataBroadcastingRemoteCommand?.id == consumedId) {
-                                dataBroadcastingRemoteCommand = null
-                            }
-                        },
-                        onStatus = { status -> Log.d(TAG, "B24: $status") },
-                        onMediaPlane = { dataBroadcastingMediaPlane = it },
-                        onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
-                        onNumericKeyUsageChanged = { active ->
-                            if (active && !dataBroadcastingInput.isVirtualRemoteVisible &&
-                                dataBroadcastingSettings.virtualRemoteMode == DataBroadcastingVirtualRemoteMode.AUTO
-                            ) {
-                                dataBroadcastingInput.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.AUTO)
-                            }
-                        },
-                        onApplicationExited = exitLocalDataBroadcasting,
-                        settings = dataBroadcastingSettings,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .alpha(if (isDataBroadcastingBlank) 0f else 1f)
-                            .zIndex(1f)
-                    )
-                }
+            if (isDataBroadcastingActive && isB60Channel) {
+                DataBroadcastingWebViewOverlay(
+                    store = livePlayerViewModel.dataBroadcastingStore,
+                    channel = currentChannelItem,
+                    inputSource = B60InputSource.ON_AIR,
+                    currentMediaTimeSeconds = {
+                        (mainPlayer?.currentPosition ?: 0L).coerceAtLeast(0L) / 1000.0
+                    },
+                    remoteCommand = dataBroadcastingRemoteCommand,
+                    onRemoteCommandConsumed = { consumedId ->
+                        if (dataBroadcastingRemoteCommand?.id == consumedId) {
+                            dataBroadcastingRemoteCommand = null
+                        }
+                    },
+                    onStatus = { status -> Log.d(TAG, "B60: $status") },
+                    onMediaPlane = { dataBroadcastingMediaPlane = it },
+                    onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
+                    onApplicationExited = exitLocalDataBroadcasting,
+                    settings = dataBroadcastingSettings,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(if (isDataBroadcastingBlank) 0f else 1f)
+                        .zIndex(1f)
+                )
+            } else if (isB24Channel && (isDataBroadcastingActive || isB24PreloadReady)) {
+                B24DataBroadcastingWebViewOverlay(
+                    httpClient = livePlayerViewModel.dataBroadcastingHttpClient,
+                    konomiBaseUrl = konomiBaseUrl,
+                    channel = currentChannelItem,
+                    apiQuality = b24ApiQuality,
+                    isUserVisible = isDataBroadcastingActive,
+                    remoteCommand = if (isDataBroadcastingActive) dataBroadcastingRemoteCommand else null,
+                    onRemoteCommandConsumed = { consumedId ->
+                        if (dataBroadcastingRemoteCommand?.id == consumedId) {
+                            dataBroadcastingRemoteCommand = null
+                        }
+                    },
+                    onStatus = { status -> Log.d(TAG, "B24: $status") },
+                    onMediaPlane = { plane ->
+                        if (isDataBroadcastingActive) {
+                            dataBroadcastingMediaPlane = plane
+                        }
+                    },
+                    onBlankModeChanged = { isBlank ->
+                        if (isDataBroadcastingActive) {
+                            isDataBroadcastingBlank = isBlank
+                        }
+                    },
+                    onNumericKeyUsageChanged = { active ->
+                        if (isDataBroadcastingActive &&
+                            active &&
+                            !dataBroadcastingInput.isVirtualRemoteVisible &&
+                            dataBroadcastingSettings.virtualRemoteMode == DataBroadcastingVirtualRemoteMode.AUTO
+                        ) {
+                            dataBroadcastingInput.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.AUTO)
+                        }
+                    },
+                    onApplicationExited = exitLocalDataBroadcasting,
+                    settings = dataBroadcastingSettings,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(if (isDataBroadcastingActive && !isDataBroadcastingBlank) 1f else 0f)
+                        .zIndex(if (isDataBroadcastingActive) 1f else -1f)
+                )
             }
 
             val mainPlayerModifier =

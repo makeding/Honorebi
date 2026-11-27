@@ -31,8 +31,9 @@ object DataBroadcastingItemIndex {
     const val PREFECTURE = 1
     const val ALLOW_EXTERNAL_NETWORK = 2
     const val VIRTUAL_REMOTE_MODE = 3
-    const val RESET_STORAGE = 4
-    const val COUNT = 5
+    const val PRELOAD_B24 = 4
+    const val RESET_STORAGE = 5
+    const val COUNT = 6
 }
 
 @Composable
@@ -44,6 +45,7 @@ fun DataBroadcastingSettingsContent(
     onEditPrefecture: () -> Unit,
     onToggleAllowExternalNetwork: () -> Unit,
     onEditVirtualRemoteMode: () -> Unit,
+    onTogglePreloadB24: () -> Unit,
     onResetStorage: () -> Unit,
     onClick: (FocusRequester) -> Unit,
 ) {
@@ -114,7 +116,7 @@ fun DataBroadcastingSettingsContent(
             SectionNote("オンにすると、双方向番組やネット連携コンテンツを利用できます。視聴データがテレビ局へ送信される場合があるため、通常はオフをおすすめします。")
         }
 
-        SettingsSection("リモコン操作") {
+        SettingsSection("リモコン操作・読み込み") {
             SettingItem(
                 title = "仮想リモコンバーの表示",
                 value = settings.virtualRemoteMode.label,
@@ -125,7 +127,17 @@ fun DataBroadcastingSettingsContent(
                     onEditVirtualRemoteMode()
                 },
             )
-            SectionNote("四色キーや数字キーがないリモコンでもデータ放送を操作できるよう、画面下部に仮想リモコンバーを表示します。データ放送中は戻るキー長押しでいつでも開閉できます。")
+            SettingItem(
+                title = "2Kデータ放送を事前受信（再生5秒後）",
+                value = if (settings.preloadB24InBackground) "ON" else "OFF",
+                icon = Icons.Default.SettingsRemote,
+                modifier = itemModifier(DataBroadcastingItemIndex.PRELOAD_B24),
+                onClick = {
+                    onClick(itemRs[DataBroadcastingItemIndex.PRELOAD_B24])
+                    onTogglePreloadB24()
+                },
+            )
+            SectionNote("四色キーや数字キーがないリモコンでも操作できる仮想リモコンバーの設定と、2Kライブ再生開始5秒後に裏でデータ放送を事前受信する設定です。動作が重い端末では事前受信をオフにしてください。")
         }
 
         SettingsSection("保存データ") {

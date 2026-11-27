@@ -85,6 +85,9 @@ private class B24JavascriptBridge(
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @JavascriptInterface
+    fun isDebug(): Boolean = BuildConfig.DEBUG
+
+    @JavascriptInterface
     fun allowExternalNetwork(): Boolean = allowExternalNetwork.invoke()
 
     @JavascriptInterface
@@ -109,6 +112,7 @@ private class B24JavascriptBridge(
                 screenWidth = json.optDouble("screenWidth", 960.0).toFloat(),
                 screenHeight = json.optDouble("screenHeight", 540.0).toFloat(),
             )
+            Log.d(B24_TAG, "B24 media plane: $plane")
             mainHandler.post { onMediaPlane.invoke(plane) }
         }.onFailure { Log.w(B24_TAG, "Invalid B24 media plane: $value", it) }
     }
@@ -121,6 +125,7 @@ private class B24JavascriptBridge(
 
     @JavascriptInterface
     fun onBlankModeChanged(isBlank: Boolean) {
+        Log.d(B24_TAG, "B24 blank mode changed: $isBlank")
         mainHandler.post { onBlankModeChanged.invoke(isBlank) }
     }
 
@@ -231,6 +236,7 @@ fun B24DataBroadcastingWebViewOverlay(
     konomiBaseUrl: String,
     channel: Channel,
     apiQuality: String,
+    isUserVisible: Boolean = true,
     remoteCommand: DataBroadcastingRemoteCommand?,
     onRemoteCommandConsumed: (Long) -> Unit,
     onStatus: (String) -> Unit,
@@ -320,10 +326,12 @@ fun B24DataBroadcastingWebViewOverlay(
                     )
                     webChromeClient = object : WebChromeClient() {
                         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-                            Log.d(
-                                B24_TAG,
-                                "${consoleMessage.message()} (${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})",
-                            )
+                            if (BuildConfig.DEBUG || consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                Log.d(
+                                    B24_TAG,
+                                    "${consoleMessage.message()} (${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})",
+                                )
+                            }
                             return true
                         }
                     }
@@ -364,6 +372,7 @@ fun B24DataBroadcastingWebViewOverlay(
             put("networkId", channel.networkId ?: JSONObject.NULL)
             put("transportStreamId", channel.transportStreamId ?: JSONObject.NULL)
             put("rawTs", false)
+            put("userVisible", isUserVisible)
         }
         webView.evaluateJavascript(
             "window.HonorebiB24?.start?.(${JSONObject.quote(startPayload.toString())})",
@@ -428,6 +437,14 @@ fun B24DataBroadcastingWebViewOverlay(
         } finally {
             call.cancel()
         }
+    }
+
+    LaunchedEffect(shellReady, isUserVisible) {
+        if (!shellReady) return@LaunchedEffect
+        webViewRef.value?.evaluateJavascript(
+            "window.HonorebiB24?.setUserVisible?.($isUserVisible)",
+            null,
+        )
     }
 
     LaunchedEffect(remoteCommand, shellReady) {
