@@ -1,6 +1,8 @@
 package com.beeregg2001.komorebi.ui.home
 
 import android.os.SystemClock
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +21,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 
 internal const val BOTTOM_TAB_SWITCH_DEBOUNCE_MS = 300L
+internal const val MAX_TAB_BOUNDARY_HINT_COUNT = 5
+
+internal val LocalBottomBoundaryFocusObserver = compositionLocalOf<(Boolean) -> Unit> { {} }
 
 /**
  * Intercepts D-pad Down at the bottom-most row of a launcher tab's content.
@@ -38,6 +43,33 @@ internal fun Modifier.bottomBoundaryDown(
     if (!isBottom) return this
     return this
         .focusProperties { down = FocusRequester.Cancel }
+        .then(
+            if (onNextTab != null) {
+                composed {
+                    val notifyBottomFocus = LocalBottomBoundaryFocusObserver.current
+                    var hasReportedBottomFocus by remember { mutableLongStateOf(0L) }
+                    DisposableEffect(notifyBottomFocus) {
+                        onDispose {
+                            if (hasReportedBottomFocus != 0L) {
+                                hasReportedBottomFocus = 0L
+                                notifyBottomFocus(false)
+                            }
+                        }
+                    }
+                    Modifier.onFocusChanged { state ->
+                        if (state.isFocused && hasReportedBottomFocus == 0L) {
+                            hasReportedBottomFocus = 1L
+                            notifyBottomFocus(true)
+                        } else if (!state.isFocused && hasReportedBottomFocus != 0L) {
+                            hasReportedBottomFocus = 0L
+                            notifyBottomFocus(false)
+                        }
+                    }
+                }
+            } else {
+                Modifier
+            }
+        )
         .debouncedDirectionalTabSwitch(
             targetKey = Key.DirectionDown,
             onSwitch = onNextTab,

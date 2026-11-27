@@ -37,7 +37,7 @@ internal class SettingFocusRequesters {
         SettingsCategory.EPG to List(4) { FocusRequester() },
         SettingsCategory.COMMENT to List(CommentItemIndex.COUNT) { FocusRequester() },
         SettingsCategory.HOME to List(3) { FocusRequester() },
-        SettingsCategory.LAUNCHER to List(4) { FocusRequester() },
+        SettingsCategory.LAUNCHER to List(5) { FocusRequester() },
         SettingsCategory.DISPLAY to List(13) { FocusRequester() },
         SettingsCategory.DEEP_TV to List(DeepTvItemIndex.COUNT) { FocusRequester() },
         SettingsCategory.CACHE to List(7) { FocusRequester() },

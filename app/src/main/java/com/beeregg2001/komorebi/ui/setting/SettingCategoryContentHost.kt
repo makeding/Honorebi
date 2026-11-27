@@ -706,6 +706,7 @@ internal fun ColumnScope.SettingCategoryContentHost(
             showAppsTab = !prefs.hideAppsTab,
             appColumns = prefs.launcherAppColumns,
             showAppLabels = !prefs.hideLauncherAppLabels,
+            uiSoundEffectsEnabled = prefs.uiSoundEffectsEnabled,
             environment = homeEnvironment,
             isDefaultHome = isDefaultHome,
             itemRs = focusRequesters.itemRequesters(SettingsCategory.LAUNCHER),
@@ -733,6 +734,7 @@ internal fun ColumnScope.SettingCategoryContentHost(
                     )
                 }
             },
+            onToggleUiSoundEffects = { viewModel.toggleUiSoundEffects() },
             onOpenDefaultHomeGuide = {
                 onRefreshDefaultHome()
                 controller.activeDialog = SettingDialogState.DefaultHomeGuide

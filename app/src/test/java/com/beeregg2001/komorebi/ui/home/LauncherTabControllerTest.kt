@@ -756,4 +756,51 @@ class LauncherTabControllerTest {
         compose.onNodeWithTag("strip-item").performKeyInput { pressKey(Key.DirectionUp) }
         assertEquals(1, prevTabCalls)
     }
+
+    @Test
+    fun bottomBoundaryFocusObserverTracksBottomRowFocus() {
+        val focusEvents = mutableListOf<Boolean>()
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalBottomBoundaryFocusObserver provides { focusEvents.add(it) }
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("top-item")
+                            .focusable(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("bottom-item")
+                            .bottomBoundaryDown(isBottom = true, onNextTab = {})
+                            .focusable(),
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag("bottom-item").requestFocus().assertIsFocused()
+        compose.onNodeWithTag("top-item").requestFocus().assertIsFocused()
+        assertEquals(listOf(true, false), focusEvents)
+    }
+
+    @Test
+    fun uiSoundPlayerSynthesizesBoundedPcmAndGuardsDisabledPlayback() {
+        val pcm = com.beeregg2001.komorebi.common.UiSoundPlayer.synthesizeTone(
+            durationMs = 20,
+            startHz = 500.0,
+            endHz = 650.0,
+            amplitude = 0.10,
+        )
+        assertTrue(pcm.isNotEmpty())
+        assertTrue(pcm.any { it != 0.toShort() })
+
+        val player = com.beeregg2001.komorebi.common.UiSoundPlayer()
+        player.enabled = false
+        player.play(com.beeregg2001.komorebi.common.UiSoundEffect.MOVE)
+        player.release()
+    }
 }

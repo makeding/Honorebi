@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -14,8 +15,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -23,12 +27,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.beeregg2001.komorebi.common.UiSoundEffect
+import com.beeregg2001.komorebi.common.rememberUiSoundPlayer
+import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.data.StartupFocusTarget
 import com.beeregg2001.komorebi.data.mapper.KonomiDataMapper
 import com.beeregg2001.komorebi.data.model.*
@@ -175,6 +187,8 @@ fun HomeLauncherScreen(
 
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
     val currentStartupFocusTarget by settingsViewModel.startupFocusTarget.collectAsState()
+    val uiSoundEffectsEnabled by settingsViewModel.uiSoundEffectsEnabled.collectAsState()
+    val tabBoundaryHintSeenCount by settingsViewModel.tabBoundaryHintSeenCount.collectAsState()
     val tifHideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
     val tifShowTunerInputs by settingsViewModel.tifShowTunerInputs.collectAsState()
     val tifActive by settingsViewModel.tifIntegrationActive.collectAsState()
@@ -200,6 +214,15 @@ fun HomeLauncherScreen(
 
     val isFullScreenPlayer = (selectedChannel != null || selectedProgram != null) && !hasActivePlayer
     val isFullScreenMode = isFullScreenOverlayOpen || isFullScreenPlayer
+    val uiSoundPlayer = rememberUiSoundPlayer(enabled = uiSoundEffectsEnabled && !isFullScreenMode)
+    var hasCommittedInitialTabSound by remember { mutableStateOf(false) }
+    LaunchedEffect(tabController.activeTab) {
+        if (hasCommittedInitialTabSound) {
+            uiSoundPlayer.play(UiSoundEffect.TAB_SWITCH)
+        } else {
+            hasCommittedInitialTabSound = true
+        }
+    }
 
     LaunchedEffect(visibleTabs) {
         val fallback = tabController.syncVisibleTabs(visibleTabs)
@@ -495,7 +518,32 @@ fun HomeLauncherScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    var isBottomRowFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(tabController.activeTab) {
+        isBottomRowFocused = false
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (!isFullScreenMode && event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.DirectionUp,
+                        Key.DirectionDown,
+                        Key.DirectionLeft,
+                        Key.DirectionRight -> uiSoundPlayer.play(UiSoundEffect.MOVE)
+
+                        Key.DirectionCenter,
+                        Key.Enter,
+                        Key.NumPadEnter -> uiSoundPlayer.play(UiSoundEffect.SELECT)
+
+                        else -> Unit
+                    }
+                }
+                false
+            },
+    ) {
         Box(
             modifier = Modifier
                 .size(1.dp)
@@ -526,15 +574,20 @@ fun HomeLauncherScreen(
                 .padding(start = if (!isFullScreenMode) TvRailCollapsedWidth else 0.dp)
                 .upgradeSpotlightTarget(UpgradeTourTargetId.CONTENT_STAGE)
         ) {
-            AnimatedContent(
-                targetState = tabController.activeSnapshot,
-                transitionSpec = {
-                    launcherTabContentTransform(tabController.transitionDirection)
-                },
-                contentKey = { "${it.tab.name}-${it.generation}" },
-                label = "launcher_tab_content",
-                modifier = Modifier.fillMaxSize(),
-            ) { snapshot ->
+            CompositionLocalProvider(
+                LocalBottomBoundaryFocusObserver provides { focused ->
+                    isBottomRowFocused = focused
+                }
+            ) {
+                AnimatedContent(
+                    targetState = tabController.activeSnapshot,
+                    transitionSpec = {
+                        launcherTabContentTransform(tabController.transitionDirection)
+                    },
+                    contentKey = { "${it.tab.name}-${it.generation}" },
+                    label = "launcher_tab_content",
+                    modifier = Modifier.fillMaxSize(),
+                ) { snapshot ->
                     val isCurrentSnapshot = snapshot.generation == tabController.generation
                     val snapshotTabIndex = visibleTabs.indexOf(snapshot.tab).coerceAtLeast(0)
                     val snapshotTabRequester = tabController.tabRequester(snapshot.tab)
@@ -801,6 +854,7 @@ fun HomeLauncherScreen(
                         }
                     }
                 }
+            }
 
             if (!isFullScreenMode) {
                 val connectionFeedbackState = homeConnectionFeedbackState(
@@ -889,6 +943,60 @@ fun HomeLauncherScreen(
                         .upgradeSpotlightTarget(UpgradeTourTargetId.SYSTEM_STRIP)
                         .zIndex(25f),
                 )
+
+                val nextTab = tabController.nextTab()
+                val prevTab = tabController.previousTab()
+                val canShowBoundaryHint = tabBoundaryHintSeenCount < MAX_TAB_BOUNDARY_HINT_COUNT &&
+                    !showTvInputs &&
+                    !showNotificationCenter &&
+                    !isUpgradeTourActive
+                val showBottomHint = canShowBoundaryHint &&
+                    isBottomRowFocused &&
+                    !railHasFocus &&
+                    !stripHasFocus &&
+                    nextTab != null
+                val showTopHint = canShowBoundaryHint &&
+                    stripHasFocus &&
+                    !lastNonStripFocusWasRail &&
+                    prevTab != null
+                val activeHintKey = when {
+                    showBottomHint -> "down:${nextTab!!.name}"
+                    showTopHint -> "up:${prevTab!!.name}"
+                    else -> null
+                }
+                LaunchedEffect(activeHintKey) {
+                    if (activeHintKey != null) {
+                        settingsViewModel.recordTabBoundaryHintSeen(MAX_TAB_BOUNDARY_HINT_COUNT)
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = showBottomHint,
+                    enter = fadeIn(animationSpec = tween(160)),
+                    exit = fadeOut(animationSpec = tween(120)),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 18.dp)
+                        .zIndex(24f),
+                ) {
+                    TabBoundaryHintPill(
+                        text = "↓ もう一度下を押すと「${nextTab?.title.orEmpty()}」へ",
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = showTopHint,
+                    enter = fadeIn(animationSpec = tween(160)),
+                    exit = fadeOut(animationSpec = tween(120)),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 72.dp, end = 24.dp)
+                        .zIndex(24f),
+                ) {
+                    TabBoundaryHintPill(
+                        text = "↑ もう一度上を押すと「${prevTab?.title.orEmpty()}」へ",
+                    )
+                }
             }
         }
 
@@ -1054,5 +1162,34 @@ private fun launcherTabContentTransform(direction: TabTransitionDirection): Cont
             targetOffsetY = { height -> -sign * (height / 32).coerceIn(12, 24) },
         )
         enter togetherWith exit
+    }
+}
+
+@Composable
+private fun TabBoundaryHintPill(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = KomorebiTheme.colors
+    val shape = RoundedCornerShape(20.dp)
+    Surface(
+        modifier = modifier,
+        shape = shape,
+        colors = SurfaceDefaults.colors(
+            containerColor = colors.surface1.copy(alpha = 0.92f),
+            contentColor = colors.textPrimary,
+        ),
+        border = Border(
+            border = BorderStroke(1.dp, colors.borderSubtle),
+            shape = shape,
+        ),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.textPrimary,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+        )
     }
 }

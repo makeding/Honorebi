@@ -17,6 +17,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -638,6 +639,7 @@ fun LauncherSettingsContent(
     showAppsTab: Boolean,
     appColumns: String,
     showAppLabels: Boolean,
+    uiSoundEffectsEnabled: Boolean,
     environment: HomeEnvironment,
     isDefaultHome: Boolean,
     itemRs: List<FocusRequester>,
@@ -645,6 +647,7 @@ fun LauncherSettingsContent(
     onToggleAppsTab: () -> Unit,
     onEditColumns: () -> Unit,
     onToggleAppLabels: () -> Unit,
+    onToggleUiSoundEffects: () -> Unit,
     onOpenDefaultHomeGuide: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -717,9 +720,25 @@ fun LauncherSettingsContent(
                     .focusProperties {
                         left = sidebarR
                         up = itemRs[2]
-                        down = FocusRequester.Cancel
+                        down = itemRs[4]
                     },
                 onClick = { onClick(itemRs[3]); onOpenDefaultHomeGuide() }
+            )
+        }
+
+        SettingsSection("操作フィードバック") {
+            SettingItem(
+                title = "UI マイクロ効果音",
+                value = if (uiSoundEffectsEnabled) "ON" else "OFF",
+                icon = Icons.AutoMirrored.Filled.VolumeUp,
+                modifier = Modifier
+                    .focusRequester(itemRs[4])
+                    .focusProperties {
+                        left = sidebarR
+                        up = itemRs[3]
+                        down = FocusRequester.Cancel
+                    },
+                onClick = { onClick(itemRs[4]); onToggleUiSoundEffects() }
             )
         }
     }

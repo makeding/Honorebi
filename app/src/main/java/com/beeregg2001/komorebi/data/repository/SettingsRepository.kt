@@ -182,6 +182,8 @@ class SettingsRepository @Inject constructor(
         val HIDE_LAUNCHER_APP_LABELS = booleanPreferencesKey("hide_launcher_app_labels")
         val HIDE_APPS_TAB = booleanPreferencesKey("hide_apps_tab")
         val LAUNCHER_APP_COLUMNS = stringPreferencesKey("launcher_app_columns")
+        val UI_SOUND_EFFECTS_ENABLED = booleanPreferencesKey("ui_sound_effects_enabled")
+        val TAB_BOUNDARY_HINT_SEEN_COUNT = intPreferencesKey("tab_boundary_hint_seen_count")
 
         val RECEIVE_BETA_UPDATES = booleanPreferencesKey("receive_beta_updates")
         val HIDE_SUB_CHANNELS = booleanPreferencesKey("hide_sub_channels")
@@ -405,6 +407,19 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { it[HIDE_APPS_TAB] ?: false }
     val launcherAppColumns: Flow<String> =
         context.dataStore.data.map { it[LAUNCHER_APP_COLUMNS] ?: "AUTO" }
+    val uiSoundEffectsEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[UI_SOUND_EFFECTS_ENABLED] ?: false }
+    val tabBoundaryHintSeenCount: Flow<Int> =
+        context.dataStore.data.map { it[TAB_BOUNDARY_HINT_SEEN_COUNT] ?: 0 }
+
+    suspend fun incrementTabBoundaryHintSeenCount(maxCount: Int = 5) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[TAB_BOUNDARY_HINT_SEEN_COUNT] ?: 0
+            if (current < maxCount) {
+                prefs[TAB_BOUNDARY_HINT_SEEN_COUNT] = current + 1
+            }
+        }
+    }
     val receiveBetaUpdates: Flow<Boolean> =
         context.dataStore.data.map { it[RECEIVE_BETA_UPDATES] ?: false }
     val hideSubChannels: Flow<Boolean> =

@@ -588,6 +588,31 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "AUTO"
     )
+    val uiSoundEffectsEnabled: StateFlow<Boolean> = settingsRepository.uiSoundEffectsEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        false
+    )
+    val tabBoundaryHintSeenCount: StateFlow<Int> = settingsRepository.tabBoundaryHintSeenCount.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        0
+    )
+
+    fun toggleUiSoundEffects() {
+        viewModelScope.launch {
+            settingsRepository.saveBoolean(
+                SettingsRepository.UI_SOUND_EFFECTS_ENABLED,
+                !uiSoundEffectsEnabled.value,
+            )
+        }
+    }
+
+    fun recordTabBoundaryHintSeen(maxCount: Int = 5) {
+        viewModelScope.launch {
+            settingsRepository.incrementTabBoundaryHintSeenCount(maxCount)
+        }
+    }
     val lateNightWatchMode: StateFlow<String> = settingsRepository.lateNightWatchMode.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
