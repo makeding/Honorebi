@@ -104,14 +104,19 @@ class DataBroadcastingInputState(
     private val usesDefaultDetector: Boolean = hasMissingHardwareKeys === DEFAULT_DETECTOR
     var isVirtualRemoteVisible by mutableStateOf(false)
         private set
+    var isVirtualRemoteFocused by mutableStateOf(false)
+        private set
     var selectedVirtualKey by mutableStateOf(DataBroadcastingVirtualKey.Blue)
         private set
     var virtualRemoteInteractionSequence by mutableIntStateOf(0)
         private set
 
+    private var keepVirtualRemoteDocked = false
     private var hardwareDedicatedKeyObserved = false
     private var backKeyDownTimeMs = 0L
     private var backKeyLongPressed = false
+    private var enterKeyDownTimeMs = 0L
+    private var enterKeyLongPressed = false
     private var pendingBackJob: Job? = null
 
     fun recordInputDevice(device: InputDevice?) {
@@ -122,9 +127,12 @@ class DataBroadcastingInputState(
 
     fun reset() {
         closeVirtualRemote()
+        keepVirtualRemoteDocked = false
         cancelPendingBack()
         backKeyDownTimeMs = 0L
         backKeyLongPressed = false
+        enterKeyDownTimeMs = 0L
+        enterKeyLongPressed = false
     }
 
     fun onDataBroadcastingActivated(mode: DataBroadcastingVirtualRemoteMode) {
@@ -133,14 +141,22 @@ class DataBroadcastingInputState(
         } else {
             hasMissingHardwareKeys()
         }
-        val shouldAutoShow = when (mode) {
-            DataBroadcastingVirtualRemoteMode.ALWAYS -> true
-            DataBroadcastingVirtualRemoteMode.MANUAL -> false
-            DataBroadcastingVirtualRemoteMode.AUTO ->
-                !hardwareDedicatedKeyObserved && missingKeys
-        }
-        if (shouldAutoShow) {
-            openVirtualRemote()
+        keepVirtualRemoteDocked = mode == DataBroadcastingVirtualRemoteMode.ALWAYS
+        when (mode) {
+            DataBroadcastingVirtualRemoteMode.ALWAYS -> {
+                // Dock passively so D-pad + OK stay free for page navigation until focused.
+                isVirtualRemoteVisible = true
+                isVirtualRemoteFocused = false
+            }
+            DataBroadcastingVirtualRemoteMode.MANUAL -> {
+                isVirtualRemoteVisible = false
+                isVirtualRemoteFocused = false
+            }
+            DataBroadcastingVirtualRemoteMode.AUTO -> {
+                val showPassiveHint = !hardwareDedicatedKeyObserved && missingKeys
+                isVirtualRemoteVisible = showPassiveHint
+                isVirtualRemoteFocused = false
+            }
         }
     }
 
@@ -151,10 +167,19 @@ class DataBroadcastingInputState(
             initialKey
         }
         isVirtualRemoteVisible = true
+        isVirtualRemoteFocused = true
         virtualRemoteInteractionSequence += 1
     }
 
+    fun blurVirtualRemote() {
+        isVirtualRemoteFocused = false
+        if (!keepVirtualRemoteDocked) {
+            isVirtualRemoteVisible = false
+        }
+    }
+
     fun closeVirtualRemote() {
+        isVirtualRemoteFocused = false
         isVirtualRemoteVisible = false
     }
 
@@ -168,15 +193,30 @@ class DataBroadcastingInputState(
         selectedVirtualKey = key
         virtualRemoteInteractionSequence += 1
         when (key) {
-            DataBroadcastingVirtualKey.Blue -> onColorKey(DataBroadcastingColorKey.Blue)
-            DataBroadcastingVirtualKey.Red -> onColorKey(DataBroadcastingColorKey.Red)
-            DataBroadcastingVirtualKey.Green -> onColorKey(DataBroadcastingColorKey.Green)
-            DataBroadcastingVirtualKey.Yellow -> onColorKey(DataBroadcastingColorKey.Yellow)
+            DataBroadcastingVirtualKey.Blue -> {
+                onColorKey(DataBroadcastingColorKey.Blue)
+                blurVirtualRemote()
+            }
+            DataBroadcastingVirtualKey.Red -> {
+                onColorKey(DataBroadcastingColorKey.Red)
+                blurVirtualRemote()
+            }
+            DataBroadcastingVirtualKey.Green -> {
+                onColorKey(DataBroadcastingColorKey.Green)
+                blurVirtualRemote()
+            }
+            DataBroadcastingVirtualKey.Yellow -> {
+                onColorKey(DataBroadcastingColorKey.Yellow)
+                blurVirtualRemote()
+            }
             DataBroadcastingVirtualKey.Data -> {
                 closeVirtualRemote()
                 onBlank()
             }
-            DataBroadcastingVirtualKey.Back -> onBack()
+            DataBroadcastingVirtualKey.Back -> {
+                onBack()
+                blurVirtualRemote()
+            }
             DataBroadcastingVirtualKey.Close -> closeVirtualRemote()
             else -> key.wireKey?.let(onRemoteKey)
         }
@@ -206,13 +246,11 @@ class DataBroadcastingInputState(
             return true
         }
 
-        if (isVirtualRemoteVisible) {
+        if (isVirtualRemoteFocused) {
             if (keyCode !in virtualBarKeys) return false
             if (!isDown) return true
             cancelPendingBack()
             when (keyCode) {
-                NativeKeyEvent.KEYCODE_DPAD_UP -> onRemoteKey("up")
-                NativeKeyEvent.KEYCODE_DPAD_DOWN -> onRemoteKey("down")
                 NativeKeyEvent.KEYCODE_DPAD_LEFT -> moveSelection(-1)
                 NativeKeyEvent.KEYCODE_DPAD_RIGHT -> moveSelection(+1)
                 NativeKeyEvent.KEYCODE_DPAD_CENTER,
@@ -224,8 +262,45 @@ class DataBroadcastingInputState(
                     onColorKey = onColorKey,
                     onRemoteKey = onRemoteKey,
                 )
+                NativeKeyEvent.KEYCODE_DPAD_UP,
                 NativeKeyEvent.KEYCODE_BACK,
-                NativeKeyEvent.KEYCODE_ESCAPE -> closeVirtualRemote()
+                NativeKeyEvent.KEYCODE_ESCAPE,
+                NativeKeyEvent.KEYCODE_MENU -> blurVirtualRemote()
+            }
+            return true
+        }
+
+        if (keyCode == NativeKeyEvent.KEYCODE_MENU) {
+            if (isDown) {
+                cancelPendingBack()
+            } else if (isUp) {
+                openVirtualRemote(selectedVirtualKey)
+            }
+            return true
+        }
+
+        if (keyCode == NativeKeyEvent.KEYCODE_DPAD_CENTER ||
+            keyCode == NativeKeyEvent.KEYCODE_ENTER ||
+            keyCode == NativeKeyEvent.KEYCODE_NUMPAD_ENTER
+        ) {
+            if (isDown) {
+                cancelPendingBack()
+                if (keyEvent.nativeKeyEvent.repeatCount == 0) {
+                    enterKeyDownTimeMs = System.currentTimeMillis()
+                    enterKeyLongPressed = false
+                } else if (!enterKeyLongPressed && System.currentTimeMillis() - enterKeyDownTimeMs >= ENTER_LONG_PRESS_MS) {
+                    enterKeyLongPressed = true
+                    openVirtualRemote(selectedVirtualKey)
+                }
+                return true
+            }
+            if (isUp) {
+                if (!enterKeyLongPressed) {
+                    onRemoteKey("enter")
+                }
+                enterKeyDownTimeMs = 0L
+                enterKeyLongPressed = false
+                return true
             }
             return true
         }
@@ -301,6 +376,7 @@ class DataBroadcastingInputState(
         val DEFAULT_DETECTOR: () -> Boolean = { detectMissingDataBroadcastingHardwareKeys(null) }
         const val BACK_DOUBLE_TAP_MS = 350L
         const val BACK_LONG_PRESS_MS = 500L
+        const val ENTER_LONG_PRESS_MS = 400L
 
         val virtualBarKeys = setOf(
             NativeKeyEvent.KEYCODE_DPAD_UP,
@@ -312,6 +388,7 @@ class DataBroadcastingInputState(
             NativeKeyEvent.KEYCODE_NUMPAD_ENTER,
             NativeKeyEvent.KEYCODE_BACK,
             NativeKeyEvent.KEYCODE_ESCAPE,
+            NativeKeyEvent.KEYCODE_MENU,
         )
 
         fun hardwareColorKey(keyCode: Int): DataBroadcastingColorKey? = when (keyCode) {

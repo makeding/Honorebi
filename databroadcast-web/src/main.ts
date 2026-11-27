@@ -92,8 +92,10 @@ let userVisible = true;
 let isInvisible = false;
 let hasLoadedOnce = false;
 let hasShownVisiblePage = false;
+let autoEnterAttempts = 0;
 let autoEnterTimer: number | null = null;
 let visibleSettleTimer: number | null = null;
+const MAX_AUTO_ENTER_ATTEMPTS = 5;
 let lastPlaneJson = '';
 let lastStatusText = 'データ放送を受信中…';
 let dataPort: MessagePort | null = null;
@@ -249,6 +251,10 @@ function clearTimers(): void {
 
 function scheduleVisibleSettle(browser: BMLBrowser): void {
   if (visibleSettleTimer !== null) clearTimeout(visibleSettleTimer);
+  if (autoEnterTimer !== null) {
+    clearTimeout(autoEnterTimer);
+    autoEnterTimer = null;
+  }
   // Startup BML often flashes visible for ~50ms before its onload sets invisible=true.
   // Wait 350ms of continuous visibility before hiding the loading pill and committing visible state.
   visibleSettleTimer = window.setTimeout(() => {
@@ -264,13 +270,17 @@ function scheduleVisibleSettle(browser: BMLBrowser): void {
 }
 
 function scheduleAutoEnterData(browser: BMLBrowser, delayMs: number): void {
-  if (!userVisible) return;
+  if (!userVisible || hasShownVisiblePage || autoEnterAttempts >= MAX_AUTO_ENTER_ATTEMPTS) return;
   if (autoEnterTimer !== null) clearTimeout(autoEnterTimer);
   autoEnterTimer = window.setTimeout(() => {
     autoEnterTimer = null;
     if (bmlBrowser === browser && userVisible && isInvisible && !hasShownVisiblePage) {
+      autoEnterAttempts += 1;
       browser.content.processKeyDown(AribKeyCode.DataButton);
       browser.content.processKeyUp(AribKeyCode.DataButton);
+      if (autoEnterAttempts < MAX_AUTO_ENTER_ATTEMPTS) {
+        scheduleAutoEnterData(browser, 1800);
+      }
     }
   }, delayMs);
 }
@@ -298,6 +308,7 @@ function destroySession(): void {
   isInvisible = false;
   hasLoadedOnce = false;
   hasShownVisiblePage = false;
+  autoEnterAttempts = 0;
 }
 
 function startSession(config: {

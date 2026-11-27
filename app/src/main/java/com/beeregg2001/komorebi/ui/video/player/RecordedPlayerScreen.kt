@@ -2050,6 +2050,7 @@ internal fun RecordedPlayerScreen(
                 isDataBroadcastingActive &&
                 !isDataBroadcastingBlank &&
                 dataBroadcastingInput.isVirtualRemoteVisible,
+            isFocused = dataBroadcastingInput.isVirtualRemoteFocused,
             selectedKey = dataBroadcastingInput.selectedVirtualKey,
             onKeyClick = { virtualKey ->
                 dataBroadcastingInput.dispatchVirtualKey(

@@ -1752,6 +1752,7 @@ fun LivePlayerScreen(
         ) {
             DataBroadcastingVirtualRemoteBarOverlay(
                 selectedKey = dataBroadcastingInput.selectedVirtualKey,
+                isFocused = dataBroadcastingInput.isVirtualRemoteFocused,
                 onKeyClick = { virtualKey ->
                     dataBroadcastingInput.dispatchVirtualKey(
                         key = virtualKey,

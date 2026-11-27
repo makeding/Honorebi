@@ -510,6 +510,7 @@ internal fun BoxScope.RecordedPlaybackOverlays(
 @Composable
 internal fun RecordedDataBroadcastingVirtualRemoteBar(
     visible: Boolean,
+    isFocused: Boolean = true,
     selectedKey: DataBroadcastingVirtualKey,
     onKeyClick: (DataBroadcastingVirtualKey) -> Unit,
     onDismiss: () -> Unit,
@@ -522,6 +523,7 @@ internal fun RecordedDataBroadcastingVirtualRemoteBar(
     ) {
         DataBroadcastingVirtualRemoteBarOverlay(
             selectedKey = selectedKey,
+            isFocused = isFocused,
             onKeyClick = onKeyClick,
             onDismiss = onDismiss
         )

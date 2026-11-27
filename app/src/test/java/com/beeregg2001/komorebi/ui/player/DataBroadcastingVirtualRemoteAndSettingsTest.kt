@@ -53,6 +53,7 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
         val missingState = DataBroadcastingInputState(hasMissingHardwareKeys = { true })
         missingState.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.AUTO)
         assertTrue(missingState.isVirtualRemoteVisible)
+        assertFalse(missingState.isVirtualRemoteFocused)
         assertEquals(DataBroadcastingVirtualKey.Blue, missingState.selectedVirtualKey)
 
         val fullRemoteState = DataBroadcastingInputState(hasMissingHardwareKeys = { false })
@@ -61,6 +62,7 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
 
         fullRemoteState.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.ALWAYS)
         assertTrue(fullRemoteState.isVirtualRemoteVisible)
+        assertFalse(fullRemoteState.isVirtualRemoteFocused)
 
         val manualState = DataBroadcastingInputState(hasMissingHardwareKeys = { true })
         manualState.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.MANUAL)
@@ -68,9 +70,9 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
     }
 
     @Test
-    fun virtualBarNavigationDispatchesKeysWithoutClosingAndClosesOnBackOrClose() = runTest {
+    fun virtualBarPassivePassThroughAndMenuFocusFlow() = runTest {
         val state = DataBroadcastingInputState(hasMissingHardwareKeys = { true })
-        state.openVirtualRemote(DataBroadcastingVirtualKey.Blue)
+        state.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.ALWAYS)
 
         val colorEvents = mutableListOf<DataBroadcastingColorKey>()
         val remoteEvents = mutableListOf<String>()
@@ -86,24 +88,33 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
             onRemoteKey = { remoteEvents += it },
         )
 
-        // Move right from Blue -> Red and press Enter
+        // Passive docked state: D-pad + OK go straight to the broadcast page
+        assertTrue(state.isVirtualRemoteVisible)
+        assertFalse(state.isVirtualRemoteFocused)
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_LEFT))
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_RIGHT))
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_DOWN))
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_CENTER))
+        assertTrue(send(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_CENTER))
+        assertEquals(listOf("left", "right", "down", "enter"), remoteEvents)
+
+        // Menu key focuses the bar
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_MENU))
+        assertTrue(send(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_MENU))
+        assertTrue(state.isVirtualRemoteFocused)
+
+        // Move right from Blue -> Red and press Enter: fires Red and returns focus to page
         assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_RIGHT))
         assertEquals(DataBroadcastingVirtualKey.Red, state.selectedVirtualKey)
         assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_CENTER))
         assertEquals(listOf(DataBroadcastingColorKey.Red), colorEvents)
-        // Stays open for consecutive inputs (e.g., digits or multiple color keys)
+        assertFalse(state.isVirtualRemoteFocused)
+        // Stays passively visible in ALWAYS mode
         assertTrue(state.isVirtualRemoteVisible)
 
-        // Up/Down still forward to the data broadcasting page while the horizontal bar is open
-        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_DOWN))
-        assertTrue(send(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_DOWN))
-        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_UP))
-        assertTrue(send(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_UP))
-        assertEquals(listOf("down", "up"), remoteEvents)
-        assertEquals(DataBroadcastingVirtualKey.Red, state.selectedVirtualKey)
-        assertTrue(state.isVirtualRemoteVisible)
-
-        // Dispatch digit key directly via virtual bar
+        // Re-focus bar and dispatch digit key: stays focused for consecutive digits
+        state.openVirtualRemote(DataBroadcastingVirtualKey.Digit7)
+        assertTrue(state.isVirtualRemoteFocused)
         state.dispatchVirtualKey(
             key = DataBroadcastingVirtualKey.Digit7,
             onBack = { backCalls += 1 },
@@ -111,15 +122,16 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
             onColorKey = { colorEvents += it },
             onRemoteKey = { remoteEvents += it },
         )
-        assertEquals(listOf("down", "up", "7"), remoteEvents)
-        assertTrue(state.isVirtualRemoteVisible)
+        assertEquals(listOf("left", "right", "down", "enter", "7"), remoteEvents)
+        assertTrue(state.isVirtualRemoteFocused)
 
-        // Back key closes virtual bar without firing broadcast back
-        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_BACK))
-        assertFalse(state.isVirtualRemoteVisible)
+        // DPAD_UP returns focus to page without firing broadcast back
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_UP))
+        assertFalse(state.isVirtualRemoteFocused)
+        assertTrue(state.isVirtualRemoteVisible)
         assertEquals(0, backCalls)
 
-        // Data virtual key blanks broadcast and closes bar
+        // Data virtual key blanks broadcast and hides bar
         state.openVirtualRemote(DataBroadcastingVirtualKey.Data)
         state.dispatchVirtualKey(
             key = DataBroadcastingVirtualKey.Data,
@@ -130,6 +142,7 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
         )
         assertEquals(1, blankCalls)
         assertFalse(state.isVirtualRemoteVisible)
+        assertFalse(state.isVirtualRemoteFocused)
     }
 
     @Test

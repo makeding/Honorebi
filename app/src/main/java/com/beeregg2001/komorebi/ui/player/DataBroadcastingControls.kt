@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -58,6 +59,7 @@ fun DataBroadcastingVirtualRemoteBarOverlay(
     selectedKey: DataBroadcastingVirtualKey,
     onKeyClick: (DataBroadcastingVirtualKey) -> Unit,
     onDismiss: () -> Unit,
+    isFocused: Boolean = true,
 ) {
     Box(
         modifier = Modifier
@@ -68,12 +70,13 @@ fun DataBroadcastingVirtualRemoteBarOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .alpha(if (isFocused) 1f else 0.58f)
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
                             Color.Black.copy(alpha = 0.0f),
-                            Color.Black.copy(alpha = 0.78f),
-                            Color.Black.copy(alpha = 0.92f),
+                            Color.Black.copy(alpha = if (isFocused) 0.78f else 0.55f),
+                            Color.Black.copy(alpha = if (isFocused) 0.92f else 0.75f),
                         )
                     )
                 )
@@ -82,9 +85,9 @@ fun DataBroadcastingVirtualRemoteBarOverlay(
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "◀ ▶",
-                color = Color.White.copy(alpha = 0.65f),
-                fontSize = 13.sp,
+                text = if (isFocused) "◀ ▶" else "メニュー / 長押しOK",
+                color = Color.White.copy(alpha = if (isFocused) 0.75f else 0.85f),
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
             )
             Spacer(Modifier.width(12.dp))
@@ -97,7 +100,7 @@ fun DataBroadcastingVirtualRemoteBarOverlay(
                 }
                 VirtualRemoteKeyChip(
                     key = key,
-                    selected = selectedKey == key,
+                    selected = isFocused && selectedKey == key,
                     onClick = {
                         if (key == DataBroadcastingVirtualKey.Close) {
                             onDismiss()
