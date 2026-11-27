@@ -84,7 +84,7 @@ class LauncherAppRepository @Inject constructor(
         }
         // Subscribe before scanning so an install during the scan is not lost.
         trySend(Unit)
-        awaitClose { context.unregisterReceiver(receiver) }
+        awaitClose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
     suspend fun loadLauncherApps(): List<LauncherApp> = withContext(Dispatchers.IO) {

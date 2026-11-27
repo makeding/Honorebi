@@ -40,6 +40,19 @@ class BackgroundPlaybackService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 Log.i(TAG, "onStartCommand action=${intent.action}")
+                val needsForegroundContract = synchronized(stateLock) {
+                    stateMachine.isAwaitingForegroundStart()
+                }
+                if (needsForegroundContract) {
+                    val state = synchronized(stateLock) { stateMachine.currentDesiredState() }
+                    runCatching { enterForeground(state) }
+                }
+                synchronized(stateLock) {
+                    stateMachine.onStopActionHandled()
+                    if (activeService === this) {
+                        activeService = null
+                    }
+                }
                 onStopRequested?.invoke()
                 stopForegroundCompat()
                 stopSelf()
@@ -48,33 +61,102 @@ class BackgroundPlaybackService : Service() {
             ACTION_TOGGLE_PLAY_PAUSE -> {
                 Log.i(TAG, "onStartCommand action=${intent.action}")
                 onTogglePlayPauseRequested?.invoke()
-                return START_STICKY
+                return START_NOT_STICKY
             }
             ACTION_SYNC -> {
-                val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
-                val subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty()
-                val isPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, true)
-                val notification = buildNotification(title, subtitle, isPlaying)
-                try {
-                    val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                val state = synchronized(stateLock) {
+                    val current = stateMachine.currentDesiredState()
+                    if (current.title.isEmpty() && current.subtitle.isEmpty()) {
+                        BackgroundPlaybackNotificationState(
+                            title = intent.getStringExtra(EXTRA_TITLE).orEmpty(),
+                            subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty(),
+                            isPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, true),
+                        )
                     } else {
-                        0
+                        current
                     }
-                    ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, fgsType)
+                }
+                try {
+                    enterForeground(state)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to enter foreground for background playback", e)
+                    synchronized(stateLock) {
+                        stateMachine.onForegroundStartFailed()
+                        if (activeService === this) {
+                            activeService = null
+                        }
+                    }
                     stopSelf()
                     return START_NOT_STICKY
                 }
+
+                val shouldStopImmediately = synchronized(stateLock) {
+                    val stopNow = stateMachine.onForegroundStarted(state)
+                    activeService = if (stopNow) null else this
+                    stopNow
+                }
+                if (shouldStopImmediately) {
+                    stopForegroundCompat()
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                return START_NOT_STICKY
+            }
+            else -> {
+                val needsForegroundContract = synchronized(stateLock) {
+                    stateMachine.isAwaitingForegroundStart()
+                }
+                if (needsForegroundContract) {
+                    val state = synchronized(stateLock) { stateMachine.currentDesiredState() }
+                    runCatching { enterForeground(state) }
+                    synchronized(stateLock) {
+                        stateMachine.onStopActionHandled()
+                        if (activeService === this) {
+                            activeService = null
+                        }
+                    }
+                    stopForegroundCompat()
+                }
+                stopSelf()
+                return START_NOT_STICKY
             }
         }
-        return START_STICKY
     }
 
     override fun onDestroy() {
+        synchronized(stateLock) {
+            if (activeService === this) {
+                activeService = null
+                stateMachine.onForegroundServiceDestroyed()
+            }
+        }
         stopForegroundCompat()
         super.onDestroy()
+    }
+
+    private fun enterForeground(state: BackgroundPlaybackNotificationState) {
+        val notification = buildNotification(state.title, state.subtitle, state.isPlaying)
+        val fgsType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        } else {
+            0
+        }
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, fgsType)
+    }
+
+    private fun updateNotification(state: BackgroundPlaybackNotificationState) {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val notification = buildNotification(state.title, state.subtitle, state.isPlaying)
+        runCatching {
+            manager.notify(NOTIFICATION_ID, notification)
+        }.onFailure { e ->
+            Log.w(TAG, "Failed to update background playback notification", e)
+        }
+    }
+
+    private fun stopNow() {
+        stopForegroundCompat()
+        stopSelf()
     }
 
     private fun stopForegroundCompat() {
@@ -178,20 +260,12 @@ class BackgroundPlaybackService : Service() {
         private const val REQ_TOGGLE = 4102
         private const val REQ_STOP = 4103
 
+        private val stateLock = Any()
+        private val stateMachine = BackgroundPlaybackServiceStateMachine()
+        private var activeService: BackgroundPlaybackService? = null
+
         @Volatile
         private var activeMediaSession: MediaSession? = null
-
-        @Volatile
-        private var isRunning: Boolean = false
-
-        @Volatile
-        private var lastTitle: String? = null
-
-        @Volatile
-        private var lastSubtitle: String? = null
-
-        @Volatile
-        private var lastIsPlaying: Boolean? = null
 
         @Volatile
         var onStopRequested: (() -> Unit)? = null
@@ -211,44 +285,181 @@ class BackgroundPlaybackService : Service() {
             isPlaying: Boolean = true,
         ) {
             val appContext = context.applicationContext
-            if (!active) {
-                lastTitle = null
-                lastSubtitle = null
-                lastIsPlaying = null
-                if (isRunning) {
-                    isRunning = false
-                    runCatching {
-                        appContext.stopService(Intent(appContext, BackgroundPlaybackService::class.java))
+            val nextState = BackgroundPlaybackNotificationState(
+                title = title,
+                subtitle = subtitle,
+                isPlaying = isPlaying,
+            )
+            val serviceSnapshot: BackgroundPlaybackService?
+            val action = synchronized(stateLock) {
+                val computed = stateMachine.onSyncRequested(active = active, state = nextState)
+                serviceSnapshot = activeService
+                if (computed == BackgroundPlaybackSyncAction.STOP_SERVICE) {
+                    activeService = null
+                }
+                computed
+            }
+
+            when (action) {
+                BackgroundPlaybackSyncAction.NONE -> Unit
+                BackgroundPlaybackSyncAction.STOP_SERVICE -> {
+                    if (serviceSnapshot != null) {
+                        runCatching { serviceSnapshot.stopNow() }
+                    } else {
+                        runCatching {
+                            appContext.stopService(Intent(appContext, BackgroundPlaybackService::class.java))
+                        }
                     }
                 }
-                return
+                BackgroundPlaybackSyncAction.UPDATE_NOTIFICATION -> {
+                    if (serviceSnapshot != null) {
+                        serviceSnapshot.updateNotification(nextState)
+                    } else {
+                        // Defensive fallback if service reference was unexpectedly cleared.
+                        val intent = buildSyncIntent(appContext, nextState)
+                        runCatching {
+                            ContextCompat.startForegroundService(appContext, intent)
+                        }.onFailure { e ->
+                            synchronized(stateLock) { stateMachine.onStartForegroundServiceFailed() }
+                            Log.w(TAG, "Unable to refresh BackgroundPlaybackService", e)
+                        }
+                    }
+                }
+                BackgroundPlaybackSyncAction.START_FOREGROUND_SERVICE -> {
+                    val intent = buildSyncIntent(appContext, nextState)
+                    runCatching {
+                        ContextCompat.startForegroundService(appContext, intent)
+                    }.onFailure { e ->
+                        synchronized(stateLock) { stateMachine.onStartForegroundServiceFailed() }
+                        Log.w(TAG, "Unable to start BackgroundPlaybackService", e)
+                    }
+                }
             }
-            if (isRunning &&
-                lastTitle == title &&
-                lastSubtitle == subtitle &&
-                lastIsPlaying == isPlaying
-            ) {
-                return
+        }
+
+        private fun buildSyncIntent(
+            appContext: Context,
+            state: BackgroundPlaybackNotificationState,
+        ): Intent = Intent(appContext, BackgroundPlaybackService::class.java).apply {
+            action = ACTION_SYNC
+            putExtra(EXTRA_TITLE, state.title)
+            putExtra(EXTRA_SUBTITLE, state.subtitle)
+            putExtra(EXTRA_IS_PLAYING, state.isPlaying)
+        }
+    }
+}
+
+internal data class BackgroundPlaybackNotificationState(
+    val title: String = "",
+    val subtitle: String = "",
+    val isPlaying: Boolean = true,
+)
+
+internal enum class BackgroundPlaybackSyncAction {
+    NONE,
+    START_FOREGROUND_SERVICE,
+    UPDATE_NOTIFICATION,
+    STOP_SERVICE,
+}
+
+internal class BackgroundPlaybackServiceStateMachine {
+    private enum class Phase {
+        IDLE,
+        STARTING,
+        STARTING_PENDING_STOP,
+        FOREGROUND,
+    }
+
+    private var phase: Phase = Phase.IDLE
+    private var desiredState: BackgroundPlaybackNotificationState = BackgroundPlaybackNotificationState()
+    private var postedState: BackgroundPlaybackNotificationState? = null
+
+    fun currentDesiredState(): BackgroundPlaybackNotificationState = desiredState
+
+    fun onSyncRequested(
+        active: Boolean,
+        state: BackgroundPlaybackNotificationState,
+    ): BackgroundPlaybackSyncAction {
+        if (!active) {
+            return when (phase) {
+                Phase.IDLE -> BackgroundPlaybackSyncAction.NONE
+                Phase.STARTING -> {
+                    // startForegroundService() is already in flight; do NOT call stopService()
+                    // before onStartCommand() satisfies startForeground(), or Android will throw
+                    // ForegroundServiceDidNotStartInTimeException.
+                    phase = Phase.STARTING_PENDING_STOP
+                    BackgroundPlaybackSyncAction.NONE
+                }
+                Phase.STARTING_PENDING_STOP -> BackgroundPlaybackSyncAction.NONE
+                Phase.FOREGROUND -> {
+                    phase = Phase.IDLE
+                    postedState = null
+                    BackgroundPlaybackSyncAction.STOP_SERVICE
+                }
             }
-            isRunning = true
-            lastTitle = title
-            lastSubtitle = subtitle
-            lastIsPlaying = isPlaying
-            val intent = Intent(appContext, BackgroundPlaybackService::class.java).apply {
-                action = ACTION_SYNC
-                putExtra(EXTRA_TITLE, title)
-                putExtra(EXTRA_SUBTITLE, subtitle)
-                putExtra(EXTRA_IS_PLAYING, isPlaying)
+        }
+
+        desiredState = state
+        return when (phase) {
+            Phase.IDLE -> {
+                phase = Phase.STARTING
+                BackgroundPlaybackSyncAction.START_FOREGROUND_SERVICE
             }
-            runCatching {
-                ContextCompat.startForegroundService(appContext, intent)
-            }.onFailure { e ->
-                isRunning = false
-                lastTitle = null
-                lastSubtitle = null
-                lastIsPlaying = null
-                Log.w(TAG, "Unable to start BackgroundPlaybackService", e)
+            Phase.STARTING -> BackgroundPlaybackSyncAction.NONE
+            Phase.STARTING_PENDING_STOP -> {
+                phase = Phase.STARTING
+                BackgroundPlaybackSyncAction.NONE
+            }
+            Phase.FOREGROUND -> {
+                if (postedState == state) {
+                    BackgroundPlaybackSyncAction.NONE
+                } else {
+                    postedState = state
+                    BackgroundPlaybackSyncAction.UPDATE_NOTIFICATION
+                }
             }
         }
     }
+
+    fun onStartForegroundServiceFailed() {
+        if (phase == Phase.STARTING || phase == Phase.STARTING_PENDING_STOP) {
+            phase = Phase.IDLE
+            postedState = null
+        }
+    }
+
+    fun onForegroundStarted(posted: BackgroundPlaybackNotificationState): Boolean {
+        return when (phase) {
+            Phase.STARTING_PENDING_STOP, Phase.IDLE -> {
+                phase = Phase.IDLE
+                postedState = null
+                true
+            }
+            Phase.STARTING, Phase.FOREGROUND -> {
+                phase = Phase.FOREGROUND
+                postedState = posted
+                false
+            }
+        }
+    }
+
+    fun onForegroundStartFailed() {
+        phase = Phase.IDLE
+        postedState = null
+    }
+
+    fun onStopActionHandled() {
+        phase = Phase.IDLE
+        postedState = null
+    }
+
+    fun onForegroundServiceDestroyed() {
+        if (phase == Phase.FOREGROUND) {
+            phase = Phase.IDLE
+            postedState = null
+        }
+    }
+
+    fun isAwaitingForegroundStart(): Boolean =
+        phase == Phase.STARTING || phase == Phase.STARTING_PENDING_STOP
 }

@@ -210,7 +210,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(homeKeyReceiver)
+        runCatching { unregisterReceiver(homeKeyReceiver) }
         runCatching { unregisterReceiver(pipActionReceiver) }
         super.onDestroy()
     }

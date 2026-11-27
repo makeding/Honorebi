@@ -101,7 +101,7 @@ internal fun rememberAppWakeState(onAwakeChanged: (Boolean) -> Unit = {}): AppWa
         update()
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            context.unregisterReceiver(receiver)
+            runCatching { context.unregisterReceiver(receiver) }
             state.isAwake = false
             notifyAwakeChanged(false)
         }

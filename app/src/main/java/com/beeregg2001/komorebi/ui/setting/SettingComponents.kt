@@ -780,6 +780,17 @@ fun DefaultHomeGuideDialog(
                     }
                 }
 
+                val activeTvTweaksReceiver = remember { mutableStateOf<android.content.BroadcastReceiver?>(null) }
+                DisposableEffect(tvTweaksContext) {
+                    val appContext = tvTweaksContext.applicationContext
+                    onDispose {
+                        activeTvTweaksReceiver.value?.let { receiver ->
+                            runCatching { appContext.unregisterReceiver(receiver) }
+                        }
+                        activeTvTweaksReceiver.value = null
+                    }
+                }
+
                 if (tvTweaksInstallStatus != null) {
                     Text(
                         tvTweaksInstallStatus!!,
@@ -838,6 +849,7 @@ fun DefaultHomeGuideDialog(
                                                     session.fsync(out)
                                                 }
                                             }
+                                            val appContext = tvTweaksContext.applicationContext
                                             val action = "com.beeregg2001.komorebi.TVTWEAKS_INSTALL"
                                             val receiver = object : android.content.BroadcastReceiver() {
                                                 override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
@@ -851,10 +863,13 @@ fun DefaultHomeGuideDialog(
                                                         val confirm = intent.getParcelableExtra<android.content.Intent>(android.content.Intent.EXTRA_INTENT)
                                                         if (confirm != null) {
                                                             confirm.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                            runCatching { tvTweaksContext.startActivity(confirm) }
+                                                            runCatching { appContext.startActivity(confirm) }
                                                         }
                                                     } else {
-                                                        runCatching { tvTweaksContext.unregisterReceiver(this) }
+                                                        runCatching { appContext.unregisterReceiver(this) }
+                                                        if (activeTvTweaksReceiver.value === this) {
+                                                            activeTvTweaksReceiver.value = null
+                                                        }
                                                         isInstallingTvTweaks = false
                                                         tvTweaksInstallStatus = if (status == android.content.pm.PackageInstaller.STATUS_SUCCESS) {
                                                             "TVTweaks のインストールが完了しました"
@@ -864,19 +879,31 @@ fun DefaultHomeGuideDialog(
                                                     }
                                                 }
                                             }
+                                            activeTvTweaksReceiver.value?.let { previous ->
+                                                runCatching { appContext.unregisterReceiver(previous) }
+                                            }
                                             androidx.core.content.ContextCompat.registerReceiver(
-                                                tvTweaksContext,
+                                                appContext,
                                                 receiver,
                                                 android.content.IntentFilter(action),
                                                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
                                             )
-                                            val pi = android.app.PendingIntent.getBroadcast(
-                                                tvTweaksContext,
-                                                sessionId,
-                                                android.content.Intent(action).setPackage(tvTweaksContext.packageName),
-                                                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
-                                            )
-                                            session.commit(pi.intentSender)
+                                            activeTvTweaksReceiver.value = receiver
+                                            try {
+                                                val pi = android.app.PendingIntent.getBroadcast(
+                                                    appContext,
+                                                    sessionId,
+                                                    android.content.Intent(action).setPackage(appContext.packageName),
+                                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
+                                                )
+                                                session.commit(pi.intentSender)
+                                            } catch (e: Exception) {
+                                                runCatching { appContext.unregisterReceiver(receiver) }
+                                                if (activeTvTweaksReceiver.value === receiver) {
+                                                    activeTvTweaksReceiver.value = null
+                                                }
+                                                throw e
+                                            }
                                         }
                                     }
                                     if (result.isFailure) {
