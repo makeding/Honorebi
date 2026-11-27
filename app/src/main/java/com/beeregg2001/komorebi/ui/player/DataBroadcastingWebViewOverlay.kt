@@ -464,17 +464,7 @@ private fun broadcastBasePathFor(resourcePath: String): String {
 }
 
 private fun prepareBroadcastHtml(source: String, basePath: String): String {
-    var prepared = OBJECT_TAG.replace(source) { match ->
-        val withType = match.value.replace(
-            OBJECT_TYPE,
-            " data-arib-type=\"video/x-arib2-broadcast\""
-        )
-        OBJECT_DATA.replace(withType) { dataMatch ->
-            val quote = dataMatch.groups[1]?.value.orEmpty()
-            " data-arib-data=$quote${dataMatch.groups[2]?.value.orEmpty()}$quote"
-        }
-    }
-    prepared = ROM_SOUND_SOURCE.replace(prepared) { match ->
+    var prepared = ROM_SOUND_SOURCE.replace(source) { match ->
         " data-arib-romsound=\"${match.groups[2]?.value ?: match.groups[3]?.value.orEmpty()}\""
     }
     prepared = ROOT_ATTRIBUTE.replace(prepared) { match ->
@@ -491,11 +481,116 @@ private fun prepareBroadcastHtml(source: String, basePath: String): String {
             }
         }
     }
-    val bootstrap = "<script>parent.__ARIB_HTML5_INSTALL__?.(window)</script>"
+    val bootstrap = createRuntimeBootstrap(basePath)
     val head = HEAD_TAG.find(prepared)
     if (head == null) return bootstrap + prepared
     val offset = head.range.last + 1
     return prepared.substring(0, offset) + bootstrap + prepared.substring(offset)
+}
+
+/**
+ * Mirrors libaribhtml5's arib-vfs-sw.js `createRuntimeBootstrap`:
+ * observes static and dynamically inserted `<object type="video/x-arib2-broadcast">`
+ * elements (replacing them with `<video data-arib-object="video/x-arib2-broadcast">` so
+ * CSS sizing and caption/media-plane APIs work), installs the parent runtime with retries,
+ * and provides an early `navigator.receiverDevice` fallback.
+ */
+private fun createRuntimeBootstrap(basePath: String): String {
+    val quotedBase = JSONObject.quote(basePath)
+    return """<script>
+(function installAribHtml5Runtime(attempt) {
+  var broadcastType = 'video/x-arib2-broadcast';
+  var scheduledObjects = new WeakSet();
+  function replaceBroadcastObject(object) {
+    if (!object || object.nodeType !== 1 ||
+        String(object.getAttribute('type') || '').trim().toLowerCase() !== broadcastType) return;
+    var replacement = document.createElement('video');
+    for (var index = 0; index < object.attributes.length; index += 1) {
+      var attribute = object.attributes[index];
+      if (attribute.name.toLowerCase() === 'type') continue;
+      replacement.setAttribute(attribute.name, attribute.value);
+    }
+    replacement.setAttribute('data-arib-object', broadcastType);
+    while (object.firstChild) replacement.appendChild(object.firstChild);
+    object.replaceWith(replacement);
+  }
+  function scanBroadcastObjects(root) {
+    if (!root) return;
+    if (root.nodeType === 1 && root.matches && root.matches('object')) {
+      scheduleBroadcastObject(root);
+    }
+    if (!root.querySelectorAll) return;
+    var objects = root.querySelectorAll('object');
+    for (var index = 0; index < objects.length; index += 1) {
+      scheduleBroadcastObject(objects[index]);
+    }
+  }
+  function scheduleBroadcastObject(object) {
+    if (!object || scheduledObjects.has(object)) return;
+    scheduledObjects.add(object);
+    setTimeout(function () {
+      scheduledObjects.delete(object);
+      replaceBroadcastObject(object);
+    }, 0);
+  }
+  function observeBroadcastObjects() {
+    scanBroadcastObjects(document);
+    if (!document.documentElement) {
+      queueMicrotask(observeBroadcastObjects);
+      return;
+    }
+    var observer = new MutationObserver(function (records) {
+      for (var recordIndex = 0; recordIndex < records.length; recordIndex += 1) {
+        var record = records[recordIndex];
+        for (var nodeIndex = 0; nodeIndex < record.addedNodes.length; nodeIndex += 1) {
+          scanBroadcastObjects(record.addedNodes[nodeIndex]);
+        }
+      }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (typeof document !== 'undefined' && typeof MutationObserver === 'function') {
+    observeBroadcastObjects();
+  }
+  var install;
+  try {
+    install = parent && parent.__ARIB_HTML5_INSTALL__;
+  } catch (error) {
+    install = null;
+  }
+  if (typeof install === 'function') {
+    try {
+      install(window);
+      return;
+    } catch (error) {
+      console.error('ARIB HTML5 runtime installation failed', error);
+    }
+  }
+  if (!navigator.receiverDevice) {
+    Object.defineProperty(navigator, 'receiverDevice', {
+      configurable: true,
+      enumerable: true,
+      value: {
+        getSystemInformation: function () {
+          return {
+            browsername: 'Honorebi',
+            browserversion: '0.2.1',
+            makerid: 'Honorebi',
+            modelname: 'Honorebi Android TV',
+            baseurl: new URL($quotedBase, location.origin).href
+          };
+        },
+        getDeviceIdentifier: function (kind, callback) {
+          queueMicrotask(function () { callback(''); });
+        }
+      }
+    });
+  }
+  if (attempt < 100) {
+    setTimeout(function () { installAribHtml5Runtime(attempt + 1); }, 50);
+  }
+})(0);
+</script>"""
 }
 
 private fun prepareBroadcastStylesheet(source: String, basePath: String): String =
@@ -663,12 +758,6 @@ private fun contentTypeForPath(path: String): String = when (path.substringAfter
     else -> "application/octet-stream"
 }
 
-private val OBJECT_TAG = Regex("<object\\b[^>]*>", RegexOption.IGNORE_CASE)
-private val OBJECT_TYPE = Regex(
-    "\\s+type\\s*=\\s*(?:[\"']video/x-arib2-broadcast[\"']|video/x-arib2-broadcast)",
-    RegexOption.IGNORE_CASE
-)
-private val OBJECT_DATA = Regex("\\s+data\\s*=\\s*([\"'])(.*?)\\1", RegexOption.IGNORE_CASE)
 private val ROM_SOUND_SOURCE = Regex(
     "\\s+src\\s*=\\s*(?:([\"'])(romsound://\\d+)\\1|(romsound://\\d+)(?=[\\s/>]))",
     RegexOption.IGNORE_CASE

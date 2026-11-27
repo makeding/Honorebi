@@ -145,13 +145,13 @@ const host = new TvAribReceiverHost({
       pendingKeys.splice(0);
       nativeBridge()?.onApplicationExited?.();
     }
-    if (
-      event.type === 'error' ||
-      event.type === 'frame-blocked' ||
-      event.type === 'navigation-blocked'
-    ) {
-      const detail = event.type === 'error' ? event.message : event.url || event.type;
-      console.error('[HonorebiB60] lifecycle error:', detail);
+    if (event.type === 'error') {
+      console.error('[HonorebiB60] runtime error:', event.message);
+      nativeBridge()?.onStatus?.(`runtime-error: ${event.message}`);
+    }
+    if (event.type === 'frame-blocked' || event.type === 'navigation-blocked') {
+      const detail = event.url || event.type;
+      console.error('[HonorebiB60] navigation blocked:', detail);
       statusEl.classList.remove('ready');
       setOverlayMessage('データ放送を表示できませんでした', `lifecycle-error: ${detail}`);
     }
