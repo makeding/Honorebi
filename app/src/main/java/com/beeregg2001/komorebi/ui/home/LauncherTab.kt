@@ -46,9 +46,9 @@ internal fun Modifier.bottomBoundaryDown(
         .then(
             if (onNextTab != null) {
                 composed {
-                    val notifyBottomFocus = LocalBottomBoundaryFocusObserver.current
+                    val notifyBottomFocus by rememberUpdatedState(LocalBottomBoundaryFocusObserver.current)
                     var hasReportedBottomFocus by remember { mutableLongStateOf(0L) }
-                    DisposableEffect(notifyBottomFocus) {
+                    DisposableEffect(Unit) {
                         onDispose {
                             if (hasReportedBottomFocus != 0L) {
                                 hasReportedBottomFocus = 0L

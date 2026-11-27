@@ -760,29 +760,60 @@ class LauncherTabControllerTest {
     @Test
     fun bottomBoundaryFocusObserverTracksBottomRowFocus() {
         val focusEvents = mutableListOf<Boolean>()
+        val isBottomFocused = androidx.compose.runtime.mutableStateOf(false)
+        var nextTabCalls = 0
+        var fakeNowMs = 1_000L
         compose.setContent {
+            val onBottomFocusChanged = androidx.compose.runtime.remember {
+                { focused: Boolean ->
+                    isBottomFocused.value = focused
+                    focusEvents.add(focused)
+                    Unit
+                }
+            }
             androidx.compose.runtime.CompositionLocalProvider(
-                LocalBottomBoundaryFocusObserver provides { focusEvents.add(it) }
+                LocalBottomBoundaryFocusObserver provides onBottomFocusChanged
             ) {
-                Column {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("top-item")
-                            .focusable(),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("bottom-item")
-                            .bottomBoundaryDown(isBottom = true, onNextTab = {})
-                            .focusable(),
-                    )
+                Box(modifier = Modifier.size(300.dp)) {
+                    Column {
+                        androidx.tv.material3.Button(
+                            onClick = {},
+                            modifier = Modifier
+                                .testTag("top-item"),
+                        ) {
+                            androidx.tv.material3.Text("Top")
+                        }
+                        androidx.tv.material3.Button(
+                            onClick = {},
+                            modifier = Modifier
+                                .testTag("bottom-item")
+                                .bottomBoundaryDown(
+                                    isBottom = true,
+                                    onNextTab = { nextTabCalls++ },
+                                    nowMs = { fakeNowMs },
+                                ),
+                        ) {
+                            androidx.tv.material3.Text("Bottom")
+                        }
+                    }
+                    if (isBottomFocused.value) {
+                        androidx.tv.material3.Surface(
+                            modifier = Modifier.testTag("hint-pill"),
+                        ) {
+                            androidx.tv.material3.Text("Hint")
+                        }
+                    }
                 }
             }
         }
 
         compose.onNodeWithTag("bottom-item").requestFocus().assertIsFocused()
+        compose.onNodeWithTag("hint-pill").assertExists()
+
+        fakeNowMs += BOTTOM_TAB_SWITCH_DEBOUNCE_MS
+        compose.onNodeWithTag("bottom-item").performKeyInput { pressKey(Key.DirectionDown) }
+        assertEquals(1, nextTabCalls)
+
         compose.onNodeWithTag("top-item").requestFocus().assertIsFocused()
         assertEquals(listOf(true, false), focusEvents)
     }

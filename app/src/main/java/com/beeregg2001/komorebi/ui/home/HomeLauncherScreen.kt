@@ -574,10 +574,11 @@ fun HomeLauncherScreen(
                 .padding(start = if (!isFullScreenMode) TvRailCollapsedWidth else 0.dp)
                 .upgradeSpotlightTarget(UpgradeTourTargetId.CONTENT_STAGE)
         ) {
+            val onBottomFocusChanged = remember {
+                { focused: Boolean -> isBottomRowFocused = focused }
+            }
             CompositionLocalProvider(
-                LocalBottomBoundaryFocusObserver provides { focused ->
-                    isBottomRowFocused = focused
-                }
+                LocalBottomBoundaryFocusObserver provides onBottomFocusChanged
             ) {
                 AnimatedContent(
                     targetState = tabController.activeSnapshot,
@@ -960,8 +961,8 @@ fun HomeLauncherScreen(
                     !lastNonStripFocusWasRail &&
                     prevTab != null
                 val activeHintKey = when {
-                    showBottomHint -> "down:${nextTab!!.name}"
-                    showTopHint -> "up:${prevTab!!.name}"
+                    showBottomHint -> "down:${nextTab.name}"
+                    showTopHint -> "up:${prevTab.name}"
                     else -> null
                 }
                 LaunchedEffect(activeHintKey) {
