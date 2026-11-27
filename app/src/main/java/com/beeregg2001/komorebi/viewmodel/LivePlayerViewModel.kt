@@ -297,6 +297,9 @@ class LivePlayerViewModel @Inject constructor(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
+    val dataBroadcastingHttpClient: okhttp3.OkHttpClient
+        get() = okHttpClient
+
 
     private var mainCurrentSource = StreamSource.KONOMITV
     private var mainIsEdcbDirect = false

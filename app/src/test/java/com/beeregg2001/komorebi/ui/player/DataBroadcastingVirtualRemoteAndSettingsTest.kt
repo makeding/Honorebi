@@ -145,4 +145,25 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
         state.onDataBroadcastingActivated(DataBroadcastingVirtualRemoteMode.AUTO)
         assertFalse(state.isVirtualRemoteVisible)
     }
+
+    @Test
+    fun buildB24StreamUrlFormatsNormalAndStandaloneEndpoints() {
+        assertEquals(
+            "https://my.local.konomi.tv:7000/api/streams/live/gr011/1080p-60fps/psi-archived-data",
+            buildB24StreamUrl(
+                konomiBaseUrl = "https://my.local.konomi.tv:7000/",
+                displayChannelId = "gr011",
+                apiQuality = "1080p-60fps",
+            ),
+        )
+        assertEquals(
+            "https://my.local.konomi.tv:7000/api/streams/live/bs211/data-broadcasting",
+            buildB24StreamUrl(
+                konomiBaseUrl = "https://my.local.konomi.tv:7000",
+                displayChannelId = "bs211",
+                apiQuality = "1080p",
+                isStandaloneDataChannel = true,
+            ),
+        )
+    }
 }

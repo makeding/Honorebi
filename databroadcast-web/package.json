@@ -1,0 +1,18 @@
+{
+  "name": "honorebi-databroadcast-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "libaribhtml5": "^0.2.1",
+    "web-bml": "github:makeding/web-bml#7d518e03f2bebd14061dfa990577dc5f9c77417a"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "8.3.6"
+  }
+}

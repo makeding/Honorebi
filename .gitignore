@@ -27,14 +27,14 @@ local.properties
 /.direnv/
 
 # Embedded connection setup frontend. Source and pnpm-lock.yaml stay tracked.
-/setup-web/node_modules/
-/setup-web/dist/
-/setup-web/coverage/
-/setup-web/test-results/
-/setup-web/playwright-report/
-/setup-web/.env
-/setup-web/.env.*
-!/setup-web/.env.example
-/setup-web/*.log
-/setup-web/*.tsbuildinfo
+/*web/node_modules/
+/*web/dist/
+/*web/coverage/
+/*web/test-results/
+/*web/playwright-report/
+/*web/.env
+/*web/.env.*
+!/*web/.env.example
+/*web/*.log
+/*web/*.tsbuildinfo
 /docs

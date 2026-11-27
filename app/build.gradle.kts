@@ -36,10 +36,43 @@ val packageConnectionSetupWeb by tasks.registering(PackageConnectionSetupWeb::cl
     assetOutputDirectory.set(layout.buildDirectory.dir("generated/connectionSetupAssets"))
     into(assetOutputDirectory)
 }
-tasks.named("preBuild") { dependsOn(packageConnectionSetupWeb) }
+val dataBroadcastWebDirectory = rootProject.layout.projectDirectory.dir("databroadcast-web")
+val installDataBroadcastWeb by tasks.registering(Exec::class) {
+    workingDir(dataBroadcastWebDirectory)
+    commandLine("pnpm", "install", "--frozen-lockfile")
+    inputs.files(
+        dataBroadcastWebDirectory.file("package.json"),
+        dataBroadcastWebDirectory.file("pnpm-lock.yaml"),
+        dataBroadcastWebDirectory.file("pnpm-workspace.yaml"),
+    )
+    outputs.dir(dataBroadcastWebDirectory.dir("node_modules"))
+}
+val buildDataBroadcastWeb by tasks.registering(Exec::class) {
+    dependsOn(installDataBroadcastWeb)
+    workingDir(dataBroadcastWebDirectory)
+    commandLine("pnpm", "build")
+    inputs.files(fileTree(dataBroadcastWebDirectory) {
+        exclude("node_modules/**", "dist/**", "coverage/**", "test-results/**", "playwright-report/**", ".env*", "*.log")
+    })
+    outputs.dir(dataBroadcastWebDirectory.dir("dist"))
+}
+abstract class PackageDataBroadcastWeb : Sync() {
+    @get:OutputDirectory abstract val assetOutputDirectory: DirectoryProperty
+}
+val packageDataBroadcastWeb by tasks.registering(PackageDataBroadcastWeb::class) {
+    dependsOn(buildDataBroadcastWeb)
+    from(dataBroadcastWebDirectory.dir("dist")) { into("web-bml") }
+    assetOutputDirectory.set(layout.buildDirectory.dir("generated/dataBroadcastAssets"))
+    into(assetOutputDirectory)
+}
+tasks.named("preBuild") {
+    dependsOn(packageConnectionSetupWeb)
+    dependsOn(packageDataBroadcastWeb)
+}
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(packageConnectionSetupWeb) { it.assetOutputDirectory }
+        variant.sources.assets?.addGeneratedSourceDirectory(packageDataBroadcastWeb) { it.assetOutputDirectory }
     }
 }
 // Instrumentation loads its dex before the target app. Keep the test's desugared
