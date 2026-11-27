@@ -112,6 +112,11 @@ private class B60JavascriptBridge(
                     screenWidth = json.optDouble("screenWidth", 3840.0).toFloat(),
                     screenHeight = json.optDouble("screenHeight", 2160.0).toFloat()
                 )
+            Log.d(
+                TAG,
+                "B60 media plane: visible=${plane.visible} ${plane.width}x${plane.height} " +
+                    "@ ${plane.x},${plane.y} / ${plane.screenWidth}x${plane.screenHeight}"
+            )
             mainHandler.post {
                 onMediaPlane.invoke(plane)
             }
