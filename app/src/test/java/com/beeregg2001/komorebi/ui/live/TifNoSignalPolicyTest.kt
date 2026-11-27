@@ -364,7 +364,7 @@ class TifNoSignalPolicyTest {
             TifNoSignalStyle.PRECURE_SPARKLE to NoSignalRenderMode.EFFECT,
             // TifNoSignalStyle.AIPRI_LIVE to NoSignalRenderMode.EFFECT,
         )
-        assertEquals(16, TifNoSignalStyle.entries.size)
+        assertEquals(15, TifNoSignalStyle.entries.size)
         assertEquals(TifNoSignalStyle.entries.toSet(), expected.keys)
         for ((style, expectedMode) in expected) {
             assertEquals(

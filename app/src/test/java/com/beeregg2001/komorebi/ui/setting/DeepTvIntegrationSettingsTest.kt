@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -29,6 +30,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.test.core.app.ApplicationProvider
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
+import com.beeregg2001.komorebi.data.BackgroundPlaybackMode
 import com.beeregg2001.komorebi.data.DeepTvFeature
 import com.beeregg2001.komorebi.data.DeepTvFeatureSettings
 import com.beeregg2001.komorebi.data.SettingsRepository
@@ -216,7 +218,7 @@ class DeepTvIntegrationSettingsTest {
         val previewRec = row("「新着録画」チャンネルを公開")
         val remoteKeys = row("専用キーショートカット（番組表・録画・テレビ）")
         val numberTuning = row("数字キー（0〜9）で直接選局")
-        val osPip = row("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行")
+        val bgPlayback = row("バックグラウンド再生動作")
         val tifToggle = row("TV入力（TIF）統合を有効にする")
 
         watchNext.requestFocus().assertIsFocused().assertTextContains("ON")
@@ -231,8 +233,8 @@ class DeepTvIntegrationSettingsTest {
         remoteKeys.performKeyInput { pressKey(Key.DirectionDown) }
         numberTuning.assertIsFocused().assertTextContains("ON")
         numberTuning.performKeyInput { pressKey(Key.DirectionDown) }
-        osPip.assertIsFocused().assertTextContains("ON")
-        osPip.performKeyInput { pressKey(Key.DirectionDown) }
+        bgPlayback.assertIsFocused().assertTextContains(BackgroundPlaybackMode.PIP.label)
+        bgPlayback.performKeyInput { pressKey(Key.DirectionDown) }
         tifToggle.assertIsFocused().assertTextContains("非対応")
 
         compose.onNode(hasText("チャンネル未登録のTV入力を非表示")).assertDoesNotExist()
@@ -299,7 +301,8 @@ class DeepTvIntegrationSettingsTest {
     }
 
     @Test
-    fun pipUnsupportedShowsNotSupportedAndSkipsItem6() {
+    fun pipUnsupportedFallsBackPipLabelToOffAndKeepsBackgroundPlaybackFocusable() {
+        var cycleCount = 0
         compose.setContent {
             KomorebiTheme {
                 val itemRs = remember { List(DeepTvItemIndex.COUNT) { FocusRequester() } }
@@ -318,6 +321,7 @@ class DeepTvIntegrationSettingsTest {
                         itemRs = itemRs,
                         sidebarR = sidebarR,
                         onToggleFeature = {},
+                        onCycleBackgroundPlaybackMode = { cycleCount++ },
                         onToggleEnabled = {},
                         onToggleHideEmpty = {},
                         onEditNoSignalStyle = {},
@@ -330,16 +334,22 @@ class DeepTvIntegrationSettingsTest {
 
         fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
         val numberTuning = row("数字キー（0〜9）で直接選局")
+        val bgPlayback = row("バックグラウンド再生動作")
         val tifToggle = row("TV入力（TIF）統合を有効にする")
 
-        compose.onNode(hasText("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行"))
-            .assertIsNotEnabled()
-            .assertTextContains("非対応")
+        bgPlayback
+            .assertIsEnabled()
+            .assertTextContains(BackgroundPlaybackMode.OFF.label)
 
         numberTuning.requestFocus().assertIsFocused()
         numberTuning.performKeyInput { pressKey(Key.DirectionDown) }
+        bgPlayback.assertIsFocused().performKeyInput { pressKey(Key.DirectionCenter) }
+        org.junit.Assert.assertEquals(1, cycleCount)
+        bgPlayback.performKeyInput { pressKey(Key.DirectionDown) }
         tifToggle.assertIsFocused()
         tifToggle.performKeyInput { pressKey(Key.DirectionUp) }
+        bgPlayback.assertIsFocused()
+        bgPlayback.performKeyInput { pressKey(Key.DirectionUp) }
         numberTuning.assertIsFocused()
     }
 
@@ -374,7 +384,7 @@ class DeepTvIntegrationSettingsTest {
         }
 
         fun row(title: String) = compose.onNode(hasText(title) and hasClickAction())
-        val osPip = row("ホーム移動時にピクチャー・イン・ピクチャーへ自動移行")
+        val bgPlayback = row("バックグラウンド再生動作")
         val castAccess = row("キャスト・リモート操作の接続許可")
         val showTuners = row("入力ソースにテレビ信号を表示")
 
@@ -382,15 +392,15 @@ class DeepTvIntegrationSettingsTest {
             .assertIsNotEnabled()
             .assertTextContains("ON（メインシステム）")
 
-        osPip.requestFocus().assertIsFocused()
-        osPip.performKeyInput { pressKey(Key.DirectionDown) }
+        bgPlayback.requestFocus().assertIsFocused()
+        bgPlayback.performKeyInput { pressKey(Key.DirectionDown) }
         castAccess.assertIsFocused()
         castAccess.performKeyInput { pressKey(Key.DirectionDown) }
         showTuners.assertIsFocused()
         showTuners.performKeyInput { pressKey(Key.DirectionUp) }
         castAccess.assertIsFocused()
         castAccess.performKeyInput { pressKey(Key.DirectionUp) }
-        osPip.assertIsFocused()
+        bgPlayback.assertIsFocused()
     }
 
     @Test

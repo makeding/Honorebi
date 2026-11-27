@@ -111,7 +111,9 @@ object TitleNormalizer {
             ""
         )
 
-        // 12. 前後に残った不要な空白や記号をトリミングしてクリーンな文字列を返す
+        // 12. 接頭辞除去後に片側だけ残った閉じ括弧を除去し、前後の空白や記号をトリミングして返す
+        if (!title.contains('「')) title = title.replace("」", "")
+        if (!title.contains('『')) title = title.replace("』", "")
         return title.replace(Regex("^[\\s　・\\-！!？?。、]+|[\\s　・\\-！!？?。、]+$"), "").trim()
     }
 

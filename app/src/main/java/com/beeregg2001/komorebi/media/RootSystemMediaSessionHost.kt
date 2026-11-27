@@ -26,7 +26,7 @@ internal fun shouldDispatchRemoteTransport(
 ): Boolean = when (command) {
     HonomiRemoteCommand.Stop -> true
     HonomiRemoteCommand.Play,
-    HonomiRemoteCommand.Pause -> !isPlaybackSwitching
+    HonomiRemoteCommand.Pause -> !isPlaybackSwitching && remoteContentType != "Input"
     // シーク系は録画再生画面 (追いかけ再生を含む) だけが受け付ける。
     // 純ライブはシークがストリーム URL の再解決を伴い再生が一度途切れるため、ここでは対象外にしている。
     is HonomiRemoteCommand.SeekRelative,
@@ -50,6 +50,7 @@ internal fun shouldDispatchRemoteTransport(
 fun RootSystemMediaSessionHost(
     playbackSessionEpoch: Long?,
     remoteContentType: String,
+    remoteSeriesId: Int? = null,
     isPlaybackSwitching: Boolean,
     remoteControlClient: HonomiRemoteControlClient,
     backgroundAudioPlaybackEnabled: Boolean = false,
@@ -66,6 +67,7 @@ fun RootSystemMediaSessionHost(
     val controller = remember(context) { SystemMediaSessionController(context) }
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val currentContentType by rememberUpdatedState(remoteContentType)
+    val currentSeriesId by rememberUpdatedState(remoteSeriesId)
     val currentPlaybackSwitching by rememberUpdatedState(isPlaybackSwitching)
     val currentBackgroundAudioEnabled by rememberUpdatedState(backgroundAudioPlaybackEnabled)
     val currentIsDeviceInteractive by rememberUpdatedState(isDeviceInteractive)
@@ -86,6 +88,9 @@ fun RootSystemMediaSessionHost(
             subtitle = state?.subtitle.orEmpty(),
             isPlaying = isPlaying,
         )
+        // 外部入力 (HDMI / Aux 等) は SystemMediaSession を持たず TifLivePlayerScreen 側が
+        // contentType="Input" と input_signal を直接通知するため、5秒周期ポーリングで Idle 上書きしない。
+        if (currentContentType == "Input") return
         remoteControlClient.sendState(
             contentType = if (state == null) "Idle" else currentContentType,
             title = state?.title,
@@ -100,6 +105,7 @@ fun RootSystemMediaSessionHost(
             isChasePlayback = state?.isChasePlayback == true,
             chapters = state?.chapters ?: emptyList(),
             cmSkipMode = state?.cmSkipMode,
+            seriesId = if (state == null || currentContentType != "Recorded") null else currentSeriesId,
         )
     }
 
@@ -120,7 +126,7 @@ fun RootSystemMediaSessionHost(
         }
     }
 
-    LaunchedEffect(backgroundAudioPlaybackEnabled, playbackSessionEpoch) {
+    LaunchedEffect(backgroundAudioPlaybackEnabled, playbackSessionEpoch, remoteSeriesId) {
         sendCurrentState()
     }
 

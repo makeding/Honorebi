@@ -282,17 +282,28 @@ internal fun MainRootRemotePlaybackEffects(
             }
             when (command) {
                 is HonomiRemoteCommand.SelectSource -> {
-                    val channel = remoteInputs?.channels?.get(command.sourceId)
-                    if (channel == null) {
-                        remoteControlViewModel.client.reportSourceResult(command.commandId, false, "SOURCE_UNAVAILABLE")
-                    } else {
-                        remoteControlViewModel.client.sendState(contentType = "Live", title = channel.name, isBuffering = true)
-                        remoteControlViewModel.client.reportInputSignal(channel.id, "Loading", null)
-                        state.bringRemotePlaybackToFront()
-                        currentOnRemotePlaybackOpened()
-                        state.playbackState.enterLive(channel)
-                        homeViewModel.saveLastChannel(channel)
+                    if (command.sourceId == KOMOREBI_SELF_SOURCE_ID) {
+                        val isOnTifInput = (state.playbackState.renderPlaybackTarget as? PlaybackTarget.Live)
+                            ?.channel?.id?.startsWith("tif:") == true
+                        if (isOnTifInput) {
+                            state.playbackState.leavePlayback(returningFromPlayer = false)
+                            remoteControlViewModel.client.sendState(contentType = "Idle")
+                        }
                         remoteControlViewModel.client.reportSourceResult(command.commandId, true, null)
+                    } else {
+                        val channel = remoteInputs?.channels?.get(command.sourceId)
+                        if (channel == null) {
+                            remoteControlViewModel.client.reportSourceResult(command.commandId, false, "SOURCE_UNAVAILABLE")
+                        } else {
+                            val contentType = if (com.beeregg2001.komorebi.ui.live.usesLiveOsd(channel.id, channel.type)) "Live" else "Input"
+                            remoteControlViewModel.client.sendState(contentType = contentType, title = channel.name, isBuffering = true)
+                            remoteControlViewModel.client.reportInputSignal(channel.id, "Loading", null)
+                            state.bringRemotePlaybackToFront()
+                            currentOnRemotePlaybackOpened()
+                            state.playbackState.enterLive(channel)
+                            homeViewModel.saveLastChannel(channel)
+                            remoteControlViewModel.client.reportSourceResult(command.commandId, true, null)
+                        }
                     }
                 }
                 is HonomiRemoteCommand.OpenLive -> {

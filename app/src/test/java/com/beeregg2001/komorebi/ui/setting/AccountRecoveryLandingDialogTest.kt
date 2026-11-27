@@ -1,12 +1,15 @@
 package com.beeregg2001.komorebi.ui.setting
 
 import android.app.Application
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import com.beeregg2001.komorebi.ui.theme.AppTheme
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
@@ -62,10 +65,15 @@ class AccountRecoveryLandingDialogTest {
             "Expected cache note bottom (${noteBounds.bottom}) <= root bottom (${rootBounds.bottom})"
         }
 
-        compose.onNodeWithTag("account_recovery_import_button").performClick()
+        compose.onNodeWithTag("account_recovery_import_button")
+            .requestFocus()
+            .performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(1, imports)
 
-        compose.onNodeWithTag("account_recovery_fresh_button").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("account_recovery_fresh_button")
+            .assertIsDisplayed()
+            .requestFocus()
+            .performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(1, freshStarts)
     }
 }

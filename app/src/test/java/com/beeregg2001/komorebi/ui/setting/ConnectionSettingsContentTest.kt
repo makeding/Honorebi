@@ -155,9 +155,13 @@ class ConnectionSettingsContentTest {
             compose.onAllNodesWithText("TV入力を再読み込み").fetchSemanticsNodes().isNotEmpty()
         }
         row("メインシステム").requestFocus().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithText("チャンネル診断").assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionDown) }
         compose.onNodeWithText("TV入力を再読み込み").assertIsFocused()
             .performKeyInput { pressKey(Key.DirectionDown) }
         row("優先ソース").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
         compose.onNodeWithText("TV入力を再読み込み").assertIsFocused()
+            .performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithText("チャンネル診断").assertIsFocused()
     }
 }

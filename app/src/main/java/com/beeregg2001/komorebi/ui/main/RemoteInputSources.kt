@@ -10,6 +10,8 @@ import com.beeregg2001.komorebi.data.repository.tif.TifRepository
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 
+internal const val KOMOREBI_SELF_SOURCE_ID = "komorebi:self"
+
 internal data class RemoteInputs(val json: JsonArray, val channels: Map<String, Channel>)
 
 internal fun showRemoteTuner(showTuners: Boolean, permitted: Boolean, hideEmpty: Boolean, channelCount: Int): Boolean =
@@ -50,5 +52,21 @@ internal suspend fun remoteInputs(context: Context, hideEmpty: Boolean, showTune
             }) } })
         })
     }
-    return RemoteInputs(json, channels)
+    if (json.size() == 0) return RemoteInputs(json, channels)
+    val hasSelectedExternal = (0 until json.size()).any {
+        json[it].asJsonObject.get("selected")?.asBoolean == true
+    }
+    val withSelf = JsonArray().apply {
+        add(JsonObject().apply {
+            addProperty("id", KOMOREBI_SELF_SOURCE_ID)
+            addProperty("label", "Komorebi")
+            addProperty("type", "App")
+            addProperty("connection_state", "Connected")
+            addProperty("selectable", true)
+            addProperty("selected", !hasSelectedExternal)
+            add("channels", JsonArray())
+        })
+        for (i in 0 until json.size()) add(json[i])
+    }
+    return RemoteInputs(withSelf, channels)
 }

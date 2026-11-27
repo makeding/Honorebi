@@ -460,11 +460,17 @@ fun MainRootScreen(
                 RootSystemMediaSessionHost(
                     playbackSessionEpoch = state.playbackState.playbackSessionEpoch,
                     remoteContentType = when {
-                        state.playbackState.livePlayback != null -> "Live"
+                        state.playbackState.livePlayback != null -> {
+                            val liveChannel = state.playbackState.livePlayback!!.channel
+                            if (liveChannel.id.startsWith("tif:") &&
+                                !com.beeregg2001.komorebi.ui.live.usesLiveOsd(liveChannel.id, liveChannel.type)
+                            ) "Input" else "Live"
+                        }
                         state.playbackState.recordedPlayback != null -> "Recorded"
                         state.playbackState.renderPlaybackTarget is PlaybackTarget.Smb -> "Smb"
                         else -> "Idle"
                     },
+                    remoteSeriesId = state.playbackState.recordedPlayback?.program?.seriesId,
                     isPlaybackSwitching = state.playbackState.playbackPhase is PlaybackPhase.Switching,
                     remoteControlClient = remoteControlViewModel.client,
                     backgroundAudioPlaybackEnabled = backgroundAudioPlaybackEnabled,

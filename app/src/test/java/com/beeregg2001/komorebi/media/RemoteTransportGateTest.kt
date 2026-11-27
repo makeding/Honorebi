@@ -58,5 +58,14 @@ class RemoteTransportGateTest {
         assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeUp, "Idle", false))
         assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeDown, "Live", true))
         assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeMute, "Recorded", true))
+        assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.VolumeUp, "Input", false))
+    }
+
+    @Test
+    fun externalInputRejectsPlayPauseAndSeek() {
+        assertFalse(shouldDispatchRemoteTransport(HonomiRemoteCommand.Play, "Input", false))
+        assertFalse(shouldDispatchRemoteTransport(HonomiRemoteCommand.Pause, "Input", false))
+        assertFalse(shouldDispatchRemoteTransport(HonomiRemoteCommand.SeekRelative(10.0), "Input", false))
+        assertTrue(shouldDispatchRemoteTransport(HonomiRemoteCommand.Stop, "Input", false))
     }
 }

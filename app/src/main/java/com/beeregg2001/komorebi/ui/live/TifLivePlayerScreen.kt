@@ -163,7 +163,8 @@ fun TifLivePlayerScreen(
     val colors = KomorebiTheme.colors
     val context = LocalContext.current
     LaunchedEffect(channel.id) {
-        remoteControlViewModel.client.sendState(contentType = "Live", title = channel.name, isBuffering = true)
+        val remoteContentType = if (usesLiveOsd(channel.id, channel.type)) "Live" else "Input"
+        remoteControlViewModel.client.sendState(contentType = remoteContentType, title = channel.name, isBuffering = true)
         remoteControlViewModel.client.reportInputSignal(channel.id, "Loading", null)
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -788,7 +789,8 @@ fun TifLivePlayerScreen(
                             keepScreenOn = isStarted && !systemSleepAllowed
                             setCallback(object : TvView.TvInputCallback() {
                                 override fun onVideoAvailable(inputId: String) {
-                                    remoteControlViewModel.client.sendState(contentType = "Live", title = latestChannel.name, isPlaying = true)
+                                    val remoteContentType = if (usesLiveOsd(latestChannel.id, latestChannel.type)) "Live" else "Input"
+                                    remoteControlViewModel.client.sendState(contentType = remoteContentType, title = latestChannel.name, isPlaying = true)
                                     remoteControlViewModel.client.reportInputSignal(latestChannel.id, "Available", null)
                                     latestOnChannelPlaybackCommitted(latestChannel)
                                     videoAvailable = true

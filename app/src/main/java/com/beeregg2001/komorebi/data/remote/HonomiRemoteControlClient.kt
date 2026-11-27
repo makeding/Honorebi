@@ -250,6 +250,7 @@ class HonomiRemoteControlClient @Inject constructor(
         isChasePlayback: Boolean = false,
         chapters: List<HonomiRemoteChapter> = emptyList(),
         cmSkipMode: CmSkipMode? = null,
+        seriesId: Int? = null,
     ) {
         val state = JsonObject().apply {
             addProperty("type", "State")
@@ -279,6 +280,7 @@ class HonomiRemoteControlClient @Inject constructor(
             playbackRate?.let { addProperty("playback_rate", it) }
             addProperty("is_chase_playback", isChasePlayback)
             cmSkipMode?.let { addProperty("cm_skip_mode", it.toRemoteValue()) }
+            seriesId?.let { addProperty("series_id", it) }
             // チャプターが空の録画 (CM 判定なし) では、進捗バー側で「チャプターあり」と誤認しないよう配列ごと省く。
             if (chapters.isNotEmpty()) {
                 add("chapters", JsonArray().apply {
