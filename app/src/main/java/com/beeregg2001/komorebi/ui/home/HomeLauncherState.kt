@@ -91,7 +91,6 @@ class HomeLauncherState(
     var logoUrls by mutableStateOf<List<String>>(emptyList())
 
     var openedSeriesTitle by mutableStateOf<String?>(null)
-    var isSeriesListOpen by mutableStateOf(false)
 
     // タブ定義とサイズを一致させ、魔法の数字(10)による索引ズレを防ぐ。
     val tabFocusRequesters = List(HOME_TAB_TITLES.size) { FocusRequester() }
@@ -113,18 +112,6 @@ class HomeLauncherState(
     ) {
         onTabChange(index)
         homeViewModel.clearFocusMemory()
-    }
-
-    fun isFullScreen(
-        selectedChannel: Channel?,
-        selectedProgram: RecordedProgram?,
-        epgSelectedProgram: EpgProgram?,
-        isSettingsOpen: Boolean,
-        isRecordListOpen: Boolean,
-        isReserveOverlayOpen: Boolean
-    ): Boolean {
-        return selectedChannel != null || selectedProgram != null || epgSelectedProgram != null ||
-                isSettingsOpen || isRecordListOpen || isReserveOverlayOpen || isSeriesListOpen
     }
 
     fun handleBackNavigation(
@@ -166,7 +153,6 @@ fun rememberHomeLauncherState(
                     it.selectedTabIndex,
                     it.internalLastPlayerChannelId,
                     it.openedSeriesTitle,
-                    it.isSeriesListOpen
                 )
             },
             restore = {
@@ -175,7 +161,6 @@ fun rememberHomeLauncherState(
                 HomeLauncherState(list[0] as Int).apply {
                     internalLastPlayerChannelId = list[1] as String?
                     openedSeriesTitle = list[2] as String?
-                    isSeriesListOpen = list[3] as Boolean
                 }
             }
         )

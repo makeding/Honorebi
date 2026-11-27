@@ -28,8 +28,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -44,6 +42,8 @@ import com.beeregg2001.komorebi.BuildConfig
 import com.beeregg2001.komorebi.R
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.model.StreamQuality
+import com.beeregg2001.komorebi.ui.home.UpgradeTourTargetId
+import com.beeregg2001.komorebi.ui.home.upgradeSpotlightTarget
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.PostRecordingBatch
 import com.beeregg2001.komorebi.viewmodel.SmbServer
@@ -1064,7 +1064,6 @@ fun CommentSettingsContent(
     engineR: FocusRequester,
     wordCounterR: FocusRequester,
     sidebarR: FocusRequester,
-    onEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onClick: (FocusRequester) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -1177,9 +1176,7 @@ fun CommentSettingsContent(
                 },
                 Icons.Default.Memory,
                 modifier = Modifier
-                    .onGloballyPositioned { coords ->
-                        onEngineBoundsChanged(coords.boundsInRoot())
-                    }
+                    .upgradeSpotlightTarget(UpgradeTourTargetId.COMMENT_ENGINE_SETTING)
                     .focusRequester(engineR).focusProperties {
                     left = sidebarR
                     up = layerR

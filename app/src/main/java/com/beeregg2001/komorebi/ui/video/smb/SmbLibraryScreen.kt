@@ -50,7 +50,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import com.beeregg2001.komorebi.common.safeRequestFocus
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
-import com.beeregg2001.komorebi.ui.components.GlobalToast
+import com.beeregg2001.komorebi.ui.components.LocalShowToast
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.ui.video.*
 import com.beeregg2001.komorebi.viewmodel.SmbSortOrder
@@ -109,13 +109,7 @@ fun SmbLibraryScreen(
     val sortButtonRequester = remember { FocusRequester() }
     val historyFirstItemRequester = remember { FocusRequester() }
 
-    var toastMessage by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(toastMessage) {
-        if (toastMessage != null) {
-            delay(3000)
-            toastMessage = null
-        }
-    }
+    val showToast = LocalShowToast.current
 
     val isAnyOverlayOpen =
         isRightMenuOpen || isDetailOpen || isLeftMenuOverlayOpen || isSortMenuOpen
@@ -394,7 +388,7 @@ fun SmbLibraryScreen(
             onDetailClick = { isRightMenuOpen = false; isDetailOpen = true },
             onPinToggle = { item ->
                 val added = viewModel.togglePin(item)
-                toastMessage = if (added) "ピン留めしました" else "ピン留めを解除しました"
+                showToast(if (added) "ピン留めしました" else "ピン留めを解除しました")
             }
         )
 
@@ -430,8 +424,6 @@ fun SmbLibraryScreen(
                 focuses = focuses
             )
         }
-
-        GlobalToast(message = toastMessage)
     }
 }
 

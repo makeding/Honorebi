@@ -174,18 +174,17 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
     )
 }
 
-// ★ 修正: initialCategoryIndex を受け取り、初期カテゴリを指定できるようにする
 @Stable
-class SettingUiState(initialCategoryIndex: Int = 0) {
+class SettingUiState(initialCategory: SettingsCategory = SettingsCategory.GENERAL) {
     var activeDialog by mutableStateOf<SettingDialogState>(SettingDialogState.None)
-    var selectedCategoryIndex by mutableIntStateOf(initialCategoryIndex)
+    var selectedCategory by mutableStateOf(initialCategory)
     var restoreFocusRequester by mutableStateOf<FocusRequester?>(null)
-    var restoreCategoryIndex by mutableIntStateOf(-1)
+    var restoreCategory by mutableStateOf<SettingsCategory?>(null)
     var isSidebarFocused by mutableStateOf(true)
     var isRestoringFocus by mutableStateOf(false)
 }
 
 @Composable
-fun rememberSettingUiState(initialCategoryIndex: Int = 0): SettingUiState {
-    return remember(initialCategoryIndex) { SettingUiState(initialCategoryIndex) }
-}
+fun rememberSettingUiState(
+    initialCategory: SettingsCategory = SettingsCategory.GENERAL,
+): SettingUiState = remember(initialCategory) { SettingUiState(initialCategory) }

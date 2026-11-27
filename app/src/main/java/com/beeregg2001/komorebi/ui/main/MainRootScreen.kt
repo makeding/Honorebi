@@ -25,13 +25,18 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import com.beeregg2001.komorebi.BuildConfig
+import com.beeregg2001.komorebi.ui.components.DEFAULT_TOAST_DURATION_MS
+import com.beeregg2001.komorebi.ui.components.GlobalToast
+import com.beeregg2001.komorebi.ui.components.LocalShowToast
 import com.beeregg2001.komorebi.ui.home.LoadingScreen
+import com.beeregg2001.komorebi.ui.home.LocalUpgradeSpotlightTargets
+import com.beeregg2001.komorebi.ui.home.LocalUpgradeTourActive
 import com.beeregg2001.komorebi.ui.home.UpgradeSpotlightOverlay
-import com.beeregg2001.komorebi.ui.home.UpgradeTourAction
 import com.beeregg2001.komorebi.ui.home.UpgradeTourCatalog
-import com.beeregg2001.komorebi.ui.home.UpgradeTourTargetId
 import com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets
 import com.beeregg2001.komorebi.ui.home.shouldShowUpgradeLandingTour
+import com.beeregg2001.komorebi.ui.setting.SettingsCategory
+import com.beeregg2001.komorebi.ui.setting.SettingsDestination
 import com.beeregg2001.komorebi.viewmodel.*
 import com.beeregg2001.komorebi.ui.theme.AppTheme
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
@@ -185,7 +190,7 @@ fun MainRootScreen(
             }
             if (exclusionLoaded == null) {
                 if (state.playbackState.failPlaybackOpenIntent(intent)) {
-                    state.toastMessage = playbackOpenFailureMessage(request)
+                    state.showToast(playbackOpenFailureMessage(request))
                 }
                 return@launch
             }
@@ -205,7 +210,7 @@ fun MainRootScreen(
                     when {
                         channel == null -> {
                             if (state.playbackState.failPlaybackOpenIntent(intent)) {
-                                state.toastMessage = playbackOpenFailureMessage(request)
+                                state.showToast(playbackOpenFailureMessage(request))
                             }
                         }
                         nhkExclusionRepository.isExcluded(channel) -> {
@@ -241,7 +246,7 @@ fun MainRootScreen(
                         }
                         ProgramOpenLookup.NotFound -> {
                             if (state.playbackState.failPlaybackOpenIntent(intent)) {
-                                state.toastMessage = playbackOpenFailureMessage(request)
+                                state.showToast(playbackOpenFailureMessage(request))
                             }
                         }
                     }
@@ -313,12 +318,12 @@ fun MainRootScreen(
                     } catch (failure: Exception) {
                         if (failure is kotlinx.coroutines.CancellationException) throw failure
                         remoteControlViewModel.client.reportNHKExclusionResult(command.commandId, applied = false)
-                        state.toastMessage = "N〇K除外モードを保存できませんでした。もう一度操作してください。（NHK_EXCLUSION_SAVE_FAILED）"
+                        state.showToast("N〇K除外モードを保存できませんでした。もう一度操作してください。（NHK_EXCLUSION_SAVE_FAILED）")
                     }
                 }
                 is HonomiRemoteCommand.SetCMSkipMode -> {
                     settingsViewModel.setCmSkipMode(command.mode)
-                    state.toastMessage = "CMスキップ: ${command.mode.displayLabel}"
+                    state.showToast("CMスキップ: ${command.mode.displayLabel}")
                 }
                 HonomiRemoteCommand.Play,
                 HonomiRemoteCommand.Pause,
@@ -433,9 +438,9 @@ fun MainRootScreen(
                             epgViewModel.updateTargetTime(jumpTime)
                             val tabIndex = tabs.indexOf("番組表")
                             if (tabIndex != -1) state.currentTabIndex = tabIndex
-                            state.toastMessage = "${action.date} の番組表に移動しました"
+                            state.showToast("${action.date} の番組表に移動しました")
                         } catch (e: Exception) {
-                            state.toastMessage = "日付の指定が正しくありません"
+                            state.showToast("日付の指定が正しくありません")
                         }
                     } else {
                         epgViewModel.executeSearch(
@@ -447,8 +452,9 @@ fun MainRootScreen(
                         )
                         val tabIndex = tabs.indexOf("番組表")
                         if (tabIndex != -1) state.currentTabIndex = tabIndex
-                        state.toastMessage =
+                        state.showToast(
                             if (action.keyword.isNotBlank()) "「${action.keyword}」の検索結果を表示します" else "検索結果を表示します"
+                        )
                     }
                 }
 
@@ -463,11 +469,14 @@ fun MainRootScreen(
                             ).firstOrNull()?.trim() ?: ""
                         )
                         if (action.genre.isNotBlank()) recordViewModel.updateGenre(action.genre)
-                        state.toastMessage = if (action.keyword.isNotBlank()) "「${
-                            action.keyword.split(",").firstOrNull()
-                        }」の録画を検索します" else "録画リストを表示します"
-                    } else state.toastMessage =
+                        state.showToast(
+                            if (action.keyword.isNotBlank()) "「${
+                                action.keyword.split(",").firstOrNull()
+                            }」の録画を検索します" else "録画リストを表示します"
+                        )
+                    } else state.showToast(
                         "現在設定されているシステムでは録画検索は利用できません"
+                    )
                 }
 
                 is AiConciergeAction.ReqEpgSearch -> {
@@ -509,9 +518,9 @@ fun MainRootScreen(
                     reserveViewModel.addReserve(action.programId) { result ->
                         when (result) {
                             SingleReservationResult.Success ->
-                                state.toastMessage = "番組の録画予約を完了しました"
+                                state.showToast("番組の録画予約を完了しました")
                             is SingleReservationResult.Failure ->
-                                state.toastMessage = "${result.failure.message} [${result.failure.code}]"
+                                state.showToast("${result.failure.message} [${result.failure.code}]")
                             SingleReservationResult.AlreadySubmitting -> Unit
                         }
                     }
@@ -538,7 +547,7 @@ fun MainRootScreen(
                         isEventRelay = true,
                         isExactRecord = true,
                         onSuccess = {
-                            state.toastMessage = "「${action.keyword}」の自動録画条件を登録しました"
+                            state.showToast("「${action.keyword}」の自動録画条件を登録しました")
                         }
                     )
                 }
@@ -572,11 +581,20 @@ fun MainRootScreen(
     val channelErrorReason by channelViewModel.channelError.collectAsState()
     val isSettingsInitialized by settingsViewModel.isSettingsInitialized.collectAsState()
     val upgradeCheckState by settingsViewModel.upgradeCheckState.collectAsState()
-    val upgradeTourSteps = remember { UpgradeTourCatalog.tourForVersion(BuildConfig.VERSION_CODE) }
+    val upgradeTourState = remember {
+        UpgradeTourHostState(
+            steps = UpgradeTourCatalog.tourForVersion(BuildConfig.VERSION_CODE),
+            introducedVersionCode = UpgradeTourCatalog.tourIntroducedVersionFor(BuildConfig.VERSION_CODE),
+        )
+    }
     val spotlightTargets = rememberUpgradeSpotlightTargets()
-    var isUpgradeTourDismissed by remember { mutableStateOf(false) }
-    var isManualUpgradeTourOpen by remember { mutableStateOf(false) }
-    var isUpgradeTourControllingSettings by remember { mutableStateOf(false) }
+    val shouldAutoShowUpgradeTour = (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
+        upgradeTourState.shouldAutoShow(
+            lastSeenVersionCode = ready.lastSeenVersionCode,
+            currentVersionCode = BuildConfig.VERSION_CODE,
+            isSettingsInitialized = ready.isSettingsInitialized,
+        )
+    } == true
 
     LaunchedEffect(upgradeCheckState) {
         val ready = upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready ?: return@LaunchedEffect
@@ -584,7 +602,8 @@ fun MainRootScreen(
             lastSeenVersionCode = ready.lastSeenVersionCode,
             currentVersionCode = BuildConfig.VERSION_CODE,
             isSettingsInitialized = ready.isSettingsInitialized,
-            hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
+            hasTourForCurrentVersion = upgradeTourState.steps.isNotEmpty(),
+            tourIntroducedVersionCode = upgradeTourState.introducedVersionCode ?: BuildConfig.VERSION_CODE,
         )
         if (!shouldShow && ready.lastSeenVersionCode != BuildConfig.VERSION_CODE) {
             settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
@@ -659,7 +678,7 @@ fun MainRootScreen(
     }
     LaunchedEffect(isInOsPip, state.toastMessage) {
         if (isInOsPip && state.toastMessage != null) {
-            state.toastMessage = null
+            state.clearToast()
         }
     }
     val defaultSystemChannel = remember(groupedChannels) {
@@ -779,31 +798,11 @@ fun MainRootScreen(
         }
     }
 
-    val clearRootOverlays = {
-        state.epgSelectedProgram = null
-        state.selectedReserve = null
-        state.editingReserveItem = null
-        state.editingNewProgram = null
-        state.reserveToDelete = null
-        state.selectedProgramForAutoReserve = null
-        state.editingCondition = null
-        state.selectedConditionReserveItem = null
-        state.openedSeriesTitle = null
-        state.isRecordListOpen = false
-        state.isSeriesListOpen = false
-        state.isSmbLibraryOpen = false
-        state.isOnAirOpen = false
-        state.isEpgJumpMenuOpen = false
-        state.showDeleteConfirmDialog = false
-        state.isAiConciergeOpen = false
-        state.showAiKeyboardInput = false
-    }
-
     val dismissRootOverlays = {
         if (state.isSettingsOpen) {
             closeSettings()
         }
-        clearRootOverlays()
+        state.clearRootOverlays()
     }
 
     val returnToLauncherHome = {
@@ -822,7 +821,7 @@ fun MainRootScreen(
             state.resetForLauncherHome("ホーム", hideAppsTab)
         }
         if (tabs.getOrNull(state.currentTabIndex) == "番組表") epgViewModel.ensureInitialDataLoaded()
-        clearRootOverlays()
+        state.clearRootOverlays()
     }
 
     var handledHomeIntentVersion by remember { mutableIntStateOf(homeIntentVersion) }
@@ -836,10 +835,7 @@ fun MainRootScreen(
     LaunchedEffect(homeIntentVersion) {
         if (homeIntentVersion > 0) {
             handledHomeIntentVersion = homeIntentVersion
-            if (isUpgradeTourControllingSettings) {
-                isUpgradeTourControllingSettings = false
-                isManualUpgradeTourOpen = false
-                isUpgradeTourDismissed = true
+            upgradeTourState.dismissForHomeIntent(shouldAutoShowUpgradeTour) {
                 settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
             }
             returnToLauncherHome()
@@ -848,17 +844,19 @@ fun MainRootScreen(
 
     LaunchedEffect(settingsIntentVersion) {
         if (settingsIntentVersion > 0) {
-            state.isSettingsOpen = true
+            upgradeTourState.dismissIfActive(shouldAutoShowUpgradeTour) {
+                settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
+            }
+            if (!state.isSettingsOpen) {
+                state.openSettings()
+            }
         }
     }
 
-    LaunchedEffect(state.isSettingsOpen, state.isSmbLibraryOpen) {
-        if (state.isSettingsOpen || state.isSmbLibraryOpen) state.toastMessage = null
-    }
-
-    LaunchedEffect(state.toastMessage) {
+    LaunchedEffect(state.toastMessage, state.toastTick) {
         if (state.toastMessage != null) {
-            delay(3000); state.toastMessage = null
+            delay(DEFAULT_TOAST_DURATION_MS)
+            state.clearToast()
         }
     }
 
@@ -1076,7 +1074,7 @@ fun MainRootScreen(
         enabled = jikkyoFestivalAlert == "ON" && !state.isSettingsOpen,
         channelViewModel = channelViewModel,
         currentChannelId = state.playbackState.livePlayback?.channel?.id,
-        onAlert = { state.toastMessage = it },
+        onAlert = state::showToast,
     )
 
     CompositionLocalProvider(
@@ -1085,27 +1083,23 @@ fun MainRootScreen(
     ) {
     KomorebiTheme(theme = currentTheme) {
         var showExitDialog by remember { mutableStateOf(false) }
-        val isUpgradeTourActive = startupRenderPlan.showMainContent &&
-            !state.playbackState.isPlaybackActive &&
-            (!state.isSettingsOpen || isUpgradeTourControllingSettings) &&
-            !state.showConnectionErrorDialog &&
-            !state.isRecordListOpen &&
-            !state.isSeriesListOpen &&
-            !state.isSmbLibraryOpen &&
-            !state.isOnAirOpen &&
-            state.epgSelectedProgram == null &&
-            state.selectedReserve == null &&
-            state.editingCondition == null &&
-            !showExitDialog &&
-            (isManualUpgradeTourOpen || (!isUpgradeTourDismissed &&
-            (upgradeCheckState as? SettingsViewModel.UpgradeCheckState.Ready)?.let { ready ->
-                shouldShowUpgradeLandingTour(
-                    lastSeenVersionCode = ready.lastSeenVersionCode,
-                    currentVersionCode = BuildConfig.VERSION_CODE,
-                    isSettingsInitialized = ready.isSettingsInitialized,
-                    hasTourForCurrentVersion = upgradeTourSteps.isNotEmpty(),
-                )
-            } == true))
+        val hostModals = RootHostModalState(
+            hasSyncError = hasSyncError,
+            isUpdateDialogVisible = updateState is com.beeregg2001.komorebi.util.UpdateState.UpdateAvailable,
+            isScreensaverVisible = screensaverState.isVisible,
+            isExitDialogVisible = showExitDialog,
+        )
+        val isUpgradeTourActive = upgradeTourState.isActive(
+            showMainContent = startupRenderPlan.showMainContent,
+            isPlaybackActive = state.playbackState.isPlaybackActive,
+            isSettingsOpen = state.isSettingsOpen,
+            hasBlockingOverlay = state.hasUpgradeTourBlockingOverlay(
+                isSettingsInitialized = isSettingsInitialized,
+                hostModals = hostModals,
+            ),
+            shouldAutoShow = shouldAutoShowUpgradeTour,
+        )
+        val showToast: (String) -> Unit = remember(state) { state::showToast }
         var channelNumberBuffer by remember { mutableStateOf("") }
         var channelNumberInputTick by remember { mutableIntStateOf(0) }
         var channelNumberNotFound by remember { mutableStateOf<String?>(null) }
@@ -1129,28 +1123,15 @@ fun MainRootScreen(
         val isTifPassthrough = liveChannel != null &&
             liveChannel.id.startsWith("tif:") &&
             (state.backendType != "TIF" || liveChannel.id.startsWith("tif:input:"))
-        val hasRootOverlay = !startupRenderPlan.showMainContent ||
-            state.showConnectionErrorDialog ||
-            state.isRecordListOpen ||
-            state.isSeriesListOpen ||
-            state.isSmbLibraryOpen ||
-            state.isOnAirOpen ||
-            state.isEpgJumpMenuOpen ||
-            state.showDeleteConfirmDialog ||
-            state.epgSelectedProgram != null ||
-            state.selectedReserve != null ||
-            state.editingReserveItem != null ||
-            state.editingNewProgram != null ||
-            state.reserveToDelete != null ||
-            state.selectedProgramForAutoReserve != null ||
-            state.editingCondition != null ||
-            state.selectedConditionReserveItem != null ||
-            showExitDialog ||
-            screensaverState.isVisible
+        val hasRootOverlay = state.hasRemoteKeyBlockingOverlay(
+            showMainContent = startupRenderPlan.showMainContent,
+            isUpgradeTourActive = isUpgradeTourActive,
+            hostModals = hostModals,
+        )
         val remoteKeyContext = RemoteKeyContext(
             isInOsPip = isInOsPip,
             isSettingsOpen = state.isSettingsOpen,
-            isAiOverlayOpen = state.isAiConciergeOpen || state.showAiKeyboardInput,
+            isAiOverlayOpen = state.hasAiOverlay(),
             hasRootOverlay = hasRootOverlay,
             isLivePlaybackFullscreen = isLiveFullscreen,
             isTifPassthrough = isTifPassthrough,
@@ -1189,8 +1170,9 @@ fun MainRootScreen(
                         state.currentTabIndex = tabIndex
                         epgViewModel.ensureInitialDataLoaded()
                     } else {
-                        state.toastMessage =
+                        state.showToast(
                             "番組表を開けません：現在の接続先は番組表に対応していません。接続設定でメインシステムを確認してください。"
+                        )
                     }
                 }
                 RemoteShortcut.DVR -> {
@@ -1203,8 +1185,9 @@ fun MainRootScreen(
                         state.currentTabIndex = tabIndex
                         state.isRecordListOpen = true
                     } else {
-                        state.toastMessage =
+                        state.showToast(
                             "録画リストを開けません：現在の接続先は録画リストに対応していません。接続設定でメインシステムを確認してください。"
+                        )
                     }
                 }
                 RemoteShortcut.TV -> {
@@ -1261,6 +1244,11 @@ fun MainRootScreen(
             }
         }
 
+        CompositionLocalProvider(
+            LocalUpgradeSpotlightTargets provides spotlightTargets,
+            LocalUpgradeTourActive provides isUpgradeTourActive,
+            LocalShowToast provides showToast,
+        ) {
         RootSystemMediaSessionHost(
             playbackSessionEpoch = state.playbackState.playbackSessionEpoch,
             remoteContentType = when {
@@ -1306,16 +1294,16 @@ fun MainRootScreen(
                                 cmPanicReturnChannel = null
                                 state.playbackState.enterLive(returnTarget)
                                 homeViewModel.saveLastChannel(returnTarget)
-                                state.toastMessage = "元のチャンネルへ復帰: ${returnTarget.name}"
+                                state.showToast("元のチャンネルへ復帰: ${returnTarget.name}")
                             } else {
                                 val escape = com.beeregg2001.komorebi.common.pickCmEscapeChannel(tunableChannels, current.id)
                                 if (escape != null) {
                                     cmPanicReturnChannel = current
                                     state.playbackState.enterLive(escape)
                                     homeViewModel.saveLastChannel(escape)
-                                    state.toastMessage = "CM緊急退避 → ${escape.name}（黄ボタンで復帰）"
+                                    state.showToast("CM緊急退避 → ${escape.name}（黄ボタンで復帰）")
                                 } else {
-                                    state.toastMessage = "退避先の実況チャンネルが見つかりません"
+                                    state.showToast("退避先の実況チャンネルが見つかりません")
                                 }
                             }
                             consumedOsdActionKeyCode = nativeKeyCode
@@ -1482,8 +1470,6 @@ fun MainRootScreen(
                         onTriggerScreensaver = triggerScreensaver,
                         onInternalActivityLaunch = onInternalActivityLaunch,
                         notificationCenterViewModel = notificationCenterViewModel,
-                        showUpgradeTour = isUpgradeTourActive,
-                        spotlightTargets = spotlightTargets,
                         hasPendingHomeIntent = { latestHomeIntentVersion() != handledHomeIntentVersion },
                     )
 
@@ -1557,9 +1543,7 @@ fun MainRootScreen(
                     onOpenSettings = {
                         state.isConnectionRetryPending = false
                         state.showConnectionErrorDialog = false
-                        state.settingsInitialCategoryIndex = 1
-                        state.settingsInitialFocusItemIndex = null
-                        state.isSettingsOpen = true
+                        state.openSettings(SettingsDestination.Category(SettingsCategory.CONNECTION))
                     },
                     modifier = Modifier.zIndex(6f),
                     reason = if (!isNetworkAvailable) {
@@ -1589,70 +1573,31 @@ fun MainRootScreen(
                 closeAiConcierge = closeAiConcierge,
                 onGoToSettings = {
                     closeAiConcierge(true)
-                    state.settingsInitialCategoryIndex = 0
-                    state.settingsInitialFocusItemIndex = null
-                    state.isSettingsOpen = true
+                    state.openSettings()
                 },
                 onOpenWhatsNew = {
-                    closeSettings()
-                    isManualUpgradeTourOpen = true
+                    upgradeTourState.openManually(
+                        onCloseSettings = closeSettings,
+                        onUnavailable = {
+                            state.showToast("このバージョンの新機能ガイドはありません")
+                        },
+                    )
                 },
-                isUpgradeTourOverlayActive = isUpgradeTourActive,
-                spotlightTargets = spotlightTargets,
             )
-            if (isUpgradeTourActive && upgradeTourSteps.isNotEmpty()) {
+            if (isUpgradeTourActive && upgradeTourState.steps.isNotEmpty()) {
                 UpgradeSpotlightOverlay(
-                    steps = upgradeTourSteps,
-                    targets = spotlightTargets,
+                    steps = upgradeTourState.steps,
                     onStepChanged = { idx ->
-                        val step = upgradeTourSteps.getOrNull(idx)
-                        when (step?.targetId) {
-                            UpgradeTourTargetId.DEEP_TV_SETTING -> {
-                                isUpgradeTourControllingSettings = true
-                                state.settingsInitialCategoryIndex = 9
-                                state.settingsInitialFocusItemIndex = null
-                                state.isSettingsOpen = true
-                            }
-                            UpgradeTourTargetId.COMMENT_ENGINE_SETTING -> {
-                                isUpgradeTourControllingSettings = true
-                                state.settingsInitialCategoryIndex = 5
-                                state.settingsInitialFocusItemIndex = 6
-                                state.isSettingsOpen = true
-                            }
-                            else -> {
-                                if (isUpgradeTourControllingSettings) {
-                                    isUpgradeTourControllingSettings = false
-                                    state.isSettingsOpen = false
-                                }
-                            }
-                        }
+                        upgradeTourState.handleStepChanged(idx, state)
                     },
                     onStepAction = { action ->
-                        isUpgradeTourControllingSettings = false
-                        isManualUpgradeTourOpen = false
-                        isUpgradeTourDismissed = true
-                        settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
-                        when (action) {
-                            UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS -> {
-                                state.settingsInitialCategoryIndex = 5
-                                state.settingsInitialFocusItemIndex = 6
-                                state.isSettingsOpen = true
-                            }
-                            UpgradeTourAction.OPEN_DEEP_TV_SETTINGS -> {
-                                state.settingsInitialCategoryIndex = 9
-                                state.settingsInitialFocusItemIndex = null
-                                state.isSettingsOpen = true
-                            }
+                        upgradeTourState.handleStepAction(action, state) {
+                            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
                         }
                     },
                     onFinish = {
-                        val wasControllingSettings = isUpgradeTourControllingSettings
-                        isUpgradeTourControllingSettings = false
-                        isManualUpgradeTourOpen = false
-                        isUpgradeTourDismissed = true
-                        settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
-                        if (wasControllingSettings) {
-                            state.isSettingsOpen = false
+                        upgradeTourState.finish(state) {
+                            settingsViewModel.markVersionUpgradeSeen(BuildConfig.VERSION_CODE)
                         }
                     },
                     modifier = Modifier.zIndex(50f),
@@ -1748,7 +1693,12 @@ fun MainRootScreen(
                     }
                 }
             }
+            GlobalToast(
+                message = if (isInOsPip) null else state.toastMessage,
+                modifier = Modifier.zIndex(1100f),
+            )
             }
+        }
         }
     }
     }

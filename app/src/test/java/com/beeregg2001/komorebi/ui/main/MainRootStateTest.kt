@@ -3,8 +3,20 @@ package com.beeregg2001.komorebi.ui.main
 import com.beeregg2001.komorebi.ui.player.*
 
 import com.beeregg2001.komorebi.data.model.Channel
+import com.beeregg2001.komorebi.data.model.EpgProgram
+import com.beeregg2001.komorebi.data.model.ProgramSearchCondition
+import com.beeregg2001.komorebi.data.model.RecordSettings
 import com.beeregg2001.komorebi.data.model.RecordedProgram
 import com.beeregg2001.komorebi.data.model.RecordedVideo
+import com.beeregg2001.komorebi.data.model.ReservationCondition
+import com.beeregg2001.komorebi.data.model.ReserveChannel
+import com.beeregg2001.komorebi.data.model.ReserveItem
+import com.beeregg2001.komorebi.data.model.ReserveProgramDetail
+import com.beeregg2001.komorebi.ui.home.UpgradeTourAction
+import com.beeregg2001.komorebi.ui.home.UpgradeTourCatalog
+import com.beeregg2001.komorebi.ui.setting.SettingsCategory
+import com.beeregg2001.komorebi.ui.setting.SettingsDestination
+import com.beeregg2001.komorebi.ui.setting.SettingsFocusTarget
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,10 +36,7 @@ class MainRootStateTest {
         val state = MainRootState()
         state.playbackState.enterRecorded(recording())
         state.playbackState.enterMiniPlayer()
-        state.isSettingsOpen = true
-        state.settingsInitialCategoryIndex = 3
-        state.settingsInitialFocusItemIndex = 2
-        state.settingsOpenDeviceCapabilities = true
+        state.openSettings(SettingsDestination.DeviceCapabilities)
         state.isDataReady = true
         state.isUiReady = true
         val session = state.playbackState.playbackSession
@@ -35,9 +44,7 @@ class MainRootStateTest {
         state.bringRemotePlaybackToFront()
 
         assertFalse(state.isSettingsOpen)
-        assertFalse(state.settingsOpenDeviceCapabilities)
-        assertNull(state.settingsInitialFocusItemIndex)
-        assertEquals(0, state.settingsInitialCategoryIndex)
+        assertEquals(SettingsDestination.Default, state.settingsDestination)
         assertFalse(state.playbackState.isMiniPlayerMode)
         assertEquals(session, state.playbackState.playbackSession)
         assertTrue(state.isDataReady)
@@ -361,17 +368,12 @@ class MainRootStateTest {
         state.currentTabIndex = epgIndex
         state.isDataReady = true
         state.isUiReady = true
-        state.isSettingsOpen = true
-        state.settingsInitialCategoryIndex = 5
-        state.settingsInitialFocusItemIndex = 6
-        state.settingsOpenDeviceCapabilities = true
+        state.openSettings(SettingsDestination.Item(SettingsFocusTarget.COMMENT_ENGINE))
 
         state.closeSettings()
 
         assertFalse(state.isSettingsOpen)
-        assertEquals(0, state.settingsInitialCategoryIndex)
-        assertNull(state.settingsInitialFocusItemIndex)
-        assertFalse(state.settingsOpenDeviceCapabilities)
+        assertEquals(SettingsDestination.Default, state.settingsDestination)
         assertTrue(state.isDataReady)
         assertTrue(state.isUiReady)
         assertEquals(epgIndex, state.currentTabIndex)
@@ -420,6 +422,447 @@ class MainRootStateTest {
             )
         )
     }
+
+    @Test
+    fun upgradeTourHostState_emptyStepsRefusesManualOpenWithoutClosingSettingsOrActivating() {
+        val tourState = UpgradeTourHostState(steps = emptyList(), introducedVersionCode = null)
+        var closeSettingsCalls = 0
+        var unavailableCalls = 0
+
+        val opened = tourState.openManually(
+            onCloseSettings = { closeSettingsCalls++ },
+            onUnavailable = { unavailableCalls++ },
+        )
+
+        assertFalse(opened)
+        assertEquals(0, closeSettingsCalls)
+        assertEquals(1, unavailableCalls)
+        assertFalse(tourState.isManualOpen)
+        assertFalse(
+            tourState.isActive(
+                showMainContent = true,
+                isPlaybackActive = false,
+                isSettingsOpen = false,
+                hasBlockingOverlay = false,
+                shouldAutoShow = false,
+            ),
+        )
+    }
+
+    @Test
+    fun upgradeTourHostState_stepTransitionsManageSettingsDeepLinksAndResetOnBackAndFinish() {
+        val rootState = MainRootState()
+        val steps = UpgradeTourCatalog.tourForVersion(42)
+        val tourState = UpgradeTourHostState(
+            steps = steps,
+            introducedVersionCode = UpgradeTourCatalog.tourIntroducedVersionFor(42),
+        )
+        var markSeenCalls = 0
+
+        assertTrue(
+            tourState.openManually(
+                onCloseSettings = { rootState.closeSettings() },
+                onUnavailable = {},
+            ),
+        )
+        assertTrue(
+            tourState.isActive(
+                showMainContent = true,
+                isPlaybackActive = false,
+                isSettingsOpen = rootState.isSettingsOpen,
+                hasBlockingOverlay = false,
+                shouldAutoShow = false,
+            ),
+        )
+
+        // Step 3 opens Deep TV settings.
+        tourState.handleStepChanged(3, rootState)
+        assertTrue(tourState.isControllingSettings)
+        assertTrue(rootState.isSettingsOpen)
+        assertEquals(
+            SettingsDestination.Category(SettingsCategory.DEEP_TV),
+            rootState.settingsDestination,
+        )
+
+        // Step 4 switches to Comment Engine settings item.
+        tourState.handleStepChanged(4, rootState)
+        assertTrue(tourState.isControllingSettings)
+        assertTrue(rootState.isSettingsOpen)
+        assertEquals(
+            SettingsDestination.Item(SettingsFocusTarget.COMMENT_ENGINE),
+            rootState.settingsDestination,
+        )
+
+        // Stepping back to step 2 closes settings cleanly via closeSettings().
+        tourState.handleStepChanged(2, rootState)
+        assertFalse(tourState.isControllingSettings)
+        assertFalse(rootState.isSettingsOpen)
+        assertEquals(SettingsDestination.Default, rootState.settingsDestination)
+
+        // Stepping into step 4 and finishing closes settings, resets destination, and marks seen.
+        tourState.handleStepChanged(4, rootState)
+        assertTrue(rootState.isSettingsOpen)
+        tourState.finish(rootState) { markSeenCalls++ }
+
+        assertFalse(tourState.isControllingSettings)
+        assertFalse(tourState.isManualOpen)
+        assertTrue(tourState.isDismissed)
+        assertFalse(rootState.isSettingsOpen)
+        assertEquals(SettingsDestination.Default, rootState.settingsDestination)
+        assertEquals(1, markSeenCalls)
+    }
+
+    @Test
+    fun upgradeTourHostState_homeIntentDismissesOnNonSettingsStepsAndIsNoOpWhenInactive() {
+        val rootState = MainRootState()
+        val tourState = UpgradeTourHostState(
+            steps = UpgradeTourCatalog.tourForVersion(42),
+            introducedVersionCode = UpgradeTourCatalog.tourIntroducedVersionFor(42),
+        )
+        var markSeenCalls = 0
+
+        assertTrue(
+            tourState.openManually(
+                onCloseSettings = { rootState.closeSettings() },
+                onUnavailable = {},
+            ),
+        )
+        tourState.handleStepChanged(0, rootState)
+        assertFalse(tourState.isControllingSettings)
+
+        assertTrue(tourState.dismissForHomeIntent(shouldAutoShow = false) { markSeenCalls++ })
+        assertFalse(tourState.isManualOpen)
+        assertTrue(tourState.isDismissed)
+        assertEquals(1, markSeenCalls)
+
+        assertFalse(tourState.dismissForHomeIntent(shouldAutoShow = false) { markSeenCalls++ })
+        assertEquals(1, markSeenCalls)
+    }
+
+    @Test
+    fun upgradeTourHostState_dismissIfActiveClearsTourForSettingsIntentWithoutClosingSettings() {
+        val rootState = MainRootState()
+        val tourState = UpgradeTourHostState(
+            steps = UpgradeTourCatalog.tourForVersion(42),
+            introducedVersionCode = UpgradeTourCatalog.tourIntroducedVersionFor(42),
+        )
+        var markSeenCalls = 0
+
+        // Non-settings step: dismisses manual tour and marks seen.
+        assertTrue(tourState.openManually(onCloseSettings = {}, onUnavailable = {}))
+        tourState.handleStepChanged(0, rootState)
+        assertFalse(tourState.isControllingSettings)
+        assertTrue(tourState.dismissIfActive(shouldAutoShow = false) { markSeenCalls++ })
+        assertFalse(tourState.isManualOpen)
+        assertTrue(tourState.isDismissed)
+        assertEquals(1, markSeenCalls)
+
+        // Settings-controlled step: clears tour control without closing Settings itself.
+        val tourOnSettingsStep = UpgradeTourHostState(
+            steps = UpgradeTourCatalog.tourForVersion(42),
+            introducedVersionCode = UpgradeTourCatalog.tourIntroducedVersionFor(42),
+        )
+        assertTrue(tourOnSettingsStep.openManually(onCloseSettings = {}, onUnavailable = {}))
+        tourOnSettingsStep.handleStepChanged(4, rootState)
+        assertTrue(tourOnSettingsStep.isControllingSettings)
+        assertTrue(rootState.isSettingsOpen)
+
+        assertTrue(tourOnSettingsStep.dismissIfActive(shouldAutoShow = false) { markSeenCalls++ })
+        assertFalse(tourOnSettingsStep.isControllingSettings)
+        assertFalse(tourOnSettingsStep.isManualOpen)
+        assertTrue(tourOnSettingsStep.isDismissed)
+        assertTrue(rootState.isSettingsOpen)
+        assertEquals(2, markSeenCalls)
+    }
+
+    @Test
+    fun upgradeTourHostState_blockingOverlayPreventsActivationEvenWhenManuallyOpened() {
+        val tourState = UpgradeTourHostState(
+            steps = UpgradeTourCatalog.tourForVersion(42),
+            introducedVersionCode = UpgradeTourCatalog.tourIntroducedVersionFor(42),
+        )
+        assertTrue(tourState.openManually(onCloseSettings = {}, onUnavailable = {}))
+
+        assertFalse(
+            tourState.isActive(
+                showMainContent = true,
+                isPlaybackActive = false,
+                isSettingsOpen = false,
+                hasBlockingOverlay = true,
+                shouldAutoShow = true,
+            ),
+        )
+        assertTrue(
+            tourState.isActive(
+                showMainContent = true,
+                isPlaybackActive = false,
+                isSettingsOpen = false,
+                hasBlockingOverlay = false,
+                shouldAutoShow = false,
+            ),
+        )
+    }
+
+    @Test
+    fun upgradeTourHostState_handleStepActionOpensTargetSettingsAndMarksSeen() {
+        val steps = UpgradeTourCatalog.tourForVersion(42)
+        var markSeenCalls = 0
+
+        val commentState = MainRootState()
+        val commentTour = UpgradeTourHostState(steps, UpgradeTourCatalog.tourIntroducedVersionFor(42))
+        assertTrue(commentTour.openManually(onCloseSettings = {}, onUnavailable = {}))
+        commentTour.handleStepAction(UpgradeTourAction.OPEN_COMMENT_ENGINE_SETTINGS, commentState) { markSeenCalls++ }
+        assertFalse(commentTour.isControllingSettings)
+        assertFalse(commentTour.isManualOpen)
+        assertTrue(commentTour.isDismissed)
+        assertTrue(commentState.isSettingsOpen)
+        assertEquals(
+            SettingsDestination.Item(SettingsFocusTarget.COMMENT_ENGINE),
+            commentState.settingsDestination,
+        )
+
+        val deepTvState = MainRootState()
+        val deepTvTour = UpgradeTourHostState(steps, UpgradeTourCatalog.tourIntroducedVersionFor(42))
+        assertTrue(deepTvTour.openManually(onCloseSettings = {}, onUnavailable = {}))
+        deepTvTour.handleStepAction(UpgradeTourAction.OPEN_DEEP_TV_SETTINGS, deepTvState) { markSeenCalls++ }
+        assertFalse(deepTvTour.isControllingSettings)
+        assertFalse(deepTvTour.isManualOpen)
+        assertTrue(deepTvTour.isDismissed)
+        assertTrue(deepTvState.isSettingsOpen)
+        assertEquals(
+            SettingsDestination.Category(SettingsCategory.DEEP_TV),
+            deepTvState.settingsDestination,
+        )
+        assertEquals(2, markSeenCalls)
+    }
+
+    @Test
+    fun mainRootState_hasRootOverlayDestinationDetectsEveryModalAndSubScreenFlag() {
+        val state = MainRootState()
+        assertFalse(state.hasRootOverlayDestination())
+
+        val epg = epgProgram()
+        val reserve = reserveItem()
+        val condition = reservationCondition()
+        val recording = recording()
+
+        val toggles: List<Pair<(MainRootState) -> Unit, (MainRootState) -> Unit>> = listOf(
+            { s: MainRootState -> s.showConnectionErrorDialog = true } to { s: MainRootState -> s.showConnectionErrorDialog = false },
+            { s: MainRootState -> s.isRecordListOpen = true } to { s: MainRootState -> s.isRecordListOpen = false },
+            { s: MainRootState -> s.isSeriesListOpen = true } to { s: MainRootState -> s.isSeriesListOpen = false },
+            { s: MainRootState -> s.isSmbLibraryOpen = true } to { s: MainRootState -> s.isSmbLibraryOpen = false },
+            { s: MainRootState -> s.isOnAirOpen = true } to { s: MainRootState -> s.isOnAirOpen = false },
+            { s: MainRootState -> s.isEpgJumpMenuOpen = true } to { s: MainRootState -> s.isEpgJumpMenuOpen = false },
+            { s: MainRootState -> s.showDeleteConfirmDialog = true } to { s: MainRootState -> s.showDeleteConfirmDialog = false },
+            { s: MainRootState -> s.epgSelectedProgram = epg } to { s: MainRootState -> s.epgSelectedProgram = null },
+            { s: MainRootState -> s.selectedReserve = reserve } to { s: MainRootState -> s.selectedReserve = null },
+            { s: MainRootState -> s.editingReserveItem = reserve } to { s: MainRootState -> s.editingReserveItem = null },
+            { s: MainRootState -> s.editingNewProgram = epg } to { s: MainRootState -> s.editingNewProgram = null },
+            { s: MainRootState -> s.reserveToDelete = reserve } to { s: MainRootState -> s.reserveToDelete = null },
+            { s: MainRootState -> s.selectedProgramForAutoReserve = recording } to { s: MainRootState -> s.selectedProgramForAutoReserve = null },
+            { s: MainRootState -> s.editingCondition = condition } to { s: MainRootState -> s.editingCondition = null },
+            { s: MainRootState -> s.selectedConditionReserveItem = reserve } to { s: MainRootState -> s.selectedConditionReserveItem = null },
+        )
+
+        toggles.forEachIndexed { index, (enable, disable) ->
+            enable(state)
+            assertTrue("toggle $index should activate hasRootOverlayDestination", state.hasRootOverlayDestination())
+            disable(state)
+            assertFalse("toggle $index should clear hasRootOverlayDestination", state.hasRootOverlayDestination())
+        }
+    }
+
+    @Test
+    fun mainRootState_overlayPredicatesShareSingleSourceOfTruthAcrossLauncherTourAndRemoteKeys() {
+        val state = MainRootState()
+        val epg = epgProgram()
+        val reserve = reserveItem()
+        val condition = reservationCondition()
+        val recording = recording()
+
+        assertFalse(state.hasLauncherSubScreen())
+        assertFalse(state.hasReserveOverlay())
+        assertFalse(state.hasDetailOrReservationModal())
+        assertFalse(state.hasAiOverlay())
+        assertFalse(state.hasLauncherFullScreenOverlay())
+        assertFalse(state.hasRootOverlayDestination())
+        assertFalse(state.hasActiveModuleOrOverlay())
+        assertFalse(state.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true))
+        assertFalse(state.hasRemoteKeyBlockingOverlay(showMainContent = true))
+
+        // Sub-screens activate launcher full-screen, root overlay, active module, tour blocking, and remote-key blocking.
+        val subScreenToggles: List<Pair<String, (MainRootState) -> Unit>> = listOf(
+            "isRecordListOpen" to { it.isRecordListOpen = true },
+            "isSeriesListOpen" to { it.isSeriesListOpen = true },
+            "isSmbLibraryOpen" to { it.isSmbLibraryOpen = true },
+            "isOnAirOpen" to { it.isOnAirOpen = true },
+        )
+        subScreenToggles.forEach { (name, enable) ->
+            val s = MainRootState()
+            enable(s)
+            assertTrue("$name -> hasLauncherSubScreen", s.hasLauncherSubScreen())
+            assertTrue("$name -> hasLauncherFullScreenOverlay", s.hasLauncherFullScreenOverlay())
+            assertTrue("$name -> hasRootOverlayDestination", s.hasRootOverlayDestination())
+            assertTrue("$name -> hasActiveModuleOrOverlay", s.hasActiveModuleOrOverlay())
+            assertTrue("$name -> hasUpgradeTourBlockingOverlay", s.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true))
+            assertTrue("$name -> hasRemoteKeyBlockingOverlay", s.hasRemoteKeyBlockingOverlay(showMainContent = true))
+            s.clearRootOverlays()
+            assertFalse("$name cleared", s.hasRootOverlayDestination())
+        }
+
+        // Reservation & detail modals activate detail/reservation + launcher full-screen + all blocking predicates.
+        val modalToggles: List<Triple<String, Boolean, (MainRootState) -> Unit>> = listOf(
+            Triple("selectedReserve", true) { it.selectedReserve = reserve },
+            Triple("editingReserveItem", true) { it.editingReserveItem = reserve },
+            Triple("reserveToDelete", true) { it.reserveToDelete = reserve },
+            Triple("editingCondition", true) { it.editingCondition = condition },
+            Triple("selectedConditionReserveItem", true) { it.selectedConditionReserveItem = reserve },
+            Triple("epgSelectedProgram", false) { it.epgSelectedProgram = epg },
+            Triple("editingNewProgram", false) { it.editingNewProgram = epg },
+            Triple("selectedProgramForAutoReserve", false) { it.selectedProgramForAutoReserve = recording },
+            Triple("showDeleteConfirmDialog", false) { it.showDeleteConfirmDialog = true },
+        )
+        modalToggles.forEach { (name, isReserve, enable) ->
+            val s = MainRootState()
+            enable(s)
+            assertEquals("$name -> hasReserveOverlay", isReserve, s.hasReserveOverlay())
+            assertTrue("$name -> hasDetailOrReservationModal", s.hasDetailOrReservationModal())
+            assertTrue("$name -> hasLauncherFullScreenOverlay", s.hasLauncherFullScreenOverlay())
+            assertTrue("$name -> hasRootOverlayDestination", s.hasRootOverlayDestination())
+            assertTrue("$name -> hasActiveModuleOrOverlay", s.hasActiveModuleOrOverlay())
+            assertTrue("$name -> hasUpgradeTourBlockingOverlay", s.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true))
+            assertTrue("$name -> hasRemoteKeyBlockingOverlay", s.hasRemoteKeyBlockingOverlay(showMainContent = true))
+            s.clearRootOverlays()
+            assertFalse("$name cleared", s.hasDetailOrReservationModal())
+        }
+
+        // EPG jump menu must NOT trigger launcher full-screen (keeps nav rail mounted) but blocks root/tour/remote keys.
+        state.isEpgJumpMenuOpen = true
+        assertFalse(state.hasLauncherFullScreenOverlay())
+        assertTrue(state.hasRootOverlayDestination())
+        assertTrue(state.hasActiveModuleOrOverlay())
+        assertTrue(state.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true))
+        assertTrue(state.hasRemoteKeyBlockingOverlay(showMainContent = true))
+        state.clearRootOverlays()
+        assertFalse(state.isEpgJumpMenuOpen)
+
+        // AI overlays must NOT trigger launcher full-screen or root overlay destination, but activate AI/active/tour blocking.
+        listOf<(MainRootState) -> Unit>(
+            { it.isAiConciergeOpen = true },
+            { it.showAiKeyboardInput = true },
+        ).forEach { enable ->
+            val s = MainRootState()
+            enable(s)
+            assertTrue(s.hasAiOverlay())
+            assertFalse(s.hasLauncherFullScreenOverlay())
+            assertFalse(s.hasRootOverlayDestination())
+            assertTrue(s.hasActiveModuleOrOverlay())
+            assertTrue(s.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true))
+            assertFalse(s.hasRemoteKeyBlockingOverlay(showMainContent = true))
+            s.clearRootOverlays()
+            assertFalse(s.hasAiOverlay())
+        }
+
+        // Settings opens launcher full-screen & active module without blocking tour (tour can control settings).
+        state.openSettings()
+        assertTrue(state.hasLauncherFullScreenOverlay())
+        assertTrue(state.hasActiveModuleOrOverlay())
+        assertFalse(state.hasRootOverlayDestination())
+        assertFalse(state.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true))
+        state.closeSettings()
+
+        // Host modal flags block both upgrade tour and remote keys.
+        val hostModalCases = listOf(
+            RootHostModalState(hasSyncError = true),
+            RootHostModalState(isUpdateDialogVisible = true),
+            RootHostModalState(isScreensaverVisible = true),
+            RootHostModalState(isExitDialogVisible = true),
+        )
+        hostModalCases.forEach { modals ->
+            assertTrue(modals.hasAnyModal)
+            assertTrue(state.hasUpgradeTourBlockingOverlay(isSettingsInitialized = true, hostModals = modals))
+            assertTrue(state.hasRemoteKeyBlockingOverlay(showMainContent = true, hostModals = modals))
+        }
+        assertTrue(state.hasUpgradeTourBlockingOverlay(isSettingsInitialized = false))
+        assertTrue(state.hasRemoteKeyBlockingOverlay(showMainContent = false))
+        assertTrue(state.hasRemoteKeyBlockingOverlay(showMainContent = true, isUpgradeTourActive = true))
+
+        // clearRootOverlays clears every overlay field including openedSeriesTitle.
+        state.epgSelectedProgram = epg
+        state.selectedReserve = reserve
+        state.editingReserveItem = reserve
+        state.editingNewProgram = epg
+        state.reserveToDelete = reserve
+        state.selectedProgramForAutoReserve = recording
+        state.editingCondition = condition
+        state.selectedConditionReserveItem = reserve
+        state.openedSeriesTitle = "Series A"
+        state.isRecordListOpen = true
+        state.isSeriesListOpen = true
+        state.isSmbLibraryOpen = true
+        state.isOnAirOpen = true
+        state.isEpgJumpMenuOpen = true
+        state.showDeleteConfirmDialog = true
+        state.isAiConciergeOpen = true
+        state.showAiKeyboardInput = true
+
+        state.clearRootOverlays()
+
+        assertNull(state.openedSeriesTitle)
+        assertFalse(state.hasLauncherSubScreen())
+        assertFalse(state.hasDetailOrReservationModal())
+        assertFalse(state.hasAiOverlay())
+        assertFalse(state.hasRootOverlayDestination())
+        assertFalse(state.hasActiveModuleOrOverlay())
+    }
+
+    @Test
+    fun mainRootState_showToastIncrementsTickForRepeatedMessagesAndClearToastResets() {
+        val state = MainRootState()
+        assertNull(state.toastMessage)
+        assertEquals(0, state.toastTick)
+
+        state.showToast("same")
+        assertEquals("same", state.toastMessage)
+        assertEquals(1, state.toastTick)
+
+        state.showToast("same")
+        assertEquals("same", state.toastMessage)
+        assertEquals(2, state.toastTick)
+
+        state.clearToast()
+        assertNull(state.toastMessage)
+        assertEquals(2, state.toastTick)
+    }
+
+    private fun epgProgram() = EpgProgram(
+        id = "epg-1",
+        channel_id = "gr-test",
+        title = "Test EPG",
+        description = "",
+        detail = null,
+        start_time = "2026-08-09T00:00:00+09:00",
+        end_time = "2026-08-09T01:00:00+09:00",
+        duration = 3600,
+        is_free = true,
+        genres = null,
+        video_type = null,
+        audio_type = null,
+        audio_sampling_rate = null,
+    )
+
+    private fun reserveItem() = ReserveItem(
+        id = 1,
+        channel = ReserveChannel(id = "gr-test", name = "Test Channel"),
+        program = ReserveProgramDetail(id = "epg-1", title = "Test Reserve"),
+    )
+
+    private fun reservationCondition() = ReservationCondition(
+        id = 1,
+        reservationCount = 0,
+        programSearchCondition = ProgramSearchCondition(keyword = "test"),
+        recordSettings = RecordSettings(),
+    )
 
     private fun channel(id: String = "gr-test") = Channel(
         id = id,

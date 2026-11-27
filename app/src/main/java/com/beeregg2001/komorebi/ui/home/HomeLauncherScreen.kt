@@ -23,8 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.*
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.*
@@ -106,9 +104,8 @@ fun HomeLauncherScreen(
     isSettingsOpen: Boolean = false,
     onSettingsToggle: (Boolean) -> Unit = {},
     onOpenAppInfo: () -> Unit = { onSettingsToggle(true) },
-    isRecordListOpen: Boolean = false,
+    isFullScreenOverlayOpen: Boolean = isSettingsOpen || epgSelectedProgram != null || isReserveOverlayOpen,
     onShowAllRecordings: () -> Unit = {},
-    onCloseRecordList: () -> Unit = {},
     onShowSeriesList: () -> Unit = {},
     onShowSmbLibrary: () -> Unit = {},
     onShowOnAir: () -> Unit = {},
@@ -128,10 +125,9 @@ fun HomeLauncherScreen(
     onAiReturnConsumed: () -> Unit = {},
     overlayReturnFocusTick: Int = 0,
     onOverlayReturnConsumed: () -> Unit = {},
-    showUpgradeTour: Boolean = false,
-    spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
     notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
 ) {
+    val isUpgradeTourActive = LocalUpgradeTourActive.current
     val ui = rememberHomeLauncherState(
         initialTabIndex,
         channelViewModel,
@@ -202,10 +198,8 @@ fun HomeLauncherScreen(
         )
     }
 
-    val isOverlayOpen = epgSelectedProgram != null ||
-        isSettingsOpen || isRecordListOpen || isReserveOverlayOpen || ui.isSeriesListOpen
     val isFullScreenPlayer = (selectedChannel != null || selectedProgram != null) && !hasActivePlayer
-    val isFullScreenMode = isOverlayOpen || isFullScreenPlayer
+    val isFullScreenMode = isFullScreenOverlayOpen || isFullScreenPlayer
 
     LaunchedEffect(visibleTabs) {
         val fallback = tabController.syncVisibleTabs(visibleTabs)
@@ -322,7 +316,7 @@ fun HomeLauncherScreen(
     }
 
     HomeResumeFocusEffect {
-        if (!isFullScreenMode && !isReturningFromPlayer && !hasPendingHomeIntent() && !isLauncherHomeFocusPending) {
+        if (!isFullScreenMode && !isReturningFromPlayer && !hasPendingHomeIntent() && !isLauncherHomeFocusPending && !isUpgradeTourActive) {
             applyReturnFocus(FocusReturnTrigger.ACTIVITY_RESUME)
         }
     }
@@ -428,9 +422,11 @@ fun HomeLauncherScreen(
         onOverlayReturnConsumed()
     }
 
+    var wasShowingUpgradeTour by remember { mutableStateOf(isUpgradeTourActive) }
+
     HomeOverlayReturnFocusEffect(
         isFullScreen = isFullScreenMode,
-        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0 || isLauncherHomeFocusPending,
+        returnInProgress = isReturningFromPlayer || aiFocusReturnTick > 0 || overlayReturnFocusTick > 0 || isLauncherHomeFocusPending || isUpgradeTourActive || wasShowingUpgradeTour,
         onInitialEntry = {
             if (startupFocusTarget == StartupFocusTarget.CONTENT) {
                 focusMemory.requestContent(tabController.selectedIndex)
@@ -451,7 +447,7 @@ fun HomeLauncherScreen(
         }
     }
 
-    if (!showUpgradeTour) {
+    if (!isUpgradeTourActive) {
         HomeEntryFocusEffect(
             memory = focusMemory,
             tabRequester = { tabController.tabRequesterAt(it) },
@@ -461,17 +457,15 @@ fun HomeLauncherScreen(
         )
     }
 
-    var wasShowingUpgradeTour by remember { mutableStateOf(showUpgradeTour) }
-    LaunchedEffect(showUpgradeTour, isSettingsOpen) {
-        if (wasShowingUpgradeTour && !showUpgradeTour && !isSettingsOpen) {
-            withFrameNanos { }
+    LaunchedEffect(isUpgradeTourActive, isSettingsOpen) {
+        if (wasShowingUpgradeTour && !isUpgradeTourActive && !isSettingsOpen) {
             if (currentStartupFocusTarget == StartupFocusTarget.SIDEBAR) {
-                tabController.tabRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourDismiss_Rail")
+                focusMemory.remember(tabController.selectedIndex)
             } else {
-                tabController.contentRequester(tabController.selectedTab).safeRequestFocus("UpgradeTourDismiss_Content")
+                focusMemory.requestContent(tabController.selectedIndex)
             }
         }
-        wasShowingUpgradeTour = showUpgradeTour
+        wasShowingUpgradeTour = isUpgradeTourActive
     }
 
     LaunchedEffect(pendingEnterContentTab, tabController.activeTab, tabController.readyGeneration, isFullScreenMode, railHasFocus) {
@@ -524,7 +518,7 @@ fun HomeLauncherScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = if (!isFullScreenMode) TvRailCollapsedWidth else 0.dp)
-                .onGloballyPositioned { spotlightTargets.contentStageBounds = it.boundsInRoot() }
+                .upgradeSpotlightTarget(UpgradeTourTargetId.CONTENT_STAGE)
         ) {
             AnimatedContent(
                 targetState = tabController.activeSnapshot,
@@ -559,7 +553,7 @@ fun HomeLauncherScreen(
                                     !isFullScreenMode &&
                                     !showTvInputs &&
                                     !showNotificationCenter &&
-                                    !showUpgradeTour &&
+                                    !isUpgradeTourActive &&
                                     (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null || focusMemory.request?.contentTop == true)
                             },
                     ) {
@@ -795,7 +789,7 @@ fun HomeLauncherScreen(
                     showInputSource = showInputSource,
                     networkConnectionStatus = networkConnectionStatus,
                     connectionFeedbackKind = connectionFeedbackState.kind,
-                    canTakeFocus = !isEpgJumpingActive && !showUpgradeTour && !showNotificationCenter,
+                    canTakeFocus = !isEpgJumpingActive && !isUpgradeTourActive && !showNotificationCenter,
                     returnPlayerFocusRequester = returnPlayerFocusRequester,
                     inputSourceFocusRequester = inputSourceFocusRequester,
                     wifiSettingsFocusRequester = wifiSettingsFocusRequester,
@@ -851,7 +845,7 @@ fun HomeLauncherScreen(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 24.dp)
-                        .onGloballyPositioned { spotlightTargets.systemStripBounds = it.boundsInRoot() }
+                        .upgradeSpotlightTarget(UpgradeTourTargetId.SYSTEM_STRIP)
                         .zIndex(25f),
                 )
             }
@@ -863,7 +857,6 @@ fun HomeLauncherScreen(
                 isEpgJumping = isEpgJumpingActive,
                 upEdgeFocusRequester = topBarEntryRequester,
                 settingsItemFocusRequester = railSettingsFocusRequester,
-                settingsCanFocus = !isEpgJumpingActive && !showUpgradeTour,
                 onTabFocused = { tab ->
                     focusMemory.clear()
                     isEnteringContentFromRail = false
@@ -913,7 +906,6 @@ fun HomeLauncherScreen(
                 onBack = { scope.launch { handleLauncherBack() } },
                 startCollapsed = suppressInitialRailExpand,
                 onStartCollapsedConsumed = { suppressInitialRailExpand = false },
-                onSelectedTabBoundsChanged = { spotlightTargets.navRailBounds = it },
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .fillMaxHeight()

@@ -25,10 +25,11 @@ import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.notification.InternalNowPlayingState
 import com.beeregg2001.komorebi.notification.NotificationCenterViewModel
 import com.beeregg2001.komorebi.ui.home.HomeLauncherScreen
-import com.beeregg2001.komorebi.ui.home.UpgradeSpotlightTargets
-import com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets
 import com.beeregg2001.komorebi.ui.player.PlaybackTarget
 import com.beeregg2001.komorebi.ui.reserve.ConditionEditDialog
+import com.beeregg2001.komorebi.ui.setting.SettingsCategory
+import com.beeregg2001.komorebi.ui.setting.SettingsDestination
+import com.beeregg2001.komorebi.ui.setting.SettingsFocusTarget
 import com.beeregg2001.komorebi.ui.video.RecordListScreen
 import com.beeregg2001.komorebi.viewmodel.*
 import kotlinx.coroutines.delay
@@ -65,8 +66,6 @@ fun MainRootBackground(
     onTriggerScreensaver: () -> Unit = {},
     onInternalActivityLaunch: () -> Unit = {},
     notificationCenterViewModel: NotificationCenterViewModel = hiltViewModel(),
-    showUpgradeTour: Boolean = false,
-    spotlightTargets: UpgradeSpotlightTargets = rememberUpgradeSpotlightTargets(),
     hasPendingHomeIntent: () -> Boolean = { false },
 ) {
     val scope = rememberCoroutineScope()
@@ -149,10 +148,7 @@ fun MainRootBackground(
                         },
                         onBack = { state.closeOnAir() },
                         onSettings = {
-                            state.settingsInitialCategoryIndex = 1
-                            state.settingsInitialFocusItemIndex = null
-                            state.settingsOpenDeviceCapabilities = false
-                            state.isSettingsOpen = true
+                            state.openSettings(SettingsDestination.Category(SettingsCategory.CONNECTION))
                         },
                         initialFocusRequester = onAirInitialFocusRequester,
                         isReturningFromPlayer = state.playbackState.isReturningFromPlayer,
@@ -192,7 +188,7 @@ fun MainRootBackground(
                                     scope.launch {
                                         state.editingCondition = null
                                         delay(300)
-                                        state.toastMessage = "予約条件を更新しました"
+                                        state.showToast("予約条件を更新しました")
                                     }
                                 }
                             )
@@ -204,8 +200,9 @@ fun MainRootBackground(
                                     scope.launch {
                                         state.editingCondition = null
                                         delay(300)
-                                        state.toastMessage =
+                                        state.showToast(
                                             if (deleteRelated) "条件と関連する予約をすべて削除しました" else "予約条件を削除しました"
+                                        )
                                     }
                                 }
                             )
@@ -287,7 +284,7 @@ fun MainRootBackground(
                         },
                         onReserveSelected = { reserveItem -> state.selectedReserve = reserveItem },
                         onConditionClick = { condition -> state.editingCondition = condition },
-                        isReserveOverlayOpen = state.selectedReserve != null || state.editingCondition != null,
+                        isReserveOverlayOpen = state.hasReserveOverlay(),
                         epgSelectedProgram = state.epgSelectedProgram,
                         onEpgProgramSelected = { state.epgSelectedProgram = it },
                         isEpgJumpMenuOpen = state.isEpgJumpMenuOpen,
@@ -308,20 +305,13 @@ fun MainRootBackground(
                         lastPlayerProgramId = state.playbackState.lastSelectedProgramId,
                         isSettingsOpen = state.isSettingsOpen,
                         onSettingsToggle = { open ->
-                            if (open) {
-                                state.settingsInitialCategoryIndex = 0
-                                state.settingsInitialFocusItemIndex = null
-                            }
-                            state.isSettingsOpen = open
+                            if (open) state.openSettings() else state.closeSettings()
                         },
                         onOpenAppInfo = {
-                            state.settingsInitialCategoryIndex = 11
-                            state.settingsInitialFocusItemIndex = 0
-                            state.isSettingsOpen = true
+                            state.openSettings(SettingsDestination.Item(SettingsFocusTarget.APP_INFO_VERSION))
                         },
-                        isRecordListOpen = state.isRecordListOpen,
+                        isFullScreenOverlayOpen = state.hasLauncherFullScreenOverlay(),
                         onShowAllRecordings = { state.isRecordListOpen = true },
-                        onCloseRecordList = { state.isRecordListOpen = false },
                         onShowSeriesList = { state.isSeriesListOpen = true },
                         onShowSmbLibrary = { state.isSmbLibraryOpen = true },
                         onShowOnAir = { state.isOnAirOpen = true },
@@ -343,8 +333,6 @@ fun MainRootBackground(
                         onAiReturnConsumed = { state.aiFocusReturnTick = 0 },
                         overlayReturnFocusTick = state.overlayReturnFocusTick,
                         onOverlayReturnConsumed = { state.overlayReturnFocusTick = 0 },
-                        showUpgradeTour = showUpgradeTour,
-                        spotlightTargets = spotlightTargets,
                         notificationCenterViewModel = notificationCenterViewModel,
                     )
                 }

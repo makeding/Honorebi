@@ -29,6 +29,7 @@ import com.beeregg2001.komorebi.media.CastRouteDiscovery
 import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.ui.live.LivePlayerScreen
 import com.beeregg2001.komorebi.ui.live.TifLivePlayerScreen
+import com.beeregg2001.komorebi.ui.setting.SettingsDestination
 import com.beeregg2001.komorebi.ui.video.player.RecordedProgramSelectionReason
 import com.beeregg2001.komorebi.ui.video.player.VideoPlayerScreen
 
@@ -188,12 +189,9 @@ fun MainRootPlaybackHost(
                 onBackPressed = { state.playbackState.leavePlayback() },
                 onCheckDeviceCapabilities = {
                     state.playbackState.leavePlayback()
-                    state.settingsInitialCategoryIndex = 0
-                    state.settingsInitialFocusItemIndex = 3
-                    state.settingsOpenDeviceCapabilities = true
-                    state.isSettingsOpen = true
+                    state.openSettings(SettingsDestination.DeviceCapabilities)
                 },
-                onShowToast = { state.toastMessage = it },
+                onShowToast = state::showToast,
                 isPiPMode = state.playbackState.isMiniPlayerMode,
                 onPiPRequested = {
                     state.playbackState.enterMiniPlayer()
@@ -245,14 +243,16 @@ fun MainRootPlaybackHost(
                         },
                         onRecordedSwitchTerminalFailure = { token, failure ->
                             if (state.playbackState.isCurrentRecordedPlayback(token) && state.playbackState.failRecordedSwitch(token)) {
-                                state.toastMessage = when (failure) {
-                                    com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.InitialUrlUnavailable ->
-                                        "次の番組のストリームURLを取得できませんでした"
-                                    com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.SessionRenewalFailed ->
-                                        "次の番組の再生セッションを更新できませんでした"
-                                    com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.PlaybackError ->
-                                        "次の番組の再生に失敗しました"
-                                }
+                                state.showToast(
+                                    when (failure) {
+                                        com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.InitialUrlUnavailable ->
+                                            "次の番組のストリームURLを取得できませんでした"
+                                        com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.SessionRenewalFailed ->
+                                            "次の番組の再生セッションを更新できませんでした"
+                                        com.beeregg2001.komorebi.ui.video.player.policy.RecordedSwitchTerminalFailure.PlaybackError ->
+                                            "次の番組の再生に失敗しました"
+                                    }
+                                )
                             }
                         },
                         shouldPersistWatchHistory = { shouldPersistSelectedProgram },
@@ -266,7 +266,7 @@ fun MainRootPlaybackHost(
                         },
                         onPlaybackEnded = onPlaybackEnded,
                         onBackPressed = { state.playbackState.leavePlayback() },
-                        onShowToast = { state.toastMessage = it },
+                        onShowToast = state::showToast,
                         isPiPMode = state.playbackState.isMiniPlayerMode,
                         onPiPRequested = {
                             state.playbackState.enterMiniPlayer()
@@ -292,7 +292,7 @@ fun MainRootPlaybackHost(
                         isSceneSearchOpen = state.playbackState.isPlayerSceneSearchOpen && !suppressChrome,
                         onSceneSearchToggle = { state.playbackState.isPlayerSceneSearchOpen = it },
                         onBackPressed = { state.playbackState.leavePlayback() },
-                        onShowToast = { state.toastMessage = it },
+                        onShowToast = state::showToast,
                         isPiPMode = state.playbackState.isMiniPlayerMode,
                         onPiPRequested = {
                             state.playbackState.enterMiniPlayer()

@@ -32,8 +32,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -51,7 +49,10 @@ import com.beeregg2001.komorebi.common.safeRequestFocusWithRetry
 import com.beeregg2001.komorebi.common.AppStrings
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.model.StreamQuality
-import com.beeregg2001.komorebi.ui.components.GlobalToast
+import com.beeregg2001.komorebi.ui.components.LocalShowToast
+import com.beeregg2001.komorebi.ui.home.LocalUpgradeTourActive
+import com.beeregg2001.komorebi.ui.home.UpgradeTourTargetId
+import com.beeregg2001.komorebi.ui.home.upgradeSpotlightTarget
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 import com.beeregg2001.komorebi.viewmodel.SettingsViewModel
 import com.beeregg2001.komorebi.viewmodel.ChannelViewModel
@@ -76,10 +77,9 @@ internal val TIME_FORMAT_OPTIONS = listOf(
 internal const val SETTING_CATEGORY_COALESCE_MS = 200L
 
 private data class SettingSidebarRow(
-    val contentIndex: Int,
+    val category: SettingsCategory,
     val title: String,
     val icon: ImageVector,
-    val isChild: Boolean = false,
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -92,6 +92,20 @@ private object AppInfoBringIntoViewSpec : BringIntoViewSpec {
         }
 }
 
+@Composable
+internal fun SettingsInitialFocusEffect(
+    onRequestInitialFocus: suspend () -> Unit,
+) {
+    val isUpgradeTourActive = LocalUpgradeTourActive.current
+    val currentOnRequestInitialFocus by rememberUpdatedState(onRequestInitialFocus)
+    var hasAppliedInitialFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(isUpgradeTourActive) {
+        if (isUpgradeTourActive || hasAppliedInitialFocus) return@LaunchedEffect
+        hasAppliedInitialFocus = true
+        currentOnRequestInitialFocus()
+    }
+}
+
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -99,13 +113,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onClearLastChannel: () -> Unit = {},
     onClearWatchHistory: () -> Unit = {},
-    initialCategoryIndex: Int = 0,
-    initialFocusItemIndex: Int? = null,
-    initialOpenDeviceCapabilities: Boolean = false,
+    destination: SettingsDestination = SettingsDestination.Default,
     onOpenWhatsNew: () -> Unit = {},
-    isUpgradeTourOverlayActive: Boolean = false,
-    onDeepTvBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
-    onCommentEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     channelViewModel: ChannelViewModel = hiltViewModel()
 ) {
@@ -113,13 +122,8 @@ fun SettingsScreen(
         onBack = onBack,
         onClearLastChannel = onClearLastChannel,
         onClearWatchHistory = onClearWatchHistory,
-        initialCategoryIndex = initialCategoryIndex,
-        initialFocusItemIndex = initialFocusItemIndex,
-        initialOpenDeviceCapabilities = initialOpenDeviceCapabilities,
+        destination = destination,
         onOpenWhatsNew = onOpenWhatsNew,
-        isUpgradeTourOverlayActive = isUpgradeTourOverlayActive,
-        onDeepTvBoundsChanged = onDeepTvBoundsChanged,
-        onCommentEngineBoundsChanged = onCommentEngineBoundsChanged,
         viewModel = viewModel,
         channelViewModel = channelViewModel,
     )
@@ -132,13 +136,8 @@ private fun SettingsMenuScreen(
     onBack: () -> Unit,
     onClearLastChannel: () -> Unit = {},
     onClearWatchHistory: () -> Unit = {},
-    initialCategoryIndex: Int = 0,
-    initialFocusItemIndex: Int? = null,
-    initialOpenDeviceCapabilities: Boolean = false,
+    destination: SettingsDestination = SettingsDestination.Default,
     onOpenWhatsNew: () -> Unit = {},
-    isUpgradeTourOverlayActive: Boolean = false,
-    onDeepTvBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
-    onCommentEngineBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     viewModel: SettingsViewModel,
     channelViewModel: ChannelViewModel,
 ) {
@@ -148,6 +147,8 @@ private fun SettingsMenuScreen(
     val homeEnvironment = remember(context) { LauncherEnvironmentDetector.detect(context) }
     var isDefaultHome by remember { mutableStateOf(false) }
     val colors = KomorebiTheme.colors
+    val isUpgradeTourActive = LocalUpgradeTourActive.current
+    val showToast = LocalShowToast.current
 
     val prefs = rememberSettingPreferences(repository)
     val themeSeason = when (prefs.currentThemeName) {
@@ -155,7 +156,7 @@ private fun SettingsMenuScreen(
                             }
     val isLightTheme = prefs.currentThemeName.contains("LIGHT") || prefs.currentThemeName == "HIGHTONE"
 
-    val uiState = rememberSettingUiState(initialCategoryIndex)
+    val uiState = rememberSettingUiState(destination.category)
 
     val receiveBetaUpdates by viewModel.receiveBetaUpdates.collectAsState()
     val playerUiMode by viewModel.playerUiMode.collectAsState()
@@ -186,46 +187,32 @@ private fun SettingsMenuScreen(
     val groupedChannels by channelViewModel.groupedChannels.collectAsState()
     val flatChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
 
-    var toastMessage by remember { mutableStateOf<String?>(null) }
     var honomiLoginError by remember { mutableStateOf<String?>(null) }
     var honomiPairing by remember { mutableStateOf<DeviceAuthRequest?>(null) }
-    LaunchedEffect(toastMessage) {
-        if (toastMessage != null) {
-            delay(3500)
-            toastMessage = null
+
+    // サイドバーの表示順。SettingsCategory.SIDEBAR_ORDER に従い、
+    // isUiGroupChild の項目は直前にグループ見出しを挟んで UI 設定の子として表示する。
+    val sidebarRows = remember {
+        SettingsCategory.SIDEBAR_ORDER.map { category ->
+            when (category) {
+                SettingsCategory.GENERAL -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications)
+                SettingsCategory.CONNECTION -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link)
+                SettingsCategory.DEEP_TV -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DEEP_TV, Icons.Default.SettingsInputHdmi)
+                SettingsCategory.PLAYBACK -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle)
+                SettingsCategory.COMMENT -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment)
+                SettingsCategory.DISPLAY -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard)
+                SettingsCategory.HOME -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home)
+                SettingsCategory.LAUNCHER -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps)
+                SettingsCategory.RECORDING -> SettingSidebarRow(category, "録画設定", Icons.Default.VideoSettings)
+                SettingsCategory.EPG -> SettingSidebarRow(category, "番組表設定", Icons.Default.GridOn)
+                SettingsCategory.CACHE -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.DeleteSweep)
+                SettingsCategory.APP_INFO -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info)
+            }
         }
     }
-
-
-
-    // サイドバーの表示順。contentIndex は下の when 分岐（既存の内容インデックス）に対応させ、
-    // 内容ロジックとディープリンクを一切変えずに並び順だけ組み替えられるようにする。
-    // isChild の項目は、直前にグループ見出しを挟んで UI 設定の子として表示する。
-    val sidebarRows = remember {
-        listOf(
-            SettingSidebarRow(0, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications),
-            SettingSidebarRow(1, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link),
-            SettingSidebarRow(9, AppStrings.SETTINGS_CATEGORY_DEEP_TV, Icons.Default.SettingsInputHdmi),
-            SettingSidebarRow(2, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle),
-            SettingSidebarRow(5, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment),
-            SettingSidebarRow(8, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard, isChild = true),
-            SettingSidebarRow(6, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home, isChild = true),
-            SettingSidebarRow(7, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps, isChild = true),
-            SettingSidebarRow(3, "録画設定", Icons.Default.VideoSettings, isChild = true),
-            SettingSidebarRow(4, "番組表設定", Icons.Default.GridOn, isChild = true),
-            SettingSidebarRow(10, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.DeleteSweep),
-            SettingSidebarRow(11, AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info),
-        )
-    }
     val sidebarRowRequesters = remember { List(sidebarRows.size) { FocusRequester() } }
-    // 内容インデックス → その内容に対応するサイドバー行の FocusRequester。
-    // 既存コードの categoryFocusRequesters[x] / getOrNull(...) / lastOrNull() を
-    // そのまま使えるよう、内容インデックスで引ける List として用意する。
-    val categoryFocusRequesters = remember(sidebarRows) {
-        val byContent = sidebarRows
-            .mapIndexed { i, row -> row.contentIndex to sidebarRowRequesters[i] }
-            .toMap()
-        List(12) { byContent[it] ?: FocusRequester.Default }
+    val categoryFocusRequesters: Map<SettingsCategory, FocusRequester> = remember(sidebarRows) {
+        sidebarRows.mapIndexed { i, row -> row.category to sidebarRowRequesters[i] }.toMap()
     }
     val playerClockModeRequester = remember { FocusRequester() }
     val tifSupported by produceState(false, context) {
@@ -243,66 +230,65 @@ private fun SettingsMenuScreen(
         remember(prefs.smbServerList) { List(prefs.smbServerList.size) { FocusRequester() } }
 
     // カテゴリごとの項目フォーカスリクエスタ
-    // [0] 基本設定: startupTab, startupFocusTarget, startupChannel, NHK exclusion, omake(4)
-    // [1] 接続設定
-    // [2] 再生設定
-    // [3] 録画設定: recordView, addBatch
-    // [4] 番組表設定: column, hour, font
-    // [5] コメント設定
-    // [6] ホーム設定: genre, time, excludePaid
-    // [7] ランチャー設定
-    // [8] 表示設定: themeMode, themeColor, timeFormat, hideSubChannels
-    // [9] TV統合: Watch Next (0..1), プレビューチャンネル (2..3), リモコン (4..5), OS PiP (6), TIF (7..9)
-    // [10] データ管理: cache(all/logo/thumb/epg/recording) + history(channel/watch)
-    // [11] アプリ情報
-    val itemFocusRequesters = remember {
-        listOf(
-            List(8) { FocusRequester() },
-            List(8) { FocusRequester() },
-            List(12) { FocusRequester() },
-            List(2) { FocusRequester() },
-            List(4) { FocusRequester() },
-            List(8) { FocusRequester() },
-            List(3) { FocusRequester() },
-            List(4) { FocusRequester() },
-            List(13) { FocusRequester() },
-            List(DeepTvItemIndex.COUNT) { FocusRequester() },
-            List(7) { FocusRequester() },
-            List(7) { FocusRequester() }
+    val itemFocusRequesters: Map<SettingsCategory, List<FocusRequester>> = remember {
+        mapOf(
+            SettingsCategory.GENERAL to List(8) { FocusRequester() },
+            SettingsCategory.CONNECTION to List(ConnectionItemIndex.COUNT) { FocusRequester() },
+            SettingsCategory.PLAYBACK to List(12) { FocusRequester() },
+            SettingsCategory.RECORDING to List(2) { FocusRequester() },
+            SettingsCategory.EPG to List(4) { FocusRequester() },
+            SettingsCategory.COMMENT to List(CommentItemIndex.COUNT) { FocusRequester() },
+            SettingsCategory.HOME to List(3) { FocusRequester() },
+            SettingsCategory.LAUNCHER to List(4) { FocusRequester() },
+            SettingsCategory.DISPLAY to List(13) { FocusRequester() },
+            SettingsCategory.DEEP_TV to List(DeepTvItemIndex.COUNT) { FocusRequester() },
+            SettingsCategory.CACHE to List(7) { FocusRequester() },
+            SettingsCategory.APP_INFO to List(AppInfoItemIndex.COUNT) { FocusRequester() },
         )
+    }
+
+    fun focusTargetRequester(target: SettingsFocusTarget): FocusRequester = when (target) {
+        SettingsFocusTarget.CONNECTION_SETUP ->
+            itemFocusRequesters.getValue(SettingsCategory.CONNECTION)[ConnectionItemIndex.WEB_SETUP]
+        SettingsFocusTarget.COMMENT_ENGINE ->
+            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.COMMENT_ENGINE]
+        SettingsFocusTarget.APP_INFO_VERSION ->
+            itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.VERSION]
+        SettingsFocusTarget.APP_INFO_DEVICE_CAPABILITIES ->
+            itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.DEVICE_CAPABILITIES]
     }
 
     val mainScrollState = rememberScrollState()
     val sidebarScrollState = rememberScrollState()
-    var activeCategoryIndex by remember(initialCategoryIndex) { mutableIntStateOf(initialCategoryIndex) }
-    var pendingContentFocusCategory by remember { mutableStateOf<Int?>(null) }
+    var activeCategory by remember(destination.category) { mutableStateOf(destination.category) }
+    var pendingContentFocusCategory by remember { mutableStateOf<SettingsCategory?>(null) }
 
     // Coalesce rapid D-pad scrubs on the settings sidebar before swapping the right-hand content tree.
-    LaunchedEffect(uiState.selectedCategoryIndex, isUpgradeTourOverlayActive) {
-        if (activeCategoryIndex != uiState.selectedCategoryIndex) {
-            if (!isUpgradeTourOverlayActive) {
+    LaunchedEffect(uiState.selectedCategory, isUpgradeTourActive) {
+        if (activeCategory != uiState.selectedCategory) {
+            if (!isUpgradeTourActive) {
                 delay(SETTING_CATEGORY_COALESCE_MS)
             }
-            activeCategoryIndex = uiState.selectedCategoryIndex
+            activeCategory = uiState.selectedCategory
         }
     }
 
-    val commitAndFocusCategory: (Int) -> Unit = { categoryIndex ->
-        uiState.selectedCategoryIndex = categoryIndex
-        if (activeCategoryIndex == categoryIndex) {
+    val commitAndFocusCategory: (SettingsCategory) -> Unit = { category ->
+        uiState.selectedCategory = category
+        if (activeCategory == category) {
             pendingContentFocusCategory = null
-            itemFocusRequesters.getOrNull(categoryIndex)?.firstOrNull()
+            itemFocusRequesters[category]?.firstOrNull()
                 ?.safeRequestFocus("CategoryItem_Click")
         } else {
-            activeCategoryIndex = categoryIndex
-            pendingContentFocusCategory = categoryIndex
+            activeCategory = category
+            pendingContentFocusCategory = category
         }
     }
 
-    LaunchedEffect(activeCategoryIndex, pendingContentFocusCategory) {
-        if (pendingContentFocusCategory == activeCategoryIndex) {
+    LaunchedEffect(activeCategory, pendingContentFocusCategory) {
+        if (pendingContentFocusCategory == activeCategory) {
             androidx.compose.runtime.withFrameNanos { }
-            itemFocusRequesters.getOrNull(activeCategoryIndex)?.firstOrNull()
+            itemFocusRequesters[activeCategory]?.firstOrNull()
                 ?.safeRequestFocusWithRetry(
                     tag = "SettingScreen_CommitCategory",
                     maxRetries = 4,
@@ -312,32 +298,31 @@ private fun SettingsMenuScreen(
         }
     }
 
-    LaunchedEffect(activeCategoryIndex, isUpgradeTourOverlayActive) {
-        if (isUpgradeTourOverlayActive) {
-            if (activeCategoryIndex == 5) {
+    LaunchedEffect(activeCategory, isUpgradeTourActive) {
+        if (isUpgradeTourActive) {
+            if (activeCategory == SettingsCategory.COMMENT) {
                 androidx.compose.runtime.withFrameNanos { }
                 mainScrollState.scrollTo(mainScrollState.maxValue)
             } else {
                 mainScrollState.scrollTo(0)
             }
-        } else if (initialFocusItemIndex == null || activeCategoryIndex != initialCategoryIndex) {
+        } else if (destination !is SettingsDestination.Item || activeCategory != destination.category) {
             mainScrollState.scrollTo(0)
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (isUpgradeTourOverlayActive) return@LaunchedEffect
+    SettingsInitialFocusEffect {
+        if (destination is SettingsDestination.DeviceCapabilities) return@SettingsInitialFocusEffect
         delay(400)
 
-        if (initialFocusItemIndex != null) {
+        if (destination is SettingsDestination.Item) {
             uiState.isSidebarFocused = false
-            val targetRequester = itemFocusRequesters.getOrNull(initialCategoryIndex)
-                ?.getOrNull(initialFocusItemIndex)
+            val targetRequester = focusTargetRequester(destination.target)
 
             var success = false
             for (i in 0..5) {
                 try {
-                    targetRequester?.requestFocus()
+                    targetRequester.requestFocus()
                     success = true
                     break
                 } catch (e: Exception) {
@@ -346,11 +331,11 @@ private fun SettingsMenuScreen(
             }
 
             if (!success) {
-                categoryFocusRequesters.getOrNull(initialCategoryIndex)
+                categoryFocusRequesters[destination.category]
                     ?.safeRequestFocus("Settings_Fallback")
             }
         } else {
-            categoryFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
+            categoryFocusRequesters[uiState.selectedCategory]
                 ?.safeRequestFocus("Settings_Initial")
         }
     }
@@ -367,18 +352,18 @@ private fun SettingsMenuScreen(
             uiState.isRestoringFocus = false
             if (!restored) {
                 delay(50)
-                categoryFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
+                categoryFocusRequesters[uiState.selectedCategory]
                     ?.safeRequestFocusWithRetry("SettingScreen_Restore_Fallback")
             }
         }
     }
 
-    LaunchedEffect(initialOpenDeviceCapabilities) {
-        if (initialOpenDeviceCapabilities) {
-            uiState.selectedCategoryIndex = 11
-            activeCategoryIndex = 11
-            uiState.restoreFocusRequester = itemFocusRequesters[11][5]
-            uiState.restoreCategoryIndex = 11
+    LaunchedEffect(destination) {
+        if (destination is SettingsDestination.DeviceCapabilities) {
+            uiState.selectedCategory = SettingsCategory.APP_INFO
+            activeCategory = SettingsCategory.APP_INFO
+            uiState.restoreFocusRequester = focusTargetRequester(SettingsFocusTarget.APP_INFO_DEVICE_CAPABILITIES)
+            uiState.restoreCategory = SettingsCategory.APP_INFO
             uiState.activeDialog = SettingDialogState.DeviceCapabilities
         }
     }
@@ -438,7 +423,7 @@ private fun SettingsMenuScreen(
                 .onKeyEvent {
                     if (it.type == KeyEventType.KeyDown && (it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_BACK || it.nativeKeyEvent.keyCode == NativeKeyEvent.KEYCODE_ESCAPE)) {
                         if (!uiState.isSidebarFocused) {
-                            categoryFocusRequesters.getOrNull(uiState.selectedCategoryIndex)
+                            categoryFocusRequesters[uiState.selectedCategory]
                                 ?.safeRequestFocus("Back_To_Sidebar")
                         } else {
                             onBack()
@@ -454,7 +439,7 @@ private fun SettingsMenuScreen(
                     .background(colors.surface1)
                     .padding(top = 32.dp, bottom = 32.dp, start = 16.dp, end = 16.dp)
                     .onFocusChanged { uiState.isSidebarFocused = it.hasFocus }
-                    .focusProperties { canFocus = !uiState.isRestoringFocus && !isUpgradeTourOverlayActive }
+                    .focusProperties { canFocus = !uiState.isRestoringFocus && !isUpgradeTourActive }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -485,8 +470,8 @@ private fun SettingsMenuScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     sidebarRows.forEachIndexed { index, row ->
-                        key(row.contentIndex) {
-                            if (row.isChild && (index == 0 || !sidebarRows[index - 1].isChild)) {
+                        key(row.category) {
+                            if (row.category.isUiGroupChild && (index == 0 || !sidebarRows[index - 1].category.isUiGroupChild)) {
                                 Text(
                                     text = AppStrings.SETTINGS_CATEGORY_UI,
                                     style = MaterialTheme.typography.labelLarge,
@@ -494,26 +479,26 @@ private fun SettingsMenuScreen(
                                     modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)
                                 )
                             }
-                            val targetR = itemFocusRequesters.getOrNull(row.contentIndex)?.firstOrNull()
+                            val targetR = itemFocusRequesters[row.category]?.firstOrNull()
                                 ?: FocusRequester.Default
                             CategoryItem(
                                 title = row.title,
                                 icon = row.icon,
-                                isSelected = uiState.selectedCategoryIndex == row.contentIndex,
+                                isSelected = uiState.selectedCategory == row.category,
                                 onFocused = {
-                                    uiState.selectedCategoryIndex = row.contentIndex
+                                    uiState.selectedCategory = row.category
                                 },
-                                onClick = { commitAndFocusCategory(row.contentIndex) },
+                                onClick = { commitAndFocusCategory(row.category) },
                                 enabled = !uiState.isRestoringFocus,
                                 modifier = Modifier
-                                    .padding(start = if (row.isChild) 16.dp else 0.dp)
+                                    .padding(start = if (row.category.isUiGroupChild) 16.dp else 0.dp)
                                     .focusRequester(sidebarRowRequesters[index])
                                     .onPreviewKeyEvent { keyEvent ->
                                         if (keyEvent.type == KeyEventType.KeyDown &&
                                             keyEvent.key == Key.DirectionRight &&
-                                            activeCategoryIndex != row.contentIndex
+                                            activeCategory != row.category
                                         ) {
-                                            commitAndFocusCategory(row.contentIndex)
+                                            commitAndFocusCategory(row.category)
                                             true
                                         } else {
                                             false
@@ -521,7 +506,7 @@ private fun SettingsMenuScreen(
                                     }
                                     .focusProperties {
                                         left = FocusRequester.Cancel // ★ 修正: 左キーでフォーカスが迷子になるのを防ぐ
-                                        right = if (activeCategoryIndex == row.contentIndex) targetR else FocusRequester.Cancel
+                                        right = if (activeCategory == row.category) targetR else FocusRequester.Cancel
                                         up = if (index == 0) FocusRequester.Cancel else sidebarRowRequesters[index - 1]
                                         down = if (index == sidebarRows.lastIndex) homeBackRequester else sidebarRowRequesters[index + 1]
                                     }
@@ -543,7 +528,7 @@ private fun SettingsMenuScreen(
                             left = FocusRequester.Cancel // ★ 修正: こちらも左キーへの防波堤を追加
                             up = sidebarRowRequesters.lastOrNull() ?: FocusRequester.Default
                             down = FocusRequester.Cancel
-                            right = itemFocusRequesters.getOrNull(activeCategoryIndex)
+                            right = itemFocusRequesters[activeCategory]
                                 ?.firstOrNull() ?: FocusRequester.Default
                         }
                 )
@@ -561,14 +546,13 @@ private fun SettingsMenuScreen(
                     .weight(1f)
                     .fillMaxHeight()
                     .padding(vertical = 48.dp, horizontal = 64.dp)
-                    .onGloballyPositioned { coords ->
-                        if (activeCategoryIndex == 9) {
-                            onDeepTvBoundsChanged(coords.boundsInRoot())
-                        }
-                    }
+                    .upgradeSpotlightTarget(
+                        UpgradeTourTargetId.DEEP_TV_SETTING,
+                        enabled = activeCategory == SettingsCategory.DEEP_TV,
+                    )
             ) {
                 CompositionLocalProvider(
-                    LocalBringIntoViewSpec provides if (activeCategoryIndex == 11) {
+                    LocalBringIntoViewSpec provides if (activeCategory == SettingsCategory.APP_INFO) {
                         AppInfoBringIntoViewSpec
                     } else {
                         LocalBringIntoViewSpec.current
@@ -577,13 +561,13 @@ private fun SettingsMenuScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .focusProperties { canFocus = !isUpgradeTourOverlayActive }
+                        .focusProperties { canFocus = !isUpgradeTourActive }
                         .graphicsLayer { clip = false }
                         .verticalScroll(mainScrollState)
                         .padding(horizontal = 4.dp, vertical = 4.dp)
                 ) {
-                    when (activeCategoryIndex) {
-                        0 -> GeneralSettingsContent(
+                    when (activeCategory) {
+                        SettingsCategory.GENERAL -> GeneralSettingsContent(
                             prefs.startupTab,
                             prefs.startupFocusTarget.label,
                             when (prefs.startupChannel) {
@@ -592,9 +576,9 @@ private fun SettingsMenuScreen(
                                 else -> flatChannels.find { it.id == prefs.startupChannel }?.name
                                     ?: prefs.startupChannel
                             },
-                            itemFocusRequesters[0][0],
-                            itemFocusRequesters[0][1],
-                            itemFocusRequesters[0][2],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[0],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[1],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[2],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_STARTUP_TAB,
@@ -635,7 +619,7 @@ private fun SettingsMenuScreen(
                                 ) { viewModel.updateStartupChannel(it) }
                             },
                             viewModel.nhkExclusionState.collectAsState().value.mode.displayLabel,
-                            itemFocusRequesters[0][3],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[3],
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     "N〇K除外モード",
@@ -644,7 +628,7 @@ private fun SettingsMenuScreen(
                                 ) { viewModel.setNHKExclusionMode(com.beeregg2001.komorebi.data.model.NHKExclusionMode.fromPreference(it)) }
                             },
                             prefs.lateNightWatchMode,
-                            itemFocusRequesters[0][4],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[4],
                             {
                                 scope.launch {
                                     repository.saveString(
@@ -654,7 +638,7 @@ private fun SettingsMenuScreen(
                                 }
                             },
                             prefs.spoilerBlurEnabled,
-                            itemFocusRequesters[0][5],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[5],
                             {
                                 scope.launch {
                                     repository.saveString(
@@ -664,7 +648,7 @@ private fun SettingsMenuScreen(
                                 }
                             },
                             prefs.jikkyoFestivalAlert,
-                            itemFocusRequesters[0][6],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[6],
                             {
                                 scope.launch {
                                     repository.saveString(
@@ -674,7 +658,7 @@ private fun SettingsMenuScreen(
                                 }
                             },
                             prefs.cmPanicZapEnabled,
-                            itemFocusRequesters[0][7],
+                            itemFocusRequesters.getValue(SettingsCategory.GENERAL)[7],
                             {
                                 scope.launch {
                                     repository.saveString(
@@ -683,10 +667,10 @@ private fun SettingsMenuScreen(
                                     )
                                 }
                             },
-                            categoryFocusRequesters[0],
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 0 }
+                            categoryFocusRequesters.getValue(SettingsCategory.GENERAL),
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.GENERAL }
 
-                        1 -> ConnectionSettingsContent(
+                        SettingsCategory.CONNECTION -> ConnectionSettingsContent(
                             prefs = prefs,
                             honomiUserName = honomiSession?.userName,
                             onHonomiAccountClick = {
@@ -750,15 +734,15 @@ private fun SettingsMenuScreen(
                                     prefs.cfAccessClientId, prefs.cfAccessClientSecret,
                                 ) { id, secret -> repository.saveCloudflareAccessCredentials(id, secret) }
                             },
-                            itemRs = itemFocusRequesters[1],
-                            sidebarR = categoryFocusRequesters[1],
+                            itemRs = itemFocusRequesters.getValue(SettingsCategory.CONNECTION),
+                            sidebarR = categoryFocusRequesters.getValue(SettingsCategory.CONNECTION),
                             scrollState = mainScrollState,
                             isDialogOpen = isDialogOpen,
-                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 1 },
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.CONNECTION },
                             tifIntegrationEnabled = prefs.tifIntegrationEnabled,
                         )
 
-                        9 -> DeepTvIntegrationSettingsContent(
+                        SettingsCategory.DEEP_TV -> DeepTvIntegrationSettingsContent(
                             supported = tifSupported,
                             enabled = prefs.tifIntegrationEnabled,
                             lockedByMainSystem = prefs.backendType == "TIF",
@@ -767,8 +751,8 @@ private fun SettingsMenuScreen(
                             noSignalStyle = prefs.tifNoSignalStyle,
                             features = prefs.deepTvFeatures,
                             pipSupported = pipSupported,
-                            itemRs = itemFocusRequesters[9],
-                            sidebarR = categoryFocusRequesters[9],
+                            itemRs = itemFocusRequesters.getValue(SettingsCategory.DEEP_TV),
+                            sidebarR = categoryFocusRequesters.getValue(SettingsCategory.DEEP_TV),
                             onToggleFeature = { viewModel.toggleDeepTvFeature(it) },
                             onCycleBackgroundPlaybackMode = {
                                 viewModel.setBackgroundPlaybackMode(
@@ -777,7 +761,7 @@ private fun SettingsMenuScreen(
                             },
                             onToggleEnabled = {
                                 if (!tifSupported) {
-                                    toastMessage = "この端末はTV入力（TIF）に対応していません"
+                                    showToast("この端末はTV入力（TIF）に対応していません")
                                 } else {
                                     viewModel.toggleTifIntegration()
                                 }
@@ -790,11 +774,10 @@ private fun SettingsMenuScreen(
                                 uiState.activeDialog = SettingDialogState.NoSignalStylePreview
                             },
                             onRefreshTif = { channelViewModel.fetchChannels() },
-                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 9 },
-                            onFirstItemBoundsChanged = onDeepTvBoundsChanged,
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.DEEP_TV },
                         )
 
-                        2 -> PlaybackSettingsContent(
+                        SettingsCategory.PLAYBACK -> PlaybackSettingsContent(
                             prefs.liveQuality,
                             prefs.videoQuality,
                             prefs.liveSubtitleDefault,
@@ -807,18 +790,18 @@ private fun SettingsMenuScreen(
                             preferOriginalMpegTs,
                             prefs.labAllowMirakurunDual,
                             availableQualities,
-                            itemFocusRequesters[2][0],
-                            itemFocusRequesters[2][1],
-                            itemFocusRequesters[2][2],
-                            itemFocusRequesters[2][3],
-                            itemFocusRequesters[2][10],
-                            itemFocusRequesters[2][4],
-                            itemFocusRequesters[2][6],
-                            itemFocusRequesters[2][7],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[0],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[1],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[2],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[3],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[10],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[4],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[6],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[7],
                             seekStepFocusRequester,
-                            itemFocusRequesters[2][8],
-                            itemFocusRequesters[2][11],
-                            categoryFocusRequesters[2],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[8],
+                            itemFocusRequesters.getValue(SettingsCategory.PLAYBACK)[11],
+                            categoryFocusRequesters.getValue(SettingsCategory.PLAYBACK),
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.DIALOG_QUALITY_TITLE,
@@ -977,9 +960,9 @@ private fun SettingsMenuScreen(
                                     }
                                 }
                             }
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 2 }
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.PLAYBACK }
 
-                        3 -> RecordingSettingsContent(
+                        SettingsCategory.RECORDING -> RecordingSettingsContent(
                             prefs.defaultRecordListView,
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1013,21 +996,21 @@ private fun SettingsMenuScreen(
                                     "「${b.name}」を削除しますか？"
                                 ) { viewModel.deletePostRecordingBatch(b) }
                             },
-                            itemFocusRequesters[3][0],
-                            itemFocusRequesters[3][1],
+                            itemFocusRequesters.getValue(SettingsCategory.RECORDING)[0],
+                            itemFocusRequesters.getValue(SettingsCategory.RECORDING)[1],
                             batchItemRs,
-                            categoryFocusRequesters[3]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 3 }
+                            categoryFocusRequesters.getValue(SettingsCategory.RECORDING)
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.RECORDING }
 
-                        6 -> HomeDisplaySettingsContent(
+                        SettingsCategory.HOME -> HomeDisplaySettingsContent(
                             prefs.pickupGenre,
                             prefs.pickupTime,
                             prefs.excludePaid,
                             prefs.backendType != "TIF",
-                            itemFocusRequesters[6][0],
-                            itemFocusRequesters[6][1],
-                            itemFocusRequesters[6][2],
-                            categoryFocusRequesters[6],
+                            itemFocusRequesters.getValue(SettingsCategory.HOME)[0],
+                            itemFocusRequesters.getValue(SettingsCategory.HOME)[1],
+                            itemFocusRequesters.getValue(SettingsCategory.HOME)[2],
+                            categoryFocusRequesters.getValue(SettingsCategory.HOME),
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.DIALOG_PICKUP_GENRE_TITLE,
@@ -1077,16 +1060,16 @@ private fun SettingsMenuScreen(
                                     )
                                 }
                             },
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 6 }
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.HOME }
 
-                        7 -> LauncherSettingsContent(
+                        SettingsCategory.LAUNCHER -> LauncherSettingsContent(
                             showAppsTab = !prefs.hideAppsTab,
                             appColumns = prefs.launcherAppColumns,
                             showAppLabels = !prefs.hideLauncherAppLabels,
                             environment = homeEnvironment,
                             isDefaultHome = isDefaultHome,
-                            itemRs = itemFocusRequesters[7],
-                            sidebarR = categoryFocusRequesters[7],
+                            itemRs = itemFocusRequesters.getValue(SettingsCategory.LAUNCHER),
+                            sidebarR = categoryFocusRequesters.getValue(SettingsCategory.LAUNCHER),
                             onToggleAppsTab = { viewModel.toggleHideAppsTab() },
                             onEditColumns = {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1115,19 +1098,19 @@ private fun SettingsMenuScreen(
                                 uiState.activeDialog = SettingDialogState.DefaultHomeGuide
                             },
                             onClick = {
-                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 7
+                                uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.LAUNCHER
                             }
                         )
 
-                        8 -> DisplaySettingsContent(
+                        SettingsCategory.DISPLAY -> DisplaySettingsContent(
                             prefs.currentThemeName.contains("LIGHT") || prefs.currentThemeName == "HIGHTONE" || prefs.currentThemeName == "KOMOREBI_DAY" || prefs.currentThemeName == "KYLE_DAY",
                             themeSeason,
                             prefs,
-                            itemFocusRequesters[8][0],
-                            itemFocusRequesters[8][1],
-                            itemFocusRequesters[8][2],
-                            itemFocusRequesters[8][3],
-                            categoryFocusRequesters[8],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[0],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[1],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[2],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[3],
+                            categoryFocusRequesters.getValue(SettingsCategory.DISPLAY),
                             {
                                 uiState.activeDialog = SettingDialogState.Selection(
                                     AppStrings.SETTINGS_ITEM_BASE_THEME,
@@ -1204,9 +1187,15 @@ private fun SettingsMenuScreen(
                             screensaverInterval,
                             screensaverTransition,
                             screensaverImages.size,
-                            itemFocusRequesters[8][4], itemFocusRequesters[8][5], itemFocusRequesters[8][6],
-                            itemFocusRequesters[8][7], itemFocusRequesters[8][8], itemFocusRequesters[8][9],
-                            itemFocusRequesters[8][10], itemFocusRequesters[8][11], itemFocusRequesters[8][12],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[4],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[5],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[6],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[7],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[8],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[9],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[10],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[11],
+                            itemFocusRequesters.getValue(SettingsCategory.DISPLAY)[12],
                             { viewModel.setScreensaverEnabled(!screensaverEnabled) },
                             { viewModel.setScreensaverTimeoutMinutes(when (screensaverTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
                             { viewModel.setScreensaverPlayerTimeoutMinutes(when (screensaverPlayerTimeout) { 1 -> 2; 2 -> 5; 5 -> 10; 10 -> 15; else -> 1 }) },
@@ -1216,7 +1205,7 @@ private fun SettingsMenuScreen(
                             { viewModel.setScreensaverTransition(when (screensaverTransition) { "FADE" -> "SLIDE"; "SLIDE" -> "NONE"; else -> "FADE" }) },
                             { showInternalImagePicker = true },
                             { screensaverPreview = true },
-                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 8 },
+                            onClick = { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.DISPLAY },
                             screensaverPlayerPreviewR = screensaverPlayerPreviewR,
                             onPreviewScreensaverPlayer = { screensaverPlayerPreview = true },
                             screensaverShowUpcoming = screensaverShowUpcoming,
@@ -1238,7 +1227,7 @@ private fun SettingsMenuScreen(
                             },
                         )
 
-                        4 -> EpgSettingsContent(
+                        SettingsCategory.EPG -> EpgSettingsContent(
                             pref = prefs,
                             onEditColumn = {
                                 uiState.activeDialog = SettingDialogState.Selection(
@@ -1277,16 +1266,16 @@ private fun SettingsMenuScreen(
                                     prefs.epgFontSizeScale
                                 ) { viewModel.updateEpgFontSizeScale(it) }
                             },
-                            colR = itemFocusRequesters[4][0],
-                            hourR = itemFocusRequesters[4][1],
-                            fontR = itemFocusRequesters[4][2],
-                            sidebarR = categoryFocusRequesters[4],
+                            colR = itemFocusRequesters.getValue(SettingsCategory.EPG)[0],
+                            hourR = itemFocusRequesters.getValue(SettingsCategory.EPG)[1],
+                            fontR = itemFocusRequesters.getValue(SettingsCategory.EPG)[2],
+                            sidebarR = categoryFocusRequesters.getValue(SettingsCategory.EPG),
                             onClick = {
-                                uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 4
+                                uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.EPG
                             }
                         )
 
-                        5 -> CommentSettingsContent(
+                        SettingsCategory.COMMENT -> CommentSettingsContent(
                             prefs.commentDefaultDisplay,
                             prefs.commentSpeed,
                             prefs.commentFontSize,
@@ -1323,26 +1312,25 @@ private fun SettingsMenuScreen(
                                     )
                                 }
                             },
-                            itemFocusRequesters[5][0],
-                            itemFocusRequesters[5][1],
-                            itemFocusRequesters[5][2],
-                            itemFocusRequesters[5][3],
-                            itemFocusRequesters[5][4],
-                            itemFocusRequesters[5][5],
-                            itemFocusRequesters[5][6],
-                            itemFocusRequesters[5][7],
-                            categoryFocusRequesters[5],
-                            onEngineBoundsChanged = onCommentEngineBoundsChanged,
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 5 }
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.DEFAULT_DISPLAY],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.SPEED],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.FONT_SIZE],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.OPACITY],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.MAX_LINES],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.LAYER_ORDER],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.COMMENT_ENGINE],
+                            itemFocusRequesters.getValue(SettingsCategory.COMMENT)[CommentItemIndex.WORD_COUNTER],
+                            categoryFocusRequesters.getValue(SettingsCategory.COMMENT),
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.COMMENT }
 
-                        10 -> CacheManagementContent(
+                        SettingsCategory.CACHE -> CacheManagementContent(
                             onClearAll = {
                                 uiState.activeDialog = SettingDialogState.ConfirmClear(
                                     "すべてのキャッシュの削除",
                                     "局ロゴ・サムネイル・番組表・録画リストのキャッシュをすべて削除します。よろしいですか？"
                                 ) {
                                     viewModel.clearAllCache()
-                                    toastMessage = "すべてのキャッシュを削除しました"
+                                    showToast("すべてのキャッシュを削除しました")
                                 }
                             },
                             onClearChannelLogo = {
@@ -1351,7 +1339,7 @@ private fun SettingsMenuScreen(
                                     "端末に保存されている局ロゴを削除します。次回表示時に再取得されます。"
                                 ) {
                                     viewModel.clearChannelLogoCache()
-                                    toastMessage = "局ロゴキャッシュを削除しました"
+                                    showToast("局ロゴキャッシュを削除しました")
                                 }
                             },
                             onClearThumbnail = {
@@ -1360,7 +1348,7 @@ private fun SettingsMenuScreen(
                                     "番組・録画のサムネイル画像キャッシュを削除します。次回表示時に再取得されます。"
                                 ) {
                                     viewModel.clearThumbnailCache()
-                                    toastMessage = "サムネイルキャッシュを削除しました"
+                                    showToast("サムネイルキャッシュを削除しました")
                                 }
                             },
                             onClearEpg = {
@@ -1369,7 +1357,7 @@ private fun SettingsMenuScreen(
                                     "保存済みの番組表データを削除します。次回表示時に再取得されます。"
                                 ) {
                                     viewModel.clearEpgCache()
-                                    toastMessage = "番組表キャッシュを削除しました"
+                                    showToast("番組表キャッシュを削除しました")
                                 }
                             },
                             onClearRecording = {
@@ -1378,7 +1366,7 @@ private fun SettingsMenuScreen(
                                     "端末内に残っている録画リストのキャッシュを削除します。録画リストはサーバーから必要なページだけ取得されます。"
                                 ) {
                                     viewModel.triggerFullSync()
-                                    toastMessage = "録画リストキャッシュを削除しました"
+                                    showToast("録画リストキャッシュを削除しました")
                                 }
                             },
                             // 履歴の削除はキャッシュ一括削除とは独立。グローバル削除では消さない。
@@ -1394,17 +1382,17 @@ private fun SettingsMenuScreen(
                                     AppStrings.DIALOG_CLEAR_WATCH_HISTORY_MSG
                                 ) { onClearWatchHistory() }
                             },
-                            allR = itemFocusRequesters[10][0],
-                            logoR = itemFocusRequesters[10][1],
-                            thumbR = itemFocusRequesters[10][2],
-                            epgR = itemFocusRequesters[10][3],
-                            recordingR = itemFocusRequesters[10][4],
-                            channelHistoryR = itemFocusRequesters[10][5],
-                            watchHistoryR = itemFocusRequesters[10][6],
-                            sidebarR = categoryFocusRequesters[10]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 10 }
+                            allR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[0],
+                            logoR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[1],
+                            thumbR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[2],
+                            epgR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[3],
+                            recordingR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[4],
+                            channelHistoryR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[5],
+                            watchHistoryR = itemFocusRequesters.getValue(SettingsCategory.CACHE)[6],
+                            sidebarR = categoryFocusRequesters.getValue(SettingsCategory.CACHE)
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.CACHE }
 
-                        11 -> AppInfoContent(
+                        SettingsCategory.APP_INFO -> AppInfoContent(
                             receiveBetaUpdates = receiveBetaUpdates,
                             updateState = viewModel.updateState.collectAsState().value,
                             onToggleBetaUpdates = { enabled ->
@@ -1423,15 +1411,15 @@ private fun SettingsMenuScreen(
                             onShowLicenses = { uiState.activeDialog = SettingDialogState.Licenses },
                             onCapabilities = { uiState.activeDialog = SettingDialogState.DeviceCapabilities },
                             onOpenWhatsNew = onOpenWhatsNew,
-                            capabilityR = itemFocusRequesters[11][5],
-                            versionR = itemFocusRequesters[11][0],
-                            whatsNewR = itemFocusRequesters[11][6],
-                            betaR = itemFocusRequesters[11][1],
-                            checkR = itemFocusRequesters[11][2],
-                            projectR = itemFocusRequesters[11][3],
-                            licR = itemFocusRequesters[11][4],
-                            sidebarR = categoryFocusRequesters[11]
-                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategoryIndex = 11 }
+                            capabilityR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.DEVICE_CAPABILITIES],
+                            versionR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.VERSION],
+                            whatsNewR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.WHATS_NEW],
+                            betaR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.BETA_UPDATES],
+                            checkR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.CHECK_UPDATES],
+                            projectR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.PROJECT_GITHUB],
+                            licR = itemFocusRequesters.getValue(SettingsCategory.APP_INFO)[AppInfoItemIndex.OSS_LICENSES],
+                            sidebarR = categoryFocusRequesters.getValue(SettingsCategory.APP_INFO)
+                        ) { uiState.restoreFocusRequester = it; uiState.restoreCategory = SettingsCategory.APP_INFO }
                     }
                     Spacer(Modifier.height(32.dp))
                 }
@@ -1449,7 +1437,7 @@ private fun SettingsMenuScreen(
                 viewModel.pollHonomiPairing(pairing)
                     .onSuccess { session ->
                         if (session != null) {
-                            toastMessage = "${session.userName} とペアリングしました"
+                            showToast("${session.userName} とペアリングしました")
                             closeDialog()
                             return@LaunchedEffect
                         }
@@ -1468,7 +1456,7 @@ private fun SettingsMenuScreen(
             is SettingDialogState.HonomiLogout -> HonomiLogoutDialog(
                 onConfirm = {
                     viewModel.logoutHonomi()
-                    toastMessage = "HonomiTV からログアウトしました"
+                    showToast("HonomiTV からログアウトしました")
                     closeDialog()
                 },
                 onDismiss = { closeDialog() },
@@ -1523,7 +1511,7 @@ private fun SettingsMenuScreen(
                 isDefaultHome = isDefaultHome,
                 onOpenHomeSettings = {
                     if (!LauncherEnvironmentDetector.openHomeSettings(context)) {
-                        toastMessage = "ホーム設定を開けませんでした"
+                        showToast("ホーム設定を開けませんでした")
                     }
                     closeDialog()
                 },
@@ -1707,6 +1695,5 @@ private fun SettingsMenuScreen(
                 }
             }
         }
-        GlobalToast(message = toastMessage)
     }
 }

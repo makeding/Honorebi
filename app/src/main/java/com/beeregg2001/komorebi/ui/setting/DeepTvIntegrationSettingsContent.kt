@@ -23,9 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,7 +70,6 @@ fun DeepTvIntegrationSettingsContent(
     onEditNoSignalStyle: () -> Unit,
     onRefreshTif: () -> Unit,
     onClick: (FocusRequester) -> Unit,
-    onFirstItemBoundsChanged: (Rect) -> Unit = {},
 ) {
     val colors = KomorebiTheme.colors
     val expanded = supported && (enabled || lockedByMainSystem)

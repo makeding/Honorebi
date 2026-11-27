@@ -53,10 +53,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -118,7 +115,8 @@ internal fun LauncherNavRail(
     isEpgJumping: Boolean,
     upEdgeFocusRequester: FocusRequester,
     settingsItemFocusRequester: FocusRequester,
-    settingsCanFocus: Boolean,
+    settingsCanFocus: Boolean = true,
+    tabsCanFocus: Boolean = true,
     onTabFocused: (LauncherTab) -> Unit,
     onTabActivated: (LauncherTab) -> Unit = onTabFocused,
     onOpenSettings: () -> Unit,
@@ -129,16 +127,17 @@ internal fun LauncherNavRail(
     onBack: () -> Unit,
     startCollapsed: Boolean = false,
     onStartCollapsedConsumed: () -> Unit = {},
-    onSelectedTabBoundsChanged: (Rect) -> Unit = {},
-    onSettingsButtonBoundsChanged: (Rect) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = KomorebiTheme.colors
     val focusManager = LocalFocusManager.current
+    val isUpgradeTourActive = LocalUpgradeTourActive.current
+    val effectiveTabsCanFocus = tabsCanFocus && !isUpgradeTourActive
+    val effectiveSettingsCanFocus = settingsCanFocus && !isEpgJumping && !isUpgradeTourActive
     val visibleTabs = controller.visibleTabs
     val selectedTab = controller.selectedTab
-    val focusableTabs = remember(visibleTabs, isEpgJumping) {
-        visibleTabs.filter { !(it == LauncherTab.EPG && isEpgJumping) }
+    val focusableTabs = remember(visibleTabs, isEpgJumping, effectiveTabsCanFocus) {
+        if (!effectiveTabsCanFocus) emptyList() else visibleTabs.filter { !(it == LauncherTab.EPG && isEpgJumping) }
     }
 
     var railHasFocus by remember { mutableStateOf(false) }
@@ -291,7 +290,7 @@ internal fun LauncherNavRail(
         visibleTabs.forEach { tab ->
             val isSelected = selectedTab == tab
             val isActiveTab = activeTab == tab
-            val canFocusTab = !(tab == LauncherTab.EPG && isEpgJumping)
+            val canFocusTab = effectiveTabsCanFocus && !(tab == LauncherTab.EPG && isEpgJumping)
             var isItemFocused by remember(tab) { mutableStateOf(false) }
             val interactionSource = remember(tab) { MutableInteractionSource() }
             val focusableIdx = focusableTabs.indexOf(tab)
@@ -318,9 +317,7 @@ internal fun LauncherNavRail(
                 labelAlpha = labelAlpha,
                 modifier = Modifier
                     .testTag("launcher-tab-${tab.name.lowercase()}")
-                    .onGloballyPositioned { coords ->
-                        if (isSelected) onSelectedTabBoundsChanged(coords.boundsInRoot())
-                    }
+                    .upgradeSpotlightTarget(UpgradeTourTargetId.NAV_RAIL, enabled = isSelected)
                     .focusRequester(controller.tabRequester(tab))
                     .focusProperties {
                         up = prevTab?.let { controller.tabRequester(it) } ?: upEdgeFocusRequester
@@ -391,14 +388,13 @@ internal fun LauncherNavRail(
             labelAlpha = labelAlpha,
             modifier = Modifier
                 .testTag("launcher-rail-settings")
-                .onGloballyPositioned { onSettingsButtonBoundsChanged(it.boundsInRoot()) }
                 .focusRequester(settingsItemFocusRequester)
                 .focusProperties {
                     up = lastVisibleTab?.let { controller.tabRequester(it) } ?: upEdgeFocusRequester
                     down = versionItemFocusRequester
                     left = FocusRequester.Cancel
                     right = FocusRequester.Cancel
-                    canFocus = settingsCanFocus
+                    canFocus = effectiveSettingsCanFocus
                 }
                 .onFocusChanged { focusState ->
                     isSettingsFocused = focusState.isFocused
@@ -423,7 +419,7 @@ internal fun LauncherNavRail(
                     }
                 }
                 .clickable(
-                    enabled = settingsCanFocus,
+                    enabled = effectiveSettingsCanFocus,
                     interactionSource = settingsInteractionSource,
                     indication = null,
                     onClick = onOpenSettings,
@@ -445,7 +441,7 @@ internal fun LauncherNavRail(
                     down = FocusRequester.Cancel
                     left = FocusRequester.Cancel
                     right = FocusRequester.Cancel
-                    canFocus = settingsCanFocus
+                    canFocus = effectiveSettingsCanFocus
                 }
                 .onFocusChanged { focusState ->
                     isVersionFocused = focusState.isFocused
@@ -470,7 +466,7 @@ internal fun LauncherNavRail(
                     }
                 }
                 .clickable(
-                    enabled = settingsCanFocus,
+                    enabled = effectiveSettingsCanFocus,
                     interactionSource = versionInteractionSource,
                     indication = null,
                     onClick = onOpenAppInfo,

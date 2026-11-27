@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -23,14 +24,21 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.beeregg2001.komorebi.ui.theme.KomorebiTheme
 
+const val DEFAULT_TOAST_DURATION_MS = 3_000L
+
+val LocalShowToast = compositionLocalOf<(String) -> Unit> { {} }
+
 @Composable
-fun GlobalToast(message: String?) {
+fun GlobalToast(
+    message: String?,
+    modifier: Modifier = Modifier,
+) {
     val colors = KomorebiTheme.colors
     AnimatedVisibility(
         visible = message != null,
         enter = fadeIn() + slideInVertically { it / 2 },
         exit = fadeOut() + slideOutVertically { it / 2 },
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .wrapContentSize(Alignment.BottomCenter)
             .padding(start = 32.dp, end = 32.dp, bottom = 48.dp)

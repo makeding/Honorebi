@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +69,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -87,6 +91,7 @@ import com.beeregg2001.komorebi.ui.theme.TvCardFocusBorderWidth
 import com.beeregg2001.komorebi.ui.theme.TvCardRadiusGrid
 import kotlin.math.roundToInt
 
+@Stable
 class UpgradeSpotlightTargets {
     var navRailBounds by mutableStateOf(Rect.Zero)
     var systemStripBounds by mutableStateOf(Rect.Zero)
@@ -101,6 +106,33 @@ class UpgradeSpotlightTargets {
         UpgradeTourTargetId.DEEP_TV_SETTING -> deepTvSettingBounds
         UpgradeTourTargetId.COMMENT_ENGINE_SETTING -> commentEngineSettingBounds
     }
+
+    fun updateBounds(targetId: UpgradeTourTargetId, bounds: Rect) {
+        when (targetId) {
+            UpgradeTourTargetId.NAV_RAIL -> navRailBounds = bounds
+            UpgradeTourTargetId.SYSTEM_STRIP -> systemStripBounds = bounds
+            UpgradeTourTargetId.CONTENT_STAGE -> contentStageBounds = bounds
+            UpgradeTourTargetId.DEEP_TV_SETTING -> deepTvSettingBounds = bounds
+            UpgradeTourTargetId.COMMENT_ENGINE_SETTING -> commentEngineSettingBounds = bounds
+        }
+    }
+}
+
+val LocalUpgradeSpotlightTargets = compositionLocalOf<UpgradeSpotlightTargets?> { null }
+val LocalUpgradeTourActive = compositionLocalOf { false }
+
+@Composable
+fun Modifier.upgradeSpotlightTarget(
+    targetId: UpgradeTourTargetId,
+    enabled: Boolean = true,
+): Modifier {
+    val targets = LocalUpgradeSpotlightTargets.current
+    if (targets == null || !enabled) return this
+    return this.onGloballyPositioned { coords ->
+        if (coords.isAttached) {
+            targets.updateBounds(targetId, coords.boundsInRoot())
+        }
+    }
 }
 
 @Composable
@@ -111,7 +143,7 @@ fun rememberUpgradeSpotlightTargets(): UpgradeSpotlightTargets =
 @Composable
 fun UpgradeSpotlightOverlay(
     steps: List<UpgradeTourStep>,
-    targets: UpgradeSpotlightTargets,
+    targets: UpgradeSpotlightTargets = LocalUpgradeSpotlightTargets.current ?: rememberUpgradeSpotlightTargets(),
     onStepChanged: (Int) -> Unit = {},
     onStepAction: (UpgradeTourAction) -> Unit = {},
     onFinish: () -> Unit,

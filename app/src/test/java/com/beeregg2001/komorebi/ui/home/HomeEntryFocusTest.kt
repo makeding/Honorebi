@@ -4,18 +4,23 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.unit.dp
+import com.beeregg2001.komorebi.data.StartupFocusTarget
 import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
@@ -266,5 +271,73 @@ class HomeEntryFocusTest {
             render.commit(2, "video")
             assertFalse(render.isContentReadyFor(2, "video"))
         }
+    }
+
+    @Test fun upgradeTourTransitionFromSettingsSuppressesOverlayRestoreAndRestoresFocusOnDismiss() {
+        val isSettingsOpen = mutableStateOf(true)
+        val showUpgradeTour = mutableStateOf(false)
+        val focusMemory = FocusMemory()
+        val tab = FocusRequester()
+        val content = FocusRequester()
+        var restoreCalls = 0
+
+        compose.setContent {
+            var wasShowingUpgradeTour by remember { mutableStateOf(showUpgradeTour.value) }
+            HomeOverlayReturnFocusEffect(
+                isFullScreen = isSettingsOpen.value,
+                returnInProgress = showUpgradeTour.value || wasShowingUpgradeTour,
+                onRestore = {
+                    restoreCalls++
+                    focusMemory.remember(0)
+                },
+            )
+            if (!showUpgradeTour.value) {
+                HomeEntryFocusEffect(
+                    memory = focusMemory,
+                    tabRequester = { tab },
+                    contentRequester = { content },
+                )
+            }
+            LaunchedEffect(showUpgradeTour.value, isSettingsOpen.value) {
+                if (wasShowingUpgradeTour && !showUpgradeTour.value && !isSettingsOpen.value) {
+                    if (StartupFocusTarget.SIDEBAR == StartupFocusTarget.SIDEBAR) {
+                        focusMemory.remember(0)
+                    } else {
+                        focusMemory.requestContent(0)
+                    }
+                }
+                wasShowingUpgradeTour = showUpgradeTour.value
+            }
+            Row {
+                Box(Modifier.size(48.dp).testTag("tour-tab").focusRequester(tab).focusable())
+                Box(Modifier.size(48.dp).testTag("tour-content").focusRequester(content).focusable())
+            }
+        }
+
+        // Opening What's New from Settings closes Settings while enabling showUpgradeTour.
+        compose.runOnIdle {
+            isSettingsOpen.value = false
+            showUpgradeTour.value = true
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(0, restoreCalls)
+            assertNull(focusMemory.request)
+        }
+        compose.onNodeWithTag("tour-tab").assertIsNotFocused()
+
+        // Tour step enters Settings, then finishes back to Launcher -> focus returns via focusMemory.
+        compose.runOnIdle { isSettingsOpen.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            isSettingsOpen.value = false
+            showUpgradeTour.value = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(0, restoreCalls)
+            assertNull(focusMemory.request)
+        }
+        compose.onNodeWithTag("tour-tab").assertIsFocused()
     }
 }

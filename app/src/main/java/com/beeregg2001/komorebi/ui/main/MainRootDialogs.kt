@@ -31,12 +31,14 @@ import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.data.model.ReserveItem
 import com.beeregg2001.komorebi.data.model.ReserveRecordSettings
 import com.beeregg2001.komorebi.ui.components.AiConciergePanel
-import com.beeregg2001.komorebi.ui.components.GlobalToast
 import com.beeregg2001.komorebi.viewmodel.EpgUiState
 import com.beeregg2001.komorebi.ui.epg.ProgramDetailMode
 import com.beeregg2001.komorebi.ui.epg.ProgramDetailScreen
 import com.beeregg2001.komorebi.ui.reserve.EpgReserveDialog
 import com.beeregg2001.komorebi.ui.reserve.ReserveSettingsDialog
+import com.beeregg2001.komorebi.ui.setting.SettingsCategory
+import com.beeregg2001.komorebi.ui.setting.SettingsDestination
+import com.beeregg2001.komorebi.ui.setting.SettingsFocusTarget
 import com.beeregg2001.komorebi.ui.setting.SettingsScreen
 import com.beeregg2001.komorebi.util.AudioRecorderHelper
 import com.beeregg2001.komorebi.util.TitleNormalizer
@@ -70,8 +72,6 @@ fun MainRootDialogs(
     closeAiConcierge: (Boolean) -> Unit,
     onGoToSettings: () -> Unit, // ★ 追加: 設定画面誘導コールバック
     onOpenWhatsNew: () -> Unit = {},
-    isUpgradeTourOverlayActive: Boolean = false,
-    spotlightTargets: com.beeregg2001.komorebi.ui.home.UpgradeSpotlightTargets = com.beeregg2001.komorebi.ui.home.rememberUpgradeSpotlightTargets(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -110,7 +110,7 @@ fun MainRootDialogs(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (!isGranted) {
-            state.toastMessage = "マイク権限が必要です。文字入力をご利用ください。"
+            state.showToast("マイク権限が必要です。文字入力をご利用ください。")
         }
     }
 
@@ -135,7 +135,7 @@ fun MainRootDialogs(
                     activeReserves = reserveViewModel.reserves.value
                 )
             } else {
-                state.toastMessage = "音声が短すぎるか、録音できませんでした"
+                state.showToast("音声が短すぎるか、録音できませんでした")
             }
         }
     }
@@ -173,7 +173,7 @@ fun MainRootDialogs(
                 val matchedChannel = groupedChannels.values.flatten().find { it.id == channelId }
 
                 if (matchedChannel?.capabilities?.recording == false) {
-                    state.toastMessage = "ネットテレビは録画予約に対応していません"
+                    state.showToast("ネットテレビは録画予約に対応していません")
                     return@EpgReserveDialog
                 }
 
@@ -217,7 +217,7 @@ fun MainRootDialogs(
                         scope.launch {
                             state.selectedProgramForAutoReserve = null
                             delay(300)
-                            state.toastMessage = "「${keyword}」の自動録画条件を登録しました"
+                            state.showToast("「${keyword}」の自動録画条件を登録しました")
                         }
                     }
                 )
@@ -277,7 +277,7 @@ fun MainRootDialogs(
             onRecordClick = { program ->
                 epgDirectRecordFailure = null
                 if (program.source.equals("Jellyfin", ignoreCase = true)) {
-                    state.toastMessage = "ネットテレビは録画予約に対応していません"
+                    state.showToast("ネットテレビは録画予約に対応していません")
                     return@ProgramDetailScreen
                 }
                 reserveViewModel.addReserve(program.id) { result ->
@@ -285,7 +285,7 @@ fun MainRootDialogs(
                     when (result) {
                         SingleReservationResult.Success -> scope.launch {
                             state.epgSelectedProgram = null; delay(300)
-                            state.toastMessage = AppStrings.TOAST_RESERVED
+                            state.showToast(AppStrings.TOAST_RESERVED)
                         }
                         is SingleReservationResult.Failure ->
                             epgDirectRecordFailure = result.failure
@@ -296,7 +296,7 @@ fun MainRootDialogs(
             onEpgReserveClick = { program, keyword, daysOfWeek, startH, startM, endH, endM, exc, tOnly, bType, fuzzy, dup, pri, relay, exact ->
                 val channel = groupedChannels.values.flatten().find { it.id == program.channel_id }
                 if (channel?.capabilities?.recording == false || program.source.equals("Jellyfin", ignoreCase = true)) {
-                    state.toastMessage = "ネットテレビは録画予約に対応していません"
+                    state.showToast("ネットテレビは録画予約に対応していません")
                     return@ProgramDetailScreen
                 }
                 var finalTsId = channel?.transportStreamId?.toInt() ?: 0
@@ -344,7 +344,7 @@ fun MainRootDialogs(
                     onSuccess = {
                         scope.launch {
                             state.epgSelectedProgram = null; delay(300)
-                            state.toastMessage = "EPG予約を登録しました"
+                            state.showToast("EPG予約を登録しました")
                         }
                     }
                 )
@@ -376,8 +376,8 @@ fun MainRootDialogs(
                 reserveViewModel.updateReservation(state.editingReserveItem!!, newSettings) { result ->
                     when (result) {
                         SingleReservationResult.Success -> scope.launch {
-                            state.editingReserveItem = null; state.toastMessage =
-                            AppStrings.TOAST_RESERVE_UPDATED
+                            state.editingReserveItem = null
+                            state.showToast(AppStrings.TOAST_RESERVE_UPDATED)
                             delay(200); detailFocusRequester.safeRequestFocus("ProgramDetail")
                         }
                         is SingleReservationResult.Failure -> editReservationFailure = result.failure
@@ -413,7 +413,7 @@ fun MainRootDialogs(
                     when (result) {
                         SingleReservationResult.Success -> scope.launch {
                             state.editingNewProgram = null; state.epgSelectedProgram = null
-                            delay(300); state.toastMessage = AppStrings.TOAST_RESERVED
+                            delay(300); state.showToast(AppStrings.TOAST_RESERVED)
                         }
                         is SingleReservationResult.Failure -> newReservationFailure = result.failure
                         SingleReservationResult.AlreadySubmitting -> Unit
@@ -445,7 +445,7 @@ fun MainRootDialogs(
                             state.reserveToDelete = null
                             if (state.selectedReserve != null) state.selectedReserve = null
                             if (state.epgSelectedProgram != null) state.epgSelectedProgram = null
-                            delay(300); state.toastMessage = AppStrings.TOAST_RESERVE_DELETED
+                            delay(300); state.showToast(AppStrings.TOAST_RESERVE_DELETED)
                         }
                         is SingleReservationResult.Failure -> deleteReservationFailure = result.failure
                         SingleReservationResult.AlreadySubmitting -> Unit
@@ -482,14 +482,11 @@ fun MainRootDialogs(
             onSelectTvInput = {
                 setupViewModel.updateBackendType("TIF")
                 initialQrOpen = false
-                state.settingsInitialCategoryIndex = 1
-                state.isSettingsOpen = true
+                state.openSettings(SettingsDestination.Category(SettingsCategory.CONNECTION))
             },
             onManualInput = {
                 initialQrOpen = false
-                state.settingsInitialCategoryIndex = 1
-                state.settingsInitialFocusItemIndex = 0
-                state.isSettingsOpen = true
+                state.openSettings(SettingsDestination.Item(SettingsFocusTarget.CONNECTION_SETUP))
             },
         )
     }
@@ -497,20 +494,15 @@ fun MainRootDialogs(
     if (state.isSettingsOpen) {
         SettingsScreen(
             onBack = onCloseSettings,
-            initialCategoryIndex = state.settingsInitialCategoryIndex,
-            initialFocusItemIndex = state.settingsInitialFocusItemIndex,
-            initialOpenDeviceCapabilities = state.settingsOpenDeviceCapabilities,
+            destination = state.settingsDestination,
             onOpenWhatsNew = onOpenWhatsNew,
-            isUpgradeTourOverlayActive = isUpgradeTourOverlayActive,
-            onDeepTvBoundsChanged = { spotlightTargets.deepTvSettingBounds = it },
-            onCommentEngineBoundsChanged = { spotlightTargets.commentEngineSettingBounds = it },
             onClearLastChannel = {
-                homeViewModel.clearLastChannelHistory(); state.toastMessage =
-                AppStrings.TOAST_CHANNEL_HISTORY_DELETED
+                homeViewModel.clearLastChannelHistory()
+                state.showToast(AppStrings.TOAST_CHANNEL_HISTORY_DELETED)
             },
             onClearWatchHistory = {
-                recordViewModel.clearWatchHistory(); state.toastMessage =
-                AppStrings.TOAST_WATCH_HISTORY_DELETED
+                recordViewModel.clearWatchHistory()
+                state.showToast(AppStrings.TOAST_WATCH_HISTORY_DELETED)
             }
         )
     }
@@ -534,11 +526,6 @@ fun MainRootDialogs(
                     .padding(48.dp)
             )
         }
-    }
-
-    // Settings and SMB own their foreground toast surface.
-    if (!state.isSettingsOpen && !state.isSmbLibraryOpen) {
-        GlobalToast(message = state.toastMessage)
     }
 
     AiConciergePanel(

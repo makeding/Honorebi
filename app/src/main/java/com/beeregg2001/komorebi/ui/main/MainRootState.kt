@@ -3,8 +3,19 @@ package com.beeregg2001.komorebi.ui.main
 import androidx.compose.runtime.*
 import com.beeregg2001.komorebi.ui.player.PlaybackSessionState
 import com.beeregg2001.komorebi.data.model.*
+import com.beeregg2001.komorebi.ui.setting.SettingsDestination
 import com.beeregg2001.komorebi.ui.video.smb.SmbItem
 import com.beeregg2001.komorebi.viewmodel.StartupSettingsSnapshot
+
+data class RootHostModalState(
+    val hasSyncError: Boolean = false,
+    val isUpdateDialogVisible: Boolean = false,
+    val isScreensaverVisible: Boolean = false,
+    val isExitDialogVisible: Boolean = false,
+) {
+    val hasAnyModal: Boolean
+        get() = hasSyncError || isUpdateDialogVisible || isScreensaverVisible || isExitDialogVisible
+}
 
 enum class AiFocusTicket { NONE, PANEL_DEFAULT }
 
@@ -54,6 +65,17 @@ class MainRootState {
     var isAiConciergeOpen by mutableStateOf(false)
     var showAiKeyboardInput by mutableStateOf(false)
     var toastMessage by mutableStateOf<String?>(null)
+    var toastTick by mutableIntStateOf(0)
+        private set
+
+    fun showToast(message: String) {
+        toastMessage = message
+        toastTick++
+    }
+
+    fun clearToast() {
+        toastMessage = null
+    }
 
     val aiTicketManager = AiFocusTicketManager()
 
@@ -75,11 +97,7 @@ class MainRootState {
     // 各種オーバーレイの開閉状態
     var isEpgJumpMenuOpen by mutableStateOf(false)
     var isSettingsOpen by mutableStateOf(false)
-
-    // ★ 追加: 設定画面を開く際のターゲット指定（ディープリンク用）
-    var settingsInitialCategoryIndex by mutableIntStateOf(0)
-    var settingsInitialFocusItemIndex by mutableStateOf<Int?>(null)
-    var settingsOpenDeviceCapabilities by mutableStateOf(false)
+    var settingsDestination by mutableStateOf<SettingsDestination>(SettingsDestination.Default)
     var remotePlaybackFocusTick by mutableIntStateOf(0)
         private set
 
@@ -114,12 +132,15 @@ class MainRootState {
     var editingCondition by mutableStateOf<ReservationCondition?>(null)
     var selectedConditionReserveItem by mutableStateOf<ReserveItem?>(null)
 
+    fun openSettings(destination: SettingsDestination = SettingsDestination.Default) {
+        settingsDestination = destination
+        isSettingsOpen = true
+    }
+
     /** Closes Settings without tearing down the mounted Home hierarchy or resetting the active tab. */
     fun closeSettings() {
         isSettingsOpen = false
-        settingsInitialCategoryIndex = 0
-        settingsInitialFocusItemIndex = null
-        settingsOpenDeviceCapabilities = false
+        settingsDestination = SettingsDestination.Default
     }
 
     /** Called only after the latest remote open has resolved to an allowed target. */
@@ -137,24 +158,96 @@ class MainRootState {
         triggerHomeBack = false
     }
 
-    /** True when the user is currently inside a player, settings, sub-screen, or overlay above the launcher tabs. */
+    /** Sub-screens mounted in place of or above the launcher tabs. */
+    fun hasLauncherSubScreen(): Boolean =
+        isRecordListOpen ||
+            isSeriesListOpen ||
+            isSmbLibraryOpen ||
+            isOnAirOpen
+
+    /** Reservation-specific detail/edit/delete modals (used by ReserveListScreen focus suspension & restore). */
+    fun hasReserveOverlay(): Boolean =
+        selectedReserve != null ||
+            editingReserveItem != null ||
+            reserveToDelete != null ||
+            editingCondition != null ||
+            selectedConditionReserveItem != null
+
+    /** Full-screen or backdrop detail/reservation/confirmation modals rendered above the launcher. */
+    fun hasDetailOrReservationModal(): Boolean =
+        hasReserveOverlay() ||
+            epgSelectedProgram != null ||
+            editingNewProgram != null ||
+            selectedProgramForAutoReserve != null ||
+            showDeleteConfirmDialog
+
+    /** AI Concierge side panel or text input dialog. */
+    fun hasAiOverlay(): Boolean =
+        isAiConciergeOpen || showAiKeyboardInput
+
+    /**
+     * True when the launcher's own chrome (nav rail + top system strip) and tab polling
+     * should suspend because a full-screen module, sub-screen, or detail/reservation modal covers it.
+     * Deliberately excludes in-tab menus (isEpgJumpMenuOpen) and side-panels (hasAiOverlay)
+     * so the nav rail does not unmount or shift content 68.dp left.
+     */
+    fun hasLauncherFullScreenOverlay(): Boolean =
+        isSettingsOpen ||
+            hasLauncherSubScreen() ||
+            hasDetailOrReservationModal()
+
+    /** True when any sub-screen, detail pane, jump menu, or reservation/error dialog owned by MainRootState is open. */
+    fun hasRootOverlayDestination(): Boolean =
+        showConnectionErrorDialog ||
+            isEpgJumpMenuOpen ||
+            hasLauncherSubScreen() ||
+            hasDetailOrReservationModal()
+
+    /** True when the user is currently inside a player, settings, sub-screen, or any overlay above the launcher tabs. */
     fun hasActiveModuleOrOverlay(): Boolean =
         playbackState.isPlaybackActive ||
             isSettingsOpen ||
-            isRecordListOpen ||
-            isSeriesListOpen ||
-            isSmbLibraryOpen ||
-            isOnAirOpen ||
-            epgSelectedProgram != null ||
-            selectedReserve != null ||
-            editingReserveItem != null ||
-            editingNewProgram != null ||
-            reserveToDelete != null ||
-            editingCondition != null ||
-            selectedConditionReserveItem != null ||
-            selectedProgramForAutoReserve != null ||
-            isAiConciergeOpen ||
-            isEpgJumpMenuOpen
+            hasAiOverlay() ||
+            hasRootOverlayDestination()
+
+    fun hasUpgradeTourBlockingOverlay(
+        isSettingsInitialized: Boolean,
+        hostModals: RootHostModalState = RootHostModalState(),
+    ): Boolean =
+        !isSettingsInitialized ||
+            hostModals.hasAnyModal ||
+            hasAiOverlay() ||
+            hasRootOverlayDestination()
+
+    fun hasRemoteKeyBlockingOverlay(
+        showMainContent: Boolean,
+        isUpgradeTourActive: Boolean = false,
+        hostModals: RootHostModalState = RootHostModalState(),
+    ): Boolean =
+        !showMainContent ||
+            isUpgradeTourActive ||
+            hostModals.hasAnyModal ||
+            hasRootOverlayDestination()
+
+    fun clearRootOverlays() {
+        epgSelectedProgram = null
+        selectedReserve = null
+        editingReserveItem = null
+        editingNewProgram = null
+        reserveToDelete = null
+        selectedProgramForAutoReserve = null
+        editingCondition = null
+        selectedConditionReserveItem = null
+        openedSeriesTitle = null
+        isRecordListOpen = false
+        isSeriesListOpen = false
+        isSmbLibraryOpen = false
+        isOnAirOpen = false
+        isEpgJumpMenuOpen = false
+        showDeleteConfirmDialog = false
+        isAiConciergeOpen = false
+        showAiKeyboardInput = false
+    }
 
     /** Returns from an active module (player, settings, overlay) to the launcher while preserving the current tab. */
     fun returnToCurrentTabFromModule(hideAppsTab: Boolean = false) {
@@ -175,24 +268,6 @@ class MainRootState {
         if (currentTime - lastBackPressTime < 500) return false
         lastBackPressTime = currentTime
         return true
-    }
-
-    fun isFullScreen(
-        epgProgram: EpgProgram?,
-        settingsOpen: Boolean,
-        recordListOpen: Boolean,
-        reserveOverlayOpen: Boolean
-    ): Boolean {
-        if (playbackState.isMiniPlayerMode) return false
-
-        return playbackState.isPlaybackActive || epgProgram != null ||
-                settingsOpen || recordListOpen || reserveOverlayOpen ||
-                isSeriesListOpen || isAiConciergeOpen || isSmbLibraryOpen ||
-                isOnAirOpen ||
-                editingCondition != null || selectedConditionReserveItem != null ||
-                selectedReserve != null || editingReserveItem != null ||
-                editingNewProgram != null || reserveToDelete != null ||
-                selectedProgramForAutoReserve != null
     }
 
     fun getVisibleTabs(hideAppsTab: Boolean = false): List<String> =
