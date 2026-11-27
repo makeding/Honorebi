@@ -706,7 +706,7 @@ internal fun ColumnScope.SettingCategoryContentHost(
             showAppsTab = !prefs.hideAppsTab,
             appColumns = prefs.launcherAppColumns,
             showAppLabels = !prefs.hideLauncherAppLabels,
-            uiSoundEffectsEnabled = prefs.uiSoundEffectsEnabled,
+            uiSoundEffectsMode = prefs.uiSoundEffectsMode,
             environment = homeEnvironment,
             isDefaultHome = isDefaultHome,
             itemRs = focusRequesters.itemRequesters(SettingsCategory.LAUNCHER),
@@ -734,7 +734,19 @@ internal fun ColumnScope.SettingCategoryContentHost(
                     )
                 }
             },
-            onToggleUiSoundEffects = { viewModel.toggleUiSoundEffects() },
+            onEditUiSoundEffectsMode = {
+                controller.activeDialog = SettingDialogState.Selection(
+                    "UI マイクロ効果音",
+                    com.beeregg2001.komorebi.common.UiSoundEffectMode.entries.map {
+                        it.label to it.name
+                    },
+                    prefs.uiSoundEffectsMode.name,
+                ) { selected ->
+                    viewModel.updateUiSoundEffectsMode(
+                        com.beeregg2001.komorebi.common.UiSoundEffectMode.fromPreference(selected)
+                    )
+                }
+            },
             onOpenDefaultHomeGuide = {
                 onRefreshDefaultHome()
                 controller.activeDialog = SettingDialogState.DefaultHomeGuide

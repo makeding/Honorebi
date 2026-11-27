@@ -802,5 +802,18 @@ class LauncherTabControllerTest {
         player.enabled = false
         player.play(com.beeregg2001.komorebi.common.UiSoundEffect.MOVE)
         player.release()
+
+        assertEquals(
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.OFF,
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.fromPreference(null),
+        )
+        assertEquals(
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.SYSTEM,
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.fromPreference("SYSTEM"),
+        )
+        assertEquals(
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.ON,
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.fromPreference("ON"),
+        )
     }
 }

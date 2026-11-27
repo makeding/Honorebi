@@ -639,7 +639,7 @@ fun LauncherSettingsContent(
     showAppsTab: Boolean,
     appColumns: String,
     showAppLabels: Boolean,
-    uiSoundEffectsEnabled: Boolean,
+    uiSoundEffectsMode: com.beeregg2001.komorebi.common.UiSoundEffectMode,
     environment: HomeEnvironment,
     isDefaultHome: Boolean,
     itemRs: List<FocusRequester>,
@@ -647,7 +647,7 @@ fun LauncherSettingsContent(
     onToggleAppsTab: () -> Unit,
     onEditColumns: () -> Unit,
     onToggleAppLabels: () -> Unit,
-    onToggleUiSoundEffects: () -> Unit,
+    onEditUiSoundEffectsMode: () -> Unit,
     onOpenDefaultHomeGuide: () -> Unit,
     onClick: (FocusRequester) -> Unit
 ) {
@@ -729,7 +729,7 @@ fun LauncherSettingsContent(
         SettingsSection("操作フィードバック") {
             SettingItem(
                 title = "UI マイクロ効果音",
-                value = if (uiSoundEffectsEnabled) "ON" else "OFF",
+                value = uiSoundEffectsMode.label,
                 icon = Icons.AutoMirrored.Filled.VolumeUp,
                 modifier = Modifier
                     .focusRequester(itemRs[4])
@@ -738,7 +738,7 @@ fun LauncherSettingsContent(
                         up = itemRs[3]
                         down = FocusRequester.Cancel
                     },
-                onClick = { onClick(itemRs[4]); onToggleUiSoundEffects() }
+                onClick = { onClick(itemRs[4]); onEditUiSoundEffectsMode() }
             )
         }
     }

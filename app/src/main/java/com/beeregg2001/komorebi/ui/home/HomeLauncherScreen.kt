@@ -187,7 +187,7 @@ fun HomeLauncherScreen(
 
     val hideAppsTab by settingsViewModel.hideAppsTab.collectAsState()
     val currentStartupFocusTarget by settingsViewModel.startupFocusTarget.collectAsState()
-    val uiSoundEffectsEnabled by settingsViewModel.uiSoundEffectsEnabled.collectAsState()
+    val uiSoundEffectsMode by settingsViewModel.uiSoundEffectsMode.collectAsState()
     val tabBoundaryHintSeenCount by settingsViewModel.tabBoundaryHintSeenCount.collectAsState()
     val tifHideEmptyInputs by settingsViewModel.tifHideEmptyInputs.collectAsState()
     val tifShowTunerInputs by settingsViewModel.tifShowTunerInputs.collectAsState()
@@ -214,7 +214,7 @@ fun HomeLauncherScreen(
 
     val isFullScreenPlayer = (selectedChannel != null || selectedProgram != null) && !hasActivePlayer
     val isFullScreenMode = isFullScreenOverlayOpen || isFullScreenPlayer
-    val uiSoundPlayer = rememberUiSoundPlayer(enabled = uiSoundEffectsEnabled && !isFullScreenMode)
+    val uiSoundPlayer = rememberUiSoundPlayer(mode = uiSoundEffectsMode, active = !isFullScreenMode)
     var hasCommittedInitialTabSound by remember { mutableStateOf(false) }
     LaunchedEffect(tabController.activeTab) {
         if (hasCommittedInitialTabSound) {

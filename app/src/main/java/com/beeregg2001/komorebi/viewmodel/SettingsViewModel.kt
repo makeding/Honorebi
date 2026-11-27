@@ -588,22 +588,23 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         "AUTO"
     )
-    val uiSoundEffectsEnabled: StateFlow<Boolean> = settingsRepository.uiSoundEffectsEnabled.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
-        false
-    )
+    val uiSoundEffectsMode: StateFlow<com.beeregg2001.komorebi.common.UiSoundEffectMode> =
+        settingsRepository.uiSoundEffectsMode.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            com.beeregg2001.komorebi.common.UiSoundEffectMode.OFF,
+        )
     val tabBoundaryHintSeenCount: StateFlow<Int> = settingsRepository.tabBoundaryHintSeenCount.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         0
     )
 
-    fun toggleUiSoundEffects() {
+    fun updateUiSoundEffectsMode(mode: com.beeregg2001.komorebi.common.UiSoundEffectMode) {
         viewModelScope.launch {
-            settingsRepository.saveBoolean(
-                SettingsRepository.UI_SOUND_EFFECTS_ENABLED,
-                !uiSoundEffectsEnabled.value,
+            settingsRepository.saveString(
+                SettingsRepository.UI_SOUND_EFFECTS_MODE,
+                mode.name,
             )
         }
     }

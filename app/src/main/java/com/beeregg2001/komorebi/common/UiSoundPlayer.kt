@@ -19,6 +19,17 @@ internal enum class UiSoundEffect {
     TAB_SWITCH,
 }
 
+enum class UiSoundEffectMode(val label: String) {
+    OFF("OFF"),
+    SYSTEM("システム連動"),
+    ON("常に ON");
+
+    companion object {
+        fun fromPreference(value: String?): UiSoundEffectMode =
+            entries.firstOrNull { it.name == value } ?: OFF
+    }
+}
+
 /**
  * Lightweight synthesized PCM micro-sound player for minimal console-style UI feedback.
  *
@@ -128,10 +139,13 @@ internal class UiSoundPlayer(
 }
 
 @Composable
-internal fun rememberUiSoundPlayer(enabled: Boolean): UiSoundPlayer {
+internal fun rememberUiSoundPlayer(
+    mode: UiSoundEffectMode,
+    active: Boolean = true,
+): UiSoundPlayer {
     val context = LocalContext.current
-    val systemSoundEffectsEnabled = remember(context, enabled) {
-        if (!enabled) {
+    val systemSoundEffectsEnabled = remember(context, mode, active) {
+        if (!active || mode != UiSoundEffectMode.SYSTEM) {
             false
         } else {
             runCatching {
@@ -144,7 +158,11 @@ internal fun rememberUiSoundPlayer(enabled: Boolean): UiSoundPlayer {
         }
     }
     val player = remember { UiSoundPlayer() }
-    player.enabled = enabled && systemSoundEffectsEnabled
+    player.enabled = active && when (mode) {
+        UiSoundEffectMode.OFF -> false
+        UiSoundEffectMode.SYSTEM -> systemSoundEffectsEnabled
+        UiSoundEffectMode.ON -> true
+    }
     DisposableEffect(player) {
         onDispose { player.release() }
     }

@@ -71,7 +71,8 @@ class SettingPreferences(
     val hideLauncherAppLabels: Boolean,
     val hideAppsTab: Boolean,
     val launcherAppColumns: String,
-    val uiSoundEffectsEnabled: Boolean = false,
+    val uiSoundEffectsMode: com.beeregg2001.komorebi.common.UiSoundEffectMode =
+        com.beeregg2001.komorebi.common.UiSoundEffectMode.OFF,
     val edcbRecordPlayMethod: String,
     val smbServerList: List<SmbServer>,
 // ★ 追加: 番組表設定
@@ -169,7 +170,9 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         hideLauncherAppLabels = repository.hideLauncherAppLabels.collectAsState(initial = false).value,
         hideAppsTab = repository.hideAppsTab.collectAsState(initial = false).value,
         launcherAppColumns = repository.launcherAppColumns.collectAsState(initial = "AUTO").value,
-        uiSoundEffectsEnabled = repository.uiSoundEffectsEnabled.collectAsState(initial = false).value,
+        uiSoundEffectsMode = repository.uiSoundEffectsMode.collectAsState(
+            initial = com.beeregg2001.komorebi.common.UiSoundEffectMode.OFF,
+        ).value,
         edcbRecordPlayMethod = repository.edcbRecordPlayMethod.collectAsState(initial = "DIRECT").value,
         smbServerList = smbList,
         epgColumnCount = repository.epgColumnCount.collectAsState(initial = "7").value,
