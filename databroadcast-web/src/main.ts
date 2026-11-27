@@ -462,8 +462,9 @@ function startSession(config: {
       }
       if (hasShownVisiblePage && userVisible) {
         window.ARIBNative?.onBlankModeChanged?.(true);
-      } else if (!hasShownVisiblePage && hasLoadedOnce) {
-        scheduleAutoEnterData(browser, 1500);
+      } else if (!hasShownVisiblePage) {
+        autoEnterAttempts = 0;
+        scheduleAutoEnterData(browser, 1200);
       }
     } else {
       if (autoEnterTimer !== null) {

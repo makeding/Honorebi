@@ -1214,8 +1214,14 @@ fun LivePlayerScreen(
                 // DanmakuOverlay は SurfaceView なので、自分の領域に先に描かれたウィンドウ内容を
                 // 消去する (hole punch)。字幕の Canvas より先に置き、字幕が常に上に描かれるようにする。
                 if (isHeavyUiReady && isCommentEnabled) {
+                    val danmakuZIndex = if (
+                        isDataBroadcastingActive &&
+                        (commentEngine == DanmakuEngineMode.DFM_HARDWARE || isEmulator)
+                    ) 3.5f else 0f
                     DanmakuOverlay(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(danmakuZIndex),
                         useSoftwareRendering = isEmulator,
                         engineMode = commentEngine,
                         speed = commentSpeed,
