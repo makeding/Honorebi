@@ -42,6 +42,7 @@ internal class SettingFocusRequesters {
         SettingsCategory.DEEP_TV to List(DeepTvItemIndex.COUNT) { FocusRequester() },
         SettingsCategory.CACHE to List(7) { FocusRequester() },
         SettingsCategory.APP_INFO to List(AppInfoItemIndex.COUNT) { FocusRequester() },
+        SettingsCategory.DEBUG to List(DebugItemIndex.COUNT) { FocusRequester() },
     )
 
     val seekStepRequester: FocusRequester = FocusRequester()

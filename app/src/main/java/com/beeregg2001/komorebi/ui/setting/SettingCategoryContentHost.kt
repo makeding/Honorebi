@@ -72,6 +72,8 @@ internal fun ColumnScope.SettingCategoryContentHost(
     recordedSeekStepSeconds: Int,
     preferOriginalMpegTs: String,
     receiveBetaUpdates: Boolean,
+    debugMenuEnabled: Boolean,
+    playerDrmEnabled: Boolean,
     honomiUserName: String?,
     onHonomiAccountClick: () -> Unit,
     homeEnvironment: HomeEnvironment,
@@ -1055,11 +1057,15 @@ internal fun ColumnScope.SettingCategoryContentHost(
 
         SettingsCategory.APP_INFO -> AppInfoContent(
             receiveBetaUpdates = receiveBetaUpdates,
+            debugMenuEnabled = debugMenuEnabled,
             updateState = viewModel.updateState.collectAsState().value,
             onToggleBetaUpdates = { enabled ->
                 scope.launch {
                     repository.saveBoolean(SettingsRepository.RECEIVE_BETA_UPDATES, enabled)
                 }
+            },
+            onUnlockDebugMenu = {
+                scope.launch { repository.saveDebugMenuEnabled(true) }
             },
             onCheckUpdates = viewModel::checkForUpdates,
             onScrollToTop = { scope.launch { mainScrollState.animateScrollTo(0) } },
@@ -1081,5 +1087,15 @@ internal fun ColumnScope.SettingCategoryContentHost(
             licR = focusRequesters.itemRequesters(SettingsCategory.APP_INFO)[AppInfoItemIndex.OSS_LICENSES],
             sidebarR = focusRequesters.categoryRequester(SettingsCategory.APP_INFO),
         ) { controller.recordRestoreTarget(it, SettingsCategory.APP_INFO) }
+
+        SettingsCategory.DEBUG -> DebugSettingsContent(
+            playerDrmEnabled = playerDrmEnabled,
+            onTogglePlayerDrm = { enabled ->
+                scope.launch { repository.savePlayerDrmEnabled(enabled) }
+            },
+            drmR = focusRequesters.itemRequesters(SettingsCategory.DEBUG)[DebugItemIndex.PLAYER_DRM],
+            sidebarR = focusRequesters.categoryRequester(SettingsCategory.DEBUG),
+            onScrollToTop = { scope.launch { mainScrollState.animateScrollTo(0) } },
+        ) { controller.recordRestoreTarget(it, SettingsCategory.DEBUG) }
     }
 }

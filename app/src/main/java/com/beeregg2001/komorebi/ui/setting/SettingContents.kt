@@ -1348,8 +1348,10 @@ fun CacheManagementContent(
 @Composable
 fun AppInfoContent(
     receiveBetaUpdates: Boolean,
+    debugMenuEnabled: Boolean = false,
     updateState: com.beeregg2001.komorebi.util.UpdateState,
     onToggleBetaUpdates: (Boolean) -> Unit,
+    onUnlockDebugMenu: () -> Unit = {},
     onCheckUpdates: () -> Unit,
     onScrollToTop: () -> Unit,
     onShowProject: () -> Unit,
@@ -1374,6 +1376,7 @@ fun AppInfoContent(
 
     var versionPresses by remember { mutableIntStateOf(0) }
     var onFire by remember { mutableStateOf(false) }
+    var debugPresses by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -1449,6 +1452,16 @@ fun AppInfoContent(
                     when (versionPresses) {
                         4 -> Toast.makeText(context, "🔥🔥🔥🔥", Toast.LENGTH_SHORT).show()
                         5 -> onFire = true
+                    }
+                } else {
+                    if (!debugMenuEnabled) {
+                        debugPresses += 1
+                        if (debugPresses >= 2) {
+                            onUnlockDebugMenu()
+                            Toast.makeText(context, "デバッグメニューが有効化されました", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(context, "デバッグメニューは既に有効です", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -1563,5 +1576,52 @@ fun AppInfoContent(
                     down = FocusRequester.Cancel
                 },
             onClick = { onClick(licR); onShowLicenses() })
+    }
+}
+
+@Composable
+fun DebugSettingsContent(
+    playerDrmEnabled: Boolean,
+    onTogglePlayerDrm: (Boolean) -> Unit,
+    drmR: FocusRequester,
+    sidebarR: FocusRequester,
+    onScrollToTop: () -> Unit = {},
+    onClick: (FocusRequester) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Text(
+            AppStrings.SETTINGS_CATEGORY_DEBUG,
+            style = MaterialTheme.typography.headlineMedium,
+            color = KomorebiTheme.colors.textPrimary,
+            fontWeight = FontWeight.Bold
+        )
+        SettingsSection("プレイヤー") {
+            SettingToggleItem(
+                title = "プレイヤー DRM (画面キャプチャ防止)",
+                description = "再生画面をセキュアサーフェスとして保護します。scrcpy等のリモート操作時に映像転送を抑止し、動作を軽量化します（デフォルト: ON）。",
+                icon = Icons.Default.Shield,
+                checked = playerDrmEnabled,
+                onCheckedChange = {
+                    onClick(drmR)
+                    onTogglePlayerDrm(it)
+                },
+                modifier = Modifier
+                    .width(420.dp)
+                    .focusRequester(drmR)
+                    .onPreviewKeyEvent { event ->
+                        if (event.key == Key.DirectionUp) {
+                            if (event.type == KeyEventType.KeyDown) onScrollToTop()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    .focusProperties {
+                        left = sidebarR
+                        up = FocusRequester.Cancel
+                        down = FocusRequester.Cancel
+                    }
+            )
+        }
     }
 }

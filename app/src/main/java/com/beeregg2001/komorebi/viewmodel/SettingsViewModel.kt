@@ -368,6 +368,16 @@ class SettingsViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         false
     )
+    val debugMenuEnabled: StateFlow<Boolean> = settingsRepository.debugMenuEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        false
+    )
+    val playerDrmEnabled: StateFlow<Boolean> = settingsRepository.playerDrmEnabled.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        true
+    )
     private val tifSupported = MutableStateFlow(true)
     val tifIntegrationEnabled: StateFlow<Boolean> = settingsRepository.tifIntegrationEnabled.stateIn(
         viewModelScope,

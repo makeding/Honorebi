@@ -236,6 +236,10 @@ class SettingsRepository @Inject constructor(
             stringPreferencesKey("data_broadcasting_virtual_remote_mode")
         val DATA_BROADCASTING_PRELOAD_B24 =
             booleanPreferencesKey("data_broadcasting_preload_b24")
+
+        // デバッグ設定
+        val DEBUG_MENU_ENABLED = booleanPreferencesKey("debug_menu_enabled")
+        val PLAYER_DRM_ENABLED = booleanPreferencesKey("player_drm_enabled")
     }
 
     val isInitialized: Flow<Boolean> = context.dataStore.data
@@ -583,6 +587,16 @@ class SettingsRepository @Inject constructor(
     val epgVisibleHours: Flow<String> = context.dataStore.data.map { it[EPG_VISIBLE_HOURS] ?: "6" }
     val cfAccessClientId: Flow<String> = context.dataStore.data.map { it[CF_ACCESS_CLIENT_ID] ?: "" }
     val cfAccessClientSecret: Flow<String> = context.dataStore.data.map { it[CF_ACCESS_CLIENT_SECRET] ?: "" }
+    val debugMenuEnabled: Flow<Boolean> = context.dataStore.data.map { it[DEBUG_MENU_ENABLED] ?: false }
+    val playerDrmEnabled: Flow<Boolean> = context.dataStore.data.map { it[PLAYER_DRM_ENABLED] ?: true }
+
+    suspend fun saveDebugMenuEnabled(enabled: Boolean) {
+        saveBoolean(DEBUG_MENU_ENABLED, enabled)
+    }
+
+    suspend fun savePlayerDrmEnabled(enabled: Boolean) {
+        saveBoolean(PLAYER_DRM_ENABLED, enabled)
+    }
 
     suspend fun saveString(
         key: androidx.datastore.preferences.core.Preferences.Key<String>,

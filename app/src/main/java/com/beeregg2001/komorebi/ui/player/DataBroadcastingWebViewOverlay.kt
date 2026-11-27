@@ -515,6 +515,10 @@ private fun createRuntimeBootstrap(basePath: String): String {
       if (attribute.name.toLowerCase() === 'type') continue;
       replacement.setAttribute(attribute.name, attribute.value);
     }
+    if (replacement.style.getPropertyValue('opacity') === '0' &&
+        replacement.style.getPropertyPriority('opacity') === 'important') {
+      replacement.style.removeProperty('opacity');
+    }
     replacement.setAttribute('data-arib-object', broadcastType);
     while (object.firstChild) replacement.appendChild(object.firstChild);
     object.replaceWith(replacement);

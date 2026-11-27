@@ -15,7 +15,8 @@ enum class SettingsCategory(
     RECORDING(isUiGroupChild = true),
     EPG(isUiGroupChild = true),
     CACHE,
-    APP_INFO;
+    APP_INFO,
+    DEBUG;
 
     companion object {
         val SIDEBAR_ORDER: List<SettingsCategory> = listOf(
@@ -32,6 +33,7 @@ enum class SettingsCategory(
             EPG,
             CACHE,
             APP_INFO,
+            DEBUG,
         )
     }
 }
@@ -91,4 +93,9 @@ internal object AppInfoItemIndex {
     const val DEVICE_CAPABILITIES = 5
     const val WHATS_NEW = 6
     const val COUNT = 7
+}
+
+internal object DebugItemIndex {
+    const val PLAYER_DRM = 0
+    const val COUNT = 1
 }

@@ -1,14 +1,18 @@
 package com.beeregg2001.komorebi.ui.player
 
+import android.view.SurfaceView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.beeregg2001.komorebi.data.SettingsRepository
 
 /** Owns only PlayerView attachment. Geometry, crop and focus stay in the calling scene. */
 @Composable
@@ -16,20 +20,27 @@ fun PlayerSurface(
     player: Player?,
     modifier: Modifier = Modifier,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    drmEnabled: Boolean? = null,
     onViewCreated: (PlayerView) -> Unit = {},
     onViewUpdated: (PlayerView) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val repository = remember(context) { SettingsRepository(context.applicationContext) }
+    val repoDrmEnabled by repository.playerDrmEnabled.collectAsState(initial = true)
+    val isDrmEnabled = drmEnabled ?: repoDrmEnabled
+
     val systemSleepAllowed by com.beeregg2001.komorebi.ui.screensaver.ScreensaverInteractionTracker.systemSleepAllowed.collectAsState()
     // Keep the scene's focus target on a Compose layout. AndroidView's native
     // focus interop cannot focus a controller-free PlayerView on Android TV.
     Box(modifier = modifier, propagateMinConstraints = true) {
         AndroidView(
-        factory = { context ->
-            PlayerView(context).apply {
+        factory = { ctx ->
+            PlayerView(ctx).apply {
                 this.player = player
                 useController = false
                 keepScreenOn = !systemSleepAllowed
                 this.resizeMode = resizeMode
+                (videoSurfaceView as? SurfaceView)?.setSecure(isDrmEnabled)
                 onViewCreated(this)
             }
         },
@@ -37,6 +48,7 @@ fun PlayerSurface(
             if (view.player !== player) view.player = player
             if (view.resizeMode != resizeMode) view.resizeMode = resizeMode
             view.keepScreenOn = !systemSleepAllowed
+            (view.videoSurfaceView as? SurfaceView)?.setSecure(isDrmEnabled)
             onViewUpdated(view)
         },
         onRelease = { view ->

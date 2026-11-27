@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -77,24 +78,27 @@ internal data class SettingSidebarRow(
 
 // サイドバーの表示順。SettingsCategory.SIDEBAR_ORDER に従い、
 // isUiGroupChild の項目は直前にグループ見出しを挟んで UI 設定の子として表示する。
-internal fun buildSettingSidebarRows(): List<SettingSidebarRow> =
-    SettingsCategory.SIDEBAR_ORDER.map { category ->
-        when (category) {
-            SettingsCategory.GENERAL -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications)
-            SettingsCategory.CONNECTION -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link)
-            SettingsCategory.DEEP_TV -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DEEP_TV, Icons.Default.SettingsInputHdmi)
-            SettingsCategory.PLAYBACK -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle)
-            SettingsCategory.DATA_BROADCASTING -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DATA_BROADCASTING, Icons.Default.LiveTv)
-            SettingsCategory.COMMENT -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment)
-            SettingsCategory.DISPLAY -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard)
-            SettingsCategory.HOME -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home)
-            SettingsCategory.LAUNCHER -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps)
-            SettingsCategory.RECORDING -> SettingSidebarRow(category, "録画設定", Icons.Default.VideoSettings)
-            SettingsCategory.EPG -> SettingSidebarRow(category, "番組表設定", Icons.Default.GridOn)
-            SettingsCategory.CACHE -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.DeleteSweep)
-            SettingsCategory.APP_INFO -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info)
+internal fun buildSettingSidebarRows(showDebug: Boolean = false): List<SettingSidebarRow> =
+    SettingsCategory.SIDEBAR_ORDER
+        .filter { it != SettingsCategory.DEBUG || showDebug }
+        .map { category ->
+            when (category) {
+                SettingsCategory.GENERAL -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_GENERAL, Icons.Default.SettingsApplications)
+                SettingsCategory.CONNECTION -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link)
+                SettingsCategory.DEEP_TV -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DEEP_TV, Icons.Default.SettingsInputHdmi)
+                SettingsCategory.PLAYBACK -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle)
+                SettingsCategory.DATA_BROADCASTING -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DATA_BROADCASTING, Icons.Default.LiveTv)
+                SettingsCategory.COMMENT -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment)
+                SettingsCategory.DISPLAY -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard)
+                SettingsCategory.HOME -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home)
+                SettingsCategory.LAUNCHER -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_LAUNCHER, Icons.Default.Apps)
+                SettingsCategory.RECORDING -> SettingSidebarRow(category, "録画設定", Icons.Default.VideoSettings)
+                SettingsCategory.EPG -> SettingSidebarRow(category, "番組表設定", Icons.Default.GridOn)
+                SettingsCategory.CACHE -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CACHE, Icons.Default.DeleteSweep)
+                SettingsCategory.APP_INFO -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_APP_INFO, Icons.Default.Info)
+                SettingsCategory.DEBUG -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DEBUG, Icons.Default.BugReport)
+            }
         }
-    }
 
 @Composable
 internal fun SettingSidebar(

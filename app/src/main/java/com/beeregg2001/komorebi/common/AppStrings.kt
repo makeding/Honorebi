@@ -186,6 +186,7 @@ object AppStrings {
     const val SETTINGS_CATEGORY_CACHE = "データ管理"
     const val SETTINGS_CATEGORY_UI = "画面設定"
     const val SETTINGS_CATEGORY_APP_INFO = "アプリ情報"
+    const val SETTINGS_CATEGORY_DEBUG = "デバッグ"
 
     // 基本設定
     const val SETTINGS_SECTION_DATA_MANAGEMENT = "データ管理"

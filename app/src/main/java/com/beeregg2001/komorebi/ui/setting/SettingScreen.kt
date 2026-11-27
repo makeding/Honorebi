@@ -96,7 +96,9 @@ private fun SettingsMenuScreen(
 
     val prefs = rememberSettingPreferences(repository)
     val controller = rememberSettingNavigationController(destination)
-    val sidebarRows = remember { buildSettingSidebarRows() }
+    val debugMenuEnabled by viewModel.debugMenuEnabled.collectAsState()
+    val playerDrmEnabled by viewModel.playerDrmEnabled.collectAsState()
+    val sidebarRows = remember(debugMenuEnabled) { buildSettingSidebarRows(debugMenuEnabled) }
 
     val receiveBetaUpdates by viewModel.receiveBetaUpdates.collectAsState()
     val playerUiMode by viewModel.playerUiMode.collectAsState()
@@ -162,6 +164,8 @@ private fun SettingsMenuScreen(
                 recordedSeekStepSeconds = recordedSeekStepSeconds,
                 preferOriginalMpegTs = preferOriginalMpegTs,
                 receiveBetaUpdates = receiveBetaUpdates,
+                debugMenuEnabled = debugMenuEnabled,
+                playerDrmEnabled = playerDrmEnabled,
                 honomiUserName = honomiSession?.userName,
                 onHonomiAccountClick = {
                     if (honomiSession == null) {
