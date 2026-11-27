@@ -36,7 +36,7 @@ data class DataBroadcastingSettings(
     val zipcode: String = "",
     val prefectureCode: Int? = null,
     val virtualRemoteMode: DataBroadcastingVirtualRemoteMode = DataBroadcastingVirtualRemoteMode.AUTO,
-    val preloadB24InBackground: Boolean = true,
+    val preloadB24InBackground: Boolean = false,
 ) {
     val prefecture: DataBroadcastingPrefecture?
         get() = prefectureCode?.let { DataBroadcastingPrefectures.findByCode(it) }

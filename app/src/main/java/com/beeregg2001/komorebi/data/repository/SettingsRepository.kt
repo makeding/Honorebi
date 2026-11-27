@@ -510,7 +510,7 @@ class SettingsRepository @Inject constructor(
             virtualRemoteMode = DataBroadcastingVirtualRemoteMode.fromPreference(
                 prefs[DATA_BROADCASTING_VIRTUAL_REMOTE_MODE]
             ),
-            preloadB24InBackground = prefs[DATA_BROADCASTING_PRELOAD_B24] ?: true,
+            preloadB24InBackground = prefs[DATA_BROADCASTING_PRELOAD_B24] ?: false,
         )
     }
 

@@ -1112,7 +1112,7 @@ fun LivePlayerScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .alpha(if (isDataBroadcastingActive && !isDataBroadcastingBlank) 1f else 0f)
-                        .zIndex(if (isDataBroadcastingActive) 1f else -1f)
+                        .zIndex(if (isDataBroadcastingActive) 3f else -1f)
                 )
             }
 

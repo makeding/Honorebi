@@ -268,7 +268,7 @@ fun B24DataBroadcastingWebViewOverlay(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
-                    setBackgroundColor(Color.BLACK)
+                    setBackgroundColor(Color.TRANSPARENT)
                     isFocusable = false
                     isFocusableInTouchMode = false
 
