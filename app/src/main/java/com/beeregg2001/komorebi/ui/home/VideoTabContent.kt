@@ -175,6 +175,7 @@ fun VideoTabContent(
     onShowOnAir: () -> Unit = {},
     topBarFocusRequester: FocusRequester? = null,
     onScrolledChanged: (Boolean) -> Unit = {},
+    onNextTab: (() -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val coroutineScope = rememberCoroutineScope()
@@ -521,8 +522,8 @@ fun VideoTabContent(
                                 left = tabFocusRequester
                                 right = onAirRequester
                                 up = upTarget
-                                if (allContentRowsEmpty) down = FocusRequester.Cancel
-                            },
+                            }
+                            .bottomBoundaryDown(allContentRowsEmpty, onNextTab),
                         onClick = {
                             lastFocusedCard = null
                             homeViewModel.lastVideoCardFocus = null
@@ -554,8 +555,8 @@ fun VideoTabContent(
                                 left = recordingsRequester
                                 right = smbRequester
                                 up = upTarget
-                                if (allContentRowsEmpty) down = FocusRequester.Cancel
-                            },
+                            }
+                            .bottomBoundaryDown(allContentRowsEmpty, onNextTab),
                         onClick = {
                             lastFocusedCard = null
                             homeViewModel.lastVideoCardFocus = null
@@ -585,8 +586,8 @@ fun VideoTabContent(
                                 left = onAirRequester
                                 right = if (hasGachaCandidate) gachaRequester else FocusRequester.Cancel
                                 up = upTarget
-                                if (allContentRowsEmpty) down = FocusRequester.Cancel
-                            },
+                            }
+                            .bottomBoundaryDown(allContentRowsEmpty, onNextTab),
                         onClick = {
                             lastFocusedCard = null
                             homeViewModel.lastVideoCardFocus = null
@@ -637,8 +638,8 @@ fun VideoTabContent(
                                     left = smbRequester
                                     right = FocusRequester.Cancel
                                     up = upTarget
-                                    if (allContentRowsEmpty) down = FocusRequester.Cancel
-                                },
+                                }
+                                .bottomBoundaryDown(allContentRowsEmpty, onNextTab),
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
                             colors = ClickableSurfaceDefaults.colors(
                                 containerColor = colors.surface.copy(alpha = 0.72f),
@@ -737,10 +738,11 @@ fun VideoTabContent(
                                             if (index == 0) left = tabFocusRequester
                                             if (index == recentItems.lastIndex) right =
                                                 FocusRequester.Cancel
-                                            if (historyItems.isEmpty() && groupedSeries.isEmpty()) {
-                                                down = FocusRequester.Cancel
-                                            }
-                                        },
+                                        }
+                                        .bottomBoundaryDown(
+                                            isBottom = historyItems.isEmpty() && groupedSeries.isEmpty(),
+                                            onNextTab = onNextTab,
+                                        ),
                                     backendType = backendType,
                                 )
                             }
@@ -829,10 +831,11 @@ fun VideoTabContent(
                                             if (index == 0) left = tabFocusRequester
                                             if (index == historyItems.lastIndex) right =
                                                 FocusRequester.Cancel
-                                            if (groupedSeries.isEmpty()) {
-                                                down = FocusRequester.Cancel
-                                            }
-                                        },
+                                        }
+                                        .bottomBoundaryDown(
+                                            isBottom = groupedSeries.isEmpty(),
+                                            onNextTab = onNextTab,
+                                        ),
                                     allowNetworkImages = isNetworkAvailable,
                                     backendType = backendType,
                                 )
@@ -887,10 +890,11 @@ fun VideoTabContent(
                                             if (index == 0) left = tabFocusRequester
                                             if (index == genreList.lastIndex) right =
                                                 FocusRequester.Cancel
-                                            if (seriesPreviewItems.isEmpty()) {
-                                                down = FocusRequester.Cancel
-                                            }
                                         }
+                                        .bottomBoundaryDown(
+                                            isBottom = seriesPreviewItems.isEmpty(),
+                                            onNextTab = onNextTab,
+                                        )
                                         .onFocusChanged {
                                             isFocused = it.hasFocus
                                             if (isFocused) focusedProgramId = null
@@ -978,8 +982,8 @@ fun VideoTabContent(
                                             if (index == 0) left = tabFocusRequester
                                             if (index == seriesPreviewItems.lastIndex) right =
                                                 FocusRequester.Cancel
-                                            down = FocusRequester.Cancel
-                                        },
+                                        }
+                                        .bottomBoundaryDown(isBottom = true, onNextTab = onNextTab),
                                     allowNetworkImages = isNetworkAvailable,
                                     backendType = backendType,
                                 )

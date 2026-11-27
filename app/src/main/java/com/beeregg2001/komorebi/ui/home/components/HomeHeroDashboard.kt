@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import com.beeregg2001.komorebi.ui.home.bottomBoundaryDown
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -397,6 +398,7 @@ fun QuickShortcutsGrid(
     onShowAllRecordings: () -> Unit,
     modifier: Modifier = Modifier,
     isBottomRow: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val nextReserveBadge = remember(upcomingReserves, timeFormat) {
         upcomingReserves.firstOrNull()?.let { reserve ->
@@ -471,8 +473,8 @@ fun QuickShortcutsGrid(
                         up = tile0Requester
                         left = heroRequester
                         right = tile3Requester
-                        if (isBottomRow) down = FocusRequester.Cancel
-                    },
+                    }
+                    .bottomBoundaryDown(isBottomRow, onNextTab),
             )
             QuickShortcutTile(
                 title = "番組表",
@@ -491,8 +493,8 @@ fun QuickShortcutsGrid(
                         up = tile1Requester
                         left = tile2Requester
                         right = FocusRequester.Cancel
-                        if (isBottomRow) down = FocusRequester.Cancel
-                    },
+                    }
+                    .bottomBoundaryDown(isBottomRow, onNextTab),
             )
         }
     }

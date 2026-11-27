@@ -89,6 +89,7 @@ fun LiveContent(
     contentTopRequestId: Long = 0L,
     topBarFocusRequester: FocusRequester? = null,
     onScrolledChanged: (Boolean) -> Unit = {},
+    onNextTab: (() -> Unit)? = null,
     settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
     val liveRows by channelViewModel.liveRows.collectAsState()
@@ -421,6 +422,10 @@ fun LiveContent(
                                                 if (colIdx == 0) left = topNavFocusRequester
                                                 if (isRightEdge) right = FocusRequester.Cancel
                                             }
+                                            .bottomBoundaryDown(
+                                                isBottom = nextChunk == null && sourceErrors["IPTV"].isNullOrBlank(),
+                                                onNextTab = onNextTab,
+                                            )
                                     )
                                 }
 
@@ -452,7 +457,8 @@ fun LiveContent(
                                     onClick = channelViewModel::fetchChannels,
                                     modifier = Modifier
                                         .padding(top = 8.dp)
-                                        .focusProperties { left = topNavFocusRequester },
+                                        .focusProperties { left = topNavFocusRequester }
+                                        .bottomBoundaryDown(isBottom = true, onNextTab = onNextTab),
                                 ) {
                                     Text("再試行")
                                 }

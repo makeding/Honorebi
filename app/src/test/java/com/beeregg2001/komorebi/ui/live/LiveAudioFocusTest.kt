@@ -59,4 +59,18 @@ class LiveAudioFocusTest {
         focus.onFocusChange(AudioManager.AUDIOFOCUS_GAIN)
         assertFalse(focus.playbackAllowed)
     }
+
+    @Test
+    fun transientDuckingDoesNotPauseLivePlayback() {
+        val context = RuntimeEnvironment.getApplication()
+        val shadow = shadowOf(context.getSystemService(Context.AUDIO_SERVICE) as AudioManager)
+        shadow.setNextFocusRequestResponse(AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        val changes = mutableListOf<Boolean>()
+        val focus = LiveAudioFocus(context) { changes += it }
+
+        assertTrue(focus.acquire())
+        focus.onFocusChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)
+        assertTrue(focus.playbackAllowed)
+        assertTrue(changes.isEmpty())
+    }
 }

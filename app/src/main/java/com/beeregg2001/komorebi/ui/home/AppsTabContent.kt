@@ -99,6 +99,7 @@ fun AppsTabContent(
     topBarFocusRequester: FocusRequester? = null,
     isTopNavFocused: Boolean = false,
     onScrolledChanged: (Boolean) -> Unit = {},
+    onNextTab: (() -> Unit)? = null,
 ) {
     val launcherApps by homeViewModel.launcherApps.collectAsState()
     val hiddenLauncherApps by homeViewModel.hiddenLauncherApps.collectAsState()
@@ -429,10 +430,11 @@ fun AppsTabContent(
                                     if ((index + 1) % columnCount == 0 || index == totalEntries - 1) {
                                         right = FocusRequester.Cancel
                                     }
-                                    if (isLastRow && (isHiddenCatalog || hiddenApps.isEmpty())) {
-                                        down = FocusRequester.Cancel
-                                    }
                                 }
+                                .bottomBoundaryDown(
+                                    isBottom = isLastRow && (isHiddenCatalog || hiddenApps.isEmpty()) && editingAppId == null,
+                                    onNextTab = onNextTab,
+                                )
                                 .onPreviewKeyEvent { event ->
                                     if (event.type == KeyEventType.KeyDown &&
                                         event.key == Key.DirectionUp &&

@@ -40,8 +40,8 @@ internal class LiveAudioFocus(context: Context, private val onPlaybackAllowed: (
                 requested = false
                 request.release()
             }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> playbackAllowed = false
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> playbackAllowed = false
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> return
             else -> return
         }
         onPlaybackAllowed(playbackAllowed)
@@ -79,7 +79,7 @@ private class Api26FocusRequest(
         .setAudioAttributes(AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build())
-        .setWillPauseWhenDucked(true)
+        .setWillPauseWhenDucked(false)
         .setOnAudioFocusChangeListener(listener, Handler(Looper.getMainLooper()))
         .build()
 

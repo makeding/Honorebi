@@ -1,5 +1,48 @@
 package com.beeregg2001.komorebi.ui.home
 
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+
+/**
+ * Intercepts D-pad Down at the bottom-most row of a launcher tab's content.
+ *
+ * When [isBottom] is true, focus cannot escape downward to unrelated chrome; if [onNextTab] is
+ * provided, a fresh (non-repeating) Down press seamlessly advances to the next visible tab.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun Modifier.bottomBoundaryDown(
+    isBottom: Boolean,
+    onNextTab: (() -> Unit)?,
+): Modifier {
+    if (!isBottom) return this
+    return this
+        .focusProperties { down = FocusRequester.Cancel }
+        .then(
+            if (onNextTab != null) {
+                Modifier.onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionDown &&
+                        event.nativeKeyEvent.repeatCount == 0
+                    ) {
+                        onNextTab()
+                        true
+                    } else {
+                        false
+                    }
+                }
+            } else {
+                Modifier
+            }
+        )
+}
+
 /**
  * Typed identity and lifecycle capabilities for every top-level launcher tab.
  *

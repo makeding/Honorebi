@@ -43,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
+import com.beeregg2001.komorebi.ui.home.bottomBoundaryDown
 import com.beeregg2001.komorebi.common.UrlBuilder
 import com.beeregg2001.komorebi.common.ProgramTimeFormatter
 import com.beeregg2001.komorebi.common.safeRequestFocus
@@ -151,6 +152,7 @@ fun OnAirScreen(
     isEmbeddedTab: Boolean = false,
     autoRequestInitialFocus: Boolean = !isEmbeddedTab,
     onContentReady: () -> Unit = {},
+    onNextTab: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     val colors = KomorebiTheme.colors
@@ -711,7 +713,11 @@ fun OnAirScreen(
                                                                             right = cardRight(day, index)
                                                                             up = cardUp(day, index)
                                                                             down = cardDown(day, index)
-                                                                        },
+                                                                        }
+                                                                        .bottomBoundaryDown(
+                                                                            isBottom = isEmbeddedTab && index == byWeekday[day].lastIndex,
+                                                                            onNextTab = onNextTab,
+                                                                        ),
                                                                     onClick = { viewModel.expandSeries(series.id) },
                                                                 )
                                                                 if (index != daySeries.lastIndex) Spacer(Modifier.height(WEEK_CARD_SPACING))

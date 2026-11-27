@@ -557,6 +557,21 @@ fun HomeLauncherScreen(
                                     (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null || focusMemory.request?.contentTop == true)
                             },
                     ) {
+                        val switchToNextTab: (() -> Unit)? = if (snapshotTabIndex < visibleTabs.lastIndex) {
+                            {
+                                val nextTab = tabController.selectNextTab()
+                                if (nextTab != null) {
+                                    val nextIndex = tabController.selectedIndex
+                                    suppressInitialRailExpand = false
+                                    syncedActiveTab = tabController.activeTab
+                                    ui.selectedTabIndex = nextIndex
+                                    ui.onTabSelected(nextIndex, onTabChange, homeViewModel)
+                                    focusMemory.requestContent(nextIndex)
+                                }
+                            }
+                        } else {
+                            null
+                        }
                         val openOnAirTab: () -> Unit = {
                             val onAirIndex = visibleTabs.indexOf(LauncherTab.ON_AIR)
                             if (onAirIndex != -1) {
@@ -625,6 +640,7 @@ fun HomeLauncherScreen(
                                 onShowOnAir = openOnAirTab,
                                 hideAppsTab = hideAppsTab,
                                 onScrolledChanged = { isContentScrolled = it },
+                                onNextTab = switchToNextTab,
                             )
 
                             LauncherTab.LIVE -> LiveContent(
@@ -652,6 +668,7 @@ fun HomeLauncherScreen(
                                 onContentReady = snapshotReady,
                                 contentTopRequestId = snapshotContentTopRequestId,
                                 onScrolledChanged = { isContentScrolled = it },
+                                onNextTab = switchToNextTab,
                             )
 
                             LauncherTab.APPS -> AppsTabContent(
@@ -664,6 +681,7 @@ fun HomeLauncherScreen(
                                 focusMemory = focusMemory,
                                 tabIndex = snapshotTabIndex,
                                 onScrolledChanged = { isContentScrolled = it },
+                                onNextTab = switchToNextTab,
                             )
 
                             LauncherTab.VIDEO -> VideoTabContent(
@@ -696,6 +714,7 @@ fun HomeLauncherScreen(
                                 onContentReady = snapshotReady,
                                 contentTopRequestId = snapshotContentTopRequestId,
                                 onScrolledChanged = { isContentScrolled = it },
+                                onNextTab = switchToNextTab,
                             )
 
                             LauncherTab.ON_AIR -> com.beeregg2001.komorebi.ui.onair.OnAirScreen(
@@ -715,6 +734,7 @@ fun HomeLauncherScreen(
                                 isEmbeddedTab = true,
                                 autoRequestInitialFocus = false,
                                 onContentReady = snapshotReady,
+                                onNextTab = switchToNextTab,
                             )
 
                             LauncherTab.EPG -> EpgNavigationContainer(

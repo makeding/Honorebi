@@ -627,4 +627,62 @@ class LauncherTabControllerTest {
         assertEquals(LauncherTabPhase.MOUNTING, controller.phase)
         assertEquals(1L, controller.generation)
     }
+
+    @Test
+    fun selectNextTabAdvancesAcrossVisibleTabsAndStopsAtLast() {
+        val visible = LauncherTab.visibleTabs(hideAppsTab = true)
+        val controller = LauncherTabController(
+            initialTab = LauncherTab.HOME,
+            initialVisibleTabs = visible,
+        )
+
+        assertEquals(LauncherTab.LIVE, controller.nextTab())
+        assertEquals(LauncherTab.LIVE, controller.selectNextTab())
+        assertEquals(LauncherTab.LIVE, controller.activeTab)
+        assertEquals(TabTransitionDirection.FORWARD, controller.transitionDirection)
+
+        // Skips hidden APPS tab and advances to ON_AIR.
+        assertEquals(LauncherTab.ON_AIR, controller.selectNextTab())
+        assertEquals(LauncherTab.ON_AIR, controller.activeTab)
+
+        // At the last visible tab, nextTab/selectNextTab returns null and keeps activeTab.
+        val lastTab = visible.last()
+        controller.selectTab(lastTab, immediate = true)
+        assertNull(controller.nextTab())
+        assertNull(controller.selectNextTab())
+        assertEquals(lastTab, controller.activeTab)
+    }
+
+    @Test
+    fun bottomBoundaryDownAdvancesOnBottomRowOnly() {
+        var nextTabCalls = 0
+        compose.setContent {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("non-bottom-item")
+                        .bottomBoundaryDown(isBottom = false, onNextTab = { nextTabCalls++ })
+                        .focusable(),
+                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("bottom-item")
+                        .bottomBoundaryDown(isBottom = true, onNextTab = { nextTabCalls++ })
+                        .focusable(),
+                )
+            }
+        }
+
+        // Non-bottom item moves focus down normally without triggering onNextTab.
+        compose.onNodeWithTag("non-bottom-item").requestFocus().assertIsFocused()
+        compose.onNodeWithTag("non-bottom-item").performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("bottom-item").assertIsFocused()
+        assertEquals(0, nextTabCalls)
+
+        // Bottom item intercepts DirectionDown and invokes onNextTab.
+        compose.onNodeWithTag("bottom-item").performKeyInput { pressKey(Key.DirectionDown) }
+        assertEquals(1, nextTabCalls)
+    }
 }

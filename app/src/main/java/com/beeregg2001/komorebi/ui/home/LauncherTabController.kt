@@ -158,6 +158,24 @@ class LauncherTabController(
     }
 
     /**
+     * Returns the next visible tab after [activeTab], or null if [activeTab] is already the last tab.
+     */
+    fun nextTab(): LauncherTab? {
+        val currentIndex = visibleTabs.indexOf(activeTab)
+        if (currentIndex == -1 || currentIndex >= visibleTabs.lastIndex) return null
+        return visibleTabs[currentIndex + 1]
+    }
+
+    /**
+     * Advances immediately to the next visible tab and returns it, or null if already at the last tab.
+     */
+    fun selectNextTab(): LauncherTab? {
+        val target = nextTab() ?: return null
+        selectTab(target, immediate = true)
+        return target
+    }
+
+    /**
      * Cancels an uncommitted D-pad scrub selection (e.g. when focus moves into the
      * bottom utility/settings footer or top-right status strip) so the stage and highlight
      * stay on [activeTab].

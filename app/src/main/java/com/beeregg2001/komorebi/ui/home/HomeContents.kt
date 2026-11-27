@@ -69,6 +69,7 @@ fun HomeContents(
     onShowOnAir: () -> Unit = {},
     hideAppsTab: Boolean = false,
     onScrolledChanged: (Boolean) -> Unit = {},
+    onNextTab: (() -> Unit)? = null,
 ) {
     val lazyListState = rememberLazyListState()
     val isScrolled by remember {
@@ -215,7 +216,11 @@ fun HomeContents(
                                 availableSections.isEmpty() -> FocusRequester.Cancel
                                 else -> FocusRequester.Default
                             }
-                        },
+                        }
+                        .bottomBoundaryDown(
+                            isBottom = !showQuickApps && availableSections.isEmpty(),
+                            onNextTab = onNextTab,
+                        ),
                 )
 
                 QuickShortcutsGrid(
@@ -244,6 +249,7 @@ fun HomeContents(
                     },
                     modifier = Modifier.weight(0.42f),
                     isBottomRow = !showQuickApps && availableSections.isEmpty(),
+                    onNextTab = onNextTab,
                 )
             }
         }
@@ -264,6 +270,7 @@ fun HomeContents(
                     firstItemRequester = quickAppsFirstRequester,
                     leftEdgeFocusRequester = tabFocusRequester,
                     isLastSection = availableSections.isEmpty(),
+                    onNextTab = onNextTab,
                 )
             }
         }
@@ -285,6 +292,7 @@ fun HomeContents(
                     focusMemory = focusMemory,
                     timeFormat = timeFormat,
                     isLastSection = lastSectionId == "history",
+                    onNextTab = onNextTab,
                 )
             }
         }
@@ -302,6 +310,7 @@ fun HomeContents(
                     sectionId = "lastWatched",
                     focusMemory = focusMemory,
                     isLastSection = lastSectionId == "lastWatched",
+                    onNextTab = onNextTab,
                 )
             }
         }
@@ -318,6 +327,7 @@ fun HomeContents(
                     sectionId = "hot",
                     focusMemory = focusMemory,
                     isLastSection = lastSectionId == "hot",
+                    onNextTab = onNextTab,
                 )
             }
         }
@@ -338,6 +348,7 @@ fun HomeContents(
                     timeFormat = timeFormat,
                     focusMemory = focusMemory,
                     isLastSection = lastSectionId == "pickup",
+                    onNextTab = onNextTab,
                 )
             }
         }
@@ -356,6 +367,7 @@ fun HomeContents(
                     timeFormat = timeFormat,
                     focusMemory = focusMemory,
                     isLastSection = lastSectionId == "upcoming",
+                    onNextTab = onNextTab,
                 )
             }
         }

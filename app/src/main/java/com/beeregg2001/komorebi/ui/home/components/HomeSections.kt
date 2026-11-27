@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.lazy.LazyListState
 import com.beeregg2001.komorebi.ui.home.HomeFocusRequest
+import com.beeregg2001.komorebi.ui.home.bottomBoundaryDown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -96,6 +97,7 @@ fun NavigationLinkButton(
     onClick: () -> Unit,
     leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     isBottomRow: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val shape = RoundedCornerShape(TvCardRadiusListRow)
@@ -124,8 +126,8 @@ fun NavigationLinkButton(
                 .focusProperties {
                     left = leftEdgeFocusRequester
                     right = FocusRequester.Cancel
-                    if (isBottomRow) down = FocusRequester.Cancel
                 }
+                .bottomBoundaryDown(isBottomRow, onNextTab)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, modifier = Modifier.size(16.dp))
@@ -147,6 +149,7 @@ fun HomeQuickAppsStrip(
     leftEdgeFocusRequester: FocusRequester = FocusRequester.Cancel,
     modifier: Modifier = Modifier,
     isLastSection: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val visibleApps = remember(apps) { apps.take(5) }
@@ -176,8 +179,8 @@ fun HomeQuickAppsStrip(
                     )
                     .focusProperties {
                         if (index == 0) left = leftEdgeFocusRequester
-                        if (isLastSection) down = FocusRequester.Cancel
-                    },
+                    }
+                    .bottomBoundaryDown(isLastSection, onNextTab),
             )
         }
 
@@ -198,8 +201,8 @@ fun HomeQuickAppsStrip(
                 .focusProperties {
                     if (visibleApps.isEmpty()) left = leftEdgeFocusRequester
                     right = FocusRequester.Cancel
-                    if (isLastSection) down = FocusRequester.Cancel
                 }
+                .bottomBoundaryDown(isLastSection, onNextTab)
                 .onFocusChanged { allFocused = it.isFocused },
             shape = ClickableSurfaceDefaults.shape(tileShape),
             scale = ClickableSurfaceDefaults.scale(focusedScale = TvCardFocusScaleListRow),
@@ -336,6 +339,7 @@ fun LastWatchedSection(
     sectionId: String,
     focusMemory: FocusMemory,
     isLastSection: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val rowState = rememberLazyListState()
 
@@ -402,8 +406,8 @@ fun LastWatchedSection(
                         .focusProperties {
                             if (index == 0) left = leftEdgeFocusRequester
                             if (index == channels.size - 1) right = FocusRequester.Cancel
-                            if (isLastSection) down = FocusRequester.Cancel
                         }
+                        .bottomBoundaryDown(isLastSection, onNextTab)
                         .onFocusChanged {
                             if (it.isFocused || it.hasFocus) {
                                 homeViewModel.lastClickedSection = sectionId
@@ -431,6 +435,7 @@ fun HotChannelSection(
     sectionId: String,
     focusMemory: FocusMemory,
     isLastSection: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val rowState = rememberLazyListState()
 
@@ -492,8 +497,8 @@ fun HotChannelSection(
                         .focusProperties {
                             if (index == 0) left = leftEdgeFocusRequester
                             if (index == hotChannels.size - 1) right = FocusRequester.Cancel
-                            if (isLastSection) down = FocusRequester.Cancel
                         }
+                        .bottomBoundaryDown(isLastSection, onNextTab)
                         .onFocusChanged {
                             if (it.isFocused || it.hasFocus) {
                                 homeViewModel.lastClickedSection = sectionId
@@ -524,6 +529,7 @@ fun WatchHistorySection(
     focusMemory: FocusMemory,
     isLastSection: Boolean = false,
     timeFormat: String = "24H",
+    onNextTab: (() -> Unit)? = null,
 ) {
     val rowState = rememberLazyListState()
 
@@ -595,8 +601,8 @@ fun WatchHistorySection(
                         .focusProperties {
                             if (index == 0) left = leftEdgeFocusRequester
                             if (index == watchHistory.size - 1) right = FocusRequester.Cancel
-                            if (isLastSection) down = FocusRequester.Cancel
                         }
+                        .bottomBoundaryDown(isLastSection, onNextTab)
                         .onFocusChanged {
                             if (it.isFocused || it.hasFocus) {
                                 homeViewModel.lastClickedSection = sectionId
@@ -626,6 +632,7 @@ fun UpcomingReserveSection(
     timeFormat: String,
     focusMemory: FocusMemory,
     isLastSection: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val rowState = rememberLazyListState()
 
@@ -702,6 +709,7 @@ fun UpcomingReserveSection(
             onClick = { onNavigateToTab("録画予約") },
             leftEdgeFocusRequester = leftEdgeFocusRequester,
             isBottomRow = isLastSection,
+            onNextTab = onNextTab,
         )
     }
 }
@@ -725,6 +733,7 @@ fun GenrePickupSection(
     timeFormat: String,
     focusMemory: FocusMemory,
     isLastSection: Boolean = false,
+    onNextTab: (() -> Unit)? = null,
 ) {
     val rowState = rememberLazyListState()
 
@@ -808,6 +817,7 @@ fun GenrePickupSection(
             onClick = { onNavigateToTab("番組表") },
             leftEdgeFocusRequester = leftEdgeFocusRequester,
             isBottomRow = isLastSection,
+            onNextTab = onNextTab,
         )
     }
 }
