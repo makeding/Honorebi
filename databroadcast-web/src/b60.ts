@@ -10,6 +10,7 @@ interface B60NativeBridge {
   onUrlChanged?: (value: string) => void;
   onMediaPlane?: (json: string) => void;
   onMediaPlaneUnmounted?: (reason: string) => void;
+  onCaptionSubscription?: (tagsJson: string) => void;
   onApplicationExited?: () => void;
   openProgramGuide?: (requestJson: string) => boolean;
 }
@@ -22,6 +23,8 @@ declare global {
       updateProgramInfo: (json: string) => boolean;
       updateBroadcastClock: (json: string) => boolean;
       updateLctBackgroundColor: (value: number | null) => boolean;
+      setCaptionTracks: (tags: number[]) => boolean;
+      pushCaption: (json: string) => boolean;
       resourceChanged: (path: string, updated: boolean) => boolean;
       exit: () => boolean;
     };
@@ -62,17 +65,21 @@ function setOverlayMessage(displayText: string, nativeLogText: string = displayT
   }
 }
 
+function reportMediaPlane(plane: AribMediaPlane): void {
+  if (!nativeBridge()?.onMediaPlane) return;
+  const serialized = JSON.stringify(plane);
+  if (serialized === lastPlaneJson) return;
+  lastPlaneJson = serialized;
+  nativeBridge()!.onMediaPlane!(serialized);
+}
+
 const mediaPlaneAdapter = {
   renderMode: 'external' as const,
   mountMediaPlane(_object: HTMLElement, plane: AribMediaPlane): void {
-    this.updateMediaPlane(_object, plane);
+    reportMediaPlane(plane);
   },
   updateMediaPlane(_object: HTMLElement, plane: AribMediaPlane): void {
-    if (!nativeBridge()?.onMediaPlane) return;
-    const serialized = JSON.stringify(plane);
-    if (serialized === lastPlaneJson) return;
-    lastPlaneJson = serialized;
-    nativeBridge()!.onMediaPlane!(serialized);
+    reportMediaPlane(plane);
   },
   unmountMediaPlane(reason: AribMediaPlaneUnmountReason): void {
     lastPlaneJson = '';
@@ -105,6 +112,7 @@ const host = new TvAribReceiverHost({
   viewport,
   mediaPlaneAdapter,
   broadcastBaseUrl: '/data-broadcast/',
+  userAgent: 'A-PAB/1.0',
   supportedMedia: ['6', '7'],
   getInputSource() {
     const source = nativeBridge()?.inputSource?.();
@@ -163,6 +171,12 @@ const host = new TvAribReceiverHost({
     if (url && !currentUrlIsBlank) lastVisibleUrl = url;
     nativeBridge()?.onUrlChanged?.(url);
   },
+  onMediaPlane(plane) {
+    reportMediaPlane(plane);
+  },
+  onCaptionSubscription(subscription) {
+    nativeBridge()?.onCaptionSubscription?.(JSON.stringify(subscription.componentTags));
+  },
   onOpenProgramGuide(request) {
     if (!nativeBridge()?.openProgramGuide) return false;
     return Boolean(nativeBridge()!.openProgramGuide!(JSON.stringify(request)));
@@ -195,6 +209,7 @@ window.KomorebiB60 = {
       entryPath?: string;
       autoEnterData?: boolean;
       lctBackgroundColorRgb?: number | null;
+      captionComponentTags?: number[];
       application?: Parameters<typeof host.setApplicationInformation>[0];
       programInfo?: Record<string, unknown>;
       broadcastClock?: Record<string, unknown>;
@@ -202,6 +217,10 @@ window.KomorebiB60 = {
     if (!payload.entryPath) return false;
     host.clearProgramInfo();
     host.clearBroadcastClock();
+    host.resetCaptions();
+    if (Array.isArray(payload.captionComponentTags) && payload.captionComponentTags.length > 0) {
+      host.setCaptionTracks(payload.captionComponentTags);
+    }
     host.setLctBackgroundColor(payload.lctBackgroundColorRgb ?? null);
     host.setApplicationInformation(payload.application ?? null);
     applyProgramInfo(payload.programInfo);
@@ -226,6 +245,22 @@ window.KomorebiB60 = {
   },
   updateLctBackgroundColor(value: number | null) {
     host.setLctBackgroundColor(value ?? null);
+    return true;
+  },
+  setCaptionTracks(tags: number[]) {
+    if (Array.isArray(tags)) {
+      host.setCaptionTracks(tags);
+    }
+    return true;
+  },
+  pushCaption(json: string) {
+    const packet = JSON.parse(json) as {
+      componentTag: number;
+      dataType?: string;
+      tmd?: string;
+      data?: string;
+    };
+    host.pushCaption(packet);
     return true;
   },
   resourceChanged(path: string, updated: boolean) {

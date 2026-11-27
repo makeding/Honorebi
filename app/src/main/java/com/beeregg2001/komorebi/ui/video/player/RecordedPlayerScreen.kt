@@ -271,6 +271,9 @@ internal fun RecordedPlayerScreen(
     var dataBroadcastingMediaPlane by remember(currentProgram.id) {
         mutableStateOf<B60MediaPlane?>(null)
     }
+    var isB60CaptionSubscribed by remember(currentProgram.id) {
+        mutableStateOf(false)
+    }
     var dataBroadcastingRemoteSequence by rememberSaveable { mutableLongStateOf(0L) }
     var dataBroadcastingRemoteCommand by remember(currentProgram.id) {
         mutableStateOf<DataBroadcastingRemoteCommand?>(null)
@@ -291,6 +294,7 @@ internal fun RecordedPlayerScreen(
     val closeDataBroadcasting: () -> Unit = {
         isDataBroadcastingMode = false
         isDataBroadcastingBlank = false
+        isB60CaptionSubscribed = false
         dataBroadcastingMediaPlane = null
         dataBroadcastingRemoteCommand = null
         dataBroadcastingInput.reset()
@@ -1853,7 +1857,11 @@ internal fun RecordedPlayerScreen(
                 }
             },
             onMediaPlane = { dataBroadcastingMediaPlane = it },
-            onBlankModeChanged = { isDataBroadcastingBlank = it },
+            onCaptionSubscription = { tags -> isB60CaptionSubscribed = tags.isNotEmpty() },
+            onBlankModeChanged = { isBlank ->
+                isDataBroadcastingBlank = isBlank
+                if (isBlank) isB60CaptionSubscribed = false
+            },
             closeDataBroadcasting = closeDataBroadcasting,
             dataBroadcastingMediaPlane = dataBroadcastingMediaPlane,
             isDataBroadcastingBlank = isDataBroadcastingBlank,
@@ -1881,7 +1889,7 @@ internal fun RecordedPlayerScreen(
                 isCommentPlaybackActive = isActuallyPlaying,
                 isEmulator = isEmulator,
                 recordedPlaybackFence = recordedPlaybackFence,
-                subtitleCue = subtitleCue.value,
+                subtitleCue = if (isB60CaptionSubscribed) null else subtitleCue.value,
                 superimposeCue = superimposeCue.value,
                 subtitleAvoidanceObstacles = subtitleAvoidanceObstacles,
                 subtitleAvoidanceProgressProvider = { subtitleAvoidanceProgressState.value },

@@ -91,4 +91,19 @@ class LiveSessionDataBroadcastingCallback(
     override fun onApplicationResourcesReset() {
         if (sessions.isCurrent(token)) delegate.onApplicationResourcesReset()
     }
+
+    override fun onCaptionTrack(componentTag: Int) {
+        if (sessions.isCurrent(token)) delegate.onCaptionTrack(componentTag)
+    }
+
+    override fun onCaptionPacket(
+        componentTag: Int,
+        timingMode: Int,
+        data: ByteArray,
+        resources: List<com.beeregg2001.komorebi.util.mmts.B62SubtitleResource>
+    ) {
+        if (sessions.isCurrent(token)) {
+            delegate.onCaptionPacket(componentTag, timingMode, data, resources)
+        }
+    }
 }

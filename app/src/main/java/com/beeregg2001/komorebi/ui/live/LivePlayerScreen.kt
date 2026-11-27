@@ -309,6 +309,9 @@ fun LivePlayerScreen(
     var dataBroadcastingMediaPlane by remember(currentChannelItem.id) {
         mutableStateOf<B60MediaPlane?>(null)
     }
+    var isB60CaptionSubscribed by remember(currentChannelItem.id) {
+        mutableStateOf(false)
+    }
     var isDataBroadcastingBlank by rememberSaveable(currentChannelItem.id) {
         mutableStateOf(false)
     }
@@ -864,6 +867,7 @@ fun LivePlayerScreen(
         if (!isDataBroadcastingActive || isDataBroadcastingBlank ||
             isPiPMode || ps.isDualDisplayMode
         ) {
+            isB60CaptionSubscribed = false
             dataBroadcastingInput.reset()
         }
     }
@@ -1067,6 +1071,7 @@ fun LivePlayerScreen(
                     },
                     onStatus = { status -> Log.d(TAG, "B60: $status") },
                     onMediaPlane = { dataBroadcastingMediaPlane = it },
+                    onCaptionSubscription = { tags -> isB60CaptionSubscribed = tags.isNotEmpty() },
                     onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
                     onApplicationExited = exitLocalDataBroadcasting,
                     settings = dataBroadcastingSettings,
@@ -1230,7 +1235,7 @@ fun LivePlayerScreen(
                 if (isHeavyUiReady) {
                     NativeCaptionOverlay(
                         cue = mainCaptionCue.value,
-                        visible = isSubtitleEnabled,
+                        visible = isSubtitleEnabled && !isB60CaptionSubscribed,
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(

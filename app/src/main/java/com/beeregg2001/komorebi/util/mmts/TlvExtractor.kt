@@ -43,6 +43,7 @@ private data class PendingAudioTrack(
 }
 
 private data class PendingSubtitleTrack(
+    val componentTag: Int,
     val type: Int,
     val operationMode: Int,
     val timingMode: Int
@@ -471,14 +472,18 @@ class TlvExtractor(
             codec == CODEC_TTML -> {
                 if (subtitleType !in B62_SUBTITLE_TYPE_CAPTION..B62_SUBTITLE_TYPE_SUPERIMPOSE) return
                 subtitleTracks[trackId] = PendingSubtitleTrack(
+                    componentTag = componentTag,
                     type = subtitleType,
                     operationMode = subtitleOperationMode.takeIf { it >= 0 } ?: 1,
                     timingMode = subtitleTimingMode.takeIf { it >= 0 } ?: 3
                 )
+                if (subtitleType == B62_SUBTITLE_TYPE_CAPTION) {
+                    dataBroadcastingCallback?.onCaptionTrack(componentTag)
+                }
                 Log.i(
                     TAG,
                     "MMTS subtitle track: packetId=0x${packetId.toString(16)} " +
-                        "type=$subtitleType language=$language"
+                        "componentTag=0x${componentTag.toString(16)} type=$subtitleType language=$language"
                 )
             }
         }
@@ -596,6 +601,25 @@ class TlvExtractor(
             CODEC_TTML -> {
                 val subtitleTrack = subtitleTracks[trackId] ?: return
                 val subtitleData = if (dataLength == data.size) data else data.copyOf(dataLength)
+                val resources = subtitleResourceData.indices.mapNotNull { index ->
+                    val subsampleIndex = subtitleResourceIndices.getOrNull(index)
+                        ?: return@mapNotNull null
+                    val dataType = subtitleResourceTypes.getOrNull(index)
+                        ?: return@mapNotNull null
+                    B62SubtitleResource(
+                        index = subsampleIndex,
+                        dataType = dataType,
+                        data = subtitleResourceData[index]
+                    )
+                }
+                if (subtitleTrack.type == B62_SUBTITLE_TYPE_CAPTION) {
+                    dataBroadcastingCallback?.onCaptionPacket(
+                        componentTag = subtitleTrack.componentTag,
+                        timingMode = subtitleTrack.timingMode,
+                        data = subtitleData,
+                        resources = resources
+                    )
+                }
                 onSubtitleDataReceived(
                     B62SubtitleSample(
                         timeUs = timeUs,
@@ -607,17 +631,7 @@ class TlvExtractor(
                             .takeIf { subtitleReferenceStartPtsTimescale > 0L }
                             ?.let { scaleToMicroseconds(it, subtitleReferenceStartPtsTimescale) },
                         mpuSequenceNumber = mpuSequenceNumber.takeIf { it >= 0L },
-                        resources = subtitleResourceData.indices.mapNotNull { index ->
-                            val subsampleIndex = subtitleResourceIndices.getOrNull(index)
-                                ?: return@mapNotNull null
-                            val dataType = subtitleResourceTypes.getOrNull(index)
-                                ?: return@mapNotNull null
-                            B62SubtitleResource(
-                                index = subsampleIndex,
-                                dataType = dataType,
-                                data = subtitleResourceData[index]
-                            )
-                        },
+                        resources = resources,
                         discontinuity = discontinuity
                     )
                 )

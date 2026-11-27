@@ -38,6 +38,7 @@ import com.beeregg2001.komorebi.util.mmts.B60BroadcastClock
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import com.beeregg2001.komorebi.util.mmts.B60EventInfo
 import kotlinx.coroutines.delay
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -67,6 +68,7 @@ private class B60JavascriptBridge(
     private val receiverInfoJson: () -> String,
     private val onStatus: (String) -> Unit,
     private val onMediaPlane: (B60MediaPlane?) -> Unit,
+    private val onCaptionSubscription: (List<Int>) -> Unit,
     private val onBlankModeChanged: (Boolean) -> Unit,
     private val onApplicationExited: () -> Unit
 ) {
@@ -130,6 +132,16 @@ private class B60JavascriptBridge(
     }
 
     @JavascriptInterface
+    fun onCaptionSubscription(tagsJson: String) {
+        val tags = runCatching {
+            val array = JSONArray(tagsJson)
+            List(array.length()) { index -> array.optInt(index, -1) }.filter { it >= 0 }
+        }.getOrDefault(emptyList())
+        Log.d(TAG, "B60 caption subscription: $tags")
+        mainHandler.post { onCaptionSubscription.invoke(tags) }
+    }
+
+    @JavascriptInterface
     fun onApplicationExited() {
         Log.d(TAG, "B60 application exited")
         mainHandler.post { onApplicationExited.invoke() }
@@ -154,6 +166,7 @@ fun DataBroadcastingWebViewOverlay(
     onApplicationExited: () -> Unit,
     modifier: Modifier = Modifier,
     settings: DataBroadcastingSettings = DataBroadcastingSettings(),
+    onCaptionSubscription: (List<Int>) -> Unit = {},
 ) {
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
     var shellReady by remember { mutableStateOf(false) }
@@ -214,6 +227,7 @@ fun DataBroadcastingWebViewOverlay(
                         receiverInfoJson = { cachedReceiverInfoJson.get() },
                         onStatus = onStatus,
                         onMediaPlane = onMediaPlane,
+                        onCaptionSubscription = onCaptionSubscription,
                         onBlankModeChanged = onBlankModeChanged,
                         onApplicationExited = onApplicationExited
                     ),
@@ -264,6 +278,7 @@ fun DataBroadcastingWebViewOverlay(
         var startedKey: Triple<Long, Boolean, String?>? = null
         var lastProgramPair: Pair<B60EventInfo?, B60EventInfo?>? = null
         var lastLctKey: Pair<Long, Int?>? = null
+        var lastCaptionTagsKey: Pair<Long, List<Int>>? = null
         var lastClockSentAtMs = 0L
 
         store.status.collect { status ->
@@ -273,6 +288,7 @@ fun DataBroadcastingWebViewOverlay(
                 startedKey = startKey
                 lastProgramPair = status.presentEvent to status.followingEvent
                 lastLctKey = status.generation to status.lctBackgroundColorRgb
+                lastCaptionTagsKey = status.generation to status.captionComponentTags
                 lastClockSentAtMs = System.currentTimeMillis()
                 val payload = buildStartPayload(status, latestChannel)
                 webView.evaluateJavascript(
@@ -280,6 +296,16 @@ fun DataBroadcastingWebViewOverlay(
                     null
                 )
                 return@collect
+            }
+
+            val captionTagsKey = status.generation to status.captionComponentTags
+            if (captionTagsKey != lastCaptionTagsKey) {
+                lastCaptionTagsKey = captionTagsKey
+                val tagsJson = JSONArray(status.captionComponentTags).toString()
+                webView.evaluateJavascript(
+                    "window.KomorebiB60?.setCaptionTracks?.($tagsJson)",
+                    null
+                )
             }
 
             val lctKey = status.generation to status.lctBackgroundColorRgb
@@ -328,6 +354,23 @@ fun DataBroadcastingWebViewOverlay(
             webViewRef.value?.evaluateJavascript(
                 "window.KomorebiB60?.resourceChanged?.(" +
                     "${JSONObject.quote(change.path)}, true)",
+                null
+            )
+        }
+    }
+
+    LaunchedEffect(shellReady, store, rendererGeneration) {
+        if (!shellReady) return@LaunchedEffect
+        store.captionPackets.collect { packet ->
+            if (packet.generation != store.status.value.generation) return@collect
+            val payload = JSONObject().apply {
+                put("componentTag", packet.componentTag)
+                put("dataType", packet.dataType)
+                put("tmd", packet.tmd)
+                put("data", packet.data)
+            }
+            webViewRef.value?.evaluateJavascript(
+                "window.KomorebiB60?.pushCaption?.(${JSONObject.quote(payload.toString())})",
                 null
             )
         }
@@ -519,6 +562,14 @@ private fun createRuntimeBootstrap(basePath: String): String {
         replacement.style.getPropertyPriority('opacity') === 'important') {
       replacement.style.removeProperty('opacity');
     }
+    var ancestor = object.parentElement;
+    while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+      if (ancestor.style.getPropertyValue('opacity') === '0' &&
+          ancestor.style.getPropertyPriority('opacity') === 'important') {
+        ancestor.style.removeProperty('opacity');
+      }
+      ancestor = ancestor.parentElement;
+    }
     replacement.setAttribute('data-arib-object', broadcastType);
     while (object.firstChild) replacement.appendChild(object.firstChild);
     object.replaceWith(replacement);
@@ -641,6 +692,7 @@ private fun buildStartPayload(status: B60ApplicationStatus, channel: Channel): J
         )
         put("programInfo", buildProgramInfo(status, channel))
         put("lctBackgroundColorRgb", status.lctBackgroundColorRgb ?: JSONObject.NULL)
+        put("captionComponentTags", JSONArray(status.captionComponentTags))
         status.broadcastClock?.let(::buildBroadcastClock)?.let { put("broadcastClock", it) }
         status.application?.let { application ->
             put(

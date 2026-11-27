@@ -38,4 +38,8 @@ internal class FencedB60DataBroadcastingCallback(
     }
     override fun onApplicationResource(resource: B60ApplicationResource) { if (fence.accepts()) delegate.onApplicationResource(resource) }
     override fun onApplicationResourcesReset() { if (fence.accepts()) delegate.onApplicationResourcesReset() }
+    override fun onCaptionTrack(componentTag: Int) { if (fence.accepts()) delegate.onCaptionTrack(componentTag) }
+    override fun onCaptionPacket(componentTag: Int, timingMode: Int, data: ByteArray, resources: List<com.beeregg2001.komorebi.util.mmts.B62SubtitleResource>) {
+        if (fence.accepts()) delegate.onCaptionPacket(componentTag, timingMode, data, resources)
+    }
 }

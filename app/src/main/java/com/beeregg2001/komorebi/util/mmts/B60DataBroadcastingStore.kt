@@ -24,7 +24,8 @@ data class B60ApplicationStatus(
     val lctBackgroundColorRgb: Int? = null,
     val broadcastClock: B60BroadcastClock? = null,
     val presentEvent: B60EventInfo? = null,
-    val followingEvent: B60EventInfo? = null
+    val followingEvent: B60EventInfo? = null,
+    val captionComponentTags: List<Int> = emptyList()
 ) {
     companion object {
         const val APPLICATION_STATE_DISCOVERED = 0
@@ -80,6 +81,14 @@ data class B60ResourceChange(
     val updated: Boolean
 )
 
+data class B60CaptionPacket(
+    val generation: Long,
+    val componentTag: Int,
+    val dataType: String,
+    val tmd: String,
+    val data: String
+)
+
 interface B60DataBroadcastingCallback {
     fun onBroadcastClock(clock: B60BroadcastClock) = Unit
     fun onEventInfo(event: B60EventInfo) = Unit
@@ -100,6 +109,13 @@ interface B60DataBroadcastingCallback {
 
     fun onApplicationResource(resource: B60ApplicationResource) = Unit
     fun onApplicationResourcesReset() = Unit
+    fun onCaptionTrack(componentTag: Int) = Unit
+    fun onCaptionPacket(
+        componentTag: Int,
+        timingMode: Int,
+        data: ByteArray,
+        resources: List<B62SubtitleResource>
+    ) = Unit
 }
 
 /**
@@ -122,6 +138,12 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val resourceChanges: SharedFlow<B60ResourceChange> = _resourceChanges.asSharedFlow()
+
+    private val _captionPackets = MutableSharedFlow<B60CaptionPacket>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val captionPackets: SharedFlow<B60CaptionPacket> = _captionPackets.asSharedFlow()
 
     fun beginSession(channelId: String) {
         synchronized(monitor) {
@@ -230,15 +252,67 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
     }
 
     override fun onApplicationResourcesReset() {
-        val channelId = _status.value.channelId
+        val current = _status.value
         synchronized(monitor) {
             resources.clear()
             layoutContextId = null
             _status.value = B60ApplicationStatus(
                 generation = generationCounter.incrementAndGet(),
-                channelId = channelId
+                channelId = current.channelId,
+                captionComponentTags = current.captionComponentTags
             )
             monitor.notifyAll()
+        }
+    }
+
+    override fun onCaptionTrack(componentTag: Int) {
+        if (componentTag < 0 || componentTag > 0xffff) return
+        val normalizedTag = componentTag and 0xff
+        synchronized(monitor) {
+            val current = _status.value
+            if (normalizedTag in current.captionComponentTags) return
+            _status.value = current.copy(
+                captionComponentTags = current.captionComponentTags + normalizedTag
+            )
+        }
+    }
+
+    override fun onCaptionPacket(
+        componentTag: Int,
+        timingMode: Int,
+        data: ByteArray,
+        resources: List<B62SubtitleResource>
+    ) {
+        if (componentTag < 0 || componentTag > 0xffff) return
+        val normalizedTag = componentTag and 0xff
+        val generation = _status.value.generation
+        val tmd = (timingMode and 0x0f).toString(2).padStart(4, '0')
+        _captionPackets.tryEmit(
+            B60CaptionPacket(
+                generation = generation,
+                componentTag = normalizedTag,
+                dataType = "0000",
+                tmd = tmd,
+                data = data.toString(Charsets.UTF_8)
+            )
+        )
+        for (resource in resources) {
+            val dataType = resource.dataType
+            if (dataType !in 0..0x0f) continue
+            val payload = if (dataType == 6) {
+                resource.data.toString(Charsets.UTF_8)
+            } else {
+                String(resource.data, Charsets.ISO_8859_1)
+            }
+            _captionPackets.tryEmit(
+                B60CaptionPacket(
+                    generation = generation,
+                    componentTag = normalizedTag,
+                    dataType = (dataType and 0x0f).toString(2).padStart(4, '0'),
+                    tmd = tmd,
+                    data = payload
+                )
+            )
         }
     }
 
