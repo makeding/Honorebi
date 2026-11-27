@@ -239,6 +239,12 @@ fun HomeLauncherScreen(
     var railHasFocus by remember { mutableStateOf(false) }
     var isEnteringContentFromRail by remember { mutableStateOf(false) }
     var stripHasFocus by remember { mutableStateOf(false) }
+    var lastNonStripFocusWasRail by remember { mutableStateOf(false) }
+    LaunchedEffect(railHasFocus, stripHasFocus) {
+        if (!railHasFocus && !stripHasFocus) {
+            lastNonStripFocusWasRail = false
+        }
+    }
     var suppressInitialRailExpand by remember {
         mutableStateOf(
             (if (isLauncherHomeFocusPending) currentStartupFocusTarget else startupFocusTarget) == StartupFocusTarget.SIDEBAR
@@ -862,6 +868,21 @@ fun HomeLauncherScreen(
                     onClockClick = onClockClick,
                     isContentReady = tabController.isActiveContentReady,
                     isCompactStatusOnly = isCompactStrip,
+                    onPreviousTab = if (!lastNonStripFocusWasRail && tabController.previousTab() != null) {
+                        {
+                            val prevTab = tabController.selectPreviousTab()
+                            if (prevTab != null) {
+                                val prevIndex = tabController.selectedIndex
+                                suppressInitialRailExpand = false
+                                syncedActiveTab = tabController.activeTab
+                                ui.selectedTabIndex = prevIndex
+                                ui.onTabSelected(prevIndex, onTabChange, homeViewModel)
+                                focusMemory.requestContent(prevIndex)
+                            }
+                        }
+                    } else {
+                        null
+                    },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 24.dp)
@@ -914,6 +935,9 @@ fun HomeLauncherScreen(
                 onHasFocusChanged = { hasFocus ->
                     val hadFocus = railHasFocus
                     railHasFocus = hasFocus
+                    if (hasFocus) {
+                        lastNonStripFocusWasRail = true
+                    }
                     if (hadFocus && !hasFocus) {
                         isEnteringContentFromRail = false
                         tabController.cancelPendingSelection()

@@ -651,6 +651,16 @@ class LauncherTabControllerTest {
         assertNull(controller.nextTab())
         assertNull(controller.selectNextTab())
         assertEquals(lastTab, controller.activeTab)
+
+        // previousTab/selectPreviousTab steps backward and stops at HOME.
+        controller.selectTab(LauncherTab.ON_AIR, immediate = true)
+        assertEquals(LauncherTab.LIVE, controller.previousTab())
+        assertEquals(LauncherTab.LIVE, controller.selectPreviousTab())
+        assertEquals(TabTransitionDirection.BACKWARD, controller.transitionDirection)
+        assertEquals(LauncherTab.HOME, controller.selectPreviousTab())
+        assertNull(controller.previousTab())
+        assertNull(controller.selectPreviousTab())
+        assertEquals(LauncherTab.HOME, controller.activeTab)
     }
 
     @Test
@@ -699,5 +709,51 @@ class LauncherTabControllerTest {
         fakeNowMs += BOTTOM_TAB_SWITCH_DEBOUNCE_MS
         compose.onNodeWithTag("bottom-item").performKeyInput { pressKey(Key.DirectionDown) }
         assertEquals(1, nextTabCalls)
+    }
+
+    @Test
+    fun topBoundaryUpDebouncesArrivalAndAdvancesAfterPause() {
+        var prevTabCalls = 0
+        var fakeNowMs = 1_000L
+        compose.setContent {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .topBoundaryUp(
+                            onPreviousTab = { prevTabCalls++ },
+                            nowMs = { fakeNowMs },
+                        ),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("strip-item")
+                            .focusable(),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("content-item")
+                        .focusable(),
+                )
+            }
+        }
+
+        // Focus moves from content up into the status strip.
+        compose.onNodeWithTag("content-item").requestFocus().assertIsFocused()
+        compose.onNodeWithTag("content-item").performKeyInput { pressKey(Key.DirectionUp) }
+        compose.onNodeWithTag("strip-item").assertIsFocused()
+        assertEquals(0, prevTabCalls)
+
+        // Pressing DirectionUp immediately after entering the strip is debounced.
+        fakeNowMs += 100L
+        compose.onNodeWithTag("strip-item").performKeyInput { pressKey(Key.DirectionUp) }
+        assertEquals(0, prevTabCalls)
+
+        // After the debounce window elapses, a fresh DirectionUp press invokes onPreviousTab.
+        fakeNowMs += BOTTOM_TAB_SWITCH_DEBOUNCE_MS
+        compose.onNodeWithTag("strip-item").performKeyInput { pressKey(Key.DirectionUp) }
+        assertEquals(1, prevTabCalls)
     }
 }

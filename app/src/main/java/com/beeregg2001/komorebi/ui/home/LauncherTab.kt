@@ -38,49 +38,83 @@ internal fun Modifier.bottomBoundaryDown(
     if (!isBottom) return this
     return this
         .focusProperties { down = FocusRequester.Cancel }
-        .then(
-            if (onNextTab != null) {
-                composed {
-                    var focusedAtMs by remember { mutableLongStateOf(0L) }
-                    var lastRepeatDownAtMs by remember { mutableLongStateOf(0L) }
-                    var lastTriggeredAtMs by remember { mutableLongStateOf(0L) }
-                    val latestOnNextTab by rememberUpdatedState(onNextTab)
-                    val latestNowMs by rememberUpdatedState(nowMs)
-
-                    Modifier
-                        .onFocusChanged { state ->
-                            if (state.isFocused) {
-                                focusedAtMs = latestNowMs()
-                            }
-                        }
-                        .onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                                val now = latestNowMs()
-                                if (event.nativeKeyEvent.repeatCount > 0) {
-                                    lastRepeatDownAtMs = now
-                                    return@onPreviewKeyEvent true
-                                }
-                                val sinceFocus = now - focusedAtMs
-                                val sinceRepeat = now - lastRepeatDownAtMs
-                                val sinceTrigger = now - lastTriggeredAtMs
-                                if (sinceFocus < debounceMs ||
-                                    sinceRepeat < debounceMs ||
-                                    sinceTrigger < debounceMs
-                                ) {
-                                    return@onPreviewKeyEvent true
-                                }
-                                lastTriggeredAtMs = now
-                                latestOnNextTab()
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                }
-            } else {
-                Modifier
-            }
+        .debouncedDirectionalTabSwitch(
+            targetKey = Key.DirectionDown,
+            onSwitch = onNextTab,
+            trackChildFocus = false,
+            debounceMs = debounceMs,
+            nowMs = nowMs,
         )
+}
+
+/**
+ * Intercepts D-pad Up at the top-most launcher strip to return to the previous visible tab.
+ *
+ * Uses the same repeat and arrival-debounce guard as [bottomBoundaryDown] so holding Up from
+ * tab content into the strip stops at the strip rather than overshooting into the previous tab.
+ */
+internal fun Modifier.topBoundaryUp(
+    onPreviousTab: (() -> Unit)?,
+    debounceMs: Long = BOTTOM_TAB_SWITCH_DEBOUNCE_MS,
+    nowMs: () -> Long = { SystemClock.uptimeMillis() },
+): Modifier = debouncedDirectionalTabSwitch(
+    targetKey = Key.DirectionUp,
+    onSwitch = onPreviousTab,
+    trackChildFocus = true,
+    debounceMs = debounceMs,
+    nowMs = nowMs,
+)
+
+private fun Modifier.debouncedDirectionalTabSwitch(
+    targetKey: Key,
+    onSwitch: (() -> Unit)?,
+    trackChildFocus: Boolean,
+    debounceMs: Long,
+    nowMs: () -> Long,
+): Modifier {
+    if (onSwitch == null) return this
+    return composed {
+        var focusedAtMs by remember { mutableLongStateOf(0L) }
+        var wasFocused by remember { mutableLongStateOf(0L) }
+        var lastRepeatAtMs by remember { mutableLongStateOf(0L) }
+        var lastTriggeredAtMs by remember { mutableLongStateOf(0L) }
+        val latestOnSwitch by rememberUpdatedState(onSwitch)
+        val latestNowMs by rememberUpdatedState(nowMs)
+
+        Modifier
+            .onFocusChanged { state ->
+                val isActive = if (trackChildFocus) state.hasFocus else state.isFocused
+                if (isActive && wasFocused == 0L) {
+                    wasFocused = 1L
+                    focusedAtMs = latestNowMs()
+                } else if (!isActive) {
+                    wasFocused = 0L
+                }
+            }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == targetKey) {
+                    val now = latestNowMs()
+                    if (event.nativeKeyEvent.repeatCount > 0) {
+                        lastRepeatAtMs = now
+                        return@onPreviewKeyEvent true
+                    }
+                    val sinceFocus = now - focusedAtMs
+                    val sinceRepeat = now - lastRepeatAtMs
+                    val sinceTrigger = now - lastTriggeredAtMs
+                    if (sinceFocus < debounceMs ||
+                        sinceRepeat < debounceMs ||
+                        sinceTrigger < debounceMs
+                    ) {
+                        return@onPreviewKeyEvent true
+                    }
+                    lastTriggeredAtMs = now
+                    latestOnSwitch()
+                    true
+                } else {
+                    false
+                }
+            }
+    }
 }
 
 /**

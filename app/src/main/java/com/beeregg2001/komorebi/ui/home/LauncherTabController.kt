@@ -176,6 +176,24 @@ class LauncherTabController(
     }
 
     /**
+     * Returns the previous visible tab before [activeTab], or null if [activeTab] is already the first tab.
+     */
+    fun previousTab(): LauncherTab? {
+        val currentIndex = visibleTabs.indexOf(activeTab)
+        if (currentIndex <= 0) return null
+        return visibleTabs[currentIndex - 1]
+    }
+
+    /**
+     * Returns immediately to the previous visible tab and returns it, or null if already at the first tab.
+     */
+    fun selectPreviousTab(): LauncherTab? {
+        val target = previousTab() ?: return null
+        selectTab(target, immediate = true)
+        return target
+    }
+
+    /**
      * Cancels an uncommitted D-pad scrub selection (e.g. when focus moves into the
      * bottom utility/settings footer or top-right status strip) so the stage and highlight
      * stay on [activeTab].

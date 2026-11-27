@@ -352,6 +352,7 @@ internal fun LauncherSystemStrip(
     isContentReady: Boolean = true,
     isCompactStatusOnly: Boolean = false,
     connectionFeedbackKind: HomeConnectionFeedbackKind = HomeConnectionFeedbackKind.Hidden,
+    onPreviousTab: (() -> Unit)? = null,
 ) {
     val colors = KomorebiTheme.colors
     val focusManager = LocalFocusManager.current
@@ -393,6 +394,7 @@ internal fun LauncherSystemStrip(
                 stripFocused = it.hasFocus
                 onHasFocusChanged(it.hasFocus)
             }
+            .topBoundaryUp(onPreviousTab = onPreviousTab)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
