@@ -952,6 +952,7 @@ fun LivePlayerScreen(
             .onKeyEvent { keyEvent ->
                 if (isPiPMode) return@onKeyEvent false
                 if (isDataBroadcastingToggleKeyEvent(keyEvent)) {
+                    dataBroadcastingInput.recordInputDevice(keyEvent.nativeKeyEvent.device)
                     dataBroadcastingInput.reset()
                     if (!isDataBroadcastingSupported) {
                         onShowToast("このチャンネルではデータ放送を利用できません")
@@ -1741,7 +1742,8 @@ fun LivePlayerScreen(
                 !isDataBroadcastingBlank &&
                 dataBroadcastingInput.isVirtualRemoteVisible,
             enter = fadeIn(),
-            exit = fadeOut()
+            exit = fadeOut(),
+            modifier = Modifier.zIndex(10f),
         ) {
             DataBroadcastingVirtualRemoteBarOverlay(
                 selectedKey = dataBroadcastingInput.selectedVirtualKey,

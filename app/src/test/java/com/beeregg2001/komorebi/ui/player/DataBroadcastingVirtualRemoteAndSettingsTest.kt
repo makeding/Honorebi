@@ -94,6 +94,15 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
         // Stays open for consecutive inputs (e.g., digits or multiple color keys)
         assertTrue(state.isVirtualRemoteVisible)
 
+        // Up/Down still forward to the data broadcasting page while the horizontal bar is open
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_DOWN))
+        assertTrue(send(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_DOWN))
+        assertTrue(send(NativeKeyEvent.ACTION_DOWN, NativeKeyEvent.KEYCODE_DPAD_UP))
+        assertTrue(send(NativeKeyEvent.ACTION_UP, NativeKeyEvent.KEYCODE_DPAD_UP))
+        assertEquals(listOf("down", "up"), remoteEvents)
+        assertEquals(DataBroadcastingVirtualKey.Red, state.selectedVirtualKey)
+        assertTrue(state.isVirtualRemoteVisible)
+
         // Dispatch digit key directly via virtual bar
         state.dispatchVirtualKey(
             key = DataBroadcastingVirtualKey.Digit7,
@@ -102,7 +111,7 @@ class DataBroadcastingVirtualRemoteAndSettingsTest {
             onColorKey = { colorEvents += it },
             onRemoteKey = { remoteEvents += it },
         )
-        assertEquals(listOf("7"), remoteEvents)
+        assertEquals(listOf("down", "up", "7"), remoteEvents)
         assertTrue(state.isVirtualRemoteVisible)
 
         // Back key closes virtual bar without firing broadcast back

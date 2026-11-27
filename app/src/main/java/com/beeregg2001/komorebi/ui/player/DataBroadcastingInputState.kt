@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.ui.player
 
+import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.compose.runtime.Composable
@@ -48,16 +49,44 @@ enum class DataBroadcastingVirtualKey(
     }
 }
 
-fun detectMissingDataBroadcastingHardwareKeys(): Boolean {
-    val requiredKeys = intArrayOf(
-        NativeKeyEvent.KEYCODE_PROG_BLUE,
-        NativeKeyEvent.KEYCODE_PROG_RED,
-        NativeKeyEvent.KEYCODE_PROG_GREEN,
-        NativeKeyEvent.KEYCODE_PROG_YELLOW,
-        NativeKeyEvent.KEYCODE_0,
-    )
+private val REQUIRED_DATA_BROADCASTING_KEYS = intArrayOf(
+    NativeKeyEvent.KEYCODE_PROG_BLUE,
+    NativeKeyEvent.KEYCODE_PROG_RED,
+    NativeKeyEvent.KEYCODE_PROG_GREEN,
+    NativeKeyEvent.KEYCODE_PROG_YELLOW,
+    NativeKeyEvent.KEYCODE_0,
+)
+
+fun detectMissingDataBroadcastingHardwareKeys(activeDevice: InputDevice? = null): Boolean {
+    if (activeDevice != null && !activeDevice.isVirtual) {
+        val available = runCatching {
+            activeDevice.hasKeys(*REQUIRED_DATA_BROADCASTING_KEYS)
+        }.getOrNull()
+        if (available != null) {
+            return available.any { !it }
+        }
+    }
+    // Check non-virtual physical remotes only; built-in Android TV "virtual-remote"
+    // devices advertise full keymaps even when the physical remote has no color/digit keys.
+    val physicalRemotes = runCatching {
+        InputDevice.getDeviceIds()
+            .toList()
+            .mapNotNull(InputDevice::getDevice)
+            .filter { device ->
+                !device.isVirtual &&
+                    !device.name.contains("virtual", ignoreCase = true) &&
+                    !device.name.contains("ir receiver", ignoreCase = true) &&
+                    (device.sources and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD ||
+                        device.sources and InputDevice.SOURCE_KEYBOARD == InputDevice.SOURCE_KEYBOARD)
+            }
+    }.getOrNull().orEmpty()
+    if (physicalRemotes.isNotEmpty()) {
+        return physicalRemotes.none { device ->
+            runCatching { device.hasKeys(*REQUIRED_DATA_BROADCASTING_KEYS).all { it } }.getOrDefault(false)
+        }
+    }
     val available = runCatching {
-        KeyCharacterMap.deviceHasKeys(requiredKeys)
+        KeyCharacterMap.deviceHasKeys(REQUIRED_DATA_BROADCASTING_KEYS)
     }.getOrNull() ?: return true
     return available.any { !it }
 }
@@ -69,8 +98,10 @@ fun detectMissingDataBroadcastingHardwareKeys(): Boolean {
  */
 @Stable
 class DataBroadcastingInputState(
-    private val hasMissingHardwareKeys: () -> Boolean = ::detectMissingDataBroadcastingHardwareKeys,
+    private val hasMissingHardwareKeys: () -> Boolean = DEFAULT_DETECTOR,
 ) {
+    private var lastInputDevice: InputDevice? = null
+    private val usesDefaultDetector: Boolean = hasMissingHardwareKeys === DEFAULT_DETECTOR
     var isVirtualRemoteVisible by mutableStateOf(false)
         private set
     var selectedVirtualKey by mutableStateOf(DataBroadcastingVirtualKey.Blue)
@@ -83,6 +114,12 @@ class DataBroadcastingInputState(
     private var backKeyLongPressed = false
     private var pendingBackJob: Job? = null
 
+    fun recordInputDevice(device: InputDevice?) {
+        if (device != null && !device.isVirtual) {
+            lastInputDevice = device
+        }
+    }
+
     fun reset() {
         closeVirtualRemote()
         cancelPendingBack()
@@ -91,11 +128,16 @@ class DataBroadcastingInputState(
     }
 
     fun onDataBroadcastingActivated(mode: DataBroadcastingVirtualRemoteMode) {
+        val missingKeys = if (lastInputDevice != null && usesDefaultDetector) {
+            detectMissingDataBroadcastingHardwareKeys(lastInputDevice)
+        } else {
+            hasMissingHardwareKeys()
+        }
         val shouldAutoShow = when (mode) {
             DataBroadcastingVirtualRemoteMode.ALWAYS -> true
             DataBroadcastingVirtualRemoteMode.MANUAL -> false
             DataBroadcastingVirtualRemoteMode.AUTO ->
-                !hardwareDedicatedKeyObserved && hasMissingHardwareKeys()
+                !hardwareDedicatedKeyObserved && missingKeys
         }
         if (shouldAutoShow) {
             openVirtualRemote()
@@ -148,6 +190,7 @@ class DataBroadcastingInputState(
         onColorKey: (DataBroadcastingColorKey) -> Unit,
         onRemoteKey: (String) -> Unit,
     ): Boolean {
+        recordInputDevice(keyEvent.nativeKeyEvent.device)
         val keyCode = keyEvent.nativeKeyEvent.keyCode
         val isDown = keyEvent.type == KeyEventType.KeyDown
         val isUp = keyEvent.type == KeyEventType.KeyUp
@@ -168,6 +211,8 @@ class DataBroadcastingInputState(
             if (!isDown) return true
             cancelPendingBack()
             when (keyCode) {
+                NativeKeyEvent.KEYCODE_DPAD_UP -> onRemoteKey("up")
+                NativeKeyEvent.KEYCODE_DPAD_DOWN -> onRemoteKey("down")
                 NativeKeyEvent.KEYCODE_DPAD_LEFT -> moveSelection(-1)
                 NativeKeyEvent.KEYCODE_DPAD_RIGHT -> moveSelection(+1)
                 NativeKeyEvent.KEYCODE_DPAD_CENTER,
@@ -253,6 +298,7 @@ class DataBroadcastingInputState(
     }
 
     private companion object {
+        val DEFAULT_DETECTOR: () -> Boolean = { detectMissingDataBroadcastingHardwareKeys(null) }
         const val BACK_DOUBLE_TAP_MS = 350L
         const val BACK_LONG_PRESS_MS = 500L
 
