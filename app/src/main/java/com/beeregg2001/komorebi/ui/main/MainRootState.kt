@@ -263,10 +263,9 @@ class MainRootState {
 
     // 戻るボタンの連打ガード
     private var lastBackPressTime by mutableLongStateOf(0L)
-    fun canProcessBackPress(): Boolean {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastBackPressTime < 500) return false
-        lastBackPressTime = currentTime
+    fun canProcessBackPress(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (nowMillis - lastBackPressTime < 500) return false
+        lastBackPressTime = nowMillis
         return true
     }
 

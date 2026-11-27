@@ -7,7 +7,6 @@ import com.beeregg2001.komorebi.data.TifNoSignalAccentColor
 import com.beeregg2001.komorebi.data.TifNoSignalStyle
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.focus.FocusRequester
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.viewmodel.PostRecordingBatch
 import com.beeregg2001.komorebi.viewmodel.SmbServer
@@ -173,18 +172,3 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         epgVisibleHours = repository.epgVisibleHours.collectAsState(initial = "6").value
     )
 }
-
-@Stable
-class SettingUiState(initialCategory: SettingsCategory = SettingsCategory.GENERAL) {
-    var activeDialog by mutableStateOf<SettingDialogState>(SettingDialogState.None)
-    var selectedCategory by mutableStateOf(initialCategory)
-    var restoreFocusRequester by mutableStateOf<FocusRequester?>(null)
-    var restoreCategory by mutableStateOf<SettingsCategory?>(null)
-    var isSidebarFocused by mutableStateOf(true)
-    var isRestoringFocus by mutableStateOf(false)
-}
-
-@Composable
-fun rememberSettingUiState(
-    initialCategory: SettingsCategory = SettingsCategory.GENERAL,
-): SettingUiState = remember(initialCategory) { SettingUiState(initialCategory) }
