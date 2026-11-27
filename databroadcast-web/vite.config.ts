@@ -1,7 +1,8 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/web-bml/',
+  base: '/databroadcast/',
   define: {
     global: 'globalThis',
   },
@@ -9,7 +10,7 @@ export default defineConfig({
     format: 'es',
     rollupOptions: {
       output: {
-        entryFileNames: 'web-bml-worker.js',
+        entryFileNames: 'b24-worker.js',
       },
     },
   },
@@ -19,9 +20,13 @@ export default defineConfig({
     target: 'es2020',
     assetsInlineLimit: 0,
     rollupOptions: {
+      input: {
+        b24: resolve(__dirname, 'b24.html'),
+        b60: resolve(__dirname, 'b60.html'),
+      },
       output: {
-        entryFileNames: 'web-bml.js',
-        chunkFileNames: 'web-bml-[name].js',
+        entryFileNames: '[name].js',
+        chunkFileNames: 'chunk-[name].js',
         assetFileNames: '[name][extname]',
       },
     },

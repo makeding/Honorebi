@@ -55,8 +55,8 @@ enum class B60InputSource(val wireValue: String) {
 
 private const val TAG = "DataBroadcastingWebView"
 private const val WEB_ORIGIN = "https://appassets.androidplatform.net"
-private const val SHELL_PATH = "/libaribhtml5/index.html"
-private const val SDK_PATH = "/libaribhtml5/libaribhtml5.js"
+private const val RUNTIME_PREFIX = "/databroadcast/"
+private const val SHELL_PATH = "/databroadcast/b60.html"
 private const val BROADCAST_PREFIX = "/data-broadcast/"
 private const val NTP_UNIX_EPOCH_OFFSET_SECONDS = 2_208_988_800L
 
@@ -372,21 +372,27 @@ private class B60WebViewClient(
                 forbiddenResponse(externalAllowed)
             }
         }
-        return when (url.path) {
-            SHELL_PATH -> assetResponse("libaribhtml5/index.html", "text/html", externalAllowed)
-            SDK_PATH -> assetResponse("libaribhtml5/libaribhtml5.js", "text/javascript", externalAllowed)
-            else -> if (url.path?.startsWith(BROADCAST_PREFIX) == true) {
-                val path = Uri.decode(url.encodedPath.orEmpty()).removePrefix(BROADCAST_PREFIX)
-                val resource = store.waitForResource(path)
+        val path = url.path.orEmpty()
+        return when {
+            path.startsWith(RUNTIME_PREFIX) -> {
+                val rel = path.removePrefix(RUNTIME_PREFIX)
+                if (rel.contains("..")) {
+                    forbiddenResponse(externalAllowed)
+                } else {
+                    assetResponse("databroadcast/$rel", contentTypeForPath(rel), externalAllowed)
+                }
+            }
+            path.startsWith(BROADCAST_PREFIX) -> {
+                val broadcastPath = Uri.decode(url.encodedPath.orEmpty()).removePrefix(BROADCAST_PREFIX)
+                val resource = store.waitForResource(broadcastPath)
                 if (resource == null) {
-                    Log.w(TAG, "B60 resource missing after wait: path=$path, url=$url")
+                    Log.w(TAG, "B60 resource missing after wait: path=$broadcastPath, url=$url")
                     notFoundResponse(externalAllowed)
                 } else {
                     broadcastResourceResponse(resource, externalAllowed)
                 }
-            } else {
-                forbiddenResponse(externalAllowed)
             }
+            else -> forbiddenResponse(externalAllowed)
         }
     }
 

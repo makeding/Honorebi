@@ -40,10 +40,10 @@ const RECEIVER_INFO_KEY_PREFIX = `${STORAGE_PREFIX}${NVRAM_PREFIX}prefix=receive
 const GREG_STORAGE_KEY = 'Honorebi-BMLBrowser-Greg';
 
 const ROUND_GOTHIC: BMLBrowserFontFace = {
-  source: 'url("/web-bml/fonts/kosugi_maru_regular.ttf"), local("sans-serif")',
+  source: 'url("/databroadcast/fonts/kosugi_maru_regular.ttf"), local("sans-serif")',
 };
 const SQUARE_GOTHIC: BMLBrowserFontFace = {
-  source: 'url("/web-bml/fonts/rounded-mplus-1m-arib.ttf"), local("sans-serif")',
+  source: 'url("/databroadcast/fonts/rounded-mplus-1m-arib.ttf"), local("sans-serif")',
 };
 
 const REMOTE_KEY_TO_ARIB: Record<string, AribKeyCode> = {

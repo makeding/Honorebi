@@ -49,9 +49,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 private const val B24_TAG = "B24DataBroadcasting"
 private const val B24_WEB_ORIGIN = "https://appassets.androidplatform.net"
-private const val B24_BASE_PATH = "/web-bml/"
-private const val B24_SHELL_PATH = "/web-bml/index.html"
-private const val B24_FONTS_PREFIX = "/web-bml/fonts/"
+private const val B24_BASE_PATH = "/databroadcast/"
+private const val B24_SHELL_PATH = "/databroadcast/b24.html"
+private const val B24_FONTS_PREFIX = "/databroadcast/fonts/"
 private const val B24_CHUNK_FLUSH_BYTES = 16 * 1024
 private const val B24_CHUNK_FLUSH_MS = 60L
 
@@ -470,7 +470,7 @@ private class B24WebViewClient(
             path.startsWith(B24_BASE_PATH) -> {
                 val rel = path.removePrefix(B24_BASE_PATH)
                 if (rel.contains("..")) return b24NotFound()
-                "web-bml/$rel"
+                "databroadcast/$rel"
             }
             else -> return b24NotFound()
         }

@@ -61,7 +61,7 @@ abstract class PackageDataBroadcastWeb : Sync() {
 }
 val packageDataBroadcastWeb by tasks.registering(PackageDataBroadcastWeb::class) {
     dependsOn(buildDataBroadcastWeb)
-    from(dataBroadcastWebDirectory.dir("dist")) { into("web-bml") }
+    from(dataBroadcastWebDirectory.dir("dist")) { into("databroadcast") }
     assetOutputDirectory.set(layout.buildDirectory.dir("generated/dataBroadcastAssets"))
     into(assetOutputDirectory)
 }
