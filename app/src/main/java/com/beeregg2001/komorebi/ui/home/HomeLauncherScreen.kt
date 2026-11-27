@@ -617,8 +617,12 @@ fun HomeLauncherScreen(
                                     (!railHasFocus || isEnteringContentFromRail || pendingEnterContentTab != null || focusMemory.request?.contentTop == true)
                             },
                     ) {
-                        val switchToNextTab: (() -> Unit)? = if (snapshotTabIndex < visibleTabs.lastIndex) {
+                        val canAdvanceFromSnapshot = snapshot.tab != LauncherTab.EPG &&
+                            snapshot.tab != LauncherTab.RESERVE &&
+                            snapshotTabIndex < visibleTabs.lastIndex
+                        val switchToNextTab: (() -> Unit)? = if (canAdvanceFromSnapshot) {
                             {
+                                ui.safeHouseRequester.safeRequestFocus("TabSwitch_Next_SafeHouse")
                                 val nextTab = tabController.selectNextTab()
                                 if (nextTab != null) {
                                     val nextIndex = tabController.selectedIndex
@@ -923,8 +927,12 @@ fun HomeLauncherScreen(
                     onClockClick = onClockClick,
                     isContentReady = tabController.isActiveContentReady,
                     isCompactStatusOnly = isCompactStrip,
-                    onPreviousTab = if (!lastNonStripFocusWasRail && tabController.previousTab() != null) {
+                    onPreviousTab = if (!lastNonStripFocusWasRail &&
+                        tabController.activeTab != LauncherTab.RESERVE &&
+                        tabController.previousTab() != null
+                    ) {
                         {
+                            ui.safeHouseRequester.safeRequestFocus("TabSwitch_Prev_SafeHouse")
                             val prevTab = tabController.selectPreviousTab()
                             if (prevTab != null) {
                                 val prevIndex = tabController.selectedIndex
@@ -947,29 +955,36 @@ fun HomeLauncherScreen(
 
                 val nextTab = tabController.nextTab()
                 val prevTab = tabController.previousTab()
-                val canShowBoundaryHint = tabBoundaryHintSeenCount < MAX_TAB_BOUNDARY_HINT_COUNT &&
-                    !showTvInputs &&
+                val hintEligible = !showTvInputs &&
                     !showNotificationCenter &&
                     !isUpgradeTourActive
-                val showBottomHint = canShowBoundaryHint &&
+                val wantsBottomHint = hintEligible &&
                     isBottomRowFocused &&
                     !railHasFocus &&
                     !stripHasFocus &&
                     nextTab != null
-                val showTopHint = canShowBoundaryHint &&
+                val wantsTopHint = hintEligible &&
                     stripHasFocus &&
                     !lastNonStripFocusWasRail &&
                     prevTab != null
-                val activeHintKey = when {
-                    showBottomHint -> "down:${nextTab.name}"
-                    showTopHint -> "up:${prevTab.name}"
+                val desiredHintKey = when {
+                    wantsBottomHint -> "down:${nextTab.name}"
+                    wantsTopHint -> "up:${prevTab.name}"
                     else -> null
                 }
-                LaunchedEffect(activeHintKey) {
-                    if (activeHintKey != null) {
+                var activeHintKey by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(desiredHintKey, tabBoundaryHintSeenCount) {
+                    if (desiredHintKey == null) {
+                        activeHintKey = null
+                    } else if (activeHintKey != desiredHintKey &&
+                        tabBoundaryHintSeenCount < MAX_TAB_BOUNDARY_HINT_COUNT
+                    ) {
+                        activeHintKey = desiredHintKey
                         settingsViewModel.recordTabBoundaryHintSeen(MAX_TAB_BOUNDARY_HINT_COUNT)
                     }
                 }
+                val showBottomHint = wantsBottomHint && activeHintKey?.startsWith("down:") == true
+                val showTopHint = wantsTopHint && activeHintKey?.startsWith("up:") == true
 
                 AnimatedVisibility(
                     visible = showBottomHint,
