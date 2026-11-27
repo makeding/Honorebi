@@ -32,6 +32,7 @@ internal class SettingFocusRequesters {
         SettingsCategory.GENERAL to List(8) { FocusRequester() },
         SettingsCategory.CONNECTION to List(ConnectionItemIndex.COUNT) { FocusRequester() },
         SettingsCategory.PLAYBACK to List(12) { FocusRequester() },
+        SettingsCategory.DATA_BROADCASTING to List(DataBroadcastingItemIndex.COUNT) { FocusRequester() },
         SettingsCategory.RECORDING to List(2) { FocusRequester() },
         SettingsCategory.EPG to List(4) { FocusRequester() },
         SettingsCategory.COMMENT to List(CommentItemIndex.COUNT) { FocusRequester() },

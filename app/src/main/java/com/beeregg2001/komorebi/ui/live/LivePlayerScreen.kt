@@ -61,7 +61,8 @@ import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
 import com.beeregg2001.komorebi.ui.player.B60MediaPlane
 import com.beeregg2001.komorebi.ui.player.B60_INITIAL_MEDIA_PLANE
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorKey
-import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
+import com.beeregg2001.komorebi.data.DataBroadcastingVirtualRemoteMode
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingVirtualRemoteBarOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
 import com.beeregg2001.komorebi.ui.player.B60InputSource
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
@@ -144,6 +145,7 @@ fun LivePlayerScreen(
     var isTifChannel by remember(currentChannelItem.id) { mutableStateOf(hasTifSource) }
 
     val playerClockMode by settingsViewModel.playerClockMode.collectAsState()
+    val dataBroadcastingSettings by settingsViewModel.dataBroadcastingSettings.collectAsState()
     val mirakurunIp by settingsViewModel.mirakurunIp.collectAsState()
     val mirakurunPort by settingsViewModel.mirakurunPort.collectAsState()
     val edcbIp by settingsViewModel.edcbIp.collectAsState()
@@ -392,11 +394,12 @@ fun LivePlayerScreen(
         ) {
             localDataBroadcastingMode = true
             isDataBroadcastingBlank = false
-            dataBroadcastingInput.closeColorSelector()
+            dataBroadcastingInput.closeVirtualRemote()
+            dataBroadcastingInput.onDataBroadcastingActivated(dataBroadcastingSettings.virtualRemoteMode)
             if (!hasShownDataBroadcastingHint) {
                 hasShownDataBroadcastingHint = true
                 onShowToast(
-                    "戻るを長押しで色ボタン（↑青 / ←赤 / →緑 / ↓黄）、戻る2回でテレビ画面"
+                    "戻るを長押しで仮想リモコンバー、戻る2回でテレビ画面"
                 )
             }
         }
@@ -799,12 +802,16 @@ fun LivePlayerScreen(
 
     LaunchedEffect(
         isDataBroadcastingActive,
-        dataBroadcastingInput.isColorSelectorVisible,
-        dataBroadcastingInput.selectedColorKey
+        dataBroadcastingInput.isVirtualRemoteVisible,
+        dataBroadcastingInput.virtualRemoteInteractionSequence,
+        dataBroadcastingSettings.virtualRemoteMode,
     ) {
-        if (isDataBroadcastingActive && dataBroadcastingInput.isColorSelectorVisible) {
-            delay(5000)
-            dataBroadcastingInput.closeColorSelector()
+        if (isDataBroadcastingActive &&
+            dataBroadcastingInput.isVirtualRemoteVisible &&
+            dataBroadcastingSettings.virtualRemoteMode != DataBroadcastingVirtualRemoteMode.ALWAYS
+        ) {
+            delay(10_000L)
+            dataBroadcastingInput.closeVirtualRemote()
         }
     }
 
@@ -1021,6 +1028,7 @@ fun LivePlayerScreen(
                     onMediaPlane = { dataBroadcastingMediaPlane = it },
                     onBlankModeChanged = { isBlank -> isDataBroadcastingBlank = isBlank },
                     onApplicationExited = exitLocalDataBroadcasting,
+                    settings = dataBroadcastingSettings,
                     modifier = Modifier
                         .fillMaxSize()
                         .alpha(if (isDataBroadcastingBlank) 0f else 1f)
@@ -1646,17 +1654,24 @@ fun LivePlayerScreen(
             visible = !isPiPMode &&
                 !ps.isDualDisplayMode &&
                 isDataBroadcastingActive &&
-                dataBroadcastingInput.isColorSelectorVisible,
+                !isDataBroadcastingBlank &&
+                dataBroadcastingInput.isVirtualRemoteVisible,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
-            DataBroadcastingColorSelectorOverlay(
-                selectedKey = dataBroadcastingInput.selectedColorKey,
-                onColorSelected = { colorKey ->
-                    dataBroadcastingInput.dispatchColorKey(colorKey, dispatchDataBroadcastingColorKey)
+            DataBroadcastingVirtualRemoteBarOverlay(
+                selectedKey = dataBroadcastingInput.selectedVirtualKey,
+                onKeyClick = { virtualKey ->
+                    dataBroadcastingInput.dispatchVirtualKey(
+                        key = virtualKey,
+                        onBack = dispatchDataBroadcastingBack,
+                        onBlank = { dispatchDataBroadcastingRemoteKey("data") },
+                        onColorKey = dispatchDataBroadcastingColorKey,
+                        onRemoteKey = dispatchDataBroadcastingRemoteKey,
+                    )
                 },
                 onDismiss = {
-                    dataBroadcastingInput.closeColorSelector()
+                    dataBroadcastingInput.closeVirtualRemote()
                 }
             )
         }

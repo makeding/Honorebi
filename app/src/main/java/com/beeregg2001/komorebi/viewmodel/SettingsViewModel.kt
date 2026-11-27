@@ -338,6 +338,11 @@ class SettingsViewModel @Inject constructor(
     val playerClockMode = settingsRepository.playerClockMode.stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5000), PlayerClockMode.ALWAYS_ON
     )
+    val dataBroadcastingSettings = settingsRepository.dataBroadcastingSettings.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        com.beeregg2001.komorebi.data.DataBroadcastingSettings()
+    )
     val timeFormat: StateFlow<String> = settingsRepository.timeFormat.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),

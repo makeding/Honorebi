@@ -74,6 +74,21 @@
           }
         },
       };
+      const allowExternalNetwork = Boolean(window.ARIBNative?.allowExternalNetwork?.());
+      const receiverInfo = (() => {
+        try {
+          const raw = window.ARIBNative?.receiverInfoJson?.();
+          if (!raw) return undefined;
+          const parsed = JSON.parse(raw);
+          return {
+            zipcode: typeof parsed.zipcode === 'string' && /^\d{7}$/.test(parsed.zipcode) ? parsed.zipcode : null,
+            prefecture: typeof parsed.prefecture === 'number' ? parsed.prefecture : null,
+            regioncode: typeof parsed.regioncode === 'number' ? parsed.regioncode : null,
+          };
+        } catch {
+          return undefined;
+        }
+      })();
       const host = new window.ARIBHTML5.AribReceiverHost({
         iframe,
         viewport,
@@ -84,7 +99,8 @@
           const source = window.ARIBNative?.inputSource?.();
           return source === 'onair' || source === 'recorded' ? source : null;
         },
-        allowExternalNetwork: false,
+        allowExternalNetwork,
+        receiverInfo,
         getDeviceIdentifier: async () => null,
         systemInformation: receiverSystemInformation,
         onStatus(value) {

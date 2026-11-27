@@ -56,7 +56,9 @@ import com.beeregg2001.komorebi.ui.player.PlayerSurface
 import com.beeregg2001.komorebi.ui.player.PlaybackMediaInfo
 import com.beeregg2001.komorebi.ui.player.PlayerCropMode
 import com.beeregg2001.komorebi.ui.player.PlayerZoomOrigin
-import com.beeregg2001.komorebi.ui.player.DataBroadcastingColorSelectorOverlay
+import com.beeregg2001.komorebi.data.DataBroadcastingSettings
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingVirtualKey
+import com.beeregg2001.komorebi.ui.player.DataBroadcastingVirtualRemoteBarOverlay
 import com.beeregg2001.komorebi.ui.player.B60InputSource
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingWebViewOverlay
 import com.beeregg2001.komorebi.ui.player.DataBroadcastingRemoteCommand
@@ -81,6 +83,7 @@ internal fun BoxScope.RecordedMediaSurface(
     isDataBroadcastingActive: Boolean,
     dataBroadcastingStore: B60DataBroadcastingStore,
     dataBroadcastingChannel: Channel,
+    dataBroadcastingSettings: DataBroadcastingSettings = DataBroadcastingSettings(),
     exoPlayer: ExoPlayer,
     dataBroadcastingRemoteCommand: DataBroadcastingRemoteCommand?,
     onRemoteCommandConsumed: (Long) -> Unit,
@@ -112,6 +115,7 @@ internal fun BoxScope.RecordedMediaSurface(
             onMediaPlane = onMediaPlane,
             onBlankModeChanged = onBlankModeChanged,
             onApplicationExited = closeDataBroadcasting,
+            settings = dataBroadcastingSettings,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(1f)
@@ -502,10 +506,10 @@ internal fun BoxScope.RecordedPlaybackOverlays(
 }
 
 @Composable
-internal fun RecordedDataBroadcastingColorSelector(
+internal fun RecordedDataBroadcastingVirtualRemoteBar(
     visible: Boolean,
-    selectedKey: DataBroadcastingColorKey,
-    onColorSelected: (DataBroadcastingColorKey) -> Unit,
+    selectedKey: DataBroadcastingVirtualKey,
+    onKeyClick: (DataBroadcastingVirtualKey) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AnimatedVisibility(
@@ -514,9 +518,9 @@ internal fun RecordedDataBroadcastingColorSelector(
         exit = fadeOut(),
         modifier = Modifier.zIndex(10f)
     ) {
-        DataBroadcastingColorSelectorOverlay(
+        DataBroadcastingVirtualRemoteBarOverlay(
             selectedKey = selectedKey,
-            onColorSelected = onColorSelected,
+            onKeyClick = onKeyClick,
             onDismiss = onDismiss
         )
     }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.beeregg2001.komorebi.BuildConfig
+import com.beeregg2001.komorebi.data.DataBroadcastingSettings
 import com.beeregg2001.komorebi.data.model.Channel
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationResource
 import com.beeregg2001.komorebi.util.mmts.B60ApplicationStatus
@@ -62,6 +63,8 @@ private const val NTP_UNIX_EPOCH_OFFSET_SECONDS = 2_208_988_800L
 private class B60JavascriptBridge(
     private val currentMediaTimeSeconds: () -> Double,
     private val inputSource: () -> String,
+    private val allowExternalNetwork: () -> Boolean,
+    private val receiverInfoJson: () -> String,
     private val onStatus: (String) -> Unit,
     private val onMediaPlane: (B60MediaPlane?) -> Unit,
     private val onBlankModeChanged: (Boolean) -> Unit,
@@ -74,6 +77,12 @@ private class B60JavascriptBridge(
 
     @JavascriptInterface
     fun inputSource(): String = inputSource.invoke()
+
+    @JavascriptInterface
+    fun allowExternalNetwork(): Boolean = allowExternalNetwork.invoke()
+
+    @JavascriptInterface
+    fun receiverInfoJson(): String = receiverInfoJson.invoke()
 
     @JavascriptInterface
     fun onStatus(value: String) {
@@ -138,7 +147,8 @@ fun DataBroadcastingWebViewOverlay(
     onMediaPlane: (B60MediaPlane?) -> Unit,
     onBlankModeChanged: (Boolean) -> Unit,
     onApplicationExited: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    settings: DataBroadcastingSettings = DataBroadcastingSettings(),
 ) {
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
     val session by store.status.collectAsState()
@@ -147,7 +157,11 @@ fun DataBroadcastingWebViewOverlay(
     val latestCurrentMediaTimeSeconds by rememberUpdatedState(currentMediaTimeSeconds)
     val cachedCurrentMediaTimeMillis = remember { AtomicLong(0L) }
     val cachedInputSource = remember { AtomicReference(inputSource.wireValue) }
+    val cachedAllowExternalNetwork = remember { java.util.concurrent.atomic.AtomicBoolean(settings.allowExternalNetwork) }
+    val cachedReceiverInfoJson = remember { AtomicReference(buildReceiverInfoJson(settings)) }
     cachedInputSource.set(inputSource.wireValue)
+    cachedAllowExternalNetwork.set(settings.allowExternalNetwork)
+    cachedReceiverInfoJson.set(buildReceiverInfoJson(settings))
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -158,7 +172,7 @@ fun DataBroadcastingWebViewOverlay(
         }
     }
 
-    key(rendererGeneration) {
+    key(rendererGeneration, settings.allowExternalNetwork, settings.zipcode, settings.prefectureCode) {
         AndroidView(
             factory = { context ->
                 WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
@@ -171,15 +185,17 @@ fun DataBroadcastingWebViewOverlay(
                 isFocusable = false
                 isFocusableInTouchMode = false
 
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.databaseEnabled = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.mediaPlaybackRequiresUserGesture = false
-                settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                settings.cacheMode = WebSettings.LOAD_NO_CACHE
-                settings.userAgentString = settings.userAgentString + " KomorebiB60Receiver"
+                this.settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    databaseEnabled = false
+                    allowFileAccess = false
+                    allowContentAccess = false
+                    mediaPlaybackRequiresUserGesture = false
+                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    cacheMode = WebSettings.LOAD_NO_CACHE
+                    userAgentString = userAgentString + " KomorebiB60Receiver"
+                }
 
                 addJavascriptInterface(
                     B60JavascriptBridge(
@@ -189,6 +205,8 @@ fun DataBroadcastingWebViewOverlay(
                             cachedCurrentMediaTimeMillis.get() / 1000.0
                         },
                         inputSource = { cachedInputSource.get() },
+                        allowExternalNetwork = { cachedAllowExternalNetwork.get() },
+                        receiverInfoJson = { cachedReceiverInfoJson.get() },
                         onStatus = onStatus,
                         onMediaPlane = onMediaPlane,
                         onBlankModeChanged = onBlankModeChanged,
@@ -198,6 +216,7 @@ fun DataBroadcastingWebViewOverlay(
                 )
                     webViewClient = B60WebViewClient(
                         store = store,
+                        allowExternalNetwork = { cachedAllowExternalNetwork.get() },
                         openAsset = { path -> context.assets.open(path) },
                         onShellReady = { shellReady = true },
                         onRendererGone = { didCrash ->
@@ -305,12 +324,15 @@ fun DataBroadcastingWebViewOverlay(
 
 private class B60WebViewClient(
     private val store: B60DataBroadcastingStore,
+    private val allowExternalNetwork: () -> Boolean,
     private val openAsset: (String) -> java.io.InputStream,
     private val onShellReady: () -> Unit,
     private val onRendererGone: (didCrash: Boolean) -> Unit
 ) : WebViewClient() {
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-        return request.url.host != Uri.parse(WEB_ORIGIN).host
+        val url = request.url
+        if (url.host == Uri.parse(WEB_ORIGIN).host) return false
+        return !(allowExternalNetwork() && url.scheme.equals("https", ignoreCase = true))
     }
 
     override fun shouldInterceptRequest(
@@ -318,23 +340,28 @@ private class B60WebViewClient(
         request: WebResourceRequest
     ): WebResourceResponse? {
         val url = request.url
+        val externalAllowed = allowExternalNetwork()
         if (url.scheme != "https" || url.host != Uri.parse(WEB_ORIGIN).host) {
-            return forbiddenResponse()
+            return if (externalAllowed && url.scheme.equals("https", ignoreCase = true)) {
+                null
+            } else {
+                forbiddenResponse(externalAllowed)
+            }
         }
         return when (url.path) {
-            SHELL_PATH -> assetResponse("libaribhtml5/index.html", "text/html")
-            SDK_PATH -> assetResponse("libaribhtml5/libaribhtml5.js", "text/javascript")
+            SHELL_PATH -> assetResponse("libaribhtml5/index.html", "text/html", externalAllowed)
+            SDK_PATH -> assetResponse("libaribhtml5/libaribhtml5.js", "text/javascript", externalAllowed)
             else -> if (url.path?.startsWith(BROADCAST_PREFIX) == true) {
                 val path = Uri.decode(url.encodedPath.orEmpty()).removePrefix(BROADCAST_PREFIX)
                 val resource = store.waitForResource(path)
                 if (resource == null) {
                     Log.w(TAG, "B60 resource missing after wait: path=$path, url=$url")
-                    notFoundResponse()
+                    notFoundResponse(externalAllowed)
                 } else {
-                    broadcastResourceResponse(resource)
+                    broadcastResourceResponse(resource, externalAllowed)
                 }
             } else {
-                forbiddenResponse()
+                forbiddenResponse(externalAllowed)
             }
         }
     }
@@ -348,11 +375,21 @@ private class B60WebViewClient(
         return true
     }
 
-    private fun assetResponse(path: String, mimeType: String): WebResourceResponse =
-        response(200, "OK", mimeType, openAsset(path).use { it.readBytes() })
+    private fun assetResponse(path: String, mimeType: String, allowExternal: Boolean): WebResourceResponse =
+        response(200, "OK", mimeType, openAsset(path).use { it.readBytes() }, allowExternal)
 }
 
-private fun broadcastResourceResponse(resource: B60ApplicationResource): WebResourceResponse {
+internal fun buildReceiverInfoJson(settings: DataBroadcastingSettings): String =
+    JSONObject().apply {
+        put("zipcode", settings.zipcode.takeIf { it.length == 7 } ?: JSONObject.NULL)
+        put("prefecture", settings.prefectureCode ?: JSONObject.NULL)
+        put("regioncode", settings.regionCode ?: JSONObject.NULL)
+    }.toString()
+
+private fun broadcastResourceResponse(
+    resource: B60ApplicationResource,
+    allowExternalNetwork: Boolean,
+): WebResourceResponse {
     val mimeType = resource.contentType.substringBefore(';').ifBlank {
         contentTypeForPath(resource.path)
     }
@@ -371,7 +408,7 @@ private fun broadcastResourceResponse(resource: B60ApplicationResource): WebReso
                 .toByteArray(StandardCharsets.UTF_8)
         else -> resource.data
     }
-    return response(200, "OK", mimeType, data)
+    return response(200, "OK", mimeType, data, allowExternalNetwork)
 }
 
 private fun broadcastBasePathFor(resourcePath: String): String {
@@ -529,7 +566,8 @@ private fun response(
     statusCode: Int,
     reason: String,
     mimeType: String,
-    data: ByteArray
+    data: ByteArray,
+    allowExternalNetwork: Boolean,
 ): WebResourceResponse = WebResourceResponse(
     mimeType,
     if (mimeType.startsWith("text/") || mimeType.contains("javascript") || mimeType.contains("json")) {
@@ -544,18 +582,23 @@ private fun response(
         "Content-Security-Policy" to
             // Broadcast applications use dynamic JavaScript compilation for
             // receiver capability checks and generated application code.
-            "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-            "style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-src 'self'",
+            if (allowExternalNetwork) {
+                "default-src 'self' https: data: blob:; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; " +
+                    "style-src 'self' https: 'unsafe-inline'; connect-src 'self' https:; object-src 'none'; frame-src 'self' https:"
+            } else {
+                "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+                    "style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-src 'self'"
+            },
         "X-Content-Type-Options" to "nosniff"
     ),
     ByteArrayInputStream(data)
 )
 
-private fun forbiddenResponse(): WebResourceResponse =
-    response(403, "Forbidden", "text/plain", "Forbidden".toByteArray())
+private fun forbiddenResponse(allowExternalNetwork: Boolean = false): WebResourceResponse =
+    response(403, "Forbidden", "text/plain", "Forbidden".toByteArray(), allowExternalNetwork)
 
-private fun notFoundResponse(): WebResourceResponse =
-    response(404, "Not Found", "text/plain", "Broadcast resource is not available".toByteArray())
+private fun notFoundResponse(allowExternalNetwork: Boolean = false): WebResourceResponse =
+    response(404, "Not Found", "text/plain", "Broadcast resource is not available".toByteArray(), allowExternalNetwork)
 
 private fun contentTypeForPath(path: String): String = when (path.substringAfterLast('.', "").lowercase()) {
     "html", "htm" -> "text/html"

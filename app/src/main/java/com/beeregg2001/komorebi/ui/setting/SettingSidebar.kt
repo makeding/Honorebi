@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsApplications
@@ -83,6 +84,7 @@ internal fun buildSettingSidebarRows(): List<SettingSidebarRow> =
             SettingsCategory.CONNECTION -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_CONNECTION, Icons.Default.Link)
             SettingsCategory.DEEP_TV -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DEEP_TV, Icons.Default.SettingsInputHdmi)
             SettingsCategory.PLAYBACK -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_PLAYBACK, Icons.Default.PlayCircle)
+            SettingsCategory.DATA_BROADCASTING -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DATA_BROADCASTING, Icons.Default.LiveTv)
             SettingsCategory.COMMENT -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_COMMENT, Icons.Default.Comment)
             SettingsCategory.DISPLAY -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_DISPLAY, Icons.Default.Dashboard)
             SettingsCategory.HOME -> SettingSidebarRow(category, AppStrings.SETTINGS_CATEGORY_HOME, Icons.Default.Home)

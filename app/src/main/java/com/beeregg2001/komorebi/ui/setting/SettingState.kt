@@ -1,5 +1,6 @@
 package com.beeregg2001.komorebi.ui.setting
 
+import com.beeregg2001.komorebi.data.DataBroadcastingSettings
 import com.beeregg2001.komorebi.data.DeepTvFeatureSettings
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.StartupFocusTarget
@@ -80,6 +81,7 @@ class SettingPreferences(
     val tifNoSignalStyle: TifNoSignalStyle = TifNoSignalStyle.BANNER,
     val tifNoSignalAccentColor: TifNoSignalAccentColor = TifNoSignalAccentColor.RANDOM,
     val deepTvFeatures: DeepTvFeatureSettings = DeepTvFeatureSettings(),
+    val dataBroadcasting: DataBroadcastingSettings = DataBroadcastingSettings(),
 )
 
 @Composable
@@ -162,6 +164,7 @@ fun rememberSettingPreferences(repository: SettingsRepository): SettingPreferenc
         tifNoSignalStyle = repository.tifNoSignalStyle.collectAsState(initial = TifNoSignalStyle.BANNER).value,
         tifNoSignalAccentColor = repository.tifNoSignalAccentColor.collectAsState(initial = TifNoSignalAccentColor.RANDOM).value,
         deepTvFeatures = repository.deepTvFeatureSettings.collectAsState(initial = DeepTvFeatureSettings()).value,
+        dataBroadcasting = repository.dataBroadcastingSettings.collectAsState(initial = DataBroadcastingSettings()).value,
         hideLauncherAppLabels = repository.hideLauncherAppLabels.collectAsState(initial = false).value,
         hideAppsTab = repository.hideAppsTab.collectAsState(initial = false).value,
         launcherAppColumns = repository.launcherAppColumns.collectAsState(initial = "AUTO").value,

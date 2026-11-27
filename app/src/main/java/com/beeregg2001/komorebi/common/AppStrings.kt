@@ -178,6 +178,7 @@ object AppStrings {
     const val SETTINGS_CATEGORY_CONNECTION = "接続設定"
     const val SETTINGS_CATEGORY_DEEP_TV = "TV統合"
     const val SETTINGS_CATEGORY_PLAYBACK = "再生設定"
+    const val SETTINGS_CATEGORY_DATA_BROADCASTING = "データ放送"
     const val SETTINGS_CATEGORY_HOME = "ホーム設定"
     const val SETTINGS_CATEGORY_LAUNCHER = "ランチャー設定"
     const val SETTINGS_CATEGORY_DISPLAY = "表示設定"

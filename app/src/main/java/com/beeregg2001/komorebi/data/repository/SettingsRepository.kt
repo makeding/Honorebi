@@ -223,6 +223,15 @@ class SettingsRepository @Inject constructor(
         val CF_ACCESS_CLIENT_ID = stringPreferencesKey("cf_access_client_id")
         val CF_ACCESS_CLIENT_SECRET = stringPreferencesKey("cf_access_client_secret")
         val LAST_SEEN_VERSION_CODE = intPreferencesKey("last_seen_version_code")
+
+        // データ放送設定
+        val DATA_BROADCASTING_ALLOW_EXTERNAL_NETWORK =
+            booleanPreferencesKey("data_broadcasting_allow_external_network")
+        val DATA_BROADCASTING_ZIPCODE = stringPreferencesKey("data_broadcasting_zipcode")
+        val DATA_BROADCASTING_PREFECTURE_CODE =
+            stringPreferencesKey("data_broadcasting_prefecture_code")
+        val DATA_BROADCASTING_VIRTUAL_REMOTE_MODE =
+            stringPreferencesKey("data_broadcasting_virtual_remote_mode")
     }
 
     val isInitialized: Flow<Boolean> = context.dataStore.data
@@ -467,6 +476,55 @@ class SettingsRepository @Inject constructor(
             settings[BACKGROUND_PLAYBACK_MODE] = mode.preferenceValue
             settings[OS_PIP_AUTO_ENTER_ENABLED] =
                 (mode == com.beeregg2001.komorebi.data.BackgroundPlaybackMode.PIP)
+        }
+    }
+
+    val dataBroadcastingSettings: Flow<DataBroadcastingSettings> = context.dataStore.data.map { prefs ->
+        val rawZip = prefs[DATA_BROADCASTING_ZIPCODE].orEmpty()
+        val normalizedZip = DataBroadcastingSettings.normalizeZipcode(rawZip).orEmpty()
+        val prefectureCode = prefs[DATA_BROADCASTING_PREFECTURE_CODE]?.toIntOrNull()
+            ?.takeIf { DataBroadcastingPrefectures.findByCode(it) != null }
+        DataBroadcastingSettings(
+            allowExternalNetwork = prefs[DATA_BROADCASTING_ALLOW_EXTERNAL_NETWORK] ?: false,
+            zipcode = normalizedZip,
+            prefectureCode = prefectureCode,
+            virtualRemoteMode = DataBroadcastingVirtualRemoteMode.fromPreference(
+                prefs[DATA_BROADCASTING_VIRTUAL_REMOTE_MODE]
+            ),
+        )
+    }
+
+    suspend fun setDataBroadcastingAllowExternalNetwork(enabled: Boolean) {
+        context.dataStore.edit { settings ->
+            settings[DATA_BROADCASTING_ALLOW_EXTERNAL_NETWORK] = enabled
+        }
+    }
+
+    suspend fun setDataBroadcastingZipcode(zipcode: String) {
+        val normalized = DataBroadcastingSettings.normalizeZipcode(zipcode)
+            ?: throw IllegalArgumentException("郵便番号は「000-0000」の形式で入力してください。")
+        context.dataStore.edit { settings ->
+            if (normalized.isEmpty()) {
+                settings.remove(DATA_BROADCASTING_ZIPCODE)
+            } else {
+                settings[DATA_BROADCASTING_ZIPCODE] = normalized
+            }
+        }
+    }
+
+    suspend fun setDataBroadcastingPrefectureCode(code: Int?) {
+        context.dataStore.edit { settings ->
+            if (code == null || DataBroadcastingPrefectures.findByCode(code) == null) {
+                settings.remove(DATA_BROADCASTING_PREFECTURE_CODE)
+            } else {
+                settings[DATA_BROADCASTING_PREFECTURE_CODE] = code.toString()
+            }
+        }
+    }
+
+    suspend fun setDataBroadcastingVirtualRemoteMode(mode: DataBroadcastingVirtualRemoteMode) {
+        context.dataStore.edit { settings ->
+            settings[DATA_BROADCASTING_VIRTUAL_REMOTE_MODE] = mode.preferenceValue
         }
     }
     val screensaverEnabled: Flow<Boolean> =

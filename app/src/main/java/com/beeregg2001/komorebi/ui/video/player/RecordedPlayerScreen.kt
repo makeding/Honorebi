@@ -352,6 +352,7 @@ internal fun RecordedPlayerScreen(
     val videoSubtitleDefaultStr by settingsViewModel.videoSubtitleDefault.collectAsState()
     val videoPlaybackSpeedStr by settingsViewModel.videoPlaybackSpeed.collectAsState()
     val playerClockMode by settingsViewModel.playerClockMode.collectAsState()
+    val dataBroadcastingSettings by settingsViewModel.dataBroadcastingSettings.collectAsState()
     val timeFormat by settingsViewModel.timeFormat.collectAsState()
 
     val commentSpeed = commentSpeedStr.toFloatOrNull() ?: 1.0f
@@ -1418,20 +1419,25 @@ internal fun RecordedPlayerScreen(
             closeDataBroadcasting()
         } else if (!isDataBroadcastingActive || isDataBroadcastingBlank) {
             dataBroadcastingInput.reset()
+        } else {
+            dataBroadcastingInput.onDataBroadcastingActivated(dataBroadcastingSettings.virtualRemoteMode)
         }
     }
 
     LaunchedEffect(
         isDataBroadcastingActive,
-        dataBroadcastingInput.isColorSelectorVisible,
-        dataBroadcastingInput.selectedColorKey
+        dataBroadcastingInput.isVirtualRemoteVisible,
+        dataBroadcastingInput.virtualRemoteInteractionSequence,
+        dataBroadcastingSettings.virtualRemoteMode,
     ) {
         if (
             isDataBroadcastingActive &&
-            dataBroadcastingInput.isColorSelectorVisible
+            dataBroadcastingInput.isVirtualRemoteVisible &&
+            dataBroadcastingSettings.virtualRemoteMode !=
+                com.beeregg2001.komorebi.data.DataBroadcastingVirtualRemoteMode.ALWAYS
         ) {
-            delay(5_000L)
-            dataBroadcastingInput.closeColorSelector()
+            delay(10_000L)
+            dataBroadcastingInput.closeVirtualRemote()
         }
     }
 
@@ -1838,6 +1844,7 @@ internal fun RecordedPlayerScreen(
             isDataBroadcastingActive = isDataBroadcastingActive,
             dataBroadcastingStore = dataBroadcastingStore,
             dataBroadcastingChannel = dataBroadcastingChannel,
+            dataBroadcastingSettings = dataBroadcastingSettings,
             exoPlayer = exoPlayer,
             dataBroadcastingRemoteCommand = dataBroadcastingRemoteCommand,
             onRemoteCommandConsumed = { consumedId ->
@@ -2030,18 +2037,22 @@ internal fun RecordedPlayerScreen(
             )
         }
 
-        RecordedDataBroadcastingColorSelector(
+        RecordedDataBroadcastingVirtualRemoteBar(
             visible = !isPiPMode &&
                 isDataBroadcastingActive &&
-                dataBroadcastingInput.isColorSelectorVisible,
-            selectedKey = dataBroadcastingInput.selectedColorKey,
-            onColorSelected = { colorKey ->
-                dataBroadcastingInput.dispatchColorKey(
-                    colorKey,
-                    dispatchDataBroadcastingColorKey
+                !isDataBroadcastingBlank &&
+                dataBroadcastingInput.isVirtualRemoteVisible,
+            selectedKey = dataBroadcastingInput.selectedVirtualKey,
+            onKeyClick = { virtualKey ->
+                dataBroadcastingInput.dispatchVirtualKey(
+                    key = virtualKey,
+                    onBack = { dispatchDataBroadcastingRemoteKey("back") },
+                    onBlank = { dispatchDataBroadcastingRemoteKey("data") },
+                    onColorKey = dispatchDataBroadcastingColorKey,
+                    onRemoteKey = dispatchDataBroadcastingRemoteKey,
                 )
             },
-            onDismiss = dataBroadcastingInput::closeColorSelector
+            onDismiss = dataBroadcastingInput::closeVirtualRemote
         )
 
         if (!isPiPMode && entryError != null) {

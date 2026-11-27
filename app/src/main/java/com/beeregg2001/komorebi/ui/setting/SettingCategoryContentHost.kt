@@ -3,6 +3,7 @@
 package com.beeregg2001.komorebi.ui.setting
 
 import android.os.Build
+import android.webkit.WebStorage
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
@@ -15,6 +16,9 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.FocusRequester
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import com.beeregg2001.komorebi.common.AppStrings
+import com.beeregg2001.komorebi.data.DataBroadcastingPrefectures
+import com.beeregg2001.komorebi.data.DataBroadcastingSettings
+import com.beeregg2001.komorebi.data.DataBroadcastingVirtualRemoteMode
 import com.beeregg2001.komorebi.data.PlayerClockMode
 import com.beeregg2001.komorebi.data.SettingsRepository
 import com.beeregg2001.komorebi.data.StartupFocusTarget
@@ -529,6 +533,71 @@ internal fun ColumnScope.SettingCategoryContentHost(
                 }
             },
         ) { controller.recordRestoreTarget(it, SettingsCategory.PLAYBACK) }
+
+        SettingsCategory.DATA_BROADCASTING -> DataBroadcastingSettingsContent(
+            settings = prefs.dataBroadcasting,
+            itemRs = focusRequesters.itemRequesters(SettingsCategory.DATA_BROADCASTING),
+            sidebarR = focusRequesters.categoryRequester(SettingsCategory.DATA_BROADCASTING),
+            onEditZipcode = {
+                controller.activeDialog = SettingDialogState.Input(
+                    title = "お住まいの郵便番号（例: 100-0001 / 空欄で解除）",
+                    initialValue = prefs.dataBroadcasting.formattedZipcode,
+                ) { raw ->
+                    val normalized = DataBroadcastingSettings.normalizeZipcode(raw)
+                    if (normalized == null) {
+                        showToast("郵便番号は「000-0000」の形式で入力してください")
+                    } else {
+                        scope.launch {
+                            repository.setDataBroadcastingZipcode(normalized)
+                            showToast(if (normalized.isEmpty()) "郵便番号を未設定にしました" else "郵便番号を保存しました")
+                        }
+                    }
+                }
+            },
+            onEditPrefecture = {
+                controller.activeDialog = SettingDialogState.Selection(
+                    title = "お住まいの都道府県",
+                    options = DataBroadcastingPrefectures.selectionOptions(),
+                    current = prefs.dataBroadcasting.prefectureCode?.toString()
+                        ?: DataBroadcastingPrefectures.UNSET_PREFERENCE_VALUE,
+                ) { selected ->
+                    scope.launch {
+                        repository.setDataBroadcastingPrefectureCode(selected.toIntOrNull())
+                    }
+                }
+            },
+            onToggleAllowExternalNetwork = {
+                val next = !prefs.dataBroadcasting.allowExternalNetwork
+                scope.launch {
+                    repository.setDataBroadcastingAllowExternalNetwork(next)
+                }
+            },
+            onEditVirtualRemoteMode = {
+                controller.activeDialog = SettingDialogState.Selection(
+                    title = "仮想リモコンバーの表示",
+                    options = DataBroadcastingVirtualRemoteMode.entries.map { it.label to it.preferenceValue },
+                    current = prefs.dataBroadcasting.virtualRemoteMode.preferenceValue,
+                ) { selected ->
+                    scope.launch {
+                        repository.setDataBroadcastingVirtualRemoteMode(
+                            DataBroadcastingVirtualRemoteMode.fromPreference(selected)
+                        )
+                    }
+                }
+            },
+            onResetStorage = {
+                controller.activeDialog = SettingDialogState.ConfirmClear(
+                    title = "データ放送の保存データをリセット",
+                    message = "データ放送内の設定・ミニゲームの得点・スタンプ等の保存データをすべて消去します。元に戻すことはできません。",
+                ) {
+                    runCatching {
+                        WebStorage.getInstance().deleteOrigin("https://appassets.androidplatform.net")
+                    }
+                    showToast("データ放送の保存データをリセットしました")
+                }
+            },
+            onClick = { controller.recordRestoreTarget(it, SettingsCategory.DATA_BROADCASTING) },
+        )
 
         SettingsCategory.RECORDING -> RecordingSettingsContent(
             prefs.defaultRecordListView,
