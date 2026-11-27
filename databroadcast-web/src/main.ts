@@ -483,14 +483,15 @@ function startSession(config: {
   browser.addEventListener('videochanged', (event) => {
     if (!isInvisible) {
       const rect = event.detail.boundingRect;
-      const vpRect = viewport.getBoundingClientRect();
-      // A non-fullscreen video cutout means the BML layout is genuinely rendered.
+      // event.detail.boundingRect is in BML logical coordinates (bmlWidth x bmlHeight, e.g. 960x540),
+      // while getVideoElement().getBoundingClientRect() is in viewport CSS pixels.
+      // Compare against bmlWidth/bmlHeight so a 960x540 fullscreen startup flash isn't mistaken for a cutout.
       const isCutout =
-        vpRect.width > 0 &&
-        vpRect.height > 0 &&
+        bmlWidth > 0 &&
+        bmlHeight > 0 &&
         rect.width > 1 &&
         rect.height > 1 &&
-        (rect.width < vpRect.width * 0.96 || rect.height < vpRect.height * 0.96);
+        (rect.width < bmlWidth * 0.96 || rect.height < bmlHeight * 0.96);
       if (isCutout) {
         if (visibleSettleTimer !== null) {
           clearTimeout(visibleSettleTimer);

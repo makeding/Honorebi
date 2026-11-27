@@ -280,7 +280,7 @@ fun B24DataBroadcastingWebViewOverlay(
                         allowContentAccess = false
                         mediaPlaybackRequiresUserGesture = false
                         mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                        cacheMode = WebSettings.LOAD_DEFAULT
+                        cacheMode = WebSettings.LOAD_NO_CACHE
                         userAgentString = "$userAgentString HonorebiB24Receiver"
                     }
 
@@ -524,7 +524,7 @@ private class B24WebViewClient(
         statusCode,
         reason,
         mapOf(
-            "Cache-Control" to "max-age=86400",
+            "Cache-Control" to "no-store",
             "Content-Security-Policy" to
                 "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
                 "worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; " +

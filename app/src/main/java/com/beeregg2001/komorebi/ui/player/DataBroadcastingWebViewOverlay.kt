@@ -212,7 +212,7 @@ fun DataBroadcastingWebViewOverlay(
                     allowContentAccess = false
                     mediaPlaybackRequiresUserGesture = false
                     mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    cacheMode = WebSettings.LOAD_DEFAULT
+                    cacheMode = WebSettings.LOAD_NO_CACHE
                     userAgentString = userAgentString + " HonorebiB60Receiver"
                 }
 
@@ -779,7 +779,7 @@ private fun response(
     statusCode,
     reason,
     mapOf(
-        "Cache-Control" to if (immutable) "max-age=86400" else "no-store",
+        "Cache-Control" to "no-store",
         "Content-Security-Policy" to
             // Broadcast applications use dynamic JavaScript compilation for
             // receiver capability checks and generated application code.
