@@ -1596,17 +1596,11 @@ fun DebugSettingsContent(
             fontWeight = FontWeight.Bold
         )
         SettingsSection("プレイヤー") {
-            SettingToggleItem(
+            SettingItem(
                 title = "プレイヤー DRM (画面キャプチャ防止)",
-                description = "再生画面をセキュアサーフェスとして保護します。scrcpy等のリモート操作時に映像転送を抑止し、動作を軽量化します（デフォルト: ON）。",
+                value = if (playerDrmEnabled) "ON" else "OFF",
                 icon = Icons.Default.Shield,
-                checked = playerDrmEnabled,
-                onCheckedChange = {
-                    onClick(drmR)
-                    onTogglePlayerDrm(it)
-                },
                 modifier = Modifier
-                    .width(420.dp)
                     .focusRequester(drmR)
                     .onPreviewKeyEvent { event ->
                         if (event.key == Key.DirectionUp) {
@@ -1620,7 +1614,17 @@ fun DebugSettingsContent(
                         left = sidebarR
                         up = FocusRequester.Cancel
                         down = FocusRequester.Cancel
-                    }
+                    },
+                onClick = {
+                    onClick(drmR)
+                    onTogglePlayerDrm(!playerDrmEnabled)
+                }
+            )
+            Text(
+                "再生画面をセキュアサーフェスとして保護します。scrcpy等のリモート操作時に映像転送を抑止し、動作を軽量化します（デフォルト: ON）。",
+                style = MaterialTheme.typography.bodySmall,
+                color = KomorebiTheme.colors.textSecondary,
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
     }
