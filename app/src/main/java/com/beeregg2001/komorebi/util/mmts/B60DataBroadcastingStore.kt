@@ -210,17 +210,23 @@ class B60DataBroadcastingStore : B60DataBroadcastingCallback {
         val key = ResourceKey(normalized.contextId, normalized.path)
         val updated: Boolean
         synchronized(monitor) {
-            updated = resources.put(key, normalized) != null
+            val previous = resources.put(key, normalized)
+            updated = previous != null && (
+                previous.version != normalized.version ||
+                    !previous.data.contentEquals(normalized.data)
+                )
             refreshResolvedEntryLocked(normalized.contextId)
             monitor.notifyAll()
         }
-        _resourceChanges.tryEmit(
-            B60ResourceChange(
-                generation = status.generation,
-                path = normalized.path,
-                updated = updated
+        if (updated) {
+            _resourceChanges.tryEmit(
+                B60ResourceChange(
+                    generation = status.generation,
+                    path = normalized.path,
+                    updated = true
+                )
             )
-        )
+        }
     }
 
     override fun onApplicationResourcesReset() {

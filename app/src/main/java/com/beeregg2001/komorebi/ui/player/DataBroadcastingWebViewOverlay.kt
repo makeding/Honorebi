@@ -20,7 +20,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,11 +38,12 @@ import com.beeregg2001.komorebi.util.mmts.B60BroadcastClock
 import com.beeregg2001.komorebi.util.mmts.B60DataBroadcastingStore
 import com.beeregg2001.komorebi.util.mmts.B60EventInfo
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToLong
@@ -151,13 +151,13 @@ fun DataBroadcastingWebViewOverlay(
     settings: DataBroadcastingSettings = DataBroadcastingSettings(),
 ) {
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
-    val session by store.status.collectAsState()
     var shellReady by remember { mutableStateOf(false) }
     var rendererGeneration by remember { mutableIntStateOf(0) }
     val latestCurrentMediaTimeSeconds by rememberUpdatedState(currentMediaTimeSeconds)
+    val latestChannel by rememberUpdatedState(channel)
     val cachedCurrentMediaTimeMillis = remember { AtomicLong(0L) }
     val cachedInputSource = remember { AtomicReference(inputSource.wireValue) }
-    val cachedAllowExternalNetwork = remember { java.util.concurrent.atomic.AtomicBoolean(settings.allowExternalNetwork) }
+    val cachedAllowExternalNetwork = remember { AtomicBoolean(settings.allowExternalNetwork) }
     val cachedReceiverInfoJson = remember { AtomicReference(buildReceiverInfoJson(settings)) }
     cachedInputSource.set(inputSource.wireValue)
     cachedAllowExternalNetwork.set(settings.allowExternalNetwork)
@@ -168,7 +168,7 @@ fun DataBroadcastingWebViewOverlay(
             cachedCurrentMediaTimeMillis.set(
                 (latestCurrentMediaTimeSeconds.invoke() * 1000.0).roundToLong()
             )
-            delay(250)
+            delay(500)
         }
     }
 
@@ -193,8 +193,8 @@ fun DataBroadcastingWebViewOverlay(
                     allowContentAccess = false
                     mediaPlaybackRequiresUserGesture = false
                     mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    cacheMode = WebSettings.LOAD_NO_CACHE
-                    userAgentString = userAgentString + " KomorebiB60Receiver"
+                    cacheMode = WebSettings.LOAD_DEFAULT
+                    userAgentString = userAgentString + " HonorebiB60Receiver"
                 }
 
                 addJavascriptInterface(
@@ -252,55 +252,74 @@ fun DataBroadcastingWebViewOverlay(
         )
     }
 
-    LaunchedEffect(shellReady, session.generation, session.entryReady, session.entryPath) {
+    // Collect store updates inside LaunchedEffect without triggering Compose recompositions
+    // on every carousel resource or broadcast clock tick.
+    LaunchedEffect(shellReady, store, rendererGeneration, settings.allowExternalNetwork, settings.zipcode, settings.prefectureCode) {
         if (!shellReady) return@LaunchedEffect
-        val webView = webViewRef.value ?: return@LaunchedEffect
-        val entry = session.entryPath
-        if (!session.entryReady || entry.isNullOrBlank()) {
-            return@LaunchedEffect
+        var startedKey: Triple<Long, Boolean, String?>? = null
+        var lastProgramPair: Pair<B60EventInfo?, B60EventInfo?>? = null
+        var lastLctKey: Pair<Long, Int?>? = null
+        var lastClockSentAtMs = 0L
+
+        store.status.collect { status ->
+            val webView = webViewRef.value ?: return@collect
+            val startKey = Triple(status.generation, status.entryReady, status.entryPath)
+            if (startKey != startedKey && status.entryReady && !status.entryPath.isNullOrBlank()) {
+                startedKey = startKey
+                lastProgramPair = status.presentEvent to status.followingEvent
+                lastLctKey = status.generation to status.lctBackgroundColorRgb
+                lastClockSentAtMs = System.currentTimeMillis()
+                val payload = buildStartPayload(status, latestChannel)
+                webView.evaluateJavascript(
+                    "window.KomorebiB60?.start?.(${JSONObject.quote(payload.toString())})",
+                    null
+                )
+                return@collect
+            }
+
+            val lctKey = status.generation to status.lctBackgroundColorRgb
+            if (lctKey != lastLctKey) {
+                lastLctKey = lctKey
+                val value = status.lctBackgroundColorRgb?.toString() ?: "null"
+                webView.evaluateJavascript(
+                    "window.KomorebiB60?.updateLctBackgroundColor?.($value)",
+                    null
+                )
+            }
+
+            if (!status.entryReady) return@collect
+
+            val programPair = status.presentEvent to status.followingEvent
+            if (programPair != lastProgramPair) {
+                lastProgramPair = programPair
+                val programInfo = buildProgramInfo(status, latestChannel)
+                webView.evaluateJavascript(
+                    "window.KomorebiB60?.updateProgramInfo?.(" +
+                        "${JSONObject.quote(programInfo.toString())})",
+                    null
+                )
+            }
+
+            val clock = status.broadcastClock
+            val nowMs = System.currentTimeMillis()
+            if (clock != null && (clock.discontinuity || nowMs - lastClockSentAtMs >= 5_000L)) {
+                val clockJson = buildBroadcastClock(clock)
+                if (clockJson != null) {
+                    lastClockSentAtMs = nowMs
+                    webView.evaluateJavascript(
+                        "window.KomorebiB60?.updateBroadcastClock?.(" +
+                            "${JSONObject.quote(clockJson.toString())})",
+                        null
+                    )
+                }
+            }
         }
-        val payload = buildStartPayload(session, channel)
-        webView.evaluateJavascript(
-            "window.KomorebiB60?.start?.(${JSONObject.quote(payload.toString())})",
-            null
-        )
     }
 
-    LaunchedEffect(shellReady, session.presentEvent, session.followingEvent) {
-        if (!shellReady || !session.entryReady) return@LaunchedEffect
-        val webView = webViewRef.value ?: return@LaunchedEffect
-        val programInfo = buildProgramInfo(session, channel)
-        webView.evaluateJavascript(
-            "window.KomorebiB60?.updateProgramInfo?.(" +
-                "${JSONObject.quote(programInfo.toString())})",
-            null
-        )
-    }
-
-    LaunchedEffect(shellReady, session.broadcastClock) {
-        if (!shellReady || !session.entryReady) return@LaunchedEffect
-        val webView = webViewRef.value ?: return@LaunchedEffect
-        val clock = session.broadcastClock?.let(::buildBroadcastClock) ?: return@LaunchedEffect
-        webView.evaluateJavascript(
-            "window.KomorebiB60?.updateBroadcastClock?.(" +
-                "${JSONObject.quote(clock.toString())})",
-            null
-        )
-    }
-
-    LaunchedEffect(shellReady, session.generation, session.lctBackgroundColorRgb) {
+    LaunchedEffect(shellReady, store, rendererGeneration) {
         if (!shellReady) return@LaunchedEffect
-        val value = session.lctBackgroundColorRgb?.toString() ?: "null"
-        webViewRef.value?.evaluateJavascript(
-            "window.KomorebiB60?.updateLctBackgroundColor?.($value)",
-            null
-        )
-    }
-
-    LaunchedEffect(shellReady, session.generation) {
-        if (!shellReady) return@LaunchedEffect
-        store.resourceChanges.collectLatest { change ->
-            if (change.generation != session.generation || !change.updated) return@collectLatest
+        store.resourceChanges.collect { change ->
+            if (!change.updated || change.generation != store.status.value.generation) return@collect
             webViewRef.value?.evaluateJavascript(
                 "window.KomorebiB60?.resourceChanged?.(" +
                     "${JSONObject.quote(change.path)}, true)",
@@ -329,6 +348,11 @@ private class B60WebViewClient(
     private val onShellReady: () -> Unit,
     private val onRendererGone: (didCrash: Boolean) -> Unit
 ) : WebViewClient() {
+    private data class PreparedCacheKey(val contextId: Long, val path: String, val version: Int)
+    private val preparedResourceCache = ConcurrentHashMap<PreparedCacheKey, ByteArray>()
+    @Volatile
+    private var cachedContextId: Long? = null
+
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url
         if (url.host == Uri.parse(WEB_ORIGIN).host) return false
@@ -375,8 +399,50 @@ private class B60WebViewClient(
         return true
     }
 
-    private fun assetResponse(path: String, mimeType: String, allowExternal: Boolean): WebResourceResponse =
-        response(200, "OK", mimeType, openAsset(path).use { it.readBytes() }, allowExternal)
+    private fun assetResponse(path: String, mimeType: String, allowExternal: Boolean): WebResourceResponse {
+        val bytes = STATIC_ASSET_CACHE.getOrPut(path) {
+            openAsset(path).use { it.readBytes() }
+        }
+        return response(200, "OK", mimeType, bytes, allowExternal, immutable = true)
+    }
+
+    private fun broadcastResourceResponse(
+        resource: B60ApplicationResource,
+        allowExternalNetwork: Boolean,
+    ): WebResourceResponse {
+        val mimeType = resource.contentType.substringBefore(';').ifBlank {
+            contentTypeForPath(resource.path)
+        }
+        val needsRewrite = mimeType.equals("text/html", ignoreCase = true) ||
+            mimeType.equals("text/css", ignoreCase = true)
+        val data = if (!needsRewrite) {
+            resource.data
+        } else {
+            if (cachedContextId != resource.contextId) {
+                preparedResourceCache.clear()
+                cachedContextId = resource.contextId
+            }
+            val cacheKey = PreparedCacheKey(resource.contextId, resource.path, resource.version)
+            preparedResourceCache.getOrPut(cacheKey) {
+                if (mimeType.equals("text/html", ignoreCase = true)) {
+                    prepareBroadcastHtml(
+                        resource.data.toString(StandardCharsets.UTF_8),
+                        broadcastBasePathFor(resource.path)
+                    ).toByteArray(StandardCharsets.UTF_8)
+                } else {
+                    prepareBroadcastStylesheet(
+                        resource.data.toString(StandardCharsets.UTF_8),
+                        broadcastBasePathFor(resource.path)
+                    ).toByteArray(StandardCharsets.UTF_8)
+                }
+            }
+        }
+        return response(200, "OK", mimeType, data, allowExternalNetwork)
+    }
+
+    companion object {
+        private val STATIC_ASSET_CACHE = ConcurrentHashMap<String, ByteArray>()
+    }
 }
 
 internal fun buildReceiverInfoJson(settings: DataBroadcastingSettings): String =
@@ -385,31 +451,6 @@ internal fun buildReceiverInfoJson(settings: DataBroadcastingSettings): String =
         put("prefecture", settings.prefectureCode ?: JSONObject.NULL)
         put("regioncode", settings.regionCode ?: JSONObject.NULL)
     }.toString()
-
-private fun broadcastResourceResponse(
-    resource: B60ApplicationResource,
-    allowExternalNetwork: Boolean,
-): WebResourceResponse {
-    val mimeType = resource.contentType.substringBefore(';').ifBlank {
-        contentTypeForPath(resource.path)
-    }
-    val data = when {
-        mimeType.equals("text/html", ignoreCase = true) ->
-            prepareBroadcastHtml(
-                resource.data.toString(StandardCharsets.UTF_8),
-                broadcastBasePathFor(resource.path)
-            )
-                .toByteArray(StandardCharsets.UTF_8)
-        mimeType.equals("text/css", ignoreCase = true) ->
-            prepareBroadcastStylesheet(
-                resource.data.toString(StandardCharsets.UTF_8),
-                broadcastBasePathFor(resource.path)
-            )
-                .toByteArray(StandardCharsets.UTF_8)
-        else -> resource.data
-    }
-    return response(200, "OK", mimeType, data, allowExternalNetwork)
-}
 
 private fun broadcastBasePathFor(resourcePath: String): String {
     val mount = resourcePath.substringBefore('/', missingDelimiterValue = "")
@@ -568,6 +609,7 @@ private fun response(
     mimeType: String,
     data: ByteArray,
     allowExternalNetwork: Boolean,
+    immutable: Boolean = false,
 ): WebResourceResponse = WebResourceResponse(
     mimeType,
     if (mimeType.startsWith("text/") || mimeType.contains("javascript") || mimeType.contains("json")) {
@@ -578,7 +620,7 @@ private fun response(
     statusCode,
     reason,
     mapOf(
-        "Cache-Control" to "no-store",
+        "Cache-Control" to if (immutable) "max-age=86400" else "no-store",
         "Content-Security-Policy" to
             // Broadcast applications use dynamic JavaScript compilation for
             // receiver capability checks and generated application code.

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
   <style>
     html, body, #viewport { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
-    #viewport { position: relative; }
+    #viewport { position: relative; contain: layout style size; }
     #broadcast {
       position: absolute;
       left: 0;
@@ -13,31 +13,33 @@
       border: 0;
       transform-origin: top left;
       background: transparent;
+      will-change: transform;
+      contain: strict;
     }
     #status {
       position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 120px;
-      display: grid;
-      place-items: end center;
-      box-sizing: border-box;
-      padding: 0 24px 28px;
-      text-align: center;
+      left: 50%;
+      bottom: 40px;
+      transform: translateX(-50%);
+      padding: 10px 22px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(16, 18, 22, 0.84);
+      color: rgba(255, 255, 255, 0.92);
+      font: 500 20px/1.3 sans-serif;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
       z-index: 10;
-      color: #fff;
-      background: #000;
-      font: 48px sans-serif;
+      pointer-events: none;
     }
-    #status.ready { display: none; }
+    #status.ready, #status:empty { display: none; }
   </style>
   <script src="/libaribhtml5/libaribhtml5.js"></script>
 </head>
 <body>
   <div id="viewport">
     <iframe id="broadcast"></iframe>
-    <div id="status">データ放送を準備中…</div>
+    <div id="status">データ放送を受信中…</div>
   </div>
   <script>
     (() => {
@@ -47,33 +49,46 @@
       let currentEntry = '';
       let currentUrlIsBlank = false;
       let lastVisibleUrl = '';
+      let lastPlaneJson = '';
+      let lastStatusText = 'データ放送を受信中…';
       let runtimeInstalled = false;
       let autoEnterData = false;
       const pendingKeys = [];
       const receiverSystemInformation = {
-        makerid: 'Komorebi',
-        modelname: 'Komorebi Android TV',
+        makerid: 'Honorebi',
+        modelname: 'Honorebi Android TV',
         decoder: 'native',
       };
 
-      const reportStatus = value => {
-        status.textContent = value || '';
-        if (window.ARIBNative?.onStatus) window.ARIBNative.onStatus(String(value || ''));
+      const setOverlayMessage = (displayText, nativeLogText = displayText) => {
+        const text = String(displayText || '');
+        if (text !== lastStatusText) {
+          lastStatusText = text;
+          status.textContent = text;
+        }
+        if (nativeLogText && window.ARIBNative?.onStatus) {
+          window.ARIBNative.onStatus(String(nativeLogText));
+        }
       };
+
       const mediaPlaneAdapter = {
         renderMode: 'external',
         mountMediaPlane(_object, plane) { this.updateMediaPlane(_object, plane); },
         updateMediaPlane(_object, plane) {
-          if (window.ARIBNative?.onMediaPlane) {
-            window.ARIBNative.onMediaPlane(JSON.stringify(plane));
-          }
+          if (!window.ARIBNative?.onMediaPlane) return;
+          const serialized = JSON.stringify(plane);
+          if (serialized === lastPlaneJson) return;
+          lastPlaneJson = serialized;
+          window.ARIBNative.onMediaPlane(serialized);
         },
         unmountMediaPlane(reason) {
+          lastPlaneJson = '';
           if (window.ARIBNative?.onMediaPlaneUnmounted) {
             window.ARIBNative.onMediaPlaneUnmounted(String(reason));
           }
         },
       };
+
       const allowExternalNetwork = Boolean(window.ARIBNative?.allowExternalNetwork?.());
       const receiverInfo = (() => {
         try {
@@ -89,6 +104,7 @@
           return undefined;
         }
       })();
+
       const host = new window.ARIBHTML5.AribReceiverHost({
         iframe,
         viewport,
@@ -104,7 +120,9 @@
         getDeviceIdentifier: async () => null,
         systemInformation: receiverSystemInformation,
         onStatus(value) {
-          reportStatus(value);
+          if (value && window.ARIBNative?.onStatus) {
+            window.ARIBNative.onStatus(String(value));
+          }
         },
         onLifecycle(event) {
           if (event.type === 'installed') {
@@ -123,9 +141,11 @@
           if (event.type === 'loading' || event.type === 'navigating') {
             runtimeInstalled = false;
             status.classList.remove('ready');
+            setOverlayMessage('データ放送を読み込み中…', '');
           }
           if (event.type === 'exited') {
             runtimeInstalled = false;
+            lastPlaneJson = '';
             pendingKeys.splice(0);
             if (window.ARIBNative?.onApplicationExited) {
               window.ARIBNative.onApplicationExited();
@@ -133,7 +153,10 @@
           }
           if (event.type === 'error' || event.type === 'frame-blocked' ||
               event.type === 'navigation-blocked') {
-            reportStatus('データ放送エラー: ' + (event.message || event.type));
+            const detail = event.message || event.type;
+            console.error('[HonorebiB60] lifecycle error:', detail);
+            status.classList.remove('ready');
+            setOverlayMessage('データ放送を表示できませんでした', 'lifecycle-error: ' + detail);
           }
         },
         onUrlChange(value) {
@@ -195,9 +218,10 @@
           currentEntry = String(payload.entryPath).replace(/^\/+/, '');
           currentUrlIsBlank = false;
           lastVisibleUrl = '';
+          lastPlaneJson = '';
           autoEnterData = Boolean(payload.autoEnterData);
           status.classList.remove('ready');
-          reportStatus('データ放送を起動中…');
+          setOverlayMessage('データ放送を読み込み中…', '');
           host.loadApplication('/' + currentEntry);
           return true;
         },
@@ -221,11 +245,12 @@
         },
         exit() {
           currentEntry = '';
+          lastPlaneJson = '';
           host.exitApplication();
           host.clearProgramInfo();
           host.clearBroadcastClock();
-          status.classList.remove('ready');
-          reportStatus('データ放送を終了しました');
+          status.classList.add('ready');
+          setOverlayMessage('', '');
           return true;
         },
       };
@@ -238,7 +263,7 @@
           if (name === 'data' && currentUrlIsBlank && lastVisibleUrl) {
             runtimeInstalled = false;
             status.classList.remove('ready');
-            reportStatus('データ放送を再表示中…');
+            setOverlayMessage('データ放送を読み込み中…', '');
             host.loadApplication(lastVisibleUrl);
             return true;
           }
@@ -252,11 +277,15 @@
         },
       };
 
-      window.addEventListener('error', event => reportStatus('データ放送エラー: ' + event.message));
-      window.addEventListener('unhandledrejection', event => {
-        reportStatus('データ放送エラー: ' + String(event.reason?.message || event.reason));
+      window.addEventListener('error', event => {
+        console.error('[HonorebiB60] error:', event.message);
+        if (window.ARIBNative?.onStatus) window.ARIBNative.onStatus('error: ' + event.message);
       });
-      reportStatus('データ放送リソースを待っています…');
+      window.addEventListener('unhandledrejection', event => {
+        const msg = String(event.reason?.message || event.reason);
+        console.error('[HonorebiB60] unhandledrejection:', msg);
+        if (window.ARIBNative?.onStatus) window.ARIBNative.onStatus('rejection: ' + msg);
+      });
     })();
   </script>
 </body>
